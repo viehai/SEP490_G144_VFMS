@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/VFMS.API/VFMS.API.csproj" />
+    <Project Path="src/VFMS.Application/VFMS.Application.csproj" />
+    <Project Path="src/VFMS.Client/VFMS.Client.csproj" />
+    <Project Path="src/VFMS.Contracts/VFMS.Contracts.csproj" />
+    <Project Path="src/VFMS.Domain/VFMS.Domain.csproj" />
+    <Project Path="src/VFMS.Infrastructure/VFMS.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/VFMS.IntegrationTests/VFMS.IntegrationTests.csproj" />
+    <Project Path="tests/VFMS.UnitTests/VFMS.UnitTests.csproj" />
+  </Folder>
+</Solution>

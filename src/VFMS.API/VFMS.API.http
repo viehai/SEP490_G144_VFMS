@@ -1,0 +1,6 @@
+@VFMS.API_HostAddress = http://localhost:5001
+
+GET {{VFMS.API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
