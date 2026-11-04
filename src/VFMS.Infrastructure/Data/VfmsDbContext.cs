@@ -1134,7 +1134,7 @@ public class VfmsDbContext : DbContext
             entity.HasIndex(e => e.Word).IsUnique();
             entity.Property(e => e.Word).HasMaxLength(100).IsRequired();
 
-            entity.HasOne(e => e.Admin)
+            entity.HasOne(e  => e.Admin)
                 .WithMany()
                 .HasForeignKey(e => e.CreatedByUserId)
                 .OnDelete(DeleteBehavior.Restrict);

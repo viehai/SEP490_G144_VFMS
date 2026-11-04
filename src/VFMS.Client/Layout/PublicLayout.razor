@@ -1,0 +1,158 @@
+@inherits LayoutComponentBase
+@inject IJSRuntime JS
+
+<div class="min-h-screen flex flex-col bg-white text-[#252525] font-['Inter',sans-serif] w-full max-w-full overflow-x-hidden">
+    
+    <!-- ============================================================== -->
+    <!-- FLOATING NAVBAR (Cách 2: Tailwind CSS + JS Scroll Effect)       -->
+    <!-- ============================================================== -->
+    <header id="vfms-navbar" 
+            class="fixed left-1/2 -translate-x-1/2 z-50 flex items-center justify-between text-white transition-all duration-300 ease-in-out
+                   top-0 w-full h-20 px-6 md:px-10 bg-transparent border-b border-transparent shadow-none rounded-none">
+        
+        <!-- Brand Logo (flex-shrink-0, không bao giờ bị ép vỡ) -->
+        <a href="/" class="flex items-center gap-2.5 flex-shrink-0 group whitespace-nowrap">
+            <span class="w-8 h-8 bg-white text-neutral-900 flex items-center justify-center font-['Montserrat',sans-serif] font-black text-lg rounded-none transition-all duration-300 group-hover:bg-neutral-200">
+                V
+            </span>
+            <span class="font-['Montserrat',sans-serif] font-black text-xl tracking-tighter text-white">
+                VFMS
+            </span>
+        </a>
+
+        <!-- Menu Links (Căn giữa, whitespace-nowrap chống rớt dòng chữ) -->
+        <nav class="hidden lg:flex items-center gap-4 xl:gap-7 font-['Montserrat',sans-serif] text-[11px] xl:text-xs font-bold uppercase tracking-wider text-neutral-200 whitespace-nowrap">
+            <a href="#featured-classes" class="hover:text-white transition-colors">LỚP HỌC NỔI BẬT</a>
+            <a href="#" class="hover:text-white transition-colors">GÓI HỘI VIÊN</a>
+            <a href="#" class="hover:text-white transition-colors">LỊCH TẬP YOGA</a>
+            <a href="#" class="hover:text-white transition-colors">HUẤN LUYỆN VIÊN</a>
+            <a href="#" class="hover:text-white transition-colors">TIỆN ÍCH &amp; DỊCH VỤ</a>
+        </nav>
+
+        <!-- Action Buttons (flex-shrink-0, kích thước cân đối) -->
+        <div class="flex items-center gap-3 flex-shrink-0 whitespace-nowrap">
+            <a href="/auth/login" 
+               class="hidden sm:inline-block font-['Montserrat',sans-serif] text-[11px] xl:text-xs font-bold uppercase tracking-wider text-neutral-300 hover:text-white px-2.5 py-1.5 transition-colors">
+                ĐĂNG NHẬP
+            </a>
+            <a href="/auth/register" 
+               class="bg-white hover:bg-neutral-200 text-neutral-950 font-['Montserrat',sans-serif] font-extrabold text-[11px] xl:text-xs uppercase tracking-wider px-4 py-2 transition-all duration-200 shadow-md rounded-none">
+                THAM GIA NGAY
+            </a>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-grow w-full max-w-full min-w-0 overflow-x-hidden">
+        @Body
+    </main>
+
+    <!-- Footer: Generous Padding, Brutal Minimalist Lines -->
+    <footer class="w-full bg-[#0A0A0A] text-white pt-16 pb-12 border-t-2 border-black">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-10 pb-12 border-b border-[#333333]">
+                <!-- Brand Info -->
+                <div class="space-y-4">
+                    <div class="flex items-center gap-2">
+                        <span class="w-7 h-7 bg-white text-black flex items-center justify-center font-['Montserrat',sans-serif] font-black text-lg">V</span>
+                        <span class="font-['Montserrat',sans-serif] font-black text-2xl tracking-tighter text-white">VFMS</span>
+                    </div>
+                    <p class="text-xs text-neutral-400 font-['Inter',sans-serif] leading-relaxed">
+                        Hệ thống trung tâm thể hình và quản lý thể lực cao cấp chuẩn quốc tế. Tối ưu hiệu suất, rèn luyện kỷ luật và tạo dựng thể hình đỉnh cao.
+                    </p>
+                    <p class="text-xs text-neutral-500 font-mono">
+                        VERSION 2.0 • BUILT WITH .NET 8 &amp; TAILWIND
+                    </p>
+                </div>
+
+                <!-- Column 1 -->
+                <div>
+                    <h5 class="font-['Montserrat',sans-serif] text-xs font-bold uppercase tracking-wider text-white mb-4">
+                        DỊCH VỤ &amp; TẬP LUYỆN
+                    </h5>
+                    <ul class="space-y-2 text-xs text-neutral-400 font-['Inter',sans-serif]">
+                        <li><a href="#" class="hover:text-white transition-colors">Gói Hội Viên Classic &amp; VIP</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">Huấn Luyện Viên Cá Nhân (PT 1-1)</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">Lớp Yoga &amp; Pilates Studio</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">Khu Vực Powerlifting &amp; Olympic</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">Tủ Locker &amp; Phòng Xông Hơi</a></li>
+                    </ul>
+                </div>
+
+                <!-- Column 2 -->
+                <div>
+                    <h5 class="font-['Montserrat',sans-serif] text-xs font-bold uppercase tracking-wider text-white mb-4">
+                        QUY ĐỊNH &amp; CHÍNH SÁCH
+                    </h5>
+                    <ul class="space-y-2 text-xs text-neutral-400 font-['Inter',sans-serif]">
+                        <li><a href="#" class="hover:text-white transition-colors">Chính Sách Bảo Lưu Thẻ (Freeze)</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">Nội Quy Phòng Tập VFMS</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">Quy Định Đặt Lớp &amp; Hủy Lớp</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">Cam Kết Bảo Mật FaceID &amp; PDPL</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">Chính Sách Hoàn Tiền Cọc Locker</a></li>
+                    </ul>
+                </div>
+
+                <!-- Column 3 -->
+                <div>
+                    <h5 class="font-['Montserrat',sans-serif] text-xs font-bold uppercase tracking-wider text-white mb-4">
+                        ĐĂNG KÝ BẢN TIN THỂ LỰC
+                    </h5>
+                    <p class="text-xs text-neutral-400 mb-3">
+                        Nhận các giáo án luyện tập, thực đơn dinh dưỡng và thông báo ưu đãi độc quyền.
+                    </p>
+                    <div class="flex">
+                        <input type="email" placeholder="Email của bạn..." class="w-full bg-[#1A1A1A] text-white border border-[#333333] px-3 py-2 text-xs font-['Inter',sans-serif] focus:outline-none focus:border-white rounded-none" />
+                        <button class="bg-white text-black hover:bg-neutral-200 px-4 py-2 font-['Montserrat',sans-serif] font-bold text-xs uppercase tracking-wider rounded-none">
+                            GỬI
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Copyright -->
+            <div class="pt-8 flex flex-col sm:flex-row items-center justify-between text-xs text-neutral-500 font-['Inter',sans-serif]">
+                <p>© @DateTime.Now.Year VFMS FITNESS MANAGEMENT SYSTEM. ALL RIGHTS RESERVED.</p>
+                <div class="flex gap-4 mt-4 sm:mt-0 font-['Montserrat',sans-serif] text-[10px] tracking-wider uppercase">
+                    <a href="#" class="hover:text-white">ĐIỀU KHOẢN SỬ DỤNG</a>
+                    <span>•</span>
+                    <a href="#" class="hover:text-white">CHÍNH SÁCH BẢO MẬT</a>
+                    <span>•</span>
+                    <a href="#" class="hover:text-white">HỆ THỐNG KIOSK</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+</div>
+
+@code {
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await JS.InvokeVoidAsync("eval", @"
+                (function() {
+                    const nav = document.getElementById('vfms-navbar');
+                    if (!nav) return;
+                    
+                    const def = ['top-0', 'w-full', 'h-20', 'px-6', 'md:px-10', 'bg-transparent', 'border-transparent', 'shadow-none', 'rounded-none'];
+                    const scr = ['top-3', 'md:top-4', 'w-[95%]', 'max-w-7xl', 'h-16', 'px-5', 'md:px-7', 'bg-neutral-800/90', 'backdrop-blur-md', 'border-neutral-600/40', 'border', 'shadow-2xl', 'rounded-xl', 'md:rounded-2xl'];
+
+                    function updateNavbar() {
+                        if (window.scrollY > 50) {
+                            nav.classList.remove(...def);
+                            nav.classList.add(...scr);
+                        } else {
+                            nav.classList.remove(...scr);
+                            nav.classList.add(...def);
+                        }
+                    }
+
+                    window.addEventListener('scroll', updateNavbar, { passive: true });
+                    updateNavbar(); // Khởi tạo ngay khi tải
+                })();
+            ");
+        }
+    }
+}

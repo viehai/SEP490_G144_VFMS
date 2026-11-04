@@ -1,7 +1,400 @@
-﻿@page "/"
+@page "/"
+@layout PublicLayout
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
 
-<PageTitle>Home</PageTitle>
+<PageTitle>VFMS - Kỷ Luật Thép & Đỉnh Cao Thể Lực</PageTitle>
 
-<h1>Hello, world!</h1>
+<!-- Global Styles Scoped to Home for Brutal Minimalism, Marquee & Scroll Reveal -->
+<style>
+    .font-heading {
+        font-family: 'Montserrat', sans-serif;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
 
-Welcome to your new app.
+    .font-body {
+        font-family: 'Inter', sans-serif;
+    }
+
+    /* Đảm bảo tuyệt đối không bo góc và không đổ bóng theo quy chuẩn Brutal Minimalism */
+    .brutal-card, .brutal-btn, .brutal-badge, .brutal-img {
+        border-radius: 0px !important;
+        box-shadow: none !important;
+    }
+
+    /* Infinite Marquee Animation - Không bị ngắt quãng */
+    @@keyframes marquee {
+        0% { transform: translateX(0%); }
+        100% { transform: translateX(-50%); }
+    }
+
+    .animate-marquee {
+        display: flex;
+        width: max-content;
+        animation: marquee 28s linear infinite;
+    }
+
+    .animate-marquee:hover {
+        animation-play-state: paused;
+    }
+
+    /* Scroll Reveal Animation: Trượt chậm từ phải sang trái (Cinematic Slow Slide) */
+    .slide-reveal-right {
+        opacity: 0;
+        transform: translateX(90px);
+        transition: opacity 1.4s cubic-bezier(0.16, 1, 0.3, 1), transform 1.4s cubic-bezier(0.16, 1, 0.3, 1);
+        will-change: opacity, transform;
+    }
+
+    .slide-reveal-right.revealed {
+        opacity: 1;
+        transform: translateX(0);
+    }
+</style>
+
+<div class="w-full max-w-full overflow-x-hidden bg-[#FFFFFF] text-[#252525] font-body selection:bg-[#0A0A0A] selection:text-white">
+
+    <!-- ========================================================================= -->
+    <!-- 1. HERO SECTION (Chiếm toàn màn hình, Slogan mạnh mẽ, CTA hình chữ nhật)   -->
+    <!-- ========================================================================= -->
+    <section class="relative w-full h-screen min-h-[700px] flex items-center justify-center overflow-hidden bg-[#0A0A0A] text-white">
+        
+        <!-- Background Image with High Contrast Athletic Filter & Dark Overlay -->
+        <div class="absolute inset-0 z-0">
+            <img src="https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&w=2000&q=85"
+                 alt="VFMS Elite Training Facility"
+                 class="w-full h-full object-cover object-center grayscale contrast-125 brightness-75 scale-100" />
+            <!-- Brutal High-Contrast Dark Gradient Overlay -->
+            <div class="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-black/30"></div>
+        </div>
+
+        <!-- Hero Content Box -->
+        <div class="relative z-10 max-w-6xl mx-auto px-6 sm:px-8 text-center flex flex-col items-center justify-center mt-8">
+            
+            <!-- Category / Tagline -->
+            <div class="inline-block border border-white/40 px-3 py-1 mb-6 brutal-badge">
+                <span class="font-heading text-xs font-bold tracking-widest text-white/90">
+                    V-FITNESS MANAGEMENT SYSTEM
+                </span>
+            </div>
+
+            <!-- Main Slogan: Montserrat, Bold, Uppercase, Tracking-wide -->
+            <h1 class="font-heading text-4xl sm:text-6xl md:text-7xl lg:text-8xl font-black uppercase text-white leading-tight tracking-tight mb-6 max-w-5xl">
+                KỶ LUẬT TẠO NÊN <br class="hidden sm:inline" />
+                <span class="text-white underline decoration-2 underline-offset-8">BẢN LĨNH THÉP</span>
+            </h1>
+
+            <!-- Subtext: Inter, Thin/Regular, High Readability -->
+            <p class="font-body text-base sm:text-lg md:text-xl text-neutral-300 font-light max-w-2xl mx-auto mb-10 leading-relaxed">
+                Hệ thống tập luyện và huấn luyện thể hình chuẩn hiệu suất cao. Không thỏa hiệp, không đường tắt — chỉ có sự kỷ luật, khoa học và kết quả đột phá.
+            </p>
+
+            <!-- Call To Action (CTA) Buttons -->
+            <div class="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto">
+                <!-- Primary CTA: Solid Black/Inverted White with sharp borders -->
+                <button @onclick="ScrollToFeaturedClasses"
+                        class="brutal-btn w-full sm:w-auto bg-white text-[#0A0A0A] hover:bg-[#0A0A0A] hover:text-white border-2 border-white px-10 py-4 font-heading font-extrabold text-sm tracking-wider uppercase transition-colors duration-200 cursor-pointer">
+                    KHÁM PHÁ CÁC LỚP HỌC
+                </button>
+
+                <!-- Secondary CTA: Outlined Brutalist Button -->
+                <a href="/auth/register"
+                   class="brutal-btn w-full sm:w-auto bg-transparent text-white hover:bg-white hover:text-black border-2 border-white/80 px-10 py-4 font-heading font-extrabold text-sm tracking-wider uppercase transition-colors duration-200 text-center inline-block">
+                    ĐĂNG KÝ HỘI VIÊN NGAY
+                </a>
+            </div>
+
+            <!-- Stats Bar (Brutal Minimalist metrics) -->
+            <div class="grid grid-cols-3 gap-6 sm:gap-12 mt-16 pt-8 border-t border-white/20 w-full max-w-2xl">
+                <div>
+                    <div class="font-heading text-2xl sm:text-3xl font-extrabold text-white">100%</div>
+                    <div class="font-body text-xs text-neutral-400 uppercase tracking-wider mt-1">Chuẩn Thiết Bị Olympic</div>
+                </div>
+                <div>
+                    <div class="font-heading text-2xl sm:text-3xl font-extrabold text-white">24/7</div>
+                    <div class="font-body text-xs text-neutral-400 uppercase tracking-wider mt-1">Check-in FaceID &amp; QR</div>
+                </div>
+                <div>
+                    <div class="font-heading text-2xl sm:text-3xl font-extrabold text-white">50+</div>
+                    <div class="font-body text-xs text-neutral-400 uppercase tracking-wider mt-1">HLV Chuyên Nghiệp</div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Scroll Down Indicator -->
+        <div class="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-10 flex flex-col items-center">
+            <span class="font-heading text-[10px] tracking-widest text-neutral-400 uppercase mb-2">CUỘN XUỐNG</span>
+            <div class="w-px h-8 bg-neutral-500 animate-pulse"></div>
+        </div>
+
+    </section>
+
+    <!-- ========================================================================= -->
+    <!-- 2. FEATURED CLASSES SECTION (Nền trắng, ảnh khổ lớn theo ảnh tham chiếu)  -->
+    <!-- ========================================================================= -->
+    <section id="featured-classes" class="w-full bg-[#FFFFFF] text-[#252525] pt-20 pb-28 border-b border-[#CFCFCF]">
+        
+        <!-- ===================================================================== -->
+        <!-- A. INFINITE MARQUEE (Dải chữ chạy ngang liên tục)                     -->
+        <!-- ===================================================================== -->
+        <div class="w-full max-w-full overflow-hidden bg-[#0A0A0A] py-4 md:py-5 border-y-2 border-black mb-16 cursor-default select-none relative">
+            <div class="animate-marquee whitespace-nowrap flex">
+                <!-- Group 1 -->
+                <div class="flex items-center gap-6 sm:gap-10 font-heading text-lg sm:text-2xl md:text-3xl font-black uppercase tracking-widest text-white pr-6 sm:pr-10 flex-shrink-0">
+                    <span class="hover:text-neutral-400 transition-colors">GYM &amp; STRENGTH</span>
+                    <span class="text-neutral-600 font-normal">—</span>
+                    <span class="hover:text-neutral-400 transition-colors">YOGA STUDIO</span>
+                    <span class="text-neutral-600 font-normal">—</span>
+                    <span class="hover:text-neutral-400 transition-colors">PERSONAL TRAINER</span>
+                    <span class="text-neutral-600 font-normal">—</span>
+                    <span class="hover:text-neutral-400 transition-colors">HIIT</span>
+                    <span class="text-neutral-600 font-normal">—</span>
+                    <span class="hover:text-neutral-400 transition-colors">GYM &amp; STRENGTH</span>
+                    <span class="text-neutral-600 font-normal">—</span>
+                    <span class="hover:text-neutral-400 transition-colors">YOGA STUDIO</span>
+                    <span class="text-neutral-600 font-normal">—</span>
+                    <span class="hover:text-neutral-400 transition-colors">PERSONAL TRAINER</span>
+                    <span class="text-neutral-600 font-normal">—</span>
+                    <span class="hover:text-neutral-400 transition-colors">HIIT</span>
+                    <span class="text-neutral-600 font-normal">—</span>
+                </div>
+                <!-- Group 2 -->
+                <div class="flex items-center gap-6 sm:gap-10 font-heading text-lg sm:text-2xl md:text-3xl font-black uppercase tracking-widest text-white pr-6 sm:pr-10 flex-shrink-0" aria-hidden="true">
+                    <span class="hover:text-neutral-400 transition-colors">GYM &amp; STRENGTH</span>
+                    <span class="text-neutral-600 font-normal">—</span>
+                    <span class="hover:text-neutral-400 transition-colors">YOGA STUDIO</span>
+                    <span class="text-neutral-600 font-normal">—</span>
+                    <span class="hover:text-neutral-400 transition-colors">PERSONAL TRAINER</span>
+                    <span class="text-neutral-600 font-normal">—</span>
+                    <span class="hover:text-neutral-400 transition-colors">HIIT</span>
+                    <span class="text-neutral-600 font-normal">—</span>
+                    <span class="hover:text-neutral-400 transition-colors">GYM &amp; STRENGTH</span>
+                    <span class="text-neutral-600 font-normal">—</span>
+                    <span class="hover:text-neutral-400 transition-colors">YOGA STUDIO</span>
+                    <span class="text-neutral-600 font-normal">—</span>
+                    <span class="hover:text-neutral-400 transition-colors">PERSONAL TRAINER</span>
+                    <span class="text-neutral-600 font-normal">—</span>
+                    <span class="hover:text-neutral-400 transition-colors">HIIT</span>
+                    <span class="text-neutral-600 font-normal">—</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section Container khổ lớn đạt chuẩn tỷ lệ ảnh tham chiếu -->
+        <div class="w-full max-w-[1650px] mx-auto px-4 sm:px-6 lg:px-8">
+            
+            <!-- ================================================================= -->
+            <!-- B. SECTION HEADER (Tiêu đề chữ đen xếp 2 tầng trên nền trắng)      -->
+            <!-- ================================================================= -->
+            <div class="flex flex-col md:flex-row md:items-end justify-between mb-12 pb-6 border-b border-[#CFCFCF]">
+                <div>
+                    <div class="flex items-center gap-2 mb-3">
+                        <span class="w-2.5 h-2.5 bg-[#0A0A0A] inline-block"></span>
+                        <span class="font-heading text-xs font-bold tracking-widest text-[#7D7D7D] uppercase">
+                            VFMS SIGNATURE CURRICULUM
+                        </span>
+                    </div>
+                    <h2 class="font-heading text-4xl sm:text-5xl lg:text-7xl font-black uppercase text-[#252525] tracking-tighter leading-[0.95]">
+                        CÁC LỚP HỌC <br />
+                        NỔI BẬT
+                    </h2>
+                </div>
+                
+                <p class="font-body text-xs sm:text-sm text-[#7D7D7D] max-w-sm mt-4 md:mt-0 font-normal leading-relaxed text-left md:text-right">
+                    Được thiết kế dựa trên giáo trình thể lực cường độ cao, tối ưu hóa tăng cơ, đốt mỡ và tái tạo năng lượng thể chất toàn diện.
+                </p>
+            </div>
+
+            <!-- ================================================================= -->
+            <!-- C. LƯỚI 4 BỨC ẢNH KHỔ LỚN (HOÀN TOÀN TRỐNG TRƠN, KHÔNG CHỮ, KHÔNG CLICK) -->
+            <!-- ================================================================= -->
+            <div class="w-full overflow-hidden">
+                <div id="classes-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 md:gap-3">
+                    @for (int i = 0; i < FeaturedClasses.Count; i++)
+                    {
+                        var item = FeaturedClasses[i];
+                        var delayStyle = $"transition-delay: {i * 250}ms;";
+
+                        <!-- Cột ảnh: Chiều cao chuẩn 68vh (min 520px), vuông vức, chỉ hiển thị ảnh, không click -->
+                        <div style="@delayStyle"
+                             class="slide-reveal-right group relative w-full h-[68vh] min-h-[520px] max-h-[750px] overflow-hidden bg-neutral-900 border border-neutral-300 hover:border-black rounded-none select-none transition-all duration-300">
+                            
+                            <!-- Bức ảnh chụp cận cảnh sắc nét, Grayscale tương phản cao, HOÀN TOÀN TRỐNG TRƠN -->
+                            <img src="@item.ImageUrl"
+                                 alt="@item.Title"
+                                 class="w-full h-full object-cover object-center grayscale contrast-125 brightness-95 group-hover:grayscale-0 group-hover:scale-105 group-hover:brightness-105 transition-all duration-700 ease-out rounded-none pointer-events-none" />
+
+                            <!-- Viền sắc nét khi hover -->
+                            <div class="absolute inset-0 border-2 border-transparent group-hover:border-black transition-colors z-10 pointer-events-none"></div>
+
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Bottom Information Banner (Nền xám sáng, viền mỏng) -->
+            <div class="mt-16 p-8 bg-[#F7F7F7] border border-[#CFCFCF] flex flex-col md:flex-row items-center justify-between gap-6">
+                <div>
+                    <h4 class="font-heading text-lg font-extrabold text-[#252525] uppercase tracking-wide">
+                        CHƯA CHỌN ĐƯỢC LỘ TRÌNH PHÙ HỢP?
+                    </h4>
+                    <p class="font-body text-sm text-[#7D7D7D] mt-1">
+                        Hãy để đội ngũ chuyên gia VFMS kiểm tra thể trạng và thiết kế giáo án tập luyện chuyên biệt cho bạn.
+                    </p>
+                </div>
+                <a href="#featured-classes"
+                   class="brutal-btn bg-[#0A0A0A] text-white hover:bg-neutral-800 border border-black px-8 py-3.5 font-heading font-bold text-xs uppercase tracking-widest transition-colors duration-200 whitespace-nowrap rounded-none inline-block">
+                    ĐẶT LỊCH TƯ VẤN MIỄN PHÍ
+                </a>
+            </div>
+
+        </div>
+
+    </section>
+
+</div>
+
+@code {
+    // =========================================================================
+    // MOCK DATA (Dữ liệu tĩnh 4 thẻ lớp học chuẩn theo ảnh tham chiếu)
+    // =========================================================================
+    private readonly List<ClassCardItem> FeaturedClasses = new()
+    {
+        new ClassCardItem
+        {
+            Id = 1,
+            Title = "HYBRID HYPERTROPHY & POWER",
+            TitleShort = "HYBRID HYPERTROPHY",
+            Category = "GYM & STRENGTH",
+            Level = "NÂNG CAO",
+            Badge = "HOT",
+            Instructor = "Alexander Trần (IFBB Pro)",
+            InstructorShort = "Alexander Trần",
+            Duration = "60 Phút • 3 Buổi/Tuần",
+            DurationShort = "60 PHÚT",
+            PriceFormatted = "1.850.000 ₫",
+            ImageUrl = "https://images.unsplash.com/photo-1584735935682-2f2b69dff9d2?auto=format&fit=crop&w=800&h=1200&q=80",
+            ShortDescription = "Giáo trình tập tạ chuyên sâu kết hợp Hypertrophy và Powerlifting tối ưu khối lượng cơ nạc.",
+            DetailedDescription = "Chương trình chuyên biệt dành cho vận động viên và gymer mong muốn gia tăng sức mạnh nguyên bản (Deadlift, Squat, Bench Press) kết hợp hypertrophy để phát triển thể hình cân đối, bùng nổ sức mạnh cơ bắp."
+        },
+        new ClassCardItem
+        {
+            Id = 2,
+            Title = "ASHTANGA POWER FLOW",
+            TitleShort = "ASHTANGA POWER FLOW",
+            Category = "YOGA STUDIO",
+            Level = "MỌI CẤP ĐỘ",
+            Badge = "POPULAR",
+            Instructor = "Master Ananya Sharma",
+            InstructorShort = "Master Ananya",
+            Duration = "75 Phút • Studio 1",
+            DurationShort = "75 PHÚT",
+            PriceFormatted = "1.450.000 ₫",
+            ImageUrl = "https://images.unsplash.com/photo-1545205597-3d9d02c29597?auto=format&fit=crop&w=800&h=1200&q=80",
+            ShortDescription = "Đồng bộ hóa hơi thở và chuyển động liên tục giúp kéo giãn, cân bằng tâm trí và cơ thể.",
+            DetailedDescription = "Chuỗi bài tập Ashtanga nguyên bản kết hợp kiểm soát nhịp thở (Pranayama) và các tư thế Asana tăng cường sự dẻo dai của cột sống, mở khớp hông và thanh lọc năng lượng tiêu cực sau những giờ làm việc căng thẳng."
+        },
+        new ClassCardItem
+        {
+            Id = 3,
+            Title = "ELITE 1-ON-1 TRANSFORMATION",
+            TitleShort = "ELITE TRANSFORMATION",
+            Category = "PERSONAL TRAINER",
+            Level = "CHUYÊN SÂU",
+            Badge = "EXCLUSIVE",
+            Instructor = "Marcus Vũ (Master Coach)",
+            InstructorShort = "Marcus Vũ",
+            Duration = "24 Buổi • Lộ Trình Riêng",
+            DurationShort = "KÈM 1-1",
+            PriceFormatted = "9.600.000 ₫",
+            ImageUrl = "https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?auto=format&fit=crop&w=800&h=1200&q=80",
+            ShortDescription = "Kèm cặp 1-1 toàn diện về dinh dưỡng, kỹ thuật chuyển động và theo dõi InBody mỗi tuần.",
+            DetailedDescription = "Gói huấn luyện cá nhân cao cấp nhất tại VFMS. HLV đồng hành sát sao trong từng rep tạ, kiểm soát chế độ dinh dưỡng hàng ngày (Macro/Calo) và bảo đảm đạt mục tiêu giảm mỡ, tăng cơ theo hợp đồng cam kết."
+        },
+        new ClassCardItem
+        {
+            Id = 4,
+            Title = "TACTICAL METCON & CALISTHENICS",
+            TitleShort = "TACTICAL METCON",
+            Category = "HIIT & CONDITIONING",
+            Level = "TRUNG CẤP",
+            Badge = "NEW",
+            Instructor = "Đặng Hoàng Long (CrossFit Level 2)",
+            InstructorShort = "Đặng Hoàng Long",
+            Duration = "45 Phút • Cường Độ Cao",
+            DurationShort = "45 PHÚT",
+            PriceFormatted = "1.600.000 ₫",
+            ImageUrl = "https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&w=800&h=1200&q=80",
+            ShortDescription = "Bài tập chuỗi vòng lặp cường độ cao kết hợp thể lực trọng lượng cơ thể và tạ chuông.",
+            DetailedDescription = "Thử thách sức bền tim mạch và độ dẻo dai cơ bắp tối đa với chuỗi Metabolic Conditioning (MetCon) nhịp độ cao. Đốt cháy tới 800 calo mỗi buổi tập và kích hoạt hiệu ứng đốt mỡ tự nhiên sau tập luyện (EPOC)."
+        }
+    };
+
+    private async Task ScrollToFeaturedClasses()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("eval", "document.getElementById('featured-classes')?.scrollIntoView({ behavior: 'smooth' })");
+        }
+        catch
+        {
+            Navigation.NavigateTo("#featured-classes");
+        }
+    }
+
+    // =========================================================================
+    // SCROLL REVEAL BẰNG INTERSECTION OBSERVER API TRONG BLAZOR
+    // =========================================================================
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await JS.InvokeVoidAsync("eval", @"
+                (function() {
+                    const items = document.querySelectorAll('.slide-reveal-right');
+                    if (!items.length) return;
+
+                    const observerOptions = {
+                        root: null,
+                        rootMargin: '0px 0px -60px 0px',
+                        threshold: 0.15
+                    };
+
+                    const observer = new IntersectionObserver((entries, obs) => {
+                        entries.forEach(entry => {
+                            if (entry.isIntersecting) {
+                                entry.target.classList.add('revealed');
+                                obs.unobserve(entry.target); // Chỉ kích hoạt 1 lần khi cuộn tới
+                            }
+                        });
+                    }, observerOptions);
+
+                    items.forEach(el => observer.observe(el));
+                })();
+            ");
+        }
+    }
+
+    // =========================================================================
+    // MODEL CLASS NỘI TUYẾN DÀNH CHO THẺ CLASS CARD
+    // =========================================================================
+    public class ClassCardItem
+    {
+        public int Id { get; set; }
+        public string Title { get; set; } = string.Empty;
+        public string TitleShort { get; set; } = string.Empty;
+        public string Category { get; set; } = string.Empty;
+        public string Level { get; set; } = string.Empty;
+        public string Badge { get; set; } = string.Empty;
+        public string Instructor { get; set; } = string.Empty;
+        public string InstructorShort { get; set; } = string.Empty;
+        public string Duration { get; set; } = string.Empty;
+        public string DurationShort { get; set; } = string.Empty;
+        public string PriceFormatted { get; set; } = string.Empty;
+        public string ImageUrl { get; set; } = string.Empty;
+        public string ShortDescription { get; set; } = string.Empty;
+        public string DetailedDescription { get; set; } = string.Empty;
+    }
+}

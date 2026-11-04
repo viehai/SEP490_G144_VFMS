@@ -33,6 +33,7 @@ VFMS.Client/
 │   ├── ManagerAdminLayout.razor    # Manager & Admin back-office portal
 │   └── KioskLayout.razor           # Full-screen distraction-free Turnstile Check-in/Check-out screen
 ├── Components/                     # Reusable UI building blocks (StatusBadge, ConfirmDialog, Pagination, VietQrModal, CameraCapture)
+│   └── UI/                         # Base Gymshark-styled components (GymButton, ClassCard)
 ├── Services/                       # Typed HttpClient wrappers (AuthApiClient, OrderApiClient, YogaApiClient, CheckInApiClient...)
 ├── Auth/                           # JwtAuthStateProvider, TokenRefreshHandler, Local/Session TokenStorageService
 ├── Styles/input.css                # Tailwind directives & global CSS theme variables
@@ -83,21 +84,32 @@ VFMS.Client/
 
 ---
 
-## 6. Design System & UI Vibe (Nike-Inspired Athletic Theme)
+## 6. Design System & UI Vibe (Nike Brutal Minimalism / Gymshark)
 
-### A. Color Palette & Dark Mode Vibe
-- **App Background (`--bg-main`):** `#0A0A0C` (Deep charcoal black).
-- **Card & Container Background (`--bg-card`):** `#141417` (Dark grey surface).
-- **Borders & Dividers (`--border-card`):** `#232329` (Subtle 1px dark borders, no heavy drop-shadows).
-- **Brand Accent Color (`--color-accent`):** `#FF6B00` (Energetic athletic orange for primary CTAs, active states, and key highlights).
-- **Typography Colors:** Primary `#FFFFFF` (pure white), Secondary `#9CA3AF` (light grey).
+### A. Color Palette & Layouts
+- **User-Facing (Guest / Customer / Member):**
+  - **App Background (`--bg-main`):** `#FFFFFF` (Pure white).
+  - **Section / Container Background (`--bg-card`):** `#F7F7F7` (Light grey for section separation).
+  - **Borders & Dividers (`--border-card`):** `#CFCFCF` (Clean, subtle solid lines).
+  - **Typography Colors:** Primary text `#252525` (Deep dark). Muted/secondary text `#545454` or `#7D7D7D`.
+  - **Brand Accent / CTAs (`--color-accent`):** `#0A0A0A` (Pitch black blocks with inverted white text).
+  - **Layout:** Sticky Header, Minimalist Announcement Bar, Footer with generous padding.
+- **Admin Back-Office:**
+  - **Sidebar Background:** `#0A0A0A` (Pitch black).
+  - **Accent Color:** `#FF3E3E` (Vivid Red for authority and system alerts).
+- **Manager / Owner Back-Office:**
+  - **Sidebar Background:** `#0F172A` (Deep Slate / Navy).
+  - **Accent Color:** `#6366F1` (Indigo for revenue, reports, and business metrics).
 
 ### B. Typography
-- Headings (`h1`–`h6`, nav links, banners, CTAs): `'Montserrat'` or `'Inter'`, bold (`700`–`800`), `text-transform: uppercase`, `letter-spacing: 0.05em`.
-- Body copy, tables, inputs, validation messages: `'Inter'` or `'Roboto'`, `font-weight: 400`–`500`, normal case for readability.
+- Headings (`h1`–`h6`, nav links, banners, primary CTAs): `'Montserrat', sans-serif`, bold (`700`–`800`), `text-transform: uppercase`, `letter-spacing: 0.05em`.
+- Body copy, tables, inputs, validation messages: `'Inter', sans-serif`, `font-weight: 400`–`500`, normal case for maximum readability.
 
-### C. Component Styling & Status Badges (`StatusBadge.razor`)
-- Cards use `border-radius: 12px` (or `16px`), `1px solid var(--border-card)`, and `transition: all 0.2s ease` on interactive hover.
+### C. Component Styling, Strict Geometry & Status Badges (`StatusBadge.razor`)
+- **Strict Geometry:** `border-radius: 0` (`rounded-none`). No rounded corners allowed anywhere. Flat, sharp, and brutal design.
+- **No Drop-Shadows:** Do not use `shadow-md`, `shadow-lg`, etc. Depth and hierarchy are achieved entirely via high-contrast backgrounds and typography.
+- **Buttons (`GymButton`):** Rectangular, heavy padding (`py-4 px-8`), uppercase, bold font. Hover states invert or darken sharply (e.g., `#0A0A0A` to `#000000`).
+- **Cards (`ClassCard`):** No visible outer borders unless necessary, no shadow. Emphasize large sharp images (`aspect-[3/4]`), slight hover zoom (`group-hover:scale-105`), and left-aligned text.
 - **Status Colors (always paired with text/icon, never color alone):**
   - *Active / Approved / Confirmed / Completed / Paid / Available:* Emerald Green (`#10B981`)
   - *Pending / Processing / Frozen / Scheduled / Waitlisted:* Amber Orange (`#F59E0B`)
@@ -112,46 +124,39 @@ VFMS.Client/
 
 **[BEGIN PROMPT FOR AI AGENT]**
 
-Bạn là một Chuyên gia Blazor WebAssembly Frontend Developer (.NET 8 + Tailwind CSS) và UI/UX Designer. Khi viết mã Razor Components (`.razor`), Scoped CSS (`.razor.css`), Layouts, hoặc bất kỳ thành phần giao diện Blazor nào cho dự án **VFMS (`VFMS.Client`)**, bạn PHẢI tuân thủ tuyệt đối kiến trúc Clean Architecture (chỉ dùng DTO/Validator từ `VFMS.Contracts`) và Hệ thống Thiết kế **"Nike-Inspired Athletic Theme"** với các quy tắc nghiêm ngặt dưới đây:
+Bạn là một Chuyên gia Blazor WebAssembly Frontend Developer (.NET 8 + Tailwind CSS) và UI/UX Designer. Khi viết mã Razor Components (`.razor`), Scoped CSS (`.razor.css`), Layouts, hoặc bất kỳ thành phần giao diện Blazor nào cho dự án **VFMS (`VFMS.Client`)**, bạn PHẢI tuân thủ tuyệt đối kiến trúc Clean Architecture (chỉ dùng DTO/Validator từ `VFMS.Contracts`) và Hệ thống Thiết kế **"Nike Brutal Minimalism / Gymshark"** với các quy tắc NGHIÊM NGẶT dưới đây:
 
-**1. PHONG CÁCH THIẾT KẾ CỐT LÕI (NIKE-INSPIRED ATHLETIC THEME)**
-- **Hình khối:** Bắt buộc sử dụng thẻ phẳng (flat rectangular cards) với góc bo tròn nhẹ `border-radius: 12px` hoặc `16px`.
-- **Hiệu ứng:** KHÔNG sử dụng bóng đổ nặng nề (excessive drop shadows).
-- **Viền:** Sử dụng viền mỏng `1px solid var(--border-card)` cho các thẻ card.
-- **Tương tác (Hover):** Bắt buộc có hiệu ứng chuyển đổi mượt mà `transition: all 0.2s ease` khi hover qua các thẻ card, nút bấm, hoặc hàng (row) có tính tương tác, làm nổi bật viền hoặc các chi tiết màu accent.
+**1. PHONG CÁCH THIẾT KẾ CỐT LÕI (BRUTAL MINIMALISM)**
+- **YÊU CẦU TỐI THƯỢNG:** Sạch sẽ, tương phản cao, góc cạnh.
+- **Hình khối (Geometry):** KHÔNG bao giờ dùng `border-radius` (luôn luôn `rounded-none`). Mọi nút bấm, thẻ card, ô input đều phải vuông vức sắc lẹm.
+- **Hiệu ứng (Shadows):** KHÔNG sử dụng bóng đổ (`shadow-md`, `shadow-lg`, drop shadows). Chiều sâu được thể hiện qua màu nền và typography.
+- **Tương tác (Hover):** Có hiệu ứng chuyển đổi mượt mà `transition-colors duration-200` ở nút bấm và zoom ảnh `group-hover:scale-105` cho thẻ card.
 
 **2. TYPOGRAPHY (KIỂU CHỮ)**
-- **Tiêu đề (Headings h1-h6, Logo, NavLink, Banner, Primary CTA):**
-  + **Font:** Dùng font sans-serif hiện đại (`'Montserrat'` hoặc `'Inter'`).
+- **Tiêu đề (Headings h1-h6, NavLink, Primary CTA):**
+  + **Font:** Dùng font sans-serif `'Montserrat'`.
   + **Font-weight:** Bắt buộc in đậm (`700` hoặc `800`).
   + **Transform:** Bắt buộc viết hoa toàn bộ (`text-transform: uppercase`).
-  + **Letter-spacing:** Gọn gàng (`0.05em`) để thể hiện tinh thần thể thao mạnh mẽ, trực diện.
-- **Nội dung & Form (Body text, Paragraph, Input, `<ValidationMessage>`, Table):**
-  + **Font:** `'Inter'` hoặc `'Roboto'`.
-  + **Font-weight:** `300`, `400`, `500`.
-  + Tuyệt đối không uppercase bừa bãi ở phần nội dung dài để giữ độ dễ đọc.
+  + **Letter-spacing:** Gọn gàng (`tracking-wide` / `0.05em`) thể hiện tinh thần thể thao.
+- **Nội dung & Form (Body text, Input, `<ValidationMessage>`, Table):**
+  + **Font:** `'Inter'`.
+  + **Font-weight:** `400`, `500`.
+  + Tuyệt đối không uppercase ở phần nội dung dài để giữ độ dễ đọc.
 
-**3. QUY TẮC MÀU SẮC (Sử dụng CSS Variables toàn cục kết hợp Tailwind CSS)**
-Bắt buộc sử dụng các biến CSS sau thay vì mã màu Hex cứng trong các file `.razor.css`:
-- `--bg-main`: `#0A0A0C` (Màu nền toàn trang - Đen than chì sâu, mang lại cảm giác cao cấp).
-- `--bg-card`: `#141417` (Màu nền của các block nội dung, form, thẻ).
-- `--border-card`: `#232329` (Màu viền tối, tinh tế thay cho drop-shadow).
-- `--color-accent`: `#FF6B00` (Màu cam thể thao năng động - Dùng DUY NHẤT cho Nút CTA chính, link đang active, và các icon cần nổi bật).
-- **Typography:** Chữ chính: `#FFFFFF` (pure white). Chữ phụ/caption/placeholder: `#9CA3AF` (light grey).
+**3. QUY TẮC MÀU SẮC & LAYOUTS (Tailwind Config / CSS Variables)**
+- **Giao diện Người dùng (Customer/Guest/Member):** Nền trắng `#FFFFFF`, phân vùng nền xám nhạt `#F7F7F7`. Chữ đen tuyền `#252525` và chữ phụ `#7D7D7D`. Đường kẻ divider `#CFCFCF`. Nút bấm CTA màu đen `#0A0A0A` chữ trắng.
+- **Giao diện Admin:** Dùng Layout có Sidebar nền Đen `#0A0A0A`, text trắng, màu accent Đỏ rực `#FF3E3E`.
+- **Giao diện Owner/Manager:** Dùng Layout có Sidebar nền Xanh Slate `#0F172A`, text trắng, màu accent Chàm Indigo `#6366F1`.
 
 **4. QUY CHUẨN MÀU SẮC TRẠNG THÁI (STATUS BADGES)**
-Khi thiết kế component hiển thị trạng thái (`StatusBadge.razor`), phải tuân thủ bảng màu sau:
-- **Active / Approved / Confirmed / Completed / Paid / Available:** Emerald Green (`#10B981`)
-- **Pending / Processing / Frozen / Scheduled / Waitlisted:** Amber Orange (`#F59E0B`)
-- **Rejected / Expired / NoShow / Overdue / Locked / Escalated:** Warning Red (`#EF4444`)
-- **Cancelled / Inactive / Archived / Retired:** Neutral Grey (`#4B5563`)
+- **Active / Approved / Completed / Available:** Xanh lá (`#10B981`)
+- **Pending / Processing / Frozen / Waitlisted:** Cam (`#F59E0B`)
+- **Rejected / NoShow / Overdue / Locked:** Đỏ (`#EF4444`)
+- **Cancelled / Inactive / Archived:** Xám trung tính (`#4B5563`)
 
-**5. YÊU CẦU KỸ THUẬT & NGHIỆP VỤ ĐẦU RA CHO BLAZOR (`VFMS.Client`)**
-1. **Cấu trúc Component:** Phân tách rõ ràng phần Directive (`@page`, `@inject`, `@using VFMS.Contracts...`), phần HTML UI, và khối `@code { }`.
-2. **Quản lý Trạng thái UI:** Mọi màn hình tải dữ liệu hoặc gửi form bắt buộc phải xử lý đủ 4 trạng thái: `Loading`, `Empty` (hiển thị `MSG-01`), `Error` (hiển thị thông báo thân thiện từ Problem Details / `MSG-xx`), và `Success`. Vô hiệu hóa nút bấm (`disabled`) khi đang gửi request để chống bấm đúp.
-3. **Tuân thủ Nghiệp vụ Mới Nhất:**
-   - **Mua gói tập & Giỏ hàng (`Order` & `OrderItem`):** Hỗ trợ chọn gói đơn lẻ hoặc Combo (`Package` / `PackageComponent`: `GYM`, `PT`, `YOGA`), chọn người thụ hưởng (`BeneficiaryUserId`), chọn ngày kích hoạt (tối đa 30 ngày), áp 1 mã Voucher (hiển thị rõ `MinimumSpend` và trần giảm giá `MaxDiscountAmount`), và hiển thị mã VietQR động kèm đồng hồ đếm ngược 15 phút.
-   - **Phân quyền 7 Roles (`Guest`, `Customer`, `Member`, `PT`, `Staff`, `Manager`, `Admin`):** Sử dụng `<AuthorizeView Roles="...">` và `@attribute [Authorize(Roles = "...")]` bám sát Permission Matrix trong SRS.
-   - **PDPL Consent:** Các màn hình Đăng ký tài khoản, Đăng ký khuôn mặt Face ID, và Khảo sát sức khỏe AI Workout bắt buộc có checkbox đồng ý điều khoản (mặc định chưa tick).
+**5. YÊU CẦU KỸ THUẬT BLAZOR**
+1. **Cấu trúc Component:** Phân tách rõ Directive (`@page`, `@inject`, `@using VFMS.Contracts...`), phần HTML UI, và khối `@code { }`.
+2. **Quản lý Trạng thái UI:** Xử lý đủ 4 trạng thái: `Loading`, `Empty` (hiển thị `MSG-01`), `Error` (hiển thị `MSG-xx`), và `Success`. Thêm `disabled` khi gửi form.
+3. **Nghiệp vụ Mới Nhất:** Hỗ trợ Giỏ hàng Combo (GYM, PT, YOGA), Check-out thanh toán VietQR động kèm đếm ngược 15 phút, và bám sát ma trận phân quyền `<AuthorizeView Roles="...">` (7 roles).
 
 **[END PROMPT FOR AI AGENT]**
