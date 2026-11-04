@@ -10,6 +10,8 @@ public class BannedWordList : BaseEntity
 {
     public string Word { get; set; } = string.Empty;
     public bool IsActive { get; set; } = true;
-    public string? AddedByUserId { get; set; }
+
+    public string CreatedByUserId { get; set; } = string.Empty; // Hoặc AdminId tùy theo tên cột của bạn, đổi từ int sang string
+    public ApplicationUser Admin { get; set; } = null!;
 }
 

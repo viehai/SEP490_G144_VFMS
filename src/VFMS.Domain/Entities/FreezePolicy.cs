@@ -17,5 +17,8 @@ public class FreezePolicy : BaseEntity
     public int DefaultMaxFreezeCount { get; set; }
     public PolicyStatus PolicyStatus { get; set; } = PolicyStatus.Active;
     public bool IsGlobal { get; set; } = true;
+
+public string CreatedByUserId { get; set; } = string.Empty; // Đổi từ int sang string
+public ApplicationUser CreatedByUser { get; set; } = null!;
 }
 

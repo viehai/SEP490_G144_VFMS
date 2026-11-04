@@ -373,6 +373,11 @@ public class VfmsDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.PolicyName).HasMaxLength(256).IsRequired();
             entity.Property(e => e.PolicyStatus).HasConversion<string>().HasMaxLength(20);
+
+            entity.HasOne(e => e.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(e => e.CreatedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         // ── MembershipFreeze ──────────────────────────────────────
@@ -1128,6 +1133,11 @@ public class VfmsDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.Word).IsUnique();
             entity.Property(e => e.Word).HasMaxLength(100).IsRequired();
+
+            entity.HasOne(e => e.Admin)
+                .WithMany()
+                .HasForeignKey(e => e.CreatedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         // ── AuditLog ──────────────────────────────────────────────
