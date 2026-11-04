@@ -28,7 +28,7 @@ public sealed class AuthService : IAuthService
 
     public async Task<Result<LoginResponse>> LoginAsync(LoginRequest request, string? ipAddress, CancellationToken cancellationToken = default)
     {
-        var user = await _authRepository.GetUserByEmailAsync(request.Email, cancellationToken);
+        var user = await _authRepository.GetUserByEmailOrPhoneAsync(request.Email.Trim(), cancellationToken);
         if (user is null || !_passwordHasher.Verify(request.Password, user.PasswordHash))
             return Result<LoginResponse>.Failure("Invalid email or password.", "AUTH_INVALID_CREDENTIALS", 401);
 

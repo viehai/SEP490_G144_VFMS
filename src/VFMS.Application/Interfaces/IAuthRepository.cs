@@ -7,7 +7,7 @@ namespace VFMS.Application.Interfaces;
 /// </summary>
 public interface IAuthRepository
 {
-    Task<ApplicationUser?> GetUserByEmailAsync(string email, CancellationToken cancellationToken = default);
+    Task<ApplicationUser?> GetUserByEmailOrPhoneAsync(string emailOrPhone, CancellationToken cancellationToken = default);
     Task<bool> EmailExistsAsync(string email, CancellationToken cancellationToken = default);
     Task<ApplicationRole?> GetRoleByNameAsync(string roleName, CancellationToken cancellationToken = default);
     Task<Gym?> GetDefaultGymAsync(CancellationToken cancellationToken = default);

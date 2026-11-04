@@ -17,12 +17,25 @@ public sealed class AuthRepository : IAuthRepository
         _context = context;
     }
 
-    public async Task<ApplicationUser?> GetUserByEmailAsync(string email, CancellationToken cancellationToken = default)
+    public async Task<ApplicationUser?> GetUserByEmailOrPhoneAsync(
+        string emailOrPhone,
+        CancellationToken cancellationToken = default)
     {
-        return await _context.ApplicationUsers
+        var userByEmail = await _context.ApplicationUsers
             .Include(u => u.UserRoles)
             .ThenInclude(ur => ur.Role)
-            .FirstOrDefaultAsync(u => u.Email == email, cancellationToken);
+            .FirstOrDefaultAsync(u => u.Email == emailOrPhone, cancellationToken);
+        if (userByEmail is not null)
+            return userByEmail;
+
+        var usersByPhone = await _context.ApplicationUsers
+            .Include(u => u.UserRoles)
+            .ThenInclude(ur => ur.Role)
+            .Where(u => u.PhoneNumber == emailOrPhone)
+            .Take(2)
+            .ToListAsync(cancellationToken);
+
+        return usersByPhone.Count == 1 ? usersByPhone[0] : null;
     }
 
     public async Task<bool> EmailExistsAsync(string email, CancellationToken cancellationToken = default)

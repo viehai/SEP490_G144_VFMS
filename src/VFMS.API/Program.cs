@@ -1,13 +1,20 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using System.Text;
 using FluentValidation;
 using FluentValidation.AspNetCore;
+using Mapster;
+using MapsterMapper;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using VFMS.Application.Interfaces;
+using VFMS.Application.Mappings;
 using VFMS.Application.Services;
 using VFMS.Contracts.Auth.Validators;
+using VFMS.Contracts.Users.Validators;
+using VFMS.Domain.Enums;
 using VFMS.Infrastructure.Data;
 using VFMS.Infrastructure.Identity;
 using VFMS.Infrastructure.Repositories;
@@ -21,12 +28,20 @@ builder.Services.AddDbContext<VfmsDbContext>(options =>
 // ── FluentValidation ─────────────────────────────────────────
 builder.Services.AddFluentValidationAutoValidation();
 builder.Services.AddValidatorsFromAssemblyContaining<LoginRequestValidator>();
+builder.Services.AddValidatorsFromAssemblyContaining<WalkInCustomerRequestValidator>();
 
 // ── Application Services (DI) ────────────────────────────────
 builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IAuthRepository, AuthRepository>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IUserAdministrationRepository, UserAdministrationRepository>();
+builder.Services.AddScoped<IUserAdministrationService, UserAdministrationService>();
+
+var mapsterConfig = new TypeAdapterConfig();
+mapsterConfig.Scan(typeof(UserAdministrationMapping).Assembly);
+builder.Services.AddSingleton(mapsterConfig);
+builder.Services.AddScoped<IMapper, ServiceMapper>();
 
 // ── JWT Authentication ────────────────────────────────────────
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
@@ -49,6 +64,29 @@ builder.Services.AddAuthentication(options =>
         ValidAudience = jwtSettings["Audience"],
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret)),
         ClockSkew = TimeSpan.Zero
+    };
+    options.Events = new JwtBearerEvents
+    {
+        OnTokenValidated = async context =>
+        {
+            var userId = context.Principal?.FindFirst(JwtRegisteredClaimNames.Sub)?.Value ??
+                context.Principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                context.Fail("The access token does not identify a user.");
+                return;
+            }
+
+            var dbContext = context.HttpContext.RequestServices.GetRequiredService<VfmsDbContext>();
+            var isActive = await dbContext.ApplicationUsers
+                .AsNoTracking()
+                .AnyAsync(user =>
+                    user.UserId == userId && user.AccountStatus == AccountStatus.Active,
+                    context.HttpContext.RequestAborted);
+
+            if (!isActive)
+                context.Fail("The account is not active.");
+        }
     };
 });
 
