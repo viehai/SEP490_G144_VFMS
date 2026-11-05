@@ -1,0 +1,85 @@
+@typeparam TRequest
+@implements IDisposable
+@using FluentValidation
+
+@code {
+    [CascadingParameter] private EditContext CurrentEditContext { get; set; } = default!;
+    [Parameter, EditorRequired] public IValidator<TRequest> Validator { get; set; } = default!;
+    [Parameter, EditorRequired] public Func<TRequest> CreateRequest { get; set; } = default!;
+    private ValidationMessageStore _messages = default!;
+
+    protected override void OnInitialized()
+    {
+        _messages = new(CurrentEditContext);
+        CurrentEditContext.OnValidationRequested += Validate;
+        CurrentEditContext.OnFieldChanged += FieldChanged;
+    }
+
+    private void Validate(object? sender, ValidationRequestedEventArgs args)
+    {
+        _messages.Clear();
+        foreach (var failure in Validator.Validate(CreateRequest()).Errors)
+            _messages.Add(new FieldIdentifier(CurrentEditContext.Model, failure.PropertyName), Translate(failure.ErrorMessage));
+        CurrentEditContext.NotifyValidationStateChanged();
+    }
+
+    private void FieldChanged(object? sender, FieldChangedEventArgs args)
+    {
+        _messages.Clear(args.FieldIdentifier);
+        foreach (var failure in Validator.Validate(CreateRequest()).Errors.Where(error => error.PropertyName == args.FieldIdentifier.FieldName))
+            _messages.Add(args.FieldIdentifier, Translate(failure.ErrorMessage));
+        // Recheck confirmation after editing the password it depends on.
+        if (args.FieldIdentifier.FieldName == "Password")
+        {
+            var confirmation = new FieldIdentifier(CurrentEditContext.Model, "ConfirmPassword");
+            _messages.Clear(confirmation);
+            if (CurrentEditContext.IsModified(confirmation))
+                foreach (var failure in Validator.Validate(CreateRequest()).Errors.Where(error => error.PropertyName == "ConfirmPassword"))
+                    _messages.Add(confirmation, Translate(failure.ErrorMessage));
+        }
+        CurrentEditContext.NotifyValidationStateChanged();
+    }
+
+    public void ShowErrors(IReadOnlyDictionary<string, string[]> errors)
+    {
+        _messages.Clear();
+        foreach (var field in errors)
+        {
+            var name = field.Key.Split('.').Last();
+            name = CurrentEditContext.Model.GetType().GetProperties()
+                .FirstOrDefault(property => property.Name.Equals(name, StringComparison.OrdinalIgnoreCase))?.Name ?? name;
+            _messages.Add(new FieldIdentifier(CurrentEditContext.Model, name), field.Value.Select(Translate));
+        }
+        CurrentEditContext.NotifyValidationStateChanged();
+    }
+
+    private static string Translate(string message) => message switch
+    {
+        "Email or phone number is required." => "Vui lòng nhập email hoặc số điện thoại.",
+        "Enter a valid email address or phone number." => "Email hoặc số điện thoại không hợp lệ.",
+        "Full name is required." => "Vui lòng nhập họ và tên.",
+        "Full name must not exceed 256 characters." => "Họ và tên tối đa 256 ký tự.",
+        "Email is required." => "Vui lòng nhập email.",
+        "Invalid email format." => "Địa chỉ email không hợp lệ.",
+        "Email must not exceed 256 characters." => "Email tối đa 256 ký tự.",
+        "Phone number is required." => "Vui lòng nhập số điện thoại.",
+        "Phone number must not exceed 20 characters." => "Số điện thoại tối đa 20 ký tự.",
+        "Invalid phone number format." => "Số điện thoại không hợp lệ.",
+        "Password is required." => "Vui lòng nhập mật khẩu.",
+        "Password must be at least 8 characters." => "Mật khẩu cần ít nhất 8 ký tự.",
+        "Password must not exceed 32 characters." => "Mật khẩu tối đa 32 ký tự.",
+        "Password must contain at least one uppercase letter." => "Mật khẩu cần có chữ hoa.",
+        "Password must contain at least one lowercase letter." => "Mật khẩu cần có chữ thường.",
+        "Password must contain at least one digit." => "Mật khẩu cần có chữ số.",
+        "Password must contain at least one special character." => "Mật khẩu cần có ký tự đặc biệt.",
+        "Confirm password is required." => "Vui lòng xác nhận mật khẩu.",
+        "Passwords do not match." => "Mật khẩu xác nhận chưa khớp.",
+        _ => message
+    };
+
+    public void Dispose()
+    {
+        CurrentEditContext.OnValidationRequested -= Validate;
+        CurrentEditContext.OnFieldChanged -= FieldChanged;
+    }
+}

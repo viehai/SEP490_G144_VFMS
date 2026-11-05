@@ -6,13 +6,34 @@ This document defines architecture, component, workflow, and styling conventions
 
 ## 2. Responsibilities and Architectural Boundaries
 
-- `VFMS.Client` is built with **Blazor WebAssembly on .NET 8 (`net8.0`)** styled with **Tailwind CSS** and Scoped CSS variables.
+- `VFMS.Client` is built with **Blazor WebAssembly on .NET 8 (`net8.0`)**, using **Tailwind CSS** and component-specific CSS where appropriate.
 - Reference **only `VFMS.Contracts`** for shared Request/Response DTOs, FluentValidation validators, and standardized system message constants (`MSG-01` to `MSG-43`).
 - Never reference `VFMS.Domain`, `VFMS.Application`, or `VFMS.Infrastructure`.
 - Communicate with the backend exclusively through typed `HttpClient` services calling `VFMS.API` REST endpoints.
 - Client-side validation and role-based UI hiding (`<AuthorizeView Roles="...">`) improve UX, but server validation and authorization are always authoritative.
 
 ## 3. Project Organization (`VFMS.Client`)
+
+### Current public-facing implementation
+
+- `Pages/Home.razor` is the public landing page and uses `Layout/PublicLayout.razor`.
+- `Pages/FacilityMap.razor` is an interactive component embedded in Home; its styles live in `wwwroot/css/facility-map.css`.
+- `Pages/Auth/Login.razor` (`/auth/login`) and `Pages/Auth/Register.razor` (`/auth/register`) use `Layout/AuthLayout.razor` and `wwwroot/css/auth.css`. Both use shared validators from `VFMS.Contracts`; registration does not sign the user in automatically.
+- `wwwroot/index.html` hosts the startup screen and loads Tailwind through its CDN. The startup styles are in `wwwroot/css/splash.css`. There is currently no project-level `tailwind.config.js`.
+- Logo and equipment images used by Home are in `wwwroot/brand/`, `wwwroot/images/`, and `wwwroot/equipments/`.
+- Home currently contains illustrative class, equipment, pricing, and facility-map data. These values and the map layout are not live API data or verified operational information. Replace them with API-backed data when the relevant features are implemented.
+
+### Running the authentication screens locally
+
+- Start `VFMS.API` with its HTTPS profile and start `VFMS.Client`. The client's `wwwroot/appsettings.Development.json` sets `ApiBaseUrl` to `https://localhost:7148/`, matching the API launch profile. Update this setting when using a different API URL; never put secrets in client configuration.
+- The API allows the development client origins `https://localhost:7246` and `http://localhost:5273`. For other origins or deployment, set the API's `Cors:AllowedOrigins` array explicitly. Outside Development, the client defaults to its own origin unless `ApiBaseUrl` is configured in client settings.
+- Login accepts email or phone number. Unchecked "Remember me" stores the token session in session storage; checked stores it in local storage. Passwords are never persisted. `AuthSession` restores the session and rotates an expired access token through `api/auth/refresh` before returning authenticated state. Server-side authorization remains authoritative.
+- Register sends `RegisterRequest` to `api/auth/register`, then shows a success screen linking to Login. Validation errors appear beside the relevant fields; API/network failures remain on the form so the user can retry. Password reset, password change, and logout screens are outside this implementation's current scope.
+- Run authentication client tests with `dotnet test tests/VFMS.ClientTests/VFMS.ClientTests.csproj`. These tests use fake HTTP/storage and do not create database accounts; verify the full registration/login flow separately against a configured API and database.
+
+### Planned organization
+
+The following is a target structure, not a claim that all folders, layouts, components, or services already exist:
 
 ```text
 VFMS.Client/
@@ -93,7 +114,7 @@ VFMS.Client/
   - **Borders & Dividers (`--border-card`):** `#CFCFCF` (Clean, subtle solid lines).
   - **Typography Colors:** Primary text `#252525` (Deep dark). Muted/secondary text `#545454` or `#7D7D7D`.
   - **Brand Accent / CTAs (`--color-accent`):** `#0A0A0A` (Pitch black blocks with inverted white text).
-  - **Layout:** Sticky Header, Minimalist Announcement Bar, Footer with generous padding.
+  - **Layout:** A fixed public header, a high-contrast dark hero, white content sections, and a dark footer with generous padding. The Home page uses a moving service-label strip and a white interactive facility map.
 - **Admin Back-Office:**
   - **Sidebar Background:** `#0A0A0A` (Pitch black).
   - **Accent Color:** `#FF3E3E` (Vivid Red for authority and system alerts).
@@ -102,19 +123,25 @@ VFMS.Client/
   - **Accent Color:** `#6366F1` (Indigo for revenue, reports, and business metrics).
 
 ### B. Typography
-- Headings (`h1`–`h6`, nav links, banners, primary CTAs): `'Montserrat', sans-serif`, bold (`700`–`800`), `text-transform: uppercase`, `letter-spacing: 0.05em`.
+- Headings (`h1`–`h6`, nav links, banners, primary CTAs): `'Montserrat', sans-serif`, usually bold (`700`–`800`) and uppercase. Weight `900` is allowed for major Home headlines and hero text. Use letter spacing appropriate to the size; `0.05em` is a starting point, not a requirement for every heading.
 - Body copy, tables, inputs, validation messages: `'Inter', sans-serif`, `font-weight: 400`–`500`, normal case for maximum readability.
 
-### C. Component Styling, Strict Geometry & Status Badges (`StatusBadge.razor`)
-- **Strict Geometry:** `border-radius: 0` (`rounded-none`). No rounded corners allowed anywhere. Flat, sharp, and brutal design.
-- **No Drop-Shadows:** Do not use `shadow-md`, `shadow-lg`, etc. Depth and hierarchy are achieved entirely via high-contrast backgrounds and typography.
+### C. Component Styling, Geometry & Status Badges (`StatusBadge.razor`)
+- **Geometry:** Use square corners (`rounded-none`) for buttons, cards, inputs, and the facility map. The floating public navigation bar may use rounded corners when scrolled, as in `PublicLayout.razor`.
+- **Shadows:** The floating navigation bar may use a soft shadow. Equipment and pricing cards and selected pricing tabs may use a solid black offset shadow for interaction feedback, matching Home. Avoid adding shadows to unrelated components by default.
 - **Buttons (`GymButton`):** Rectangular, heavy padding (`py-4 px-8`), uppercase, bold font. Hover states invert or darken sharply (e.g., `#0A0A0A` to `#000000`).
-- **Cards (`ClassCard`):** No visible outer borders unless necessary, no shadow. Emphasize large sharp images (`aspect-[3/4]`), slight hover zoom (`group-hover:scale-105`), and left-aligned text.
+- **Cards:** Equipment and pricing cards may use a strong black border and a black offset shadow on hover. Featured class cards emphasize large, sharp images, subtle hover zoom, and left-aligned text; their image proportions may be responsive.
 - **Status Colors (always paired with text/icon, never color alone):**
   - *Active / Approved / Confirmed / Completed / Paid / Available:* Emerald Green (`#10B981`)
   - *Pending / Processing / Frozen / Scheduled / Waitlisted:* Amber Orange (`#F59E0B`)
   - *Rejected / Expired / NoShow / Overdue / Locked / Escalated:* Warning Red (`#EF4444`)
   - *Cancelled / Inactive / Archived / Retired:* Neutral Grey (`#4B5563`)
+
+### D. Public Home interactions
+- **Header:** Reuse `PublicLayout.razor` for public browsing pages. Its header starts transparent and becomes a floating dark navigation bar on scroll; ensure navigation remains usable at smaller viewport sizes. Authentication screens use `AuthLayout.razor`, with a dark brand panel and white form area that stacks on small screens.
+- **Startup screen:** Display the Victor Fitness splash before Blazor starts, then fade it out when initialization completes. Show a readable error state if startup fails; do not invent progress percentages or enforce a fixed delay.
+- **Facility map:** Keep the map within Home on a white background with black/grey lines. Hover uses a light grey fill; the selected area uses a black fill with white labels. Allow keyboard selection and show the selected area's details below the map. The layout and equipment markers are illustrative until backed by verified facility data.
+- **Motion and responsiveness:** Adapt layouts to phone and desktop, maintain visible keyboard focus and readable contrast, and respect `prefers-reduced-motion` for animations. The moving service-label strip is decorative; do not use motion alone to convey information.
 
 ---
 
@@ -128,16 +155,16 @@ Bạn là một Chuyên gia Blazor WebAssembly Frontend Developer (.NET 8 + Tail
 
 **1. PHONG CÁCH THIẾT KẾ CỐT LÕI (BRUTAL MINIMALISM)**
 - **YÊU CẦU TỐI THƯỢNG:** Sạch sẽ, tương phản cao, góc cạnh.
-- **Hình khối (Geometry):** KHÔNG bao giờ dùng `border-radius` (luôn luôn `rounded-none`). Mọi nút bấm, thẻ card, ô input đều phải vuông vức sắc lẹm.
-- **Hiệu ứng (Shadows):** KHÔNG sử dụng bóng đổ (`shadow-md`, `shadow-lg`, drop shadows). Chiều sâu được thể hiện qua màu nền và typography.
-- **Tương tác (Hover):** Có hiệu ứng chuyển đổi mượt mà `transition-colors duration-200` ở nút bấm và zoom ảnh `group-hover:scale-105` cho thẻ card.
+- **Hình khối (Geometry):** Nút bấm, card, input và sơ đồ dùng góc vuông (`rounded-none`). Navbar công khai dạng nổi được phép bo góc khi cuộn theo `PublicLayout.razor`.
+- **Hiệu ứng (Shadows):** Navbar nổi được phép có bóng mềm; card thiết bị, gói tập và tab gói được chọn được phép có bóng khối đen như Home. Không thêm bóng tùy tiện cho các thành phần khác.
+- **Tương tác (Hover):** Nút chuyển màu mượt; card lớp học có thể zoom ảnh nhẹ, card thiết bị/gói tập có thể dùng viền và bóng khối khi hover. Hỗ trợ bàn phím và giảm chuyển động theo cài đặt người dùng.
 
 **2. TYPOGRAPHY (KIỂU CHỮ)**
 - **Tiêu đề (Headings h1-h6, NavLink, Primary CTA):**
   + **Font:** Dùng font sans-serif `'Montserrat'`.
-  + **Font-weight:** Bắt buộc in đậm (`700` hoặc `800`).
-  + **Transform:** Bắt buộc viết hoa toàn bộ (`text-transform: uppercase`).
-  + **Letter-spacing:** Gọn gàng (`tracking-wide` / `0.05em`) thể hiện tinh thần thể thao.
+  + **Font-weight:** Thông thường `700` hoặc `800`; cho phép `900` với tiêu đề lớn và banner.
+  + **Transform:** Tiêu đề, điều hướng và CTA thường viết hoa (`text-transform: uppercase`).
+  + **Letter-spacing:** Điều chỉnh theo kích thước và độ dễ đọc; `0.05em` là giá trị tham khảo.
 - **Nội dung & Form (Body text, Input, `<ValidationMessage>`, Table):**
   + **Font:** `'Inter'`.
   + **Font-weight:** `400`, `500`.
@@ -147,6 +174,8 @@ Bạn là một Chuyên gia Blazor WebAssembly Frontend Developer (.NET 8 + Tail
 - **Giao diện Người dùng (Customer/Guest/Member):** Nền trắng `#FFFFFF`, phân vùng nền xám nhạt `#F7F7F7`. Chữ đen tuyền `#252525` và chữ phụ `#7D7D7D`. Đường kẻ divider `#CFCFCF`. Nút bấm CTA màu đen `#0A0A0A` chữ trắng.
 - **Giao diện Admin:** Dùng Layout có Sidebar nền Đen `#0A0A0A`, text trắng, màu accent Đỏ rực `#FF3E3E`.
 - **Giao diện Owner/Manager:** Dùng Layout có Sidebar nền Xanh Slate `#0F172A`, text trắng, màu accent Chàm Indigo `#6366F1`.
+- **Trang Home:** Hero tối, các khu vực nội dung và sơ đồ nền trắng; sơ đồ dùng nét đen/xám và khu vực đang chọn có nền đen, chữ trắng. Splash screen hiển thị khi Blazor khởi động và ẩn khi ứng dụng sẵn sàng.
+- **Dữ liệu minh họa:** Nội dung tĩnh và sơ đồ hiện có trên Home chỉ là minh họa, không mặc định là dữ liệu thời gian thực; dùng API cho dữ liệu nghiệp vụ thực tế.
 
 **4. QUY CHUẨN MÀU SẮC TRẠNG THÁI (STATUS BADGES)**
 - **Active / Approved / Completed / Available:** Xanh lá (`#10B981`)

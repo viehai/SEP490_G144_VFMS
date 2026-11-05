@@ -1,0 +1,111 @@
+@page "/auth/register"
+@layout AuthLayout
+@inject AuthApiClient Api
+
+<PageTitle>Đăng ký tài khoản | Victor Fitness</PageTitle>
+
+<AuthorizeView>
+    <Authorizing><p role="status">Đang kiểm tra phiên đăng nhập...</p></Authorizing>
+    <Authorized>
+        <h1 class="auth-title">BẠN ĐÃ<br />ĐĂNG NHẬP.</h1>
+        <p class="auth-description">Tài khoản của bạn đang hoạt động. Tiếp tục khám phá Victor Fitness.</p>
+        <a class="auth-submit" href="/">VỀ TRANG CHỦ <span aria-hidden="true">↗</span></a>
+    </Authorized>
+    <NotAuthorized>
+@if (_registered)
+{
+    <div class="auth-success-mark" aria-hidden="true">✓</div>
+    <p class="auth-overline">TÀI KHOẢN ĐÃ SẴN SÀNG</p>
+    <h1 class="auth-title">BƯỚC ĐẦU<br />ĐÃ HOÀN TẤT.</h1>
+    <p class="auth-description" role="status">Đăng ký thành công. Bạn có thể đăng nhập bằng email hoặc số điện thoại vừa đăng ký.</p>
+    <a class="auth-submit" href="@($"/auth/login?email={Uri.EscapeDataString(_model.Email)}")">ĐĂNG NHẬP NGAY <span aria-hidden="true">↗</span></a>
+}
+else
+{
+    <p class="auth-overline">TÀI KHOẢN / ĐĂNG KÝ</p>
+    <h1 class="auth-title">BẮT ĐẦU<br />HÀNH TRÌNH.</h1>
+    <p class="auth-description">Tạo tài khoản để khám phá các dịch vụ tại Victor Fitness.</p>
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="auth-notice auth-notice-error" role="alert">@_error</div>
+    }
+    <EditForm Model="_model" OnValidSubmit="SubmitAsync" OnInvalidSubmit="InvalidSubmit" Context="registerForm" novalidate>
+        <ContractValidation TRequest="RegisterRequest" Validator="_validator" CreateRequest="CreateRequest" @ref="_validation" />
+        <fieldset disabled="@_busy" aria-busy="@(_busy ? "true" : "false")">
+            <div class="auth-field">
+                <label for="register-name">Họ và tên</label>
+                <InputText id="register-name" class="auth-input" @bind-Value="_model.FullName" autocomplete="name" maxlength="256" placeholder="Nhập họ và tên" aria-describedby="register-name-error" />
+                <div id="register-name-error"><ValidationMessage For="() => _model.FullName" /></div>
+            </div>
+            <div class="auth-field">
+                <label for="register-email">Email</label>
+                <InputText id="register-email" type="email" class="auth-input" @bind-Value="_model.Email" autocomplete="email" maxlength="256" placeholder="ban@example.com" aria-describedby="register-email-error" />
+                <div id="register-email-error"><ValidationMessage For="() => _model.Email" /></div>
+            </div>
+            <div class="auth-field">
+                <label for="register-phone">Số điện thoại</label>
+                <InputText id="register-phone" type="tel" class="auth-input" @bind-Value="_model.PhoneNumber" autocomplete="tel" maxlength="20" placeholder="Nhập số điện thoại" aria-describedby="register-phone-error" />
+                <div id="register-phone-error"><ValidationMessage For="() => _model.PhoneNumber" /></div>
+            </div>
+            <div class="auth-field">
+                <label for="register-password">Mật khẩu</label>
+                <PasswordInput id="register-password" class="auth-input" @bind-Value="_model.Password" autocomplete="new-password" maxlength="32" aria-describedby="password-guidance register-password-error" />
+                <p id="password-guidance" class="auth-field-hint">8–32 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt.</p>
+                <div id="register-password-error"><ValidationMessage For="() => _model.Password" /></div>
+            </div>
+            <div class="auth-field">
+                <label for="register-confirm">Xác nhận mật khẩu</label>
+                <PasswordInput id="register-confirm" class="auth-input" @bind-Value="_model.ConfirmPassword" autocomplete="new-password" maxlength="32" aria-describedby="register-confirm-error" />
+                <div id="register-confirm-error"><ValidationMessage For="() => _model.ConfirmPassword" /></div>
+            </div>
+            <button class="auth-submit" type="submit">
+                @if (_busy) { <span class="auth-spinner" aria-hidden="true"></span> }
+                @(_busy ? "ĐANG TẠO TÀI KHOẢN..." : "TẠO TÀI KHOẢN") <span aria-hidden="true">↗</span>
+            </button>
+            <p class="auth-progress" role="status">@(_busy ? "Đang tạo tài khoản của bạn..." : string.Empty)</p>
+        </fieldset>
+    </EditForm>
+    <p class="auth-switch">Đã có tài khoản? <a href="/auth/login">Đăng nhập ↗</a></p>
+}
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private readonly RegisterModel _model = new();
+    private readonly RegisterRequestValidator _validator = new();
+    private ContractValidation<RegisterRequest>? _validation;
+    private bool _busy;
+    private bool _registered;
+    private string? _error;
+    private RegisterRequest CreateRequest() => new(_model.FullName.Trim(), _model.Email.Trim(), _model.PhoneNumber.Trim(), _model.Password, _model.ConfirmPassword);
+    private void InvalidSubmit() => _error = "Vui lòng kiểm tra lại thông tin đã nhập.";
+
+    private async Task SubmitAsync()
+    {
+        if (_busy) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            await Api.RegisterAsync(CreateRequest());
+            _model.Email = _model.Email.Trim();
+            _model.Password = _model.ConfirmPassword = string.Empty;
+            _registered = true;
+        }
+        catch (AuthApiException error)
+        {
+            _error = error.Message;
+            _validation?.ShowErrors(error.Errors);
+        }
+        finally { _busy = false; }
+    }
+
+    private sealed class RegisterModel
+    {
+        public string FullName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string PhoneNumber { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+        public string ConfirmPassword { get; set; } = string.Empty;
+    }
+}

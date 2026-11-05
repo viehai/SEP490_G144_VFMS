@@ -8,6 +8,7 @@
     <Project Path="src/VFMS.Infrastructure/VFMS.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/VFMS.ClientTests/VFMS.ClientTests.csproj" />
     <Project Path="tests/VFMS.IntegrationTests/VFMS.IntegrationTests.csproj" />
     <Project Path="tests/VFMS.UnitTests/VFMS.UnitTests.csproj" />
   </Folder>

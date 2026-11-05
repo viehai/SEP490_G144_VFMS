@@ -1,0 +1,88 @@
+@page "/auth/login"
+@layout AuthLayout
+@inject AuthSession Session
+@inject NavigationManager Navigation
+
+<PageTitle>Đăng nhập | Victor Fitness</PageTitle>
+
+<AuthorizeView>
+    <Authorizing><p role="status">Đang kiểm tra phiên đăng nhập...</p></Authorizing>
+    <Authorized Context="auth">
+        <div class="auth-success-mark" aria-hidden="true">✓</div>
+        <p class="auth-overline">TÀI KHOẢN CỦA BẠN</p>
+        <h1 class="auth-title">BẠN ĐÃ<br />ĐĂNG NHẬP.</h1>
+        <p class="auth-description">Chào @auth.User.Identity?.Name. Phiên đăng nhập của bạn đang hoạt động.</p>
+        <a class="auth-submit" href="/">VỀ TRANG CHỦ <span aria-hidden="true">↗</span></a>
+    </Authorized>
+    <NotAuthorized>
+        <p class="auth-overline">TÀI KHOẢN / ĐĂNG NHẬP</p>
+        <h1 class="auth-title">CHÀO MỪNG<br />TRỞ LẠI.</h1>
+        <p class="auth-description">Đăng nhập để tiếp tục hành trình cùng Victor Fitness.</p>
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="auth-notice auth-notice-error" role="alert">@_error</div>
+        }
+        <EditForm Model="_model" OnValidSubmit="SubmitAsync" OnInvalidSubmit="InvalidSubmit" Context="loginForm" novalidate>
+            <ContractValidation TRequest="LoginRequest" Validator="_validator" CreateRequest="CreateRequest" @ref="_validation" />
+            <fieldset disabled="@_busy" aria-busy="@(_busy ? "true" : "false")">
+                <div class="auth-field">
+                    <label for="login-email">Email hoặc số điện thoại</label>
+                    <InputText id="login-email" class="auth-input" @bind-Value="_model.Email" autocomplete="username" maxlength="256" placeholder="Nhập email hoặc số điện thoại" aria-describedby="login-email-error" />
+                    <div id="login-email-error"><ValidationMessage For="() => _model.Email" /></div>
+                </div>
+                <div class="auth-field">
+                    <label for="login-password">Mật khẩu</label>
+                    <PasswordInput id="login-password" class="auth-input" @bind-Value="_model.Password" autocomplete="current-password" aria-describedby="login-password-error" />
+                    <div id="login-password-error"><ValidationMessage For="() => _model.Password" /></div>
+                </div>
+                <label class="auth-remember"><InputCheckbox @bind-Value="_model.RememberMe" /> Ghi nhớ đăng nhập trên thiết bị này</label>
+                <button class="auth-submit" type="submit">
+                    @if (_busy) { <span class="auth-spinner" aria-hidden="true"></span> }
+                    @(_busy ? "ĐANG ĐĂNG NHẬP..." : "ĐĂNG NHẬP") <span aria-hidden="true">↗</span>
+                </button>
+                <p class="auth-progress" role="status">@(_busy ? "Đang xác thực tài khoản của bạn..." : string.Empty)</p>
+            </fieldset>
+        </EditForm>
+        <p class="auth-switch">Chưa có tài khoản? <a href="/auth/register">Đăng ký ngay ↗</a></p>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    [SupplyParameterFromQuery(Name = "returnUrl")] public string? ReturnUrl { get; set; }
+    [SupplyParameterFromQuery(Name = "email")] public string? Email { get; set; }
+    private readonly LoginModel _model = new();
+    private readonly LoginRequestValidator _validator = new();
+    private ContractValidation<LoginRequest>? _validation;
+    private bool _busy;
+    private string? _error;
+
+    protected override void OnInitialized() => _model.Email = Email ?? string.Empty;
+    private LoginRequest CreateRequest() => new(_model.Email.Trim(), _model.Password, _model.RememberMe);
+    private void InvalidSubmit() => _error = "Vui lòng kiểm tra lại thông tin đã nhập.";
+
+    private async Task SubmitAsync()
+    {
+        if (_busy) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            await Session.SignInAsync(CreateRequest());
+            _model.Password = string.Empty;
+            Navigation.NavigateTo(AuthNavigation.SafeReturnUrl(ReturnUrl));
+        }
+        catch (AuthApiException error)
+        {
+            _error = error.Message;
+            _validation?.ShowErrors(error.Errors);
+        }
+        finally { _busy = false; }
+    }
+
+    private sealed class LoginModel
+    {
+        public string Email { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+        public bool RememberMe { get; set; }
+    }
+}

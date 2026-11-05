@@ -26,14 +26,21 @@
 
         <!-- Action Button (flex-shrink-0, kích thước cân đối) -->
         <div class="flex items-center gap-3 flex-shrink-0 whitespace-nowrap">
-            <a href="/auth/login" 
-               class="hidden sm:inline-block font-['Montserrat',sans-serif] text-[11px] xl:text-xs font-bold uppercase tracking-wider text-neutral-300 hover:text-white px-2.5 py-1.5 transition-colors">
-                ĐĂNG NHẬP
-            </a>
-            <a href="/auth/register" 
-               class="bg-white hover:bg-neutral-200 text-neutral-950 font-['Montserrat',sans-serif] font-extrabold text-[11px] xl:text-xs uppercase tracking-wider px-4 py-2 transition-all duration-200 shadow-md rounded-none">
-                THAM GIA NGAY
-            </a>
+            <AuthorizeView>
+                <Authorized Context="auth">
+                    <span class="font-['Inter',sans-serif] text-xs text-white max-w-40 truncate" title="@auth.User.Identity?.Name">Chào, @auth.User.Identity?.Name</span>
+                </Authorized>
+                <NotAuthorized>
+                    <a href="/auth/login"
+                       class="hidden sm:inline-block font-['Montserrat',sans-serif] text-[11px] xl:text-xs font-bold uppercase tracking-wider text-neutral-300 hover:text-white px-2.5 py-1.5 transition-colors">
+                        ĐĂNG NHẬP
+                    </a>
+                    <a href="/auth/register"
+                       class="bg-white hover:bg-neutral-200 text-neutral-950 font-['Montserrat',sans-serif] font-extrabold text-[11px] xl:text-xs uppercase tracking-wider px-4 py-2 transition-all duration-200 shadow-md rounded-none">
+                        THAM GIA NGAY
+                    </a>
+                </NotAuthorized>
+            </AuthorizeView>
         </div>
     </header>
 
