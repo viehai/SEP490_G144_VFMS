@@ -17,10 +17,41 @@
         font-family: 'Inter', sans-serif;
     }
 
-    /* Đảm bảo tuyệt đối không bo góc và không đổ bóng theo quy chuẩn Brutal Minimalism */
-    .brutal-card, .brutal-btn, .brutal-badge, .brutal-img {
+    /* Đảm bảo tuyệt đối không bo góc theo quy chuẩn Brutal Minimalism */
+    .brutal-btn, .brutal-badge {
         border-radius: 0px !important;
-        box-shadow: none !important;
+    }
+
+    /* Brutal Pricing Card: Dịch chuyển lên 8px và đổ bóng đen đặc 8px 8px khi hover */
+    .brutal-pricing-card {
+        border-radius: 0px !important;
+        transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .brutal-pricing-card:hover {
+        transform: translateY(-8px) !important;
+        box-shadow: 8px 8px 0px 0px #000000 !important;
+    }
+
+    /* Brutal Equipment Card: Nảy lên -8px và đổ bóng khối đặc 6px khi hover */
+    .brutal-equipment-card {
+        border-radius: 0px !important;
+        transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .brutal-equipment-card:hover {
+        transform: translateY(-8px) !important;
+        box-shadow: 6px 6px 0px 0px #000000 !important;
+    }
+
+    /* Scroll Reveal Staggered Slide Up cho Thiết Bị */
+    .equipment-reveal {
+        opacity: 0;
+        transform: translateY(35px);
+        transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1), transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+        will-change: opacity, transform;
+    }
+    .equipment-reveal.revealed {
+        opacity: 1;
+        transform: translateY(0);
     }
 
     /* Infinite Marquee Animation - Không bị ngắt quãng */
@@ -134,15 +165,15 @@
     <!-- ========================================================================= -->
     <!-- 2. FEATURED CLASSES SECTION (Nền trắng, ảnh khổ lớn theo ảnh tham chiếu)  -->
     <!-- ========================================================================= -->
-    <section id="featured-classes" class="w-full bg-[#FFFFFF] text-[#252525] pt-20 pb-28 border-b border-[#CFCFCF]">
+    <section id="featured-classes" class="w-full bg-[#FFFFFF] text-[#252525] pt-16 sm:pt-20 pb-28 border-b border-[#CFCFCF]">
         
         <!-- ===================================================================== -->
         <!-- A. INFINITE MARQUEE (Dải chữ chạy ngang liên tục)                     -->
         <!-- ===================================================================== -->
-        <div class="w-full max-w-full overflow-hidden bg-[#0A0A0A] py-4 md:py-5 border-y-2 border-black mb-16 cursor-default select-none relative">
+        <div class="w-full max-w-full overflow-hidden bg-[#0A0A0A] py-3 md:py-4 border-y-2 border-black cursor-default select-none relative">
             <div class="animate-marquee whitespace-nowrap flex">
                 <!-- Group 1 -->
-                <div class="flex items-center gap-6 sm:gap-10 font-heading text-lg sm:text-2xl md:text-3xl font-black uppercase tracking-widest text-white pr-6 sm:pr-10 flex-shrink-0">
+                <div class="flex items-center gap-6 sm:gap-10 font-heading text-base sm:text-xl md:text-2xl font-black uppercase tracking-widest text-white pr-6 sm:pr-10 flex-shrink-0">
                     <span class="hover:text-neutral-400 transition-colors">GYM &amp; STRENGTH</span>
                     <span class="text-neutral-600 font-normal">—</span>
                     <span class="hover:text-neutral-400 transition-colors">YOGA STUDIO</span>
@@ -161,7 +192,7 @@
                     <span class="text-neutral-600 font-normal">—</span>
                 </div>
                 <!-- Group 2 -->
-                <div class="flex items-center gap-6 sm:gap-10 font-heading text-lg sm:text-2xl md:text-3xl font-black uppercase tracking-widest text-white pr-6 sm:pr-10 flex-shrink-0" aria-hidden="true">
+                <div class="flex items-center gap-6 sm:gap-10 font-heading text-base sm:text-xl md:text-2xl font-black uppercase tracking-widest text-white pr-6 sm:pr-10 flex-shrink-0" aria-hidden="true">
                     <span class="hover:text-neutral-400 transition-colors">GYM &amp; STRENGTH</span>
                     <span class="text-neutral-600 font-normal">—</span>
                     <span class="hover:text-neutral-400 transition-colors">YOGA STUDIO</span>
@@ -181,6 +212,104 @@
                 </div>
             </div>
         </div>
+
+        <div class="facility-map-section w-full px-4 sm:px-6 lg:px-8 py-16 mb-16">
+            <div class="w-full max-w-[1650px] mx-auto">
+                <header class="facility-intro">
+                    <div>
+                        <p class="facility-intro__eyebrow"><span aria-hidden="true"></span> VICTOR FITNESS / KHÔNG GIAN TẬP LUYỆN</p>
+                        <h2>KHÁM PHÁ <br />PHÒNG TẬP</h2>
+                    </div>
+                    <p class="facility-intro__description">Làm quen với không gian Victor Fitness. Chọn một khu vực trên sơ đồ bên dưới để tìm hiểu thêm.</p>
+                </header>
+                <FacilityMap OnZoneAction="HandleFacilityZoneAction" />
+            </div>
+        </div>
+
+        <!-- ========================================================================= -->
+        <!-- 1.5. KHÁM PHÁ THIẾT BỊ PHÒNG TẬP (EXPLORE EQUIPMENT)                      -->
+        <!-- ========================================================================= -->
+        <section id="explore-equipment" class="w-full max-w-[1650px] mx-auto px-4 sm:px-6 lg:px-8 mb-24 relative">
+            <!-- Background Watermark STRENGTH Khổng Lồ Mờ Ảo Tinh Tế -->
+            <div class="absolute top-0 sm:top-4 lg:top-8 right-0 sm:right-6 select-none pointer-events-none font-heading font-black text-6xl sm:text-8xl md:text-[9.5rem] lg:text-[13rem] text-neutral-100 uppercase tracking-tighter leading-none z-0 overflow-hidden">
+                STRENGTH
+            </div>
+
+            <!-- Section Header (Tiêu đề THIẾT BỊ PHÒNG TẬP cỡ lớn) -->
+            <div class="relative z-10 flex flex-col md:flex-row md:items-end justify-between mb-8 sm:mb-10 pb-6 border-b-2 border-black">
+                <div>
+                    <div class="flex items-center gap-2 mb-3">
+                        <span class="w-2.5 h-2.5 bg-black inline-block"></span>
+                        <span class="font-heading text-xs font-bold tracking-widest text-[#7D7D7D] uppercase">
+                            VFMS PRO EQUIPMENT
+                        </span>
+                    </div>
+                    <h2 class="font-heading text-4xl sm:text-5xl lg:text-7xl font-black uppercase text-black tracking-tighter leading-[0.95]">
+                        THIẾT BỊ <br />
+                        PHÒNG TẬP
+                    </h2>
+                </div>
+
+                <p class="font-body text-xs sm:text-sm text-neutral-600 max-w-sm mt-4 md:mt-0 font-medium leading-relaxed text-left md:text-right">
+                    Nhập khẩu tiêu chuẩn Olympic quốc tế, tối ưu từng góc chuyển động giải phẫu cơ bắp và hỗ trợ tải trọng nặng an toàn tuyệt đối.
+                </p>
+            </div>
+
+            <!-- Bộ Lọc Nhóm Cơ (Muscle Group Category Filter Buttons) -->
+            <div class="relative z-10 flex flex-wrap items-center gap-2 sm:gap-3 mb-8 sm:mb-10">
+                @foreach (var cat in EquipmentCategories)
+                {
+                    var isActive = SelectedEquipmentCategory == cat.Key;
+                    <button type="button"
+                            @onclick="() => SelectEquipmentCategory(cat.Key)"
+                            class="font-heading text-xs sm:text-sm font-black uppercase tracking-wider px-4 sm:px-6 py-2.5 sm:py-3 border-2 border-black rounded-none cursor-pointer transition-colors duration-150 @(isActive ? "bg-black text-white" : "bg-white text-black hover:bg-black hover:text-white")">
+                        @cat.Label
+                    </button>
+                }
+            </div>
+
+            <!-- Lưới Thiết Bị (Giới hạn tối đa 8 item = 4 cột x 2 hàng, không bị thừa ô trống) -->
+            <div class="relative z-10">
+                <div id="equipment-grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+                    @for (int i = 0; i < DisplayedEquipments.Count; i++)
+                    {
+                        var item = DisplayedEquipments[i];
+                        var delay = (i % 4) * 120;
+                        <div style="transition-delay: @(delay)ms;"
+                             class="equipment-reveal brutal-equipment-card relative aspect-square bg-[#FAFAFA] border-2 border-black overflow-hidden group select-none flex items-center justify-center p-6 sm:p-8 cursor-default">
+                            
+                            <!-- Bức ảnh máy tập: Đen trắng mặc định, hover mất filter grayscale và nảy kích thước -->
+                            <img src="@item.ImageUrl"
+                                 alt="@item.Name"
+                                 loading="lazy"
+                                 class="w-full h-full object-contain grayscale contrast-115 group-hover:grayscale-0 group-hover:scale-110 transition-all duration-300 ease-out pointer-events-none" />
+
+                            <!-- Nhãn Tên Máy Tập: Nền đen đặc (tuyệt đối không dùng opacity), chữ trắng, trượt từ dưới lên -->
+                            <div class="absolute bottom-0 inset-x-0 bg-[#0A0A0A] text-white px-3.5 py-3 border-t-2 border-black translate-y-full group-hover:translate-y-0 transition-transform duration-200 ease-out z-20 pointer-events-none">
+                                <span class="font-heading text-[10px] sm:text-[11px] font-bold text-neutral-400 uppercase tracking-wider block">
+                                    @item.MuscleGroup
+                                </span>
+                                <h4 class="font-heading font-black text-xs sm:text-sm uppercase tracking-tight text-white truncate">
+                                    @item.Name
+                                </h4>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Nút Xem Tất Cả (View All Button Căn Giữa) -->
+            <div class="relative z-10 mt-12 sm:mt-16 flex justify-center">
+                <button type="button"
+                        @onclick="ViewAllEquipments"
+                        class="font-heading font-black text-xs sm:text-sm uppercase tracking-widest px-8 sm:px-12 py-4 bg-white text-black border-2 border-black rounded-none inline-flex items-center gap-3 transition-all duration-200 hover:-translate-y-1 hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] active:translate-y-0 active:shadow-none cursor-pointer">
+                    <span>XEM TẤT CẢ THIẾT BỊ</span>
+                    <svg class="w-4 h-4 stroke-[3]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="square" stroke-linejoin="miter" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
+                    </svg>
+                </button>
+            </div>
+        </section>
 
         <!-- Section Container khổ lớn đạt chuẩn tỷ lệ ảnh tham chiếu -->
         <div class="w-full max-w-[1650px] mx-auto px-4 sm:px-6 lg:px-8">
@@ -254,9 +383,514 @@
 
     </section>
 
+    <!-- ========================================================================= -->
+    <!-- 3. PRICING & MEMBERSHIPS SECTION (Gói Thẻ & Lịch Tập)                     -->
+    <!-- ========================================================================= -->
+    <section id="pricing-memberships" class="w-full bg-[#FFFFFF] text-[#252525] py-24 border-b border-[#CFCFCF]">
+        <div class="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            
+            <!-- Section Header -->
+            <div class="flex flex-col md:flex-row md:items-end justify-between mb-12 pb-6 border-b border-[#CFCFCF]">
+                <div>
+                    <div class="flex items-center gap-2 mb-3">
+                        <span class="w-2.5 h-2.5 bg-[#0A0A0A] inline-block"></span>
+                        <span class="font-heading text-xs font-bold tracking-widest text-[#7D7D7D] uppercase">
+                            VFMS PRICING &amp; MEMBERSHIP TIERS
+                        </span>
+                    </div>
+                    <h2 class="font-heading text-4xl sm:text-5xl lg:text-6xl font-black uppercase text-[#252525] tracking-tight">
+                        GÓI THẺ &amp; LỊCH TẬP
+                    </h2>
+                </div>
+                <p class="font-body text-xs sm:text-sm text-[#7D7D7D] max-w-md mt-4 md:mt-0 font-normal leading-relaxed">
+                    Minh bạch tuyệt đối, tự động bảo lưu trực tuyến theo quy chế và công khai lịch biểu huấn luyện cố định.
+                </p>
+            </div>
+
+            <!-- 3 Tabs Navigation Buttons -->
+            <div class="flex flex-wrap gap-3 mb-12">
+                <button @onclick='() => ActivePricingTab = "GYM"'
+                        class="px-6 sm:px-8 py-3.5 font-heading font-black text-xs sm:text-sm uppercase tracking-wider border-2 border-black transition-all cursor-pointer rounded-none @(ActivePricingTab == "GYM" ? "bg-black text-white shadow-[4px_4px_0px_0px_#000000]" : "bg-white text-black hover:bg-neutral-100")">
+                    GYM MEMBERSHIP
+                </button>
+                <button @onclick='() => ActivePricingTab = "YOGA"'
+                        class="px-6 sm:px-8 py-3.5 font-heading font-black text-xs sm:text-sm uppercase tracking-wider border-2 border-black transition-all cursor-pointer rounded-none @(ActivePricingTab == "YOGA" ? "bg-black text-white shadow-[4px_4px_0px_0px_#000000]" : "bg-white text-black hover:bg-neutral-100")">
+                    YOGA STUDIO
+                </button>
+                <button @onclick='() => ActivePricingTab = "PT"'
+                        class="px-6 sm:px-8 py-3.5 font-heading font-black text-xs sm:text-sm uppercase tracking-wider border-2 border-black transition-all cursor-pointer rounded-none @(ActivePricingTab == "PT" ? "bg-black text-white shadow-[4px_4px_0px_0px_#000000]" : "bg-white text-black hover:bg-neutral-100")">
+                    PERSONAL TRAINER
+                </button>
+            </div>
+
+            <!-- ================================================================= -->
+            <!-- TAB 1: GYM MEMBERSHIP (Gói Thời Gian: 3 Tháng, 6 Tháng, 1 Năm)    -->
+            <!-- ================================================================= -->
+            @if (ActivePricingTab == "GYM")
+            {
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                    
+                    <!-- THẺ 1: 3 THÁNG -->
+                    <div class="brutal-pricing-card bg-white border-2 border-black p-8 flex flex-col justify-between">
+                        <div>
+                            <div class="pb-6 border-b-2 border-black">
+                                <span class="font-heading text-xs font-bold uppercase tracking-widest text-[#7D7D7D] block mb-1">GÓI CƠ BẢN</span>
+                                <h3 class="font-heading text-2xl font-black uppercase text-[#252525]">3 THÁNG</h3>
+                                <p class="font-body text-xs text-[#7D7D7D] mt-1">Xây dựng thói quen và rèn luyện thể lực nền tảng</p>
+                            </div>
+
+                            <div class="py-6 border-b border-[#E5E5E5]">
+                                <div class="font-heading text-3xl sm:text-4xl font-black text-[#0A0A0A]">
+                                    2.400.000 <span class="text-lg font-bold">₫</span>
+                                </div>
+                                <span class="font-body text-xs text-[#7D7D7D]">Tương đương 800.000 ₫ / tháng</span>
+                            </div>
+
+                            <!-- Danh sách quyền lợi -->
+                            <ul class="py-6 space-y-3.5 font-body text-xs text-[#252525]">
+                                <li class="flex items-start gap-2.5">
+                                    <span class="w-3.5 h-3.5 bg-black text-white flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-0.5">■</span>
+                                    <span>Toàn quyền tập luyện khu vực Gym &amp; Tạ Olympic 24/7</span>
+                                </li>
+                                <li class="flex items-start gap-2.5">
+                                    <span class="w-3.5 h-3.5 bg-black text-white flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-0.5">■</span>
+                                    <span>Tủ Locker điện tử &amp; Phòng tắm nóng lạnh tiêu chuẩn</span>
+                                </li>
+                                <li class="flex items-start gap-2.5">
+                                    <span class="w-3.5 h-3.5 bg-black text-white flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-0.5">■</span>
+                                    <span>Đo chỉ số InBody 770 &amp; tư vấn dinh dưỡng định kỳ</span>
+                                </li>
+                                <li class="flex items-start gap-2.5">
+                                    <span class="w-3.5 h-3.5 bg-black text-white flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-0.5">■</span>
+                                    <span><strong>Bảo lưu thẻ (Freeze):</strong> Tối đa 15 ngày</span>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <a href="/auth/register"
+                           class="w-full bg-[#0A0A0A] text-white hover:bg-neutral-800 border-2 border-black py-4 font-heading font-black text-xs uppercase tracking-wider text-center transition-colors block">
+                            ĐĂNG KÝ GÓI NÀY
+                        </a>
+                    </div>
+
+                    <!-- THẺ 2: 6 THÁNG (PHỔ BIẾN NHẤT - HEADER ĐEN CHỮ TRẮNG, NÚT ACCENT) -->
+                    <div class="brutal-pricing-card bg-white border-2 border-black flex flex-col justify-between relative">
+                        <!-- Nhãn Phổ Biến Nhất -->
+                        <div class="absolute -top-3.5 right-6 bg-black text-white px-3 py-1 font-heading font-black text-[10px] uppercase tracking-widest border border-black z-10">
+                            PHỔ BIẾN NHẤT
+                        </div>
+
+                        <div>
+                            <!-- Header thẻ nền đen chữ trắng -->
+                            <div class="bg-black text-white p-8 border-b-2 border-black">
+                                <span class="font-heading text-xs font-bold uppercase tracking-widest text-neutral-400 block mb-1">GÓI ĐỘT PHÁ • TIẾT KIỆM 15%</span>
+                                <h3 class="font-heading text-2xl font-black uppercase text-white">6 THÁNG</h3>
+                                <p class="font-body text-xs text-neutral-300 mt-1">Đạt thể hình cơ nạc lý tưởng và bứt phá sức mạnh</p>
+                            </div>
+
+                            <div class="p-8 pb-0">
+                                <div class="py-4 border-b border-[#E5E5E5]">
+                                    <div class="font-heading text-3xl sm:text-4xl font-black text-[#0A0A0A]">
+                                        4.200.000 <span class="text-lg font-bold">₫</span>
+                                    </div>
+                                    <span class="font-body text-xs text-[#7D7D7D]">Tương đương 700.000 ₫ / tháng</span>
+                                </div>
+
+                                <!-- Danh sách quyền lợi -->
+                                <ul class="py-6 space-y-3.5 font-body text-xs text-[#252525]">
+                                    <li class="flex items-start gap-2.5">
+                                        <span class="w-3.5 h-3.5 bg-black text-white flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-0.5">■</span>
+                                        <span><strong>Mọi quyền lợi của gói 3 Tháng</strong></span>
+                                    </li>
+                                    <li class="flex items-start gap-2.5">
+                                        <span class="w-3.5 h-3.5 bg-black text-white flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-0.5">■</span>
+                                        <span>Tặng 02 buổi tập 1-1 với Huấn luyện viên chuyên môn</span>
+                                    </li>
+                                    <li class="flex items-start gap-2.5">
+                                        <span class="w-3.5 h-3.5 bg-black text-white flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-0.5">■</span>
+                                        <span>Tặng bình Shaker &amp; Túi thể thao VFMS Athletic</span>
+                                    </li>
+                                    <li class="flex items-start gap-2.5">
+                                        <span class="w-3.5 h-3.5 bg-black text-white flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-0.5">■</span>
+                                        <span><strong>Bảo lưu thẻ (Freeze):</strong> Tối đa 30 ngày (GBR-40)</span>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <!-- Nút CTA màu Accent (Đỏ rực phong cách Brutal) -->
+                        <div class="p-8 pt-0">
+                            <a href="/auth/register"
+                               class="w-full bg-[#EF4444] hover:bg-black text-white border-2 border-black py-4 font-heading font-black text-xs uppercase tracking-wider text-center transition-colors block">
+                                ĐĂNG KÝ GÓI PHỔ BIẾN
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- THẺ 3: 1 NĂM (12 THÁNG) -->
+                    <div class="brutal-pricing-card bg-white border-2 border-black p-8 flex flex-col justify-between">
+                        <div>
+                            <div class="pb-6 border-b-2 border-black">
+                                <span class="font-heading text-xs font-bold uppercase tracking-widest text-[#7D7D7D] block mb-1">GÓI CAM KẾT • TIẾT KIỆM 25%</span>
+                                <h3 class="font-heading text-2xl font-black uppercase text-[#252525]">1 NĂM (12 THÁNG)</h3>
+                                <p class="font-body text-xs text-[#7D7D7D] mt-1">Lối sống kỷ luật thép, duy trì phong độ đỉnh cao</p>
+                            </div>
+
+                            <div class="py-6 border-b border-[#E5E5E5]">
+                                <div class="font-heading text-3xl sm:text-4xl font-black text-[#0A0A0A]">
+                                    7.200.000 <span class="text-lg font-bold">₫</span>
+                                </div>
+                                <span class="font-body text-xs text-[#7D7D7D]">Tương đương 600.000 ₫ / tháng</span>
+                            </div>
+
+                            <!-- Danh sách quyền lợi -->
+                            <ul class="py-6 space-y-3.5 font-body text-xs text-[#252525]">
+                                <li class="flex items-start gap-2.5">
+                                    <span class="w-3.5 h-3.5 bg-black text-white flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-0.5">■</span>
+                                    <span><strong>Mọi quyền lợi của gói 6 Tháng</strong></span>
+                                </li>
+                                <li class="flex items-start gap-2.5">
+                                    <span class="w-3.5 h-3.5 bg-black text-white flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-0.5">■</span>
+                                    <span>Sử dụng không giới hạn Xông hơi đá muối &amp; Bể sục lạnh</span>
+                                </li>
+                                <li class="flex items-start gap-2.5">
+                                    <span class="w-3.5 h-3.5 bg-black text-white flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-0.5">■</span>
+                                    <span>Miễn phí mượn khăn tập cao cấp mỗi buổi tập</span>
+                                </li>
+                                <li class="flex items-start gap-2.5">
+                                    <span class="w-3.5 h-3.5 bg-black text-white flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-0.5">■</span>
+                                    <span><strong>Bảo lưu thẻ (Freeze):</strong> Tối đa 60 ngày (GBR-41)</span>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <a href="/auth/register"
+                           class="w-full bg-[#0A0A0A] text-white hover:bg-neutral-800 border-2 border-black py-4 font-heading font-black text-xs uppercase tracking-wider text-center transition-colors block">
+                            ĐĂNG KÝ GÓI NÀY
+                        </a>
+                    </div>
+
+                </div>
+            }
+
+            <!-- ================================================================= -->
+            <!-- TAB 2: YOGA STUDIO (Nền xám nhạt, Lịch khối vuông, Status Badge)  -->
+            <!-- ================================================================= -->
+            @if (ActivePricingTab == "YOGA")
+            {
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                    
+                    <!-- YOGA 1: ASHTANGA FLOW -->
+                    <div class="brutal-pricing-card bg-[#F7F7F7] border-2 border-black p-8 flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center justify-between pb-4 border-b-2 border-black">
+                                <div>
+                                    <span class="font-heading text-[10px] font-bold uppercase tracking-widest text-[#7D7D7D] block">YOGA STUDIO</span>
+                                    <h3 class="font-heading text-2xl font-black uppercase text-[#252525] mt-0.5">ASHTANGA FLOW</h3>
+                                </div>
+                                <span class="px-2.5 py-1 text-[10px] font-heading font-black uppercase bg-[#F59E0B] text-black border border-black">
+                                    SẮP ĐẦY
+                                </span>
+                            </div>
+
+                            <p class="font-body text-xs text-[#545454] mt-4 leading-relaxed">
+                                Chuỗi động tác nguyên bản rèn luyện sức bền, tăng cường độ dẻo dai của cột sống và thanh lọc năng lượng tiêu cực.
+                            </p>
+
+                            <!-- Khối trực quan Lịch học T2 T4 T6 -->
+                            <div class="my-6 p-4 bg-white border border-[#CFCFCF]">
+                                <span class="font-heading text-[10px] font-black uppercase text-[#7D7D7D] tracking-wider block mb-2.5">
+                                    LỊCH HỌC CỐ ĐỊNH CỦA LỚP:
+                                </span>
+                                <div class="flex items-center gap-2 mb-2">
+                                    <span class="w-8 h-8 bg-black text-white font-heading font-bold text-xs flex items-center justify-center">T2</span>
+                                    <span class="w-8 h-8 bg-black text-white font-heading font-bold text-xs flex items-center justify-center">T4</span>
+                                    <span class="w-8 h-8 bg-black text-white font-heading font-bold text-xs flex items-center justify-center">T6</span>
+                                    <span class="font-heading font-bold text-xs text-[#0A0A0A] ml-2">06:30 - 07:45</span>
+                                </div>
+                                <div class="text-[11px] text-[#7D7D7D] font-body flex items-center justify-between pt-2 border-t border-[#F0F0F0]">
+                                    <span>Studio 1 (Tầng 3)</span>
+                                    <span>Cường độ: <strong class="text-black">Nâng cao</strong></span>
+                                </div>
+                            </div>
+
+                            <div class="mb-6">
+                                <span class="font-body text-xs text-[#7D7D7D] block">Học phí niêm yết:</span>
+                                <div class="font-heading text-2xl font-black text-[#0A0A0A]">
+                                    1.450.000 ₫ <span class="text-xs font-normal text-[#7D7D7D]">/ tháng (12 buổi)</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <a href="/auth/register"
+                           class="w-full bg-[#0A0A0A] text-white hover:bg-neutral-800 border-2 border-black py-4 font-heading font-black text-xs uppercase tracking-wider text-center transition-colors block">
+                            ĐĂNG KÝ LỚP
+                        </a>
+                    </div>
+
+                    <!-- YOGA 2: VINYASA DYNAMIC -->
+                    <div class="brutal-pricing-card bg-[#F7F7F7] border-2 border-black p-8 flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center justify-between pb-4 border-b-2 border-black">
+                                <div>
+                                    <span class="font-heading text-[10px] font-bold uppercase tracking-widest text-[#7D7D7D] block">YOGA STUDIO</span>
+                                    <h3 class="font-heading text-2xl font-black uppercase text-[#252525] mt-0.5">VINYASA DYNAMIC</h3>
+                                </div>
+                                <span class="px-2.5 py-1 text-[10px] font-heading font-black uppercase bg-[#10B981] text-white border border-black">
+                                    CÒN CHỖ
+                                </span>
+                            </div>
+
+                            <p class="font-body text-xs text-[#545454] mt-4 leading-relaxed">
+                                Nhịp điệu chuyển động linh hoạt đồng bộ cùng hơi thở sâu, giải tỏa căng cứng cơ bắp và phục hồi sự dẻo dai toàn thân.
+                            </p>
+
+                            <!-- Khối trực quan Lịch học T3 T5 T7 -->
+                            <div class="my-6 p-4 bg-white border border-[#CFCFCF]">
+                                <span class="font-heading text-[10px] font-black uppercase text-[#7D7D7D] tracking-wider block mb-2.5">
+                                    LỊCH HỌC CỐ ĐỊNH CỦA LỚP:
+                                </span>
+                                <div class="flex items-center gap-2 mb-2">
+                                    <span class="w-8 h-8 bg-black text-white font-heading font-bold text-xs flex items-center justify-center">T3</span>
+                                    <span class="w-8 h-8 bg-black text-white font-heading font-bold text-xs flex items-center justify-center">T5</span>
+                                    <span class="w-8 h-8 bg-black text-white font-heading font-bold text-xs flex items-center justify-center">T7</span>
+                                    <span class="font-heading font-bold text-xs text-[#0A0A0A] ml-2">18:30 - 19:45</span>
+                                </div>
+                                <div class="text-[11px] text-[#7D7D7D] font-body flex items-center justify-between pt-2 border-t border-[#F0F0F0]">
+                                    <span>Studio 2 (Tầng 3)</span>
+                                    <span>Cường độ: <strong class="text-black">Trung bình</strong></span>
+                                </div>
+                            </div>
+
+                            <div class="mb-6">
+                                <span class="font-body text-xs text-[#7D7D7D] block">Học phí niêm yết:</span>
+                                <div class="font-heading text-2xl font-black text-[#0A0A0A]">
+                                    1.350.000 ₫ <span class="text-xs font-normal text-[#7D7D7D]">/ tháng (12 buổi)</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <a href="/auth/register"
+                           class="w-full bg-[#0A0A0A] text-white hover:bg-neutral-800 border-2 border-black py-4 font-heading font-black text-xs uppercase tracking-wider text-center transition-colors block">
+                            ĐĂNG KÝ LỚP
+                        </a>
+                    </div>
+
+                    <!-- YOGA 3: ZEN WEEKEND -->
+                    <div class="brutal-pricing-card bg-[#F7F7F7] border-2 border-black p-8 flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center justify-between pb-4 border-b-2 border-black">
+                                <div>
+                                    <span class="font-heading text-[10px] font-bold uppercase tracking-widest text-[#7D7D7D] block">YOGA STUDIO</span>
+                                    <h3 class="font-heading text-2xl font-black uppercase text-[#252525] mt-0.5">ZEN WEEKEND</h3>
+                                </div>
+                                <span class="px-2.5 py-1 text-[10px] font-heading font-black uppercase bg-[#10B981] text-white border border-black">
+                                    CÒN CHỖ
+                                </span>
+                            </div>
+
+                            <p class="font-body text-xs text-[#545454] mt-4 leading-relaxed">
+                                Không gian tĩnh tại kết hợp chuông xoay Tây Tạng giúp thả lỏng hệ thần kinh, tái tạo nguồn năng lượng sống mỗi dịp cuối tuần.
+                            </p>
+
+                            <!-- Khối trực quan Lịch học T7 CN -->
+                            <div class="my-6 p-4 bg-white border border-[#CFCFCF]">
+                                <span class="font-heading text-[10px] font-black uppercase text-[#7D7D7D] tracking-wider block mb-2.5">
+                                    LỊCH HỌC CỐ ĐỊNH CỦA LỚP:
+                                </span>
+                                <div class="flex items-center gap-2 mb-2">
+                                    <span class="w-8 h-8 bg-black text-white font-heading font-bold text-xs flex items-center justify-center">T7</span>
+                                    <span class="w-8 h-8 bg-black text-white font-heading font-bold text-xs flex items-center justify-center">CN</span>
+                                    <span class="font-heading font-bold text-xs text-[#0A0A0A] ml-2">08:00 - 09:30</span>
+                                </div>
+                                <div class="text-[11px] text-[#7D7D7D] font-body flex items-center justify-between pt-2 border-t border-[#F0F0F0]">
+                                    <span>Studio VIP (Tầng 4)</span>
+                                    <span>Cường độ: <strong class="text-black">Nhẹ nhàng</strong></span>
+                                </div>
+                            </div>
+
+                            <div class="mb-6">
+                                <span class="font-body text-xs text-[#7D7D7D] block">Học phí niêm yết:</span>
+                                <div class="font-heading text-2xl font-black text-[#0A0A0A]">
+                                    1.100.000 ₫ <span class="text-xs font-normal text-[#7D7D7D]">/ tháng (8 buổi)</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <a href="/auth/register"
+                           class="w-full bg-[#0A0A0A] text-white hover:bg-neutral-800 border-2 border-black py-4 font-heading font-black text-xs uppercase tracking-wider text-center transition-colors block">
+                            ĐĂNG KÝ LỚP
+                        </a>
+                    </div>
+
+                </div>
+            }
+
+            <!-- ================================================================= -->
+            <!-- TAB 3: PERSONAL TRAINER (Bố cục chia đôi, Lịch cố định PT)         -->
+            <!-- ================================================================= -->
+            @if (ActivePricingTab == "PT")
+            {
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                    
+                    <!-- PT 1: ALEXANDER TRẦN -->
+                    <div class="brutal-pricing-card bg-white border-2 border-black flex flex-col justify-between overflow-hidden">
+                        <div>
+                            <!-- Nửa trên: Ảnh HLV đen trắng aspect-square -->
+                            <div class="w-full aspect-[4/3] overflow-hidden bg-neutral-900 border-b-2 border-black">
+                                <img src="https://images.unsplash.com/photo-1567013127542-490d757e51fc?auto=format&fit=crop&w=800&h=600&q=80"
+                                     alt="Alexander Trần"
+                                     class="w-full h-full object-cover object-top grayscale contrast-125" />
+                            </div>
+
+                            <!-- Nửa dưới: Thông tin chuyên môn & Lịch cố định -->
+                            <div class="p-6">
+                                <span class="font-heading text-[10px] font-bold uppercase tracking-widest text-[#7D7D7D] block">MASTER TRAINER</span>
+                                <h3 class="font-heading text-xl font-black uppercase text-[#252525] mt-0.5">ALEXANDER TRẦN</h3>
+                                <p class="font-body text-xs text-[#545454] mt-1 font-medium">Chuyên môn: Hypertrophy &amp; Sức mạnh Powerlifting</p>
+                                <div class="text-[11px] text-[#7D7D7D] font-body mt-0.5">Chứng chỉ: IFBB Pro Athlete • NASM-CPT</div>
+
+                                <!-- KHU VỰC LỊCH TẬP CỐ ĐỊNH CỦA PT -->
+                                <div class="my-5 p-3.5 bg-[#F7F7F7] border border-[#CFCFCF] space-y-2">
+                                    <span class="font-heading text-[10px] font-black uppercase text-[#252525] tracking-wider block">
+                                        LỊCH TẬP CỐ ĐỊNH CỦA PT:
+                                    </span>
+                                    <div class="flex items-center gap-2">
+                                        <span class="px-2 py-0.5 bg-black text-white font-heading text-[10px] font-bold uppercase">CA SÁNG</span>
+                                        <span class="font-heading text-xs font-bold text-[#252525]">08:30 - 09:30 (T2-T4-T6)</span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="px-2 py-0.5 bg-white text-black font-heading text-[10px] font-bold uppercase border border-black">CA TỐI</span>
+                                        <span class="font-heading text-xs font-bold text-[#252525]">18:00 - 19:00 (T2-T4-T6)</span>
+                                    </div>
+                                </div>
+
+                                <div class="mb-2">
+                                    <span class="font-body text-xs text-[#7D7D7D] block">Chi phí huấn luyện 1-1:</span>
+                                    <div class="font-heading text-xl font-black text-[#0A0A0A]">
+                                        9.600.000 ₫ <span class="text-xs font-normal text-[#7D7D7D]">/ Gói 24 buổi</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="p-6 pt-0">
+                            <a href="/auth/register"
+                               class="w-full bg-[#0A0A0A] text-white hover:bg-neutral-800 border-2 border-black py-4 font-heading font-black text-xs uppercase tracking-wider text-center transition-colors block">
+                                ĐĂNG KÝ PT NÀY
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- PT 2: MARCUS VŨ -->
+                    <div class="brutal-pricing-card bg-white border-2 border-black flex flex-col justify-between overflow-hidden">
+                        <div>
+                            <!-- Nửa trên: Ảnh HLV đen trắng aspect-square -->
+                            <div class="w-full aspect-[4/3] overflow-hidden bg-neutral-900 border-b-2 border-black">
+                                <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&h=600&q=80"
+                                     alt="Marcus Vũ"
+                                     class="w-full h-full object-cover object-top grayscale contrast-125" />
+                            </div>
+
+                            <!-- Nửa dưới: Thông tin chuyên môn & Lịch cố định -->
+                            <div class="p-6">
+                                <span class="font-heading text-[10px] font-bold uppercase tracking-widest text-[#7D7D7D] block">SENIOR COACH</span>
+                                <h3 class="font-heading text-xl font-black uppercase text-[#252525] mt-0.5">MARCUS VŨ</h3>
+                                <p class="font-body text-xs text-[#545454] mt-1 font-medium">Chuyên môn: Giảm mỡ cấp tốc &amp; Tái cấu trúc cơ thể</p>
+                                <div class="text-[11px] text-[#7D7D7D] font-body mt-0.5">Chứng chỉ: CSCS Coach • Precision Nutrition</div>
+
+                                <!-- KHU VỰC LỊCH TẬP CỐ ĐỊNH CỦA PT -->
+                                <div class="my-5 p-3.5 bg-[#F7F7F7] border border-[#CFCFCF] space-y-2">
+                                    <span class="font-heading text-[10px] font-black uppercase text-[#252525] tracking-wider block">
+                                        LỊCH TẬP CỐ ĐỊNH CỦA PT:
+                                    </span>
+                                    <div class="flex items-center gap-2">
+                                        <span class="px-2 py-0.5 bg-black text-white font-heading text-[10px] font-bold uppercase">CA SÁNG</span>
+                                        <span class="font-heading text-xs font-bold text-[#252525]">09:30 - 10:30 (T3-T5-T7)</span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="px-2 py-0.5 bg-white text-black font-heading text-[10px] font-bold uppercase border border-black">CA CHIỀU</span>
+                                        <span class="font-heading text-xs font-bold text-[#252525]">15:30 - 16:30 (T3-T5-T7)</span>
+                                    </div>
+                                </div>
+
+                                <div class="mb-2">
+                                    <span class="font-body text-xs text-[#7D7D7D] block">Chi phí huấn luyện 1-1:</span>
+                                    <div class="font-heading text-xl font-black text-[#0A0A0A]">
+                                        13.800.000 ₫ <span class="text-xs font-normal text-[#7D7D7D]">/ Gói 36 buổi</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="p-6 pt-0">
+                            <a href="/auth/register"
+                               class="w-full bg-[#0A0A0A] text-white hover:bg-neutral-800 border-2 border-black py-4 font-heading font-black text-xs uppercase tracking-wider text-center transition-colors block">
+                                ĐĂNG KÝ PT NÀY
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- PT 3: MAI PHƯƠNG -->
+                    <div class="brutal-pricing-card bg-white border-2 border-black flex flex-col justify-between overflow-hidden">
+                        <div>
+                            <!-- Nửa trên: Ảnh HLV đen trắng aspect-square -->
+                            <div class="w-full aspect-[4/3] overflow-hidden bg-neutral-900 border-b-2 border-black">
+                                <img src="https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&w=800&h=600&q=80"
+                                     alt="Mai Phương"
+                                     class="w-full h-full object-cover object-top grayscale contrast-125" />
+                            </div>
+
+                            <!-- Nửa dưới: Thông tin chuyên môn & Lịch cố định -->
+                            <div class="p-6">
+                                <span class="font-heading text-[10px] font-bold uppercase tracking-widest text-[#7D7D7D] block">FITNESS COACH</span>
+                                <h3 class="font-heading text-xl font-black uppercase text-[#252525] mt-0.5">MAI PHƯƠNG</h3>
+                                <p class="font-body text-xs text-[#545454] mt-1 font-medium">Chuyên môn: Sức bền chuyển động &amp; Chỉnh tư thế</p>
+                                <div class="text-[11px] text-[#7D7D7D] font-body mt-0.5">Chứng chỉ: ACE-CPT • Functional Movement (FMS)</div>
+
+                                <!-- KHU VỰC LỊCH TẬP CỐ ĐỊNH CỦA PT -->
+                                <div class="my-5 p-3.5 bg-[#F7F7F7] border border-[#CFCFCF] space-y-2">
+                                    <span class="font-heading text-[10px] font-black uppercase text-[#252525] tracking-wider block">
+                                        LỊCH TẬP CỐ ĐỊNH CỦA PT:
+                                    </span>
+                                    <div class="flex items-center gap-2">
+                                        <span class="px-2 py-0.5 bg-black text-white font-heading text-[10px] font-bold uppercase">CA TRƯA</span>
+                                        <span class="font-heading text-xs font-bold text-[#252525]">11:30 - 12:30 (T2-T4-T6)</span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="px-2 py-0.5 bg-white text-black font-heading text-[10px] font-bold uppercase border border-black">CA TỐI</span>
+                                        <span class="font-heading text-xs font-bold text-[#252525]">19:30 - 20:30 (T3-T5-T7)</span>
+                                    </div>
+                                </div>
+
+                                <div class="mb-2">
+                                    <span class="font-body text-xs text-[#7D7D7D] block">Chi phí huấn luyện 1-1:</span>
+                                    <div class="font-heading text-xl font-black text-[#0A0A0A]">
+                                        9.200.000 ₫ <span class="text-xs font-normal text-[#7D7D7D]">/ Gói 24 buổi</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="p-6 pt-0">
+                            <a href="/auth/register"
+                               class="w-full bg-[#0A0A0A] text-white hover:bg-neutral-800 border-2 border-black py-4 font-heading font-black text-xs uppercase tracking-wider text-center transition-colors block">
+                                ĐĂNG KÝ PT NÀY
+                            </a>
+                        </div>
+                    </div>
+
+                </div>
+            }
+
+        </div>
+    </section>
+
 </div>
 
 @code {
+    // Tab đang chọn trong phần Gói Thẻ & Lịch Tập (Mặc định: GYM)
+    private string ActivePricingTab = "GYM";
     // =========================================================================
     // MOCK DATA (Dữ liệu tĩnh 4 thẻ lớp học chuẩn theo ảnh tham chiếu)
     // =========================================================================
@@ -344,6 +978,102 @@
         }
     }
 
+    private void HandleFacilityZoneAction(FacilityMap.FacilityZone zone)
+    {
+        if (zone.Id == "yoga")
+        {
+            ActivePricingTab = "YOGA";
+        }
+
+        Navigation.NavigateTo(zone.Id == "gym" ? "#explore-equipment" : "#pricing-memberships");
+    }
+
+    // =========================================================================
+    // DỮ LIỆU & BỘ LỌC THIẾT BỊ PHÒNG TẬP (EQUIPMENT EXPLORER)
+    // =========================================================================
+    private string SelectedEquipmentCategory = "ALL";
+
+    private List<EquipmentCategoryItem> EquipmentCategories = new()
+    {
+        new() { Key = "ALL", Label = "TẤT CẢ" },
+        new() { Key = "CHEST", Label = "NGỰC (CHEST)" },
+        new() { Key = "BACK", Label = "LƯNG (BACK)" },
+        new() { Key = "ARMS", Label = "TAY (ARMS)" },
+        new() { Key = "CORE", Label = "CƠ LÕI (CORE)" },
+        new() { Key = "LEGS", Label = "CHÂN (LEGS)" },
+        new() { Key = "CARDIO", Label = "CARDIO" },
+    };
+
+    private List<EquipmentItem> AllEquipments = new()
+    {
+        // Phối hợp các dòng máy tiêu chuẩn Olympic (8 máy đầu tiên hiển thị cho "TẤT CẢ")
+        new() { Id = 1, Name = "Olympic Flat Bench", Category = "CHEST", MuscleGroup = "Cơ Ngực Giữa", ImageUrl = "equipments/strength-chest/olympic-flat-bench.png" },
+        new() { Id = 2, Name = "Lat Pulldown & Row", Category = "BACK", MuscleGroup = "Cơ Lưng Xô", ImageUrl = "equipments/strength-back/pulldown-row.png" },
+        new() { Id = 3, Name = "Linear Hack Squat", Category = "LEGS", MuscleGroup = "Cơ Đùi Trước & Mông", ImageUrl = "equipments/strength-legs/hack-squat.png" },
+        new() { Id = 4, Name = "Commercial Treadmill", Category = "CARDIO", MuscleGroup = "Cardio & Sức Bền", ImageUrl = "equipments/cardio/treadmill.png" },
+        new() { Id = 5, Name = "Preacher Arm Curl Bench", Category = "ARMS", MuscleGroup = "Cơ Tay Trước (Biceps)", ImageUrl = "equipments/strength-arms/arm-curl-bench.png" },
+        new() { Id = 6, Name = "Abdominal Crunch Bench", Category = "CORE", MuscleGroup = "Cơ Bụng & Lõi", ImageUrl = "equipments/strength-core/abdominal-crunch-bench.png" },
+        new() { Id = 7, Name = "Olympic Squat Stand Rack", Category = "LEGS", MuscleGroup = "Cơ Chân Toàn Diện", ImageUrl = "equipments/strength-legs/olympic-squat-rack.png" },
+        new() { Id = 8, Name = "Stair Climber Power Mill", Category = "CARDIO", MuscleGroup = "Cardio Leo Cầu Thang", ImageUrl = "equipments/cardio/stair-climber.png" },
+
+        // CHEST
+        new() { Id = 9, Name = "Olympic Incline Bench", Category = "CHEST", MuscleGroup = "Cơ Ngực Trên", ImageUrl = "equipments/strength-chest/olympic-incline-bench.png" },
+        new() { Id = 10, Name = "Olympic Decline Bench", Category = "CHEST", MuscleGroup = "Cơ Ngực Dưới", ImageUrl = "equipments/strength-chest/olympic-decline-bench.png" },
+        new() { Id = 11, Name = "Flat Bench Press Station", Category = "CHEST", MuscleGroup = "Cơ Ngực Tự Do", ImageUrl = "equipments/strength-chest/flat-bench.png" },
+        new() { Id = 12, Name = "Dual Cable Crossover", Category = "CHEST", MuscleGroup = "Cắt Nét Cơ Ngực", ImageUrl = "equipments/strength-multi/cable-crossover.png" },
+
+        // BACK
+        new() { Id = 13, Name = "Hyperextension Back Bench", Category = "BACK", MuscleGroup = "Cơ Lưng Dưới & Hông", ImageUrl = "equipments/strength-back/back-extension.png" },
+        new() { Id = 14, Name = "HD Power Cage Station", Category = "BACK", MuscleGroup = "Deadlift & Kéo Lưng", ImageUrl = "equipments/strength-legs/power-rack.png" },
+
+        // ARMS
+        new() { Id = 15, Name = "Olympic Military Bench", Category = "ARMS", MuscleGroup = "Cơ Vai & Tay Sau", ImageUrl = "equipments/strength-arms/olympic-military-bench.png" },
+        new() { Id = 16, Name = "Urethane Dumbbell Set", Category = "ARMS", MuscleGroup = "Tạ Tay Tự Do Đa Năng", ImageUrl = "equipments/strength-multi/dumbbells.png" },
+        new() { Id = 17, Name = "Pro Adjustable Dumbbells", Category = "ARMS", MuscleGroup = "Cơ Bắp Tay Chuyên Sâu", ImageUrl = "equipments/strength-multi/pro-100-adjustable-dumbbells.png" },
+
+        // CORE
+        new() { Id = 18, Name = "Adjustable Core Bench", Category = "CORE", MuscleGroup = "Gập Bụng Dốc", ImageUrl = "equipments/strength-core/abdominal-bench.png" },
+        new() { Id = 19, Name = "Competition Kettlebells", Category = "CORE", MuscleGroup = "Cơ Lõi & Thể Lực", ImageUrl = "equipments/strength-multi/Kettlebells.png" },
+
+        // CARDIO
+        new() { Id = 20, Name = "Indoor Studio Cycle Bike", Category = "CARDIO", MuscleGroup = "Cardio Đạp Xe Đốt Mỡ", ImageUrl = "equipments/cardio/bikecycle.png" },
+        new() { Id = 21, Name = "Cross Trainer Elliptical", Category = "CARDIO", MuscleGroup = "Cardio Toàn Thân", ImageUrl = "equipments/cardio/Elliptical.png" },
+        new() { Id = 22, Name = "Water Rower Concept", Category = "CARDIO", MuscleGroup = "Cardio Chèo Thuyền", ImageUrl = "equipments/cardio/Row.png" },
+        new() { Id = 23, Name = "High-Intensity Curved Runner", Category = "CARDIO", MuscleGroup = "Chạy Bộ Cơ Học", ImageUrl = "equipments/cardio/Runner.png" },
+        new() { Id = 24, Name = "Apex Peak Climber", Category = "CARDIO", MuscleGroup = "Cardio Leo Núi", ImageUrl = "equipments/cardio/Climber.png" }
+    };
+
+    private List<EquipmentItem> DisplayedEquipments =>
+        (SelectedEquipmentCategory == "ALL"
+            ? AllEquipments
+            : AllEquipments.Where(e => e.Category == SelectedEquipmentCategory))
+        .Take(8)
+        .ToList();
+
+    private async Task SelectEquipmentCategory(string categoryKey)
+    {
+        SelectedEquipmentCategory = categoryKey;
+        StateHasChanged();
+        await Task.Delay(40);
+        try
+        {
+            await JS.InvokeVoidAsync("eval", @"
+                (function() {
+                    const items = document.querySelectorAll('.equipment-reveal:not(.revealed)');
+                    items.forEach((el, idx) => {
+                        setTimeout(() => el.classList.add('revealed'), idx * 70);
+                    });
+                })();
+            ");
+        }
+        catch { }
+    }
+
+    private async Task ViewAllEquipments()
+    {
+        await SelectEquipmentCategory("ALL");
+    }
+
     // =========================================================================
     // SCROLL REVEAL BẰNG INTERSECTION OBSERVER API TRONG BLAZOR
     // =========================================================================
@@ -353,28 +1083,45 @@
         {
             await JS.InvokeVoidAsync("eval", @"
                 (function() {
-                    const items = document.querySelectorAll('.slide-reveal-right');
-                    if (!items.length) return;
+                    const setupObserver = (selector, threshold = 0.15) => {
+                        const items = document.querySelectorAll(selector);
+                        if (!items.length) return;
 
-                    const observerOptions = {
-                        root: null,
-                        rootMargin: '0px 0px -60px 0px',
-                        threshold: 0.15
+                        const observer = new IntersectionObserver((entries, obs) => {
+                            entries.forEach(entry => {
+                                if (entry.isIntersecting) {
+                                    entry.target.classList.add('revealed');
+                                    obs.unobserve(entry.target);
+                                }
+                            });
+                        }, { root: null, rootMargin: '0px 0px -40px 0px', threshold });
+
+                        items.forEach(el => observer.observe(el));
                     };
 
-                    const observer = new IntersectionObserver((entries, obs) => {
-                        entries.forEach(entry => {
-                            if (entry.isIntersecting) {
-                                entry.target.classList.add('revealed');
-                                obs.unobserve(entry.target); // Chỉ kích hoạt 1 lần khi cuộn tới
-                            }
-                        });
-                    }, observerOptions);
-
-                    items.forEach(el => observer.observe(el));
+                    setupObserver('.slide-reveal-right', 0.15);
+                    setupObserver('.equipment-reveal', 0.1);
                 })();
             ");
         }
+    }
+
+    // =========================================================================
+    // MODEL CLASS NỘI TUYẾN DÀNH CHO THIẾT BỊ
+    // =========================================================================
+    public class EquipmentCategoryItem
+    {
+        public string Key { get; set; } = string.Empty;
+        public string Label { get; set; } = string.Empty;
+    }
+
+    public class EquipmentItem
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string Category { get; set; } = string.Empty;
+        public string MuscleGroup { get; set; } = string.Empty;
+        public string ImageUrl { get; set; } = string.Empty;
     }
 
     // =========================================================================

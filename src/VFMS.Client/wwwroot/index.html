@@ -6,42 +6,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>VFMS - V-Fitness Management System</title>
     <base href="/" />
+    <link rel="preload" as="image" href="images/victor-fitness.png" />
+    <link href="css/splash.css" rel="stylesheet" />
     
     <!-- Google Fonts: Montserrat (Headings) & Inter (Body) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Montserrat:wght@700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Montserrat:wght@700;800;900&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+    <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Montserrat:wght@700;800;900&display=swap" rel="stylesheet"></noscript>
     
-    <!-- Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        'vfms-bg': '#FFFFFF',
-                        'vfms-card': '#F7F7F7',
-                        'vfms-border': '#CFCFCF',
-                        'vfms-text': '#252525',
-                        'vfms-muted': '#7D7D7D',
-                        'vfms-accent': '#0A0A0A',
-                        'vfms-green': '#10B981',
-                        'vfms-amber': '#F59E0B',
-                        'vfms-red': '#EF4444',
-                    },
-                    fontFamily: {
-                        heading: ['Montserrat', 'sans-serif'],
-                        sans: ['Inter', 'sans-serif'],
-                    }
-                }
-            }
-        }
-    </script>
-
     <link rel="stylesheet" href="css/bootstrap/bootstrap.min.css" />
     <link rel="stylesheet" href="css/app.css" />
-    <link rel="icon" type="image/png" href="favicon.png" />
+    <link rel="icon" type="image/png" href="favicon.png?v=2" />
     <link href="VFMS.Client.styles.css" rel="stylesheet" />
+    <link href="css/facility-map.css?v=3" rel="stylesheet" />
     <style>
         html, body {
             overflow-x: hidden !important;
@@ -52,20 +30,61 @@
 </head>
 
 <body>
-    <div id="app">
-        <svg class="loading-progress">
-            <circle r="40%" cx="50%" cy="50%" />
-            <circle r="40%" cx="50%" cy="50%" />
-        </svg>
-        <div class="loading-progress-text"></div>
+    <div id="vfms-splash" class="vfms-splash" role="status" aria-live="polite">
+        <div class="splash-content">
+            <div class="splash-logo-wrapper">
+                <img class="splash-logo" src="images/victor-fitness.png" alt="VICTOR FITNESS" />
+                <div class="splash-shine" aria-hidden="true"></div>
+            </div>
+            <div class="splash-loader" aria-hidden="true">
+                <div class="splash-progress"></div>
+            </div>
+            <p class="splash-status">Đang khởi tạo hệ thống...</p>
+        </div>
+        <div class="splash-footer">VFMS · V-FITNESS MANAGEMENT</div>
     </div>
+    <div id="app"></div>
+
+    <!-- Load the application styles after the startup screen can be painted. -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        if (window.tailwind) tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'vfms-bg': '#FFFFFF', 'vfms-card': '#F7F7F7', 'vfms-border': '#CFCFCF',
+                        'vfms-text': '#252525', 'vfms-muted': '#7D7D7D', 'vfms-accent': '#0A0A0A',
+                        'vfms-green': '#10B981', 'vfms-amber': '#F59E0B', 'vfms-red': '#EF4444',
+                    },
+                    fontFamily: { heading: ['Montserrat', 'sans-serif'], sans: ['Inter', 'sans-serif'] }
+                }
+            }
+        };
+    </script>
 
     <div id="blazor-error-ui">
         An unhandled error has occurred.
         <a href="" class="reload">Reload</a>
         <a class="dismiss">🗙</a>
     </div>
-    <script src="_framework/blazor.webassembly.js"></script>
+    <script src="_framework/blazor.webassembly.js" autostart="false"></script>
+    <script>
+        (async function () {
+            const splash = document.getElementById('vfms-splash');
+            try {
+                await Blazor.start();
+                splash.addEventListener('transitionend', function (event) {
+                    if (event.target === splash && event.propertyName === 'opacity') splash.remove();
+                });
+                splash.classList.add('splash-hidden');
+            } catch (error) {
+                console.error('VFMS startup failed:', error);
+                document.querySelector('.splash-status').textContent =
+                    'Không thể khởi động hệ thống. Vui lòng tải lại trang.';
+                document.querySelector('.splash-progress').classList.add('splash-progress-error');
+            }
+        })();
+    </script>
 </body>
 
 </html>

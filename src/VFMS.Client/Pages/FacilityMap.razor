@@ -1,0 +1,251 @@
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Web
+
+<section id="facility-map" class="facility-map" aria-label="Sơ đồ mặt bằng Victor Fitness">
+    <header class="map-header">
+        <div>
+            <p class="eyebrow">VICTOR FITNESS / SƠ ĐỒ TƯƠNG TÁC</p>
+            <h3>SƠ ĐỒ <span>PHÒNG TẬP.</span></h3>
+            <p class="subtitle">Chọn một khu vực để xem thông tin và thiết bị.</p>
+        </div>
+        <div class="floor-tag"><span class="status-dot"></span> FLOOR 01 <span class="floor-divider">/</span> SƠ ĐỒ MINH HỌA</div>
+    </header>
+
+    <div class="map-toolbar" aria-label="Chú giải sơ đồ">
+        <div class="legend-item"><span class="legend-swatch outline"></span> KHU VỰC</div>
+        <div class="legend-item"><span class="legend-swatch active"></span> ĐANG CHỌN</div>
+        <div class="legend-item"><span class="legend-path"></span> LỐI ĐI</div>
+        <span class="toolbar-tip">HOVER / CLICK TO EXPLORE</span>
+    </div>
+
+    <div class="map-scroll" tabindex="0" aria-label="Sơ đồ có thể cuộn ngang trên màn hình nhỏ">
+        <svg class="floorplan" viewBox="0 0 1000 600"
+             xmlns="http://www.w3.org/2000/svg"
+             role="group"
+             aria-label="Mặt bằng gồm lễ tân, phòng Yoga, phòng thay đồ và khu Gym">
+            <defs>
+                <pattern id="vfms-grid" width="24" height="24" patternUnits="userSpaceOnUse">
+                    <path d="M24 0 H0 V24" fill="none" stroke="#dedede" stroke-width="0.6" />
+                </pattern>
+                <marker id="vfms-arrow" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+                    <path d="M0 0 L6 3 L0 6" fill="none" stroke="#737373" stroke-width="1" />
+                </marker>
+            </defs>
+
+            <rect width="1000" height="600" fill="url(#vfms-grid)" />
+            <text x="28" y="22" class="plan-micro">VICTOR FITNESS / LEVEL 01</text>
+            <text x="972" y="22" text-anchor="end" class="plan-micro">SCHEMATIC · NOT TO SCALE</text>
+
+            <!-- Chu vi tòa nhà, chừa lối vào phía trái hành lang -->
+            <path class="outer-wall" d="M24 212 V34 H976 V566 H24 V260" />
+
+            @foreach (var zone in Zones)
+            {
+                <g @key="zone.Id"
+                   class="zone-group @(selectedZone?.Id == zone.Id ? "is-selected" : "")"
+                   role="button"
+                   tabindex="0"
+                   aria-label="@($"Chọn khu vực {zone.Name}")"
+                   aria-pressed="@(selectedZone?.Id == zone.Id ? "true" : "false")"
+                   @onclick="() => SelectZone(zone)"
+                   @onkeydown="(e) => HandleZoneKeyDown(e, zone)">
+                    <title>@zone.Name — @zone.Description</title>
+                    <path class="zone-shape" d="@zone.SvgPath" />
+                    <text class="zone-number" x="@(zone.X - zone.TitleOffset)" y="@(zone.Y - 12)">@zone.Number</text>
+                    <text class="zone-name" x="@zone.X" y="@zone.Y" text-anchor="middle">@zone.ShortName</text>
+                    <text class="zone-caption" x="@zone.X" y="@(zone.Y + 17)" text-anchor="middle">@zone.Caption</text>
+
+                    @foreach (var equipment in Equipment.Where(e => e.ZoneId == zone.Id))
+                    {
+                        <g class="equipment" transform="translate(@equipment.X @equipment.Y) rotate(@equipment.Rotation)" aria-hidden="true">
+                            @switch (equipment.Kind)
+                            {
+                                case EquipmentKind.Desk:
+                                    <rect x="-48" y="-14" width="96" height="28" />
+                                    <rect x="-18" y="-8" width="36" height="16" />
+                                    <line x1="-48" y1="21" x2="48" y2="21" />
+                                    break;
+                                case EquipmentKind.Gate:
+                                    <rect x="-32" y="-17" width="22" height="34" />
+                                    <rect x="10" y="-17" width="22" height="34" />
+                                    <path d="M-10 0 H10 M-3 -5 L3 0 L-3 5" />
+                                    break;
+                                case EquipmentKind.Treadmill:
+                                    <rect x="-25" y="-19" width="50" height="38" />
+                                    <rect x="-16" y="-11" width="32" height="22" />
+                                    <line x1="-25" y1="-24" x2="25" y2="-24" />
+                                    <line x1="-18" y1="-24" x2="-18" y2="-19" />
+                                    <line x1="18" y1="-24" x2="18" y2="-19" />
+                                    break;
+                                case EquipmentKind.Rack:
+                                    <rect x="-28" y="-22" width="56" height="44" />
+                                    <line x1="-28" y1="0" x2="28" y2="0" />
+                                    <line x1="-20" y1="-13" x2="-20" y2="13" />
+                                    <line x1="20" y1="-13" x2="20" y2="13" />
+                                    <circle cx="-28" cy="0" r="6" />
+                                    <circle cx="28" cy="0" r="6" />
+                                    break;
+                                case EquipmentKind.Bench:
+                                    <rect x="-13" y="-21" width="26" height="42" />
+                                    <line x1="-29" y1="-13" x2="29" y2="-13" />
+                                    <rect x="-25" y="-19" width="5" height="12" />
+                                    <rect x="20" y="-19" width="5" height="12" />
+                                    break;
+                                case EquipmentKind.Bike:
+                                    <circle cx="-19" cy="12" r="11" />
+                                    <circle cx="19" cy="12" r="11" />
+                                    <path d="M-19 12 L-5 -10 L5 12 L-19 12 M5 12 L19 12 L9 -10 M-11 -10 H1 M9 -10 H21" />
+                                    break;
+                                case EquipmentKind.Mat:
+                                    <rect x="-16" y="-22" width="32" height="44" />
+                                    <line x1="-9" y1="-16" x2="9" y2="-16" />
+                                    <line x1="-9" y1="16" x2="9" y2="16" />
+                                    break;
+                                case EquipmentKind.Locker:
+                                    <rect x="-26" y="-20" width="52" height="40" />
+                                    <line x1="-9" y1="-20" x2="-9" y2="20" />
+                                    <line x1="9" y1="-20" x2="9" y2="20" />
+                                    <path d="M-19 -3 V4 M0 -3 V4 M18 -3 V4" />
+                                    break;
+                                case EquipmentKind.Shower:
+                                    <path d="M-22 17 V-18 H22 V17 M-5 -10 H10 V-3 M10 -3 V5" />
+                                    <path d="M5 8 V14 M10 8 V14 M15 8 V14" />
+                                    break;
+                            }
+                            <text x="0" y="36" text-anchor="middle" class="equipment-label">@equipment.Code</text>
+                        </g>
+                    }
+                </g>
+            }
+
+            <!-- Lối đi trung tâm: không thuộc zone, không chặn tương tác -->
+            <g class="circulation" aria-hidden="true">
+                <path d="M40 232 H960" class="corridor-axis" />
+                <path d="M40 253 H960" class="corridor-axis" />
+                <text x="500" y="244" text-anchor="middle" class="corridor-label">MAIN CIRCULATION / LỐI ĐI CHÍNH</text>
+                <path d="M50 242 H145 M855 242 H940" class="flow-line" marker-end="url(#vfms-arrow)" />
+
+                <!-- Chừa lối vào các khu vực và chỉ hướng đi vào từ bên trái. -->
+                <path d="M140 184 H194 M397 184 H447 M750 184 H806 M464 284 H536" stroke="#fff" stroke-width="7" />
+                <path d="M24 212 H64 M24 260 H64" class="entrance-leaf" />
+                <path d="M2 242 H35 M25 232 L35 242 L25 252" class="entrance-arrow" />
+                <text x="68" y="206" class="entrance-label">ENTRANCE / EXIT</text>
+            </g>
+
+            <text x="28" y="588" class="plan-micro">VFMS // INTERACTIVE FACILITY PLAN</text>
+            <text x="972" y="588" text-anchor="end" class="plan-micro">01 / 01</text>
+        </svg>
+    </div>
+
+    @if (selectedZone is not null)
+    {
+        <article class="zone-detail" aria-live="polite">
+            <div class="detail-index">SELECTED ZONE / @selectedZone.Number</div>
+            <div class="detail-content">
+                <div class="detail-copy">
+                    <h4>@selectedZone.Name.ToUpperInvariant()</h4>
+                    <p>@selectedZone.Description</p>
+                    <div class="equipment-count">
+                        <strong>@Equipment.Count(e => e.ZoneId == selectedZone.Id).ToString("00")</strong>
+                        <span>THIẾT BỊ / ĐIỂM CHỨC NĂNG TRÊN SƠ ĐỒ</span>
+                    </div>
+                </div>
+                <div class="detail-actions">
+                    <button type="button" class="action-button" @onclick="() => InvokeZoneAction(selectedZone)">
+                        @selectedZone.ActionLabel <span aria-hidden="true">↗</span>
+                    </button>
+                    <button type="button" class="clear-button" @onclick="ClearSelection">BỎ CHỌN ×</button>
+                </div>
+            </div>
+        </article>
+    }
+    else
+    {
+        <div class="zone-placeholder" aria-live="polite">
+            <span class="placeholder-icon">+</span>
+            CHỌN MỘT KHU VỰC TRÊN SƠ ĐỒ ĐỂ XEM CHI TIẾT
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter] public EventCallback<FacilityZone> OnZoneAction { get; set; }
+    [Parameter] public EventCallback<FacilityZone?> OnZoneSelected { get; set; }
+
+    private FacilityZone? selectedZone;
+
+    public sealed record FacilityZone(
+        string Id,
+        string Number,
+        string Name,
+        string ShortName,
+        string Caption,
+        string Description,
+        string SvgPath,
+        double X,
+        double Y,
+        double TitleOffset,
+        string ActionLabel);
+
+    private enum EquipmentKind { Desk, Gate, Treadmill, Rack, Bench, Bike, Mat, Locker, Shower }
+    private sealed record EquipmentItem(string ZoneId, string Code, EquipmentKind Kind,
+        double X, double Y, int Rotation = 0);
+
+    private static readonly List<FacilityZone> Zones = new()
+    {
+        new("reception", "01", "Quầy Lễ Tân & Check-in", "RECEPTION", "CHECK-IN / SUPPORT",
+            "Đón tiếp hội viên, xác thực lượt vào, tư vấn gói tập và hỗ trợ dịch vụ tại quầy.",
+            "M40 48 H260 V184 H40 Z", 150, 76, 104, "XEM GÓI HỘI VIÊN"),
+        new("yoga", "02", "Phòng Yoga", "YOGA STUDIO", "MIND / BODY",
+            "Phòng tập nhóm dành cho yoga, stretching và các lớp phục hồi; quản lý lịch học và đăng ký tham gia.",
+            "M275 48 H580 V184 H275 Z", 427.5, 76, 136, "XEM LỊCH YOGA"),
+        new("locker", "03", "Tủ đồ & Phòng thay đồ", "LOCKERS & WC", "CHANGING / SHOWER",
+            "Khu tủ cá nhân, thay đồ và phòng tắm, hỗ trợ quản lý vị trí và tình trạng sử dụng.",
+            "M595 48 H960 V184 H595 Z", 777.5, 76, 165, "XEM GÓI HỘI VIÊN"),
+        new("gym", "04", "Gym & Strength", "GYM & STRENGTH", "TRAINING FLOOR / EQUIPMENT",
+            "Khu tập chính với máy chạy bộ, xe đạp, rack và ghế tập tạ. Theo dõi vị trí và tình trạng thiết bị.",
+            "M40 284 H960 V546 H40 Z", 500, 318, 428, "XEM MÁY TẬP")
+    };
+
+    private static readonly List<EquipmentItem> Equipment = new()
+    {
+        new("reception", "FRONT DESK", EquipmentKind.Desk, 150, 120),
+        new("reception", "ACCESS", EquipmentKind.Gate, 224, 132),
+        new("yoga", "YOGA CLASS 1", EquipmentKind.Mat, 346, 124),
+        new("yoga", "YOGA CLASS 2", EquipmentKind.Mat, 430, 124),
+        new("yoga", "YOGA CLASS 3", EquipmentKind.Mat, 514, 124),
+        new("locker", "LOCKERS A", EquipmentKind.Locker, 678, 123),
+        new("locker", "LOCKERS B", EquipmentKind.Locker, 777, 123),
+        new("locker", "SHOWER", EquipmentKind.Shower, 878, 123),
+        new("gym", "RUN 01", EquipmentKind.Treadmill, 140, 391),
+        new("gym", "RUN 02", EquipmentKind.Treadmill, 320, 391),
+        new("gym", "RACK 01", EquipmentKind.Rack, 500, 391),
+        new("gym", "RACK 02", EquipmentKind.Rack, 680, 391),
+        new("gym", "BIKE 01", EquipmentKind.Bike, 860, 391),
+        new("gym", "BENCH 01", EquipmentKind.Bench, 140, 487),
+        new("gym", "BENCH 02", EquipmentKind.Bench, 320, 487),
+        new("gym", "RACK 03", EquipmentKind.Rack, 500, 487),
+        new("gym", "BIKE 02", EquipmentKind.Bike, 680, 487),
+        new("gym", "RUN 03", EquipmentKind.Treadmill, 860, 487)
+    };
+
+    private async Task SelectZone(FacilityZone zone)
+    {
+        selectedZone = zone;
+        await OnZoneSelected.InvokeAsync(zone);
+    }
+
+    private async Task HandleZoneKeyDown(KeyboardEventArgs args, FacilityZone zone)
+    {
+        if (args.Key is "Enter" or " " or "Spacebar")
+            await SelectZone(zone);
+    }
+
+    private async Task ClearSelection()
+    {
+        selectedZone = null;
+        await OnZoneSelected.InvokeAsync(null);
+    }
+
+    private Task InvokeZoneAction(FacilityZone zone) => OnZoneAction.InvokeAsync(zone);
+}
