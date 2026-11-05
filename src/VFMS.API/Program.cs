@@ -96,6 +96,14 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddAuthorization();
 
+// Restrict cross-origin access to configured clients; development uses the WASM launch URLs.
+var clientOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+    ?? (builder.Environment.IsDevelopment()
+        ? ["https://localhost:7246", "http://localhost:5273"]
+        : Array.Empty<string>());
+builder.Services.AddCors(options => options.AddPolicy("VfmsClient", policy =>
+    policy.WithOrigins(clientOrigins).AllowAnyHeader().AllowAnyMethod()));
+
 // ── Controllers ───────────────────────────────────────────────
 builder.Services.AddControllers();
 
@@ -150,6 +158,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseCors("VfmsClient");
 
 app.UseAuthentication();
 app.UseAuthorization();
