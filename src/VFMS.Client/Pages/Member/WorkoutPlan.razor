@@ -113,7 +113,7 @@
                             {
                                 <li class="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
                                     <label class="flex items-start gap-3">
-                                        <input type="checkbox" class="mt-1" checked="@item.IsCompleted" disabled="@_busy" @onchange="e => Toggle(item, (bool)(e.Value ?? false))" aria-label="Đã tập @item.ExerciseName tuần này" />
+                                        <input type="checkbox" class="mt-1" checked="@(item.IsCompleted || _logItemId == item.Id)" disabled="@_busy" @onchange="e => Toggle(item, (bool)(e.Value ?? false))" aria-label="Đã tập @item.ExerciseName tuần này" />
                                         <span>
                                             <span class="font-semibold @(item.IsCompleted ? "line-through text-neutral-500" : "")">@item.ExerciseName</span>
                                             <span class="block text-xs text-neutral-600">@Volume(item)@(item.MuscleGroup is null ? "" : $" · {item.MuscleGroup}")</span>
