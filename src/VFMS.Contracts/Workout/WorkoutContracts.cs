@@ -2,7 +2,7 @@ namespace VFMS.Contracts.Workout;
 
 /// <summary>
 /// Fitness survey (UC-49 / UC-58). Goal: WeightLoss, MuscleGain, Endurance, Flexibility, GeneralFitness.
-/// Level: Beginner, Intermediate, Advanced.
+/// Level: Beginner, Intermediate, Advanced. Body fat and skeletal muscle mass are optional InBody readings.
 /// </summary>
 public sealed record FitnessSurveyRequest(
     decimal WeightKg,
@@ -12,7 +12,9 @@ public sealed record FitnessSurveyRequest(
     int WorkoutFrequencyPerWeek,
     string? Gender = null,
     DateOnly? DateOfBirth = null,
-    string? HealthConditions = null
+    string? HealthConditions = null,
+    decimal? BodyFatPercent = null,
+    decimal? SkeletalMuscleMassKg = null
 );
 
 public sealed record FitnessSurveyResponse(
@@ -24,7 +26,10 @@ public sealed record FitnessSurveyResponse(
     string? Gender,
     DateOnly? DateOfBirth,
     string? HealthConditions,
-    bool IsComplete
+    bool IsComplete,
+    decimal? BodyFatPercent = null,
+    decimal? SkeletalMuscleMassKg = null,
+    DateTime? AiConsentGrantedAt = null
 );
 
 /// <summary>Generate a plan. The member must consent to sending anonymised survey data to Gemini (PDPL).</summary>
@@ -58,7 +63,8 @@ public sealed record WorkoutPlanResponse(
     DateTime GeneratedAt,
     int CompletedItems,
     int TotalItems,
-    IReadOnlyList<WorkoutPlanItemResponse> Items
+    IReadOnlyList<WorkoutPlanItemResponse> Items,
+    string? NutritionAdvice = null
 );
 
 public sealed record WorkoutPlanSummaryResponse(

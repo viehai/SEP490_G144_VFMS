@@ -51,6 +51,8 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
         profile.Gender = request.Gender is null ? null : Canonical(request.Gender, WorkoutRules.Genders);
         profile.DateOfBirth = request.DateOfBirth;
         profile.HealthConditions = string.IsNullOrWhiteSpace(request.HealthConditions) ? null : request.HealthConditions.Trim();
+        profile.BodyFatPercent = request.BodyFatPercent;
+        profile.SkeletalMuscleMassKg = request.SkeletalMuscleMassKg;
         profile.UpdatedAt = DateTime.UtcNow;
 
         if (isNew)
@@ -105,6 +107,7 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
         {
             plan.Name = generated.Name;
             plan.GeneratedByAiModel = _generator.ModelName;
+            plan.NutritionAdvice = generated.NutritionAdvice ?? StandardNutrition(profile.FitnessGoal);
             foreach (var item in generated.Items)
                 plan.PlanItems.Add(new PlanItem
                 {
@@ -123,6 +126,7 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
 
             plan.Name = template.Name ?? "Standard plan";
             plan.IsFallback = true;
+            plan.NutritionAdvice = StandardNutrition(profile.FitnessGoal);
             foreach (var item in template.PlanItems.OrderBy(i => i.DayNumber).ThenBy(i => i.OrderInDay))
                 plan.PlanItems.Add(new PlanItem
                 {
@@ -132,6 +136,9 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
         }
 
         var previous = await _repository.GetActivePlansAsync(userId, cancellationToken);
+        profile.AiConsentGrantedAt = now;   // SRS 2.3: keep when the member agreed to AI processing
+        // shortcut: two parallel "Generate" clicks make the second insert hit the GBR-94 unique index (HTTP 500, no bad data);
+        // the page disables the button while busy. Map it to 409 if members report it.
         await _repository.ExecuteInTransactionAsync(async () =>
         {
             foreach (var old in previous)   // GBR-94
@@ -139,6 +146,9 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
                 old.PlanStatus = WorkoutPlanStatus.Archived;
                 old.UpdatedAt = now;
             }
+            // Archive first: in one SaveChanges EF may insert the new Active plan before the old one is archived,
+            // which the one-active-plan unique index rejects.
+            await _repository.SaveChangesAsync(cancellationToken);
             _repository.Add(plan);
             _repository.Add(AuditedWriter.Notify(userId, null,
                 plan.IsFallback ? "Standard workout plan ready" : "Your workout plan is ready",
@@ -252,7 +262,7 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
             age = today.Year - dob.Year - (today < dob.AddYears(today.Year - dob.Year) ? 1 : 0);
         }
         return new AnonymisedSurvey(age, p.Gender, p.WeightKg!.Value, p.HeightCm!.Value, p.FitnessGoal!, p.FitnessLevel!,
-            p.WorkoutFrequencyPerWeek!.Value, RedactContactDetails(p.HealthConditions));
+            p.WorkoutFrequencyPerWeek!.Value, RedactContactDetails(p.HealthConditions), p.BodyFatPercent, p.SkeletalMuscleMassKg);
     }
 
     /// <summary>Keeps only items that reference real catalog exercises and sane values; null if nothing usable remains.</summary>
@@ -277,8 +287,21 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
         if (items.Length == 0)
             return null;
         var name = string.IsNullOrWhiteSpace(plan.Name) ? "Personalised plan" : plan.Name.Trim()[..Math.Min(plan.Name.Trim().Length, 200)];
-        return new GeneratedPlan(name, items);
+        var nutrition = string.IsNullOrWhiteSpace(plan.NutritionAdvice)
+            ? null
+            : plan.NutritionAdvice.Trim()[..Math.Min(plan.NutritionAdvice.Trim().Length, 1000)];
+        return new GeneratedPlan(name, items, nutrition);
     }
+
+    /// <summary>Standard nutrition advice per goal, used for fallback plans or when the AI gives none (UC-49, GBR-95).</summary>
+    public static string StandardNutrition(string? goal) => goal switch
+    {
+        "WeightLoss" => "Ăn thâm hụt khoảng 300-500 kcal mỗi ngày, ưu tiên đạm nạc (1,6-2 g/kg), rau xanh và hạn chế đồ uống có đường.",
+        "MuscleGain" => "Ăn dư khoảng 200-300 kcal mỗi ngày, đạm 1,6-2,2 g/kg chia đều các bữa, thêm tinh bột quanh buổi tập.",
+        "Endurance" => "Ưu tiên tinh bột phức (5-7 g/kg) trước buổi tập dài, uống đủ nước và bù điện giải khi tập trên 60 phút.",
+        "Flexibility" => "Ăn cân bằng với nhiều rau quả, đạm vừa đủ (1,2-1,6 g/kg) và uống đủ 2 lít nước mỗi ngày.",
+        _ => "Ăn cân bằng: một nửa đĩa rau, một phần tư đạm, một phần tư tinh bột; uống đủ nước và ngủ 7-8 giờ."
+    };
 
     private static readonly System.Text.RegularExpressions.Regex EmailPattern =
         new(@"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", System.Text.RegularExpressions.RegexOptions.Compiled);
@@ -300,13 +323,14 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
     private static FitnessSurveyResponse ToResponse(PhysicalProfile? p) => p is null
         ? new FitnessSurveyResponse(null, null, null, null, null, null, null, null, false)
         : new FitnessSurveyResponse(p.WeightKg, p.HeightCm, p.FitnessGoal, p.FitnessLevel, p.WorkoutFrequencyPerWeek,
-            p.Gender, p.DateOfBirth, p.HealthConditions, IsComplete(p));
+            p.Gender, p.DateOfBirth, p.HealthConditions, IsComplete(p), p.BodyFatPercent, p.SkeletalMuscleMassKg,
+            p.AiConsentGrantedAt);
 
     private static WorkoutPlanResponse ToResponse(WorkoutPlan p)
     {
         var items = p.PlanItems.OrderBy(i => i.DayNumber).ThenBy(i => i.OrderInDay).Select(ToResponse).ToArray();
         return new WorkoutPlanResponse(p.Id, p.Name, p.PlanStatus.ToString(), p.FitnessGoal, p.IsFallback, p.GeneratedByAiModel,
-            p.GeneratedAt, items.Count(i => i.IsCompleted), items.Length, items);
+            p.GeneratedAt, items.Count(i => i.IsCompleted), items.Length, items, p.NutritionAdvice);
     }
 
     private static WorkoutPlanItemResponse ToResponse(PlanItem i) => new(

@@ -52,6 +52,28 @@ public sealed class WorkoutPlanTests
         Assert.Equal("gemini-test", plan.GeneratedByAiModel);
         Assert.Equal(2, plan.PlanItems.Count);
         Assert.Single(repo.Notifications);
+        // The archive is saved on its own before the new Active plan is added (one-active-plan unique index).
+        Assert.Equal(1, repo.PersonalPlansAtFirstSave);
+        Assert.Equal(Clock.GetUtcNow().UtcDateTime, repo.Profile!.AiConsentGrantedAt);
+    }
+
+    [Fact]
+    public async Task PlanCarriesNutritionAdviceAndInBodyReachesTheAi()   // UC-49
+    {
+        var profile = CompleteProfile();
+        profile.BodyFatPercent = 28.5m;
+        profile.SkeletalMuscleMassKg = 31m;
+        var (service, _, generator) = Create(profile);
+        generator.Reply = new GeneratedPlan("p", [new(1, 1, 10, 3, 12, null, null)], "  Ăn nhiều rau.  ");
+
+        var ai = await service.GenerateAsync("u1", new GenerateWorkoutPlanRequest(true));
+        generator.Reply = null;
+        var fallback = await service.GenerateAsync("u1", new GenerateWorkoutPlanRequest(true));
+
+        Assert.Equal(28.5m, generator.LastSurvey!.BodyFatPercent);
+        Assert.Equal(31m, generator.LastSurvey.SkeletalMuscleMassKg);
+        Assert.Equal("Ăn nhiều rau.", ai.Data!.NutritionAdvice);
+        Assert.Equal(WorkoutPlanService.StandardNutrition("WeightLoss"), fallback.Data!.NutritionAdvice);
     }
 
     [Fact]
@@ -211,7 +233,12 @@ public sealed class WorkoutPlanTests
             }
         }
 
-        public Task SaveChangesAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public int? PersonalPlansAtFirstSave { get; private set; }
+        public Task SaveChangesAsync(CancellationToken cancellationToken = default)
+        {
+            PersonalPlansAtFirstSave ??= Plans.Count(p => !p.IsTemplate);
+            return Task.CompletedTask;
+        }
         public Task ExecuteInTransactionAsync(Func<Task> work, CancellationToken cancellationToken = default) => work();
         public Task<IReadOnlyList<string>> GetActiveUserIdsInRoleAsync(string roleName, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<string>>([]);

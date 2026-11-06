@@ -1958,6 +1958,12 @@ namespace VFMS.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<DateTime?>("AiConsentGrantedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal?>("BodyFatPercent")
+                        .HasColumnType("decimal(5,2)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -1991,6 +1997,9 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<string>("MemberUserId")
                         .IsRequired()
                         .HasColumnType("nvarchar(128)");
+
+                    b.Property<decimal?>("SkeletalMuscleMassKg")
+                        .HasColumnType("decimal(5,2)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
@@ -2877,6 +2886,10 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.Property<string>("Name")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("NutritionAdvice")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
 
                     b.Property<int?>("PhysicalProfileId")
                         .HasColumnType("int");

@@ -28,6 +28,10 @@ public sealed class FitnessSurveyRequestValidator : AbstractValidator<FitnessSur
         RuleFor(x => x.DateOfBirth)
             .Must(d => d is null || (d.Value.Year >= 1900 && d.Value <= DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-10)))
             .WithMessage("Please enter a valid date of birth.");
+        RuleFor(x => x.BodyFatPercent).InclusiveBetween(3, 60).When(x => x.BodyFatPercent is not null)
+            .WithMessage("Please enter a valid number between 3 and 60.");
+        RuleFor(x => x.SkeletalMuscleMassKg).InclusiveBetween(10, 80).When(x => x.SkeletalMuscleMassKg is not null)
+            .WithMessage("Please enter a valid number between 10 and 80.");
         RuleFor(x => x.HealthConditions).MaximumLength(500).WithMessage("Input exceeds maximum allowed length of 500 characters.");
     }
 }

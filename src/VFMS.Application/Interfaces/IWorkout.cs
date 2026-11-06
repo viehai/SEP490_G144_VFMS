@@ -26,14 +26,16 @@ public sealed record AnonymisedSurvey(
     string FitnessGoal,
     string FitnessLevel,
     int WorkoutFrequencyPerWeek,
-    string? HealthConditions
+    string? HealthConditions,
+    decimal? BodyFatPercent = null,
+    decimal? SkeletalMuscleMassKg = null
 );
 
 public sealed record CatalogExercise(int Id, string Name, string? MuscleGroup, string? DifficultyLevel);
 
 public sealed record GeneratedPlanItem(int DayNumber, int OrderInDay, int ExerciseId, int? Sets, int? Reps, int? DurationMinutes, string? Note);
 
-public sealed record GeneratedPlan(string Name, IReadOnlyList<GeneratedPlanItem> Items);
+public sealed record GeneratedPlan(string Name, IReadOnlyList<GeneratedPlanItem> Items, string? NutritionAdvice = null);
 
 /// <summary>Gemini API (API-02). Returns null when the AI is unavailable, times out or replies with unusable data.</summary>
 public interface IWorkoutPlanGenerator

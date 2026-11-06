@@ -99,7 +99,7 @@ public sealed class GeminiWorkoutPlanGenerator : IWorkoutPlanGenerator
             .SelectMany(d => d.Exercises!.Select((e, i) =>
                 new GeneratedPlanItem(d.Day, i + 1, e.ExerciseId, e.Sets, e.Reps, e.DurationMinutes, e.Note)))
             .ToArray();
-        return new GeneratedPlan(reply.PlanName ?? "Personalised plan", items);
+        return new GeneratedPlan(reply.PlanName ?? "Personalised plan", items, reply.NutritionTips);
     }
 
     public static string BuildPrompt(AnonymisedSurvey survey, IReadOnlyList<CatalogExercise> catalog)
@@ -111,14 +111,18 @@ public sealed class GeminiWorkoutPlanGenerator : IWorkoutPlanGenerator
         sb.AppendLine($"Goal: {survey.FitnessGoal}. Level: {survey.FitnessLevel}.");
         sb.AppendLine($"Age: {(survey.Age?.ToString() ?? "unknown")}. Gender: {survey.Gender ?? "unknown"}. " +
                       $"Weight: {survey.WeightKg} kg. Height: {survey.HeightCm} cm.");
+        if (survey.BodyFatPercent is not null || survey.SkeletalMuscleMassKg is not null)
+            sb.AppendLine($"InBody: body fat {survey.BodyFatPercent?.ToString() ?? "unknown"} %, " +
+                          $"skeletal muscle mass {survey.SkeletalMuscleMassKg?.ToString() ?? "unknown"} kg.");
         if (!string.IsNullOrWhiteSpace(survey.HealthConditions))
             sb.AppendLine($"Health notes (avoid aggravating these): {survey.HealthConditions}");
         sb.AppendLine("Use ONLY exercises from this catalog, referenced by id:");
         foreach (var e in catalog)
             sb.AppendLine($"- id {e.Id}: {e.Name} (muscle: {e.MuscleGroup ?? "-"}, level: {e.DifficultyLevel ?? "-"})");
         sb.AppendLine("Give 4-8 exercises per training day. Strength work needs sets and reps; cardio or stretching needs durationMinutes.");
+        sb.AppendLine("Add nutritionTips: 2-4 short sentences of nutrition advice for this goal, written in Vietnamese.");
         sb.AppendLine("Reply with JSON only, in exactly this shape:");
-        sb.AppendLine("{\"planName\":\"string\",\"days\":[{\"day\":1,\"exercises\":[{\"exerciseId\":1,\"sets\":3,\"reps\":12,\"durationMinutes\":null,\"note\":\"short tip\"}]}]}");
+        sb.AppendLine("{\"planName\":\"string\",\"nutritionTips\":\"string\",\"days\":[{\"day\":1,\"exercises\":[{\"exerciseId\":1,\"sets\":3,\"reps\":12,\"durationMinutes\":null,\"note\":\"short tip\"}]}]}");
         return sb.ToString();
     }
 
@@ -127,7 +131,7 @@ public sealed class GeminiWorkoutPlanGenerator : IWorkoutPlanGenerator
     private sealed record GeminiContent(List<GeminiPart>? Parts);
     private sealed record GeminiPart(string? Text);
 
-    private sealed record PlanReply(string? PlanName, List<DayReply>? Days);
+    private sealed record PlanReply(string? PlanName, List<DayReply>? Days, string? NutritionTips = null);
     private sealed record DayReply(int Day, List<ExerciseReply>? Exercises);
     private sealed record ExerciseReply(
         int ExerciseId, int? Sets, int? Reps,

@@ -46,6 +46,10 @@
                 </label>
                 <label class="block text-xs font-semibold">Ngày sinh<input type="date" class="mt-1 w-full border border-[#CFCFCF] px-3 py-2 text-sm rounded-none" @bind="_survey.Dob" /></label>
             </div>
+            <div class="grid grid-cols-2 gap-3">
+                <label class="block text-xs font-semibold">Mỡ cơ thể (%, InBody)<input type="number" step="0.1" class="mt-1 w-full border border-[#CFCFCF] px-3 py-2 text-sm rounded-none" @bind="_survey.BodyFat" /></label>
+                <label class="block text-xs font-semibold">Khối cơ (kg, InBody)<input type="number" step="0.1" class="mt-1 w-full border border-[#CFCFCF] px-3 py-2 text-sm rounded-none" @bind="_survey.Muscle" /></label>
+            </div>
             <label class="block text-xs font-semibold">Tình trạng sức khỏe / chấn thương
                 <textarea rows="3" maxlength="500" class="mt-1 w-full border border-[#CFCFCF] px-3 py-2 text-sm rounded-none" @bind="_survey.Health"></textarea>
                 <span class="mt-1 block font-normal text-[#71717A]">Không nhập tên, số điện thoại hay thông tin cá nhân khác.</span>
@@ -57,6 +61,10 @@
                     <input type="checkbox" class="mt-1" @bind="_consent" />
                     <span>Tôi đồng ý gửi dữ liệu khảo sát đã ẩn danh (không có tên, email, số điện thoại) tới Google Gemini để tạo giáo án.</span>
                 </label>
+                @if (_consentAt is { } consentAt)
+                {
+                    <p class="text-xs text-[#71717A]">Lần đồng ý gần nhất: @consentAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</p>
+                }
                 <button type="button" disabled="@(_busy || !_consent || !_surveyComplete)" @onclick="Generate"
                         class="w-full border-2 border-black bg-white px-6 py-3 font-['Montserrat'] text-xs font-bold uppercase rounded-none hover:bg-black hover:text-white disabled:opacity-40">
                     @(_busy ? "Đang tạo giáo án…" : "Tạo giáo án mới")
@@ -85,6 +93,13 @@
                 @if (_plan.IsFallback)
                 {
                     <p class="border border-[#F59E0B] bg-amber-50 px-4 py-3 text-xs text-[#92400E] rounded-none">Dịch vụ AI tạm thời không khả dụng nên hệ thống đã áp dụng giáo án tiêu chuẩn cho mục tiêu của bạn.</p>
+                }
+                @if (_plan.NutritionAdvice is not null)
+                {
+                    <section class="border-2 border-black bg-white px-5 py-4 rounded-none">
+                        <h2 class="font-['Montserrat'] text-xs font-extrabold uppercase tracking-wider">Gợi ý dinh dưỡng</h2>
+                        <p class="mt-2 text-sm leading-6 text-neutral-700">@_plan.NutritionAdvice</p>
+                    </section>
                 }
                 @foreach (var day in _plan.Items.GroupBy(i => i.DayNumber))
                 {
@@ -143,6 +158,7 @@
     private SurveyForm _survey = new();
     private bool _surveyComplete, _consent, _busy, _isError;
     private string? _message;
+    private DateTime? _consentAt;
     private WorkoutPlanResponse? _plan;
     private List<WorkoutPlanSummaryResponse> _history = [];
     private List<ExerciseResponse> _exercises = [];
@@ -155,11 +171,13 @@
         {
             var survey = await Api.GetAsync<FitnessSurveyResponse>("api/workout/survey");
             _surveyComplete = survey.IsComplete;
+            _consentAt = survey.AiConsentGrantedAt;
             _survey = new()
             {
                 Weight = survey.WeightKg ?? 60, Height = survey.HeightCm ?? 165, Goal = survey.FitnessGoal ?? "GeneralFitness",
                 Level = survey.FitnessLevel ?? "Beginner", Frequency = survey.WorkoutFrequencyPerWeek ?? 3, Gender = survey.Gender ?? "",
-                Dob = survey.DateOfBirth, Health = survey.HealthConditions
+                Dob = survey.DateOfBirth, Health = survey.HealthConditions,
+                BodyFat = survey.BodyFatPercent, Muscle = survey.SkeletalMuscleMassKg
             };
             _exercises = await Api.GetAsync<List<ExerciseResponse>>("api/workout/exercises");
             await LoadPlan();
@@ -180,7 +198,8 @@
         {
             var saved = await Api.PutAsync<FitnessSurveyResponse>("api/workout/survey", new FitnessSurveyRequest(
                 _survey.Weight, _survey.Height, _survey.Goal, _survey.Level, _survey.Frequency,
-                string.IsNullOrEmpty(_survey.Gender) ? null : _survey.Gender, _survey.Dob, _survey.Health));
+                string.IsNullOrEmpty(_survey.Gender) ? null : _survey.Gender, _survey.Dob, _survey.Health,
+                _survey.BodyFat, _survey.Muscle));
             _surveyComplete = saved.IsComplete;
             Show("Fitness survey updated successfully.", false);
         });
@@ -190,6 +209,7 @@
     {
         _plan = await Api.PostAsync<WorkoutPlanResponse>("api/workout/plans/generate", new GenerateWorkoutPlanRequest(_consent));
         _history = await Api.GetAsync<List<WorkoutPlanSummaryResponse>>("api/workout/plans");
+        _consentAt = DateTime.UtcNow;
         Show(_plan.IsFallback ? "Đã áp dụng giáo án tiêu chuẩn." : "Workout plan created successfully.", false);
     });
 
@@ -234,5 +254,7 @@
         public string Gender { get; set; } = "";
         public DateOnly? Dob { get; set; }
         public string? Health { get; set; }
+        public decimal? BodyFat { get; set; }
+        public decimal? Muscle { get; set; }
     }
 }

@@ -812,6 +812,8 @@ public class VfmsDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.WeightKg).HasColumnType("decimal(5,2)");
             entity.Property(e => e.HeightCm).HasColumnType("decimal(5,2)");
+            entity.Property(e => e.BodyFatPercent).HasColumnType("decimal(5,2)");
+            entity.Property(e => e.SkeletalMuscleMassKg).HasColumnType("decimal(5,2)");
 
             entity.HasOne(e => e.Member)
                 .WithOne(u => u.PhysicalProfile)
@@ -824,6 +826,7 @@ public class VfmsDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.PlanStatus).HasConversion<string>().HasMaxLength(20);
+            entity.Property(e => e.NutritionAdvice).HasMaxLength(1000);
             // GBR-94: at most one active personal plan per member, even under concurrent generation.
             entity.HasIndex(e => e.MemberUserId).IsUnique()
                 .HasFilter("[PlanStatus] = 'Active' AND [IsTemplate] = 0 AND [IsDeleted] = 0")
