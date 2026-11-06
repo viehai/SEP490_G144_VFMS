@@ -31,6 +31,8 @@ public interface IYogaRepository : IAuditedRepository
     Task<YogaClassSchedule?> GetSessionAsync(int id, CancellationToken cancellationToken = default);
     /// <summary>Non-cancelled sessions on a date, for overlap checks (GBR-74, GBR-75).</summary>
     Task<IReadOnlyList<YogaClassSchedule>> GetActiveSessionsOnDateAsync(DateOnly date, CancellationToken cancellationToken = default);
+    /// <summary>Exclusive lock on one date's timetable until the current transaction ends (GBR-74/75 check-then-insert).</summary>
+    Task LockScheduleDateAsync(DateOnly date, CancellationToken cancellationToken = default);
     /// <summary>Sessions in a date range with class, studio and bookings loaded.</summary>
     Task<IReadOnlyList<YogaClassSchedule>> GetSessionsAsync(DateOnly from, DateOnly to, CancellationToken cancellationToken = default);
 

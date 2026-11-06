@@ -247,6 +247,26 @@ public sealed class YogaTests
 
         Assert.Equal("YOGA_PUBLISH_TOO_LATE", tooSoon.ErrorCode);
         Assert.True(ok.IsSuccess, ok.ErrorMessage);
+        Assert.Equal([Today.AddDays(3), Today.AddDays(7)], repo.LockedDates);   // GBR-74/75 check runs under the date lock
+    }
+
+    [Fact]
+    public async Task PublishedSessionCanGetSubstituteInstructorInsideSevenDays()   // GBR-77 only for new or re-dated sessions
+    {
+        var repo = Seeded(out var yogaClass, out var studio);
+        yogaClass.ClassStatus = YogaClassStatus.Open;
+        var session = Session(10, studio, yogaClass, Today.AddDays(2), new(9, 0), new(10, 0));
+        repo.Sessions.Add(session);
+        var service = new YogaClassService(repo, Clock);
+
+        var substitute = await service.UpdateSessionAsync(10,
+            new YogaSessionRequest(yogaClass.Id, studio.Id, Today.AddDays(2), new(9, 0), new(10, 0), "pt-2"), "manager", null);
+        var moved = await service.UpdateSessionAsync(10,
+            new YogaSessionRequest(yogaClass.Id, studio.Id, Today.AddDays(3), new(9, 0), new(10, 0), "pt-2"), "manager", null);
+
+        Assert.True(substitute.IsSuccess, substitute.ErrorMessage);
+        Assert.Equal("pt-2", session.InstructorUserId);
+        Assert.Equal("YOGA_PUBLISH_TOO_LATE", moved.ErrorCode);
     }
 
     [Fact]
@@ -432,6 +452,12 @@ public sealed class YogaTests
         public Task<IReadOnlyList<YogaClassSchedule>> GetActiveSessionsOnDateAsync(DateOnly date, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<YogaClassSchedule>>(
                 Sessions.Where(s => s.ScheduledDate == date && s.ScheduleStatus != YogaScheduleStatus.Cancelled).ToArray());
+        public List<DateOnly> LockedDates { get; } = [];
+        public Task LockScheduleDateAsync(DateOnly date, CancellationToken cancellationToken = default)
+        {
+            LockedDates.Add(date);
+            return Task.CompletedTask;
+        }
         public Task<IReadOnlyList<YogaClassSchedule>> GetSessionsAsync(DateOnly from, DateOnly to, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<YogaClassSchedule>>(Sessions.Where(s => s.ScheduledDate >= from && s.ScheduledDate <= to).ToArray());
 

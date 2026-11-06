@@ -229,14 +229,19 @@ public sealed class YogaClassService : IYogaClassService
             return ClassNotFound<YogaSessionResponse>();
 
         var session = new YogaClassSchedule { YogaClassId = yogaClass.Id, ScheduleStatus = YogaScheduleStatus.Scheduled };
-        var check = await ValidateSessionAsync(request, yogaClass, null, cancellationToken);
-        if (check is not null)
-            return check;
-
-        ApplySession(session, request, yogaClass);
-        var audit = AuditedWriter.Audit(actorUserId, AuditActionType.Create, SessionEntity, ipAddress, newValue: Describe(session));
-        await AuditedWriter.SaveNewAsync(_repository, session, audit, null, cancellationToken);
-        return await SessionResponseAsync(session.Id, 201, cancellationToken);
+        Result<YogaSessionResponse>? failure = null;
+        await _repository.ExecuteInTransactionAsync(async () =>
+        {
+            // GBR-74/75: overlap check and insert run under one lock, so two managers cannot book the same slot.
+            await _repository.LockScheduleDateAsync(request.ScheduledDate, cancellationToken);
+            failure = await ValidateSessionAsync(request, yogaClass, null, cancellationToken);
+            if (failure is not null)
+                return;
+            ApplySession(session, request, yogaClass);
+            var audit = AuditedWriter.Audit(actorUserId, AuditActionType.Create, SessionEntity, ipAddress, newValue: Describe(session));
+            await AuditedWriter.SaveNewAsync(_repository, session, audit, null, cancellationToken);
+        }, cancellationToken);
+        return failure ?? await SessionResponseAsync(session.Id, 201, cancellationToken);
     }
 
     public async Task<Result<YogaSessionResponse>> UpdateSessionAsync(
@@ -250,25 +255,30 @@ public sealed class YogaClassService : IYogaClassService
         if (session.ScheduleStatus != YogaScheduleStatus.Scheduled)
             return Result<YogaSessionResponse>.Failure("Only scheduled sessions can be changed.", "YOGA_SESSION_NOT_SCHEDULED", 409);
 
-        var check = await ValidateSessionAsync(request, session.YogaClass, id, cancellationToken);
-        if (check is not null)
-            return check;
+        Result<YogaSessionResponse>? failure = null;
+        await _repository.ExecuteInTransactionAsync(async () =>
+        {
+            await _repository.LockScheduleDateAsync(request.ScheduledDate, cancellationToken);   // GBR-74/75
+            failure = await ValidateSessionAsync(request, session.YogaClass, session, cancellationToken);
+            if (failure is not null)
+                return;
 
-        var before = Describe(session);
-        var moved = session.ScheduledDate != request.ScheduledDate || session.StartTime != request.StartTime ||
-                    session.YogaStudioId != request.YogaStudioId;
-        ApplySession(session, request, session.YogaClass);
-        session.UpdatedAt = DateTime.UtcNow;
+            var before = Describe(session);
+            var moved = session.ScheduledDate != request.ScheduledDate || session.StartTime != request.StartTime ||
+                        session.YogaStudioId != request.YogaStudioId;
+            ApplySession(session, request, session.YogaClass);
+            session.UpdatedAt = DateTime.UtcNow;
 
-        var notifications = moved
-            ? ConfirmedMembers(session.YogaClass).Select(memberId => AuditedWriter.Notify(memberId, actorUserId,
-                "Yoga session changed",
-                $"{session.YogaClass.ClassName} is now on {session.ScheduledDate:dd/MM/yyyy} at {session.StartTime:HH\\:mm}.",
-                SessionEntity, NotificationType.YogaSessionChanged)).ToArray()
-            : [];
-        var audit = AuditedWriter.Audit(actorUserId, AuditActionType.Update, SessionEntity, ipAddress, before, Describe(session));
-        await AuditedWriter.SaveChangedAsync(_repository, session, audit, notifications, cancellationToken);
-        return await SessionResponseAsync(id, 200, cancellationToken);
+            var notifications = moved
+                ? ConfirmedMembers(session.YogaClass).Select(memberId => AuditedWriter.Notify(memberId, actorUserId,
+                    "Yoga session changed",
+                    $"{session.YogaClass.ClassName} is now on {session.ScheduledDate:dd/MM/yyyy} at {session.StartTime:HH\\:mm}.",
+                    SessionEntity, NotificationType.YogaSessionChanged)).ToArray()
+                : [];
+            var audit = AuditedWriter.Audit(actorUserId, AuditActionType.Update, SessionEntity, ipAddress, before, Describe(session));
+            await AuditedWriter.SaveChangedAsync(_repository, session, audit, notifications, cancellationToken);
+        }, cancellationToken);
+        return failure ?? await SessionResponseAsync(id, 200, cancellationToken);
     }
 
     /// <summary>GBR-76: a cancelled session no longer holds its studio or instructor; booked members are notified.</summary>
@@ -347,7 +357,7 @@ public sealed class YogaClassService : IYogaClassService
     }
 
     private async Task<Result<YogaSessionResponse>?> ValidateSessionAsync(
-        YogaSessionRequest request, YogaClass yogaClass, int? excludingSessionId, CancellationToken cancellationToken)
+        YogaSessionRequest request, YogaClass yogaClass, YogaClassSchedule? existing, CancellationToken cancellationToken)
     {
         if (yogaClass.ClassStatus is YogaClassStatus.Cancelled or YogaClassStatus.Completed)
             return Result<YogaSessionResponse>.Failure("Sessions cannot be added to a closed class.", "YOGA_CLASS_CLOSED", 409);
@@ -357,7 +367,9 @@ public sealed class YogaClassService : IYogaClassService
                 "YOGA_SESSION_OUTSIDE_CLASS");
         if (YogaTime.ToUtc(request.ScheduledDate, request.StartTime) <= _clock.GetUtcNow().UtcDateTime)
             return Result<YogaSessionResponse>.Failure("A session cannot start in the past.", "YOGA_SESSION_IN_PAST");
-        if (yogaClass.ClassStatus != YogaClassStatus.Draft && request.ScheduledDate < YogaTime.Today(_clock).AddDays(PublishLeadDays))
+        // GBR-77 only for new or re-dated sessions: a substitute instructor can still be set close to the day.
+        if (yogaClass.ClassStatus != YogaClassStatus.Draft && request.ScheduledDate != existing?.ScheduledDate &&
+            request.ScheduledDate < YogaTime.Today(_clock).AddDays(PublishLeadDays))
             return Result<YogaSessionResponse>.Failure(
                 $"The class is already published. New or moved sessions must be at least {PublishLeadDays} days away.",
                 "YOGA_PUBLISH_TOO_LATE");   // GBR-77
@@ -379,7 +391,7 @@ public sealed class YogaClassService : IYogaClassService
             return Result<YogaSessionResponse>.Failure("The selected instructor is not a trainer.", "YOGA_INVALID_INSTRUCTOR");
 
         var sameDay = (await _repository.GetActiveSessionsOnDateAsync(request.ScheduledDate, cancellationToken))
-            .Where(s => s.Id != excludingSessionId)
+            .Where(s => s.Id != existing?.Id)
             .ToArray();
         var conflict = FindConflict(request.YogaStudioId, instructorId, request.StartTime, request.EndTime, sameDay);
         return conflict is null

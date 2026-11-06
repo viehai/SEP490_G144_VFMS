@@ -85,6 +85,18 @@ public sealed class YogaRepository : AuditedRepositoryBase, IYogaRepository
             .Where(s => s.ScheduledDate == date && s.ScheduleStatus != YogaScheduleStatus.Cancelled)
             .ToListAsync(cancellationToken);
 
+    public async Task LockScheduleDateAsync(DateOnly date, CancellationToken cancellationToken = default)
+    {
+        if (!Context.Database.IsSqlServer())
+            return;   // SQLite test databases have no app locks and run one request at a time.
+        var resource = $"yoga-sessions-{date:yyyy-MM-dd}";
+        var result = await Context.Database.SqlQuery<int>(
+                $"DECLARE @r int; EXEC @r = sp_getapplock @Resource = {resource}, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000; SELECT @r AS [Value]")
+            .ToListAsync(cancellationToken);
+        if (result.Count == 0 || result[0] < 0)
+            throw new TimeoutException("The yoga timetable is busy. Please try again.");
+    }
+
     public async Task<IReadOnlyList<YogaClassSchedule>> GetSessionsAsync(DateOnly from, DateOnly to, CancellationToken cancellationToken = default) =>
         await Context.YogaClassSchedules.AsNoTracking()
             .Include(s => s.YogaClass).ThenInclude(c => c.YogaClassType)
