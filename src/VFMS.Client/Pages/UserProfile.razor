@@ -1,0 +1,238 @@
+@page "/profile"
+@layout PublicLayout
+@using System.ComponentModel.DataAnnotations
+
+<PageTitle>Hồ sơ cá nhân | Victor Fitness</PageTitle>
+
+<div class="profile-page space-y-8 rounded-none">
+    <header class="flex flex-col justify-between gap-5 border-b-2 border-black pb-7 sm:flex-row sm:items-end">
+        <div>
+            <p class="profile-heading mb-3 text-[10px] font-bold tracking-[0.18em] text-neutral-500">TÀI KHOẢN / HỒ SƠ CÁ NHÂN</p>
+            <h1 class="profile-heading text-3xl font-extrabold leading-tight tracking-tight text-black sm:text-4xl">HỒ SƠ CỦA BẠN<span class="text-neutral-400">.</span></h1>
+            <p class="mt-3 max-w-xl text-sm leading-7 text-neutral-600">Quản lý thông tin cá nhân và thiết lập bảo mật trong cùng một không gian.</p>
+        </div>
+    </header>
+
+    <p class="rounded-none border border-[#CFCFCF] bg-[#F7F7F7] px-4 py-3 text-xs leading-6 text-neutral-600"><strong class="font-medium text-black">Dữ liệu minh họa.</strong> Thay đổi chỉ áp dụng trên trang, chưa được lưu vào tài khoản thật.</p>
+
+    <div class="grid items-start gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+        <aside class="space-y-5 rounded-none" aria-label="Thông tin tài khoản minh họa">
+            <section class="rounded-none border-2 border-black bg-white p-6">
+                <div class="flex h-28 w-28 items-center justify-center rounded-none border-2 border-black bg-[#0A0A0A] text-white" aria-label="Ảnh đại diện bằng chữ viết tắt">
+                    <span class="profile-heading text-4xl font-extrabold tracking-tight">@Initials</span>
+                </div>
+                <p class="profile-heading mt-6 text-[10px] font-bold tracking-[0.16em] text-neutral-500">VFMS / PROFILE</p>
+                <h2 class="profile-heading mt-2 break-words text-xl font-extrabold leading-snug text-black">@_savedProfile.FullName</h2>
+                <p class="mt-2 break-all text-xs text-neutral-600">@_email</p>
+                <div class="mt-5 flex flex-wrap gap-2">
+                    <span class="profile-heading rounded-none bg-black px-3 py-1.5 text-[10px] font-bold tracking-wider text-white">@_role</span>
+                    <span class="inline-flex items-center gap-1.5 rounded-none border border-[#10B981] px-2.5 py-1 text-[11px] font-medium text-emerald-800"><span aria-hidden="true">✓</span> Đang hoạt động</span>
+                </div>
+                <dl class="mt-6 divide-y divide-neutral-200 border-t border-neutral-200 text-xs">
+                    <div class="flex justify-between gap-3 py-4"><dt class="text-neutral-500">Mã tài khoản</dt><dd class="font-medium text-black">@_userCode</dd></div>
+                    <div class="flex justify-between gap-3 py-4"><dt class="text-neutral-500">Tham gia từ</dt><dd class="font-medium text-black">@_joinedOn.ToString("dd/MM/yyyy")</dd></div>
+                    <div class="flex justify-between gap-3 pt-4"><dt class="text-neutral-500">Ngày sinh</dt><dd class="font-medium text-black">@_savedProfile.BirthDate.ToString("dd/MM/yyyy")</dd></div>
+                </dl>
+            </section>
+        </aside>
+
+        <div class="min-w-0 space-y-6 rounded-none">
+            <section class="rounded-none border-2 border-black bg-white" aria-labelledby="profile-information-title">
+                <div class="flex items-center justify-between gap-4 border-b-2 border-black px-6 py-5 sm:px-8">
+                    <h2 id="profile-information-title" class="profile-heading text-base font-extrabold text-black">THÔNG TIN CÁ NHÂN</h2>
+                    <span class="profile-heading text-[10px] font-bold tracking-wider text-neutral-500">01 / THÔNG TIN</span>
+                </div>
+                <div class="p-6 sm:p-8">
+                    @if (_profileNotice is not null)
+                    {
+                        <p class="mb-6 rounded-none border border-black bg-[#F7F7F7] px-4 py-3 text-sm leading-6 text-black" role="status">@_profileNotice</p>
+                    }
+                    <EditForm Model="_profile" OnValidSubmit="SaveProfileDemo" OnInvalidSubmit="ProfileInvalid" @key="_profile" novalidate>
+                        <DataAnnotationsValidator />
+                        <div class="grid gap-x-6 gap-y-5 sm:grid-cols-2">
+                            <div class="sm:col-span-2">
+                                <label for="profile-full-name" class="mb-2 block text-sm font-medium text-black">Họ và tên <span aria-hidden="true">*</span></label>
+                                <InputText id="profile-full-name" class="w-full rounded-none border border-black bg-white px-4 py-3 text-sm text-black outline-none focus:border-2 focus:border-black" @bind-Value="_profile.FullName" autocomplete="name" maxlength="256" aria-describedby="profile-name-error" />
+                                <div id="profile-name-error" class="mt-1 text-xs text-red-700"><ValidationMessage For="() => _profile.FullName" /></div>
+                            </div>
+                            <div>
+                                <label for="profile-phone" class="mb-2 block text-sm font-medium text-black">Số điện thoại <span aria-hidden="true">*</span></label>
+                                <InputText id="profile-phone" type="tel" class="w-full rounded-none border border-black bg-white px-4 py-3 text-sm text-black outline-none focus:border-2 focus:border-black" @bind-Value="_profile.PhoneNumber" autocomplete="tel" maxlength="20" aria-describedby="profile-phone-error" />
+                                <div id="profile-phone-error" class="mt-1 text-xs text-red-700"><ValidationMessage For="() => _profile.PhoneNumber" /></div>
+                            </div>
+                            <div>
+                                <label for="profile-birth-date" class="mb-2 block text-sm font-medium text-black">Ngày sinh <span aria-hidden="true">*</span></label>
+                                <InputDate id="profile-birth-date" class="w-full rounded-none border border-black bg-white px-4 py-3 text-sm text-black outline-none focus:border-2 focus:border-black" @bind-Value="_profile.BirthDate" max="@Today.ToString("yyyy-MM-dd")" autocomplete="bday" aria-describedby="profile-birth-error" />
+                                <div id="profile-birth-error" class="mt-1 text-xs text-red-700"><ValidationMessage For="() => _profile.BirthDate" /></div>
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label for="profile-email" class="mb-2 block text-sm font-medium text-black">Email</label>
+                                <input id="profile-email" type="email" class="w-full rounded-none border border-[#CFCFCF] bg-[#F7F7F7] px-4 py-3 text-sm text-neutral-600" value="@_email" readonly />
+                                <p class="mt-2 text-xs leading-6 text-neutral-500">Email được dùng để nhận diện tài khoản.</p>
+                            </div>
+                        </div>
+                        <div class="mt-7 flex flex-col-reverse gap-3 border-t border-[#CFCFCF] pt-6 sm:flex-row sm:justify-end">
+                            <button type="button" class="profile-heading rounded-none border-2 border-black bg-white px-6 py-3 text-[11px] font-extrabold tracking-wider text-black transition-colors hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black" @onclick="ResetProfile">HỦY THAY ĐỔI</button>
+                            <button type="submit" class="profile-heading rounded-none border-2 border-black bg-black px-6 py-3 text-[11px] font-extrabold tracking-wider text-white transition-colors hover:bg-white hover:text-black focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black">LƯU THAY ĐỔI <span aria-hidden="true">↗</span></button>
+                        </div>
+                    </EditForm>
+                </div>
+            </section>
+
+            <section class="rounded-none border-2 border-black bg-white" aria-labelledby="profile-security-title">
+                <div class="flex items-center justify-between gap-4 border-b-2 border-black px-6 py-5 sm:px-8">
+                    <h2 id="profile-security-title" class="profile-heading text-base font-extrabold text-black">BẢO MẬT TÀI KHOẢN</h2>
+                    <span class="profile-heading text-[10px] font-bold tracking-wider text-neutral-500">02 / MẬT KHẨU</span>
+                </div>
+                <div class="p-6 sm:p-8">
+                    <div class="flex flex-col justify-between gap-5 sm:flex-row sm:items-center">
+                        <div>
+                            <h3 class="profile-heading text-sm font-bold text-black">CHANGE PASSWORD</h3>
+                            <p class="mt-2 max-w-lg text-xs leading-6 text-neutral-600">Sử dụng mật khẩu mạnh để bảo vệ tài khoản của bạn.</p>
+                        </div>
+                        @if (!_passwordExpanded)
+                        {
+                            <button type="button" class="profile-heading shrink-0 rounded-none border-2 border-black bg-white px-5 py-3 text-[11px] font-extrabold tracking-wider text-black transition-colors hover:bg-black hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black" @onclick="OpenPasswordForm">ĐỔI MẬT KHẨU <span aria-hidden="true">↗</span></button>
+                        }
+                    </div>
+                    @if (_passwordNotice is not null)
+                    {
+                        <p class="mt-5 rounded-none border border-black bg-[#F7F7F7] px-4 py-3 text-sm leading-6 text-black" role="status">@_passwordNotice</p>
+                    }
+                    @if (_passwordExpanded)
+                    {
+                        <EditForm Model="_password" OnValidSubmit="ValidatePasswordDemo" @key="_password" novalidate>
+                            <DataAnnotationsValidator />
+                            <div class="mt-6 grid gap-5 border-t border-[#CFCFCF] pt-6">
+                                <div>
+                                    <label for="profile-old-password" class="mb-2 block text-sm font-medium text-black">Mật khẩu hiện tại</label>
+                                    <InputText id="profile-old-password" type="password" class="w-full rounded-none border border-black bg-white px-4 py-3 text-sm text-black outline-none focus:border-2 focus:border-black" @bind-Value="_password.OldPassword" autocomplete="current-password" aria-describedby="profile-old-password-error" />
+                                    <div id="profile-old-password-error" class="mt-1 text-xs text-red-700"><ValidationMessage For="() => _password.OldPassword" /></div>
+                                </div>
+                                <div>
+                                    <label for="profile-new-password" class="mb-2 block text-sm font-medium text-black">Mật khẩu mới</label>
+                                    <InputText id="profile-new-password" type="password" class="w-full rounded-none border border-black bg-white px-4 py-3 text-sm text-black outline-none focus:border-2 focus:border-black" @bind-Value="_password.NewPassword" maxlength="32" autocomplete="new-password" aria-describedby="profile-password-guidance profile-new-password-error" />
+                                    <p id="profile-password-guidance" class="mt-2 text-xs leading-6 text-neutral-500">8–32 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt.</p>
+                                    <div id="profile-new-password-error" class="mt-1 text-xs text-red-700"><ValidationMessage For="() => _password.NewPassword" /></div>
+                                </div>
+                                <div>
+                                    <label for="profile-confirm-password" class="mb-2 block text-sm font-medium text-black">Xác nhận mật khẩu mới</label>
+                                    <InputText id="profile-confirm-password" type="password" class="w-full rounded-none border border-black bg-white px-4 py-3 text-sm text-black outline-none focus:border-2 focus:border-black" @bind-Value="_password.ConfirmPassword" maxlength="32" autocomplete="new-password" aria-describedby="profile-confirm-password-error" />
+                                    <div id="profile-confirm-password-error" class="mt-1 text-xs text-red-700"><ValidationMessage For="() => _password.ConfirmPassword" /></div>
+                                </div>
+                            </div>
+                            <div class="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                                <button type="button" class="profile-heading rounded-none border-2 border-black bg-white px-5 py-3 text-[11px] font-extrabold tracking-wider text-black hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black" @onclick="ClosePasswordForm">HỦY</button>
+                                <button type="submit" class="profile-heading rounded-none border-2 border-black bg-black px-5 py-3 text-[11px] font-extrabold tracking-wider text-white hover:bg-white hover:text-black focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black">KIỂM TRA MẬT KHẨU</button>
+                            </div>
+                        </EditForm>
+                    }
+                </div>
+            </section>
+        </div>
+    </div>
+</div>
+
+@code {
+    private readonly string _email = "minhanh@example.com";
+    private readonly string _userCode = "VFMS-000128";
+    private readonly DateTime _joinedOn = new(2026, 6, 12);
+    private readonly string _role = "Member";
+    private ProfileSnapshot _savedProfile = new("Nguyễn Minh Anh", "0901234567", new DateTime(1998, 8, 21));
+    private ProfileFormModel _profile = new();
+    private PasswordFormModel _password = new();
+    private string? _profileNotice;
+    private string? _passwordNotice;
+    private bool _passwordExpanded;
+
+    private static DateTime Today => DateTime.UtcNow.AddHours(7).Date;
+    private string Initials => string.Concat(_savedProfile.FullName.Split(' ', StringSplitOptions.RemoveEmptyEntries).TakeLast(2).Select(part => part[0])).ToUpperInvariant();
+
+    protected override void OnInitialized() => _profile = CreateProfileModel();
+
+    private ProfileFormModel CreateProfileModel() => new()
+    {
+        FullName = _savedProfile.FullName,
+        PhoneNumber = _savedProfile.PhoneNumber,
+        BirthDate = _savedProfile.BirthDate
+    };
+
+    private void SaveProfileDemo()
+    {
+        _savedProfile = new(_profile.FullName.Trim(), _profile.PhoneNumber.Trim(), _profile.BirthDate!.Value.Date);
+        _profile = CreateProfileModel();
+        _profileNotice = "Đã cập nhật bản minh họa trên trang. Tài khoản thật chưa thay đổi; tải lại trang sẽ khôi phục dữ liệu mẫu.";
+    }
+
+    private void ProfileInvalid() => _profileNotice = "Vui lòng kiểm tra lại thông tin được đánh dấu bên dưới.";
+
+    private void ResetProfile()
+    {
+        _profile = CreateProfileModel();
+        _profileNotice = null;
+    }
+
+    private void OpenPasswordForm()
+    {
+        _password = new();
+        _passwordNotice = null;
+        _passwordExpanded = true;
+    }
+
+    private void ClosePasswordForm()
+    {
+        _password.OldPassword = _password.NewPassword = _password.ConfirmPassword = string.Empty;
+        _password = new();
+        _passwordExpanded = false;
+    }
+
+    private void ValidatePasswordDemo()
+    {
+        ClosePasswordForm();
+        _passwordNotice = "Mật khẩu mẫu hợp lệ và đã được xóa khỏi form. Mật khẩu tài khoản thật chưa thay đổi.";
+    }
+
+    private sealed record ProfileSnapshot(string FullName, string PhoneNumber, DateTime BirthDate);
+
+    private sealed class ProfileFormModel : IValidatableObject
+    {
+        [Required(ErrorMessage = "Vui lòng nhập họ và tên.")]
+        [StringLength(256, ErrorMessage = "Họ và tên tối đa 256 ký tự.")]
+        public string FullName { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Vui lòng nhập số điện thoại.")]
+        [StringLength(20, ErrorMessage = "Số điện thoại tối đa 20 ký tự.")]
+        [RegularExpression(@"^[0-9+\-\s()]{7,20}$", ErrorMessage = "Số điện thoại không hợp lệ.")]
+        public string PhoneNumber { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Vui lòng chọn ngày sinh.")]
+        public DateTime? BirthDate { get; set; }
+
+        public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+        {
+            if (BirthDate.HasValue && BirthDate.Value.Date >= Today)
+                yield return new ValidationResult("Ngày sinh phải trước ngày hôm nay.", [nameof(BirthDate)]);
+        }
+    }
+
+    private sealed class PasswordFormModel : IValidatableObject
+    {
+        [Required(ErrorMessage = "Vui lòng nhập mật khẩu hiện tại.")]
+        public string OldPassword { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Vui lòng nhập mật khẩu mới.")]
+        [StringLength(32, MinimumLength = 8, ErrorMessage = "Mật khẩu mới cần từ 8 đến 32 ký tự.")]
+        [RegularExpression(@"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^a-zA-Z0-9]).+$", ErrorMessage = "Mật khẩu cần có chữ hoa, chữ thường, số và ký tự đặc biệt.")]
+        public string NewPassword { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Vui lòng xác nhận mật khẩu mới.")]
+        [Compare(nameof(NewPassword), ErrorMessage = "Mật khẩu xác nhận chưa khớp.")]
+        public string ConfirmPassword { get; set; } = string.Empty;
+
+        public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+        {
+            if (!string.IsNullOrEmpty(NewPassword) && NewPassword == OldPassword)
+                yield return new ValidationResult("Mật khẩu mới phải khác mật khẩu hiện tại.", [nameof(NewPassword)]);
+        }
+    }
+}

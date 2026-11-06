@@ -15,6 +15,8 @@ public class ApplicationUser : BaseEntity
     public string Email { get; set; } = string.Empty;
     public string PhoneNumber { get; set; } = string.Empty;
     public string PasswordHash { get; set; } = string.Empty;
+    public string? ResetTokenHash { get; set; }
+    public DateTime? ResetTokenExpiresAt { get; set; }
     public string? AvatarUrl { get; set; }
     public AccountStatus AccountStatus { get; set; } = AccountStatus.PendingVerification;
     public DateTime? LastLoginAt { get; set; }
