@@ -22,6 +22,15 @@ builder.Services.AddScoped(sp =>
     });
 });
 builder.Services.AddScoped<AuthSession>();
+builder.Services.AddScoped(sp =>
+{
+    var apiBaseUrl = builder.Configuration["ApiBaseUrl"] ?? builder.HostEnvironment.BaseAddress;
+    return new VfmsApiClient(new HttpClient
+    {
+        BaseAddress = new Uri(apiBaseUrl.TrimEnd('/') + "/"),
+        Timeout = TimeSpan.FromSeconds(40)
+    }, sp.GetRequiredService<AuthSession>());
+});
 builder.Services.AddScoped<AuthenticationStateProvider>(sp => sp.GetRequiredService<AuthSession>());
 
 await builder.Build().RunAsync();
