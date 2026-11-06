@@ -263,10 +263,13 @@ public sealed class YogaTests
             new YogaSessionRequest(yogaClass.Id, studio.Id, Today.AddDays(2), new(9, 0), new(10, 0), "pt-2"), "manager", null);
         var moved = await service.UpdateSessionAsync(10,
             new YogaSessionRequest(yogaClass.Id, studio.Id, Today.AddDays(3), new(9, 0), new(10, 0), "pt-2"), "manager", null);
+        var retimed = await service.UpdateSessionAsync(10,
+            new YogaSessionRequest(yogaClass.Id, studio.Id, Today.AddDays(2), new(18, 0), new(19, 0), "pt-2"), "manager", null);
 
         Assert.True(substitute.IsSuccess, substitute.ErrorMessage);
         Assert.Equal("pt-2", session.InstructorUserId);
         Assert.Equal("YOGA_PUBLISH_TOO_LATE", moved.ErrorCode);
+        Assert.Equal("YOGA_PUBLISH_TOO_LATE", retimed.ErrorCode);
     }
 
     [Fact]

@@ -364,8 +364,9 @@ public sealed class YogaClassService : IYogaClassService
                 "YOGA_SESSION_OUTSIDE_CLASS");
         if (YogaTime.ToUtc(request.ScheduledDate, request.StartTime) <= _clock.GetUtcNow().UtcDateTime)
             return Result<YogaSessionResponse>.Failure("A session cannot start in the past.", "YOGA_SESSION_IN_PAST");
-        // GBR-77 only for new or re-dated sessions: a substitute instructor can still be set close to the day.
-        if (yogaClass.ClassStatus != YogaClassStatus.Draft && request.ScheduledDate != existing?.ScheduledDate &&
+        // GBR-77 only for new or re-timed sessions: a substitute instructor or room can still be set close to the day.
+        if (yogaClass.ClassStatus != YogaClassStatus.Draft &&
+            (request.ScheduledDate != existing?.ScheduledDate || request.StartTime != existing.StartTime) &&
             request.ScheduledDate < YogaTime.Today(_clock).AddDays(PublishLeadDays))
             return Result<YogaSessionResponse>.Failure(
                 $"The class is already published. New or moved sessions must be at least {PublishLeadDays} days away.",
