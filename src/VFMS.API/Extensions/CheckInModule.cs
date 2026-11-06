@@ -15,9 +15,13 @@ public static class CheckInModule
         var keysPath = configuration["DataProtection:KeysPath"];
         if (string.IsNullOrWhiteSpace(keysPath))
             keysPath = Path.Combine(environment.ContentRootPath, "keys");
-        services.AddDataProtection()
+        var dataProtection = services.AddDataProtection()
             .SetApplicationName("VFMS")
             .PersistKeysToFileSystem(new DirectoryInfo(keysPath));
+        // SRS 2.3: face templates must be encrypted at rest, so the key ring that encrypts them must not sit in plain XML.
+        // shortcut: DPAPI only exists on Windows (the single-server deployment); on Linux use ProtectKeysWithCertificate.
+        if (OperatingSystem.IsWindows())
+            dataProtection.ProtectKeysWithDpapi();
 
         services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<IFaceTemplateProtector, DataProtectionFaceTemplateProtector>();

@@ -34,16 +34,31 @@
         @if (_profile?.IsRegistered == true)
         {
             <p class="mt-3 text-sm text-neutral-600">Đăng ký lúc @_profile.RegisteredAt?.ToLocalTime().ToString("dd/MM/yyyy HH:mm")@(_profile.LastUsedAt is { } used ? $" · dùng gần nhất {used.ToLocalTime():dd/MM/yyyy HH:mm}" : "")</p>
-            <button type="button" disabled="@_busy" class="mt-4 border-2 border-[#EF4444] px-5 py-3 text-xs font-bold uppercase text-[#B91C1C] rounded-none" @onclick="Delete">Xóa dữ liệu khuôn mặt</button>
+            @if (_confirmDelete)
+            {
+                <div class="mt-4 flex flex-wrap items-center gap-3">
+                    <span class="text-sm">Xóa mẫu khuôn mặt ngay lập tức? Bạn sẽ chỉ check-in được bằng mã QR.</span>
+                    <button type="button" disabled="@_busy" class="border-2 border-[#EF4444] bg-[#EF4444] px-5 py-3 text-xs font-bold uppercase text-white rounded-none" @onclick="Delete">Xác nhận xóa</button>
+                    <button type="button" class="text-xs underline" @onclick="() => _confirmDelete = false">Hủy</button>
+                </div>
+            }
+            else
+            {
+                <button type="button" disabled="@_busy" class="mt-4 border-2 border-[#EF4444] px-5 py-3 text-xs font-bold uppercase text-[#B91C1C] rounded-none" @onclick="() => _confirmDelete = true">Xóa dữ liệu khuôn mặt</button>
+            }
         }
     </section>
 
     <section class="space-y-4 border-2 border-black bg-white p-6 rounded-none">
         <h2 class="font-['Montserrat'] text-sm font-extrabold uppercase">@(_profile?.IsRegistered == true ? "Cập nhật khuôn mặt" : "Đăng ký khuôn mặt")</h2>
         <label class="flex items-start gap-2 text-xs leading-5">
-            <input type="checkbox" class="mt-1" @bind="_consent" />
+            <input type="checkbox" class="mt-1" @bind="_consent" @bind:after="() => _consentError = false" aria-describedby="consent-error" />
             <span>Tôi đồng ý cho Victor Fitness xử lý dữ liệu sinh trắc học khuôn mặt để check-in. Ảnh chỉ được xử lý trên thiết bị này; hệ thống chỉ lưu mẫu khuôn mặt đã mã hóa và xóa sau 90 ngày kể từ khi gói tập cuối cùng hết hạn.</span>
         </label>
+        @if (_consentError)
+        {
+            <p id="consent-error" role="alert" class="text-xs text-[#B91C1C]">The consent field is required.</p>
+        }
         <div class="relative aspect-[4/3] w-full max-w-md overflow-hidden border-2 border-black bg-[#0A0A0A] rounded-none">
             <video @ref="_video" class="h-full w-full -scale-x-100 object-cover" playsinline muted></video>
             @if (!_cameraOn)
@@ -54,7 +69,7 @@
         <div class="flex flex-wrap gap-2">
             @if (!_cameraOn)
             {
-                <button type="button" disabled="@(!_consent || _busy)" class="bg-black px-6 py-3 text-xs font-bold uppercase text-white rounded-none disabled:opacity-40" @onclick="StartCamera">Bật camera</button>
+                <button type="button" disabled="@_busy" class="bg-black px-6 py-3 text-xs font-bold uppercase text-white rounded-none disabled:opacity-40" @onclick="StartCamera">Tiếp tục</button>
             }
             else
             {
@@ -69,7 +84,7 @@
 @code {
     private ElementReference _video;
     private FaceProfileResponse? _profile;
-    private bool _consent, _cameraOn, _busy, _isError;
+    private bool _consent, _consentError, _confirmDelete, _cameraOn, _busy, _isError;
     private string? _message;
 
     protected override async Task OnInitializedAsync()
@@ -80,6 +95,11 @@
 
     private async Task StartCamera()
     {
+        if (!_consent)
+        {
+            _consentError = true;   // SRS 8.1 alt flow: no camera without the biometric consent (MSG-02)
+            return;
+        }
         _busy = true;
         try
         {
@@ -102,9 +122,10 @@
                 Show("Không phát hiện khuôn mặt. Hãy nhìn thẳng vào camera và thử lại.", true);
                 return;
             }
+            var wasRegistered = _profile?.IsRegistered == true;
             _profile = await Api.PutAsync<FaceProfileResponse>("api/face-profile", new RegisterFaceRequest(descriptor, _consent));
             await StopCamera();
-            Show("Face profile updated successfully.", false);
+            Show(wasRegistered ? "Face profile updated successfully." : "Face profile created successfully.", false);   // MSG-03 / MSG-04
         }
         catch (ApiException ex) { Show(ex.Message, true); }
         catch (JSException) { Show("Không xử lý được ảnh. Vui lòng thử lại.", true); }
@@ -117,7 +138,8 @@
         try
         {
             _profile = await Api.DeleteAsync<FaceProfileResponse>("api/face-profile");
-            Show("Đã xóa dữ liệu khuôn mặt.", false);
+            _confirmDelete = false;
+            Show("Face profile updated successfully.", false);   // MSG-03 (SRS 8.1 delete flow)
         }
         catch (ApiException ex) { Show(ex.Message, true); }
         finally { _busy = false; }
