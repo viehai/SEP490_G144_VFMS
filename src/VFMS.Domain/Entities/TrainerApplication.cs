@@ -11,6 +11,13 @@ namespace VFMS.Domain.Entities;
 /// </summary>
 public class TrainerApplication : BaseEntity
 {
+    public string ApplicationType { get; set; } = "Recruitment";
+    public string CertificatesJson { get; set; } = "[]";
+    public string EmailQueueJson { get; set; } = "[]";
+    public bool IsRecruitmentRestricted { get; set; }
+    public string? RestrictionReason { get; set; }
+    public string? RestrictionChangedByUserId { get; set; }
+    public DateTime? RestrictionChangedAt { get; set; }
     public string TrackingCode { get; set; } = string.Empty;
     public DateOnly? DateOfBirth { get; set; }
     public string Gender { get; set; } = string.Empty;

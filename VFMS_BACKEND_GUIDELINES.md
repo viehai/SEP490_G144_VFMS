@@ -57,11 +57,20 @@ This document defines the architectural and domain implementation conventions fo
 - Validate advance notice (`GBR-42`), min/max duration per request (`GBR-40`), and remaining cumulative quota (`GBR-41`, `MSG-27`). Weekly Yoga packages cannot be frozen (`GBR-85`).
 - Manager reviews and approves/rejects requests (`UC-17`). Upon approval, extend `MemberMembership` expiry date by frozen days and suspend turnstile/booking access while `Frozen` (`GBR-43`). Support early unfreeze recalculation (`GBR-44`).
 
-### 4.2 Trainer Recruitment & Profile (`GBR-01` to `GBR-05`)
-- Guests/Customers submit trainer applications with Citizen ID (CCCD), Email, Phone, and certificate attachments (`<= 5MB` PDF/JPG/PNG, `GBR-01`). Enforce 30-day duplicate submission cooldown per CCCD/Email (`GBR-03`) and block blacklisted applicants.
-- Submitting an application does **not** create an `ApplicationUser` account (`GBR-02`). Only when the Manager marks the candidate as `Hired` (`UC-23`) and sets Trainer Level + commission tier (`GBR-04`) does the system provision a PT user account.
-- PTs can update their public bio and avatar (screened against `BannedWordList`), but new certificates/specialties require Manager approval (`GBR-05`).
-- Apply GBR-96 recruitment restrictions separately from account locks, with Manager reason/audit. Preserve multiple application attempts per applicant and enforce cooldown for every submitted status. At hiring, link a verified existing account or create one; preserve roles/history and send a single-use setup link rather than a plaintext password. GBR-97 requires pending credential-change records while retaining approved public data.
+### 4.2 Trainer Recruitment & Profile (`GBR-01` to `GBR-05`, `GBR-96/97`)
+
+Guests/Customers submit Recruitment applications with full identity/contact data and certificate evidence. Submission does not create an account. Hiring links a verified existing account or creates an account awaiting password setup, preserving existing roles/history and avoiding duplicate profiles.
+
+### Module 3 simplification decision of 7 November 2026
+
+- Reuse `TrainerApplication` with `ApplicationType` = `Recruitment` or `ProfileUpdate`. Each accepted submission/resubmission is a new row; retain prior attempts. Do not add `TrainerDocument`, `TrainerCredentialChange`, `TrainerRecruitmentRestriction`, `TrainerSetupToken` or `TrainerEmail` tables.
+- Apply the existing 30-day email/CCCD cooldown to `Recruitment` only. `ProfileUpdate` allows one pending application per PT, including concurrent requests. This is an explicit implementation decision; confirmation in the policy document remains outstanding.
+- PT submits the same full DTO to `POST /api/trainers/applications` with `ApplicationType: ProfileUpdate`. Keep published `TrainerProfile` unchanged until approval. Manager uses `POST /api/trainers/applications/{id}/review`, `Action: Approve` or `Reject` for updates; `Interview`/`Hire` belong to recruitment (which also supports rejection). Remove the separate credential-change endpoints.
+- ProfileUpdate email must match the current account email, and Citizen ID must match the original hired application. Matching the original application email is not required: a verified existing account linked by phone may legitimately have a different email.
+- Recruitment restriction management updates existing application rows matching the exact email AND Citizen ID pair, with a mandatory Manager reason. No exact pair match returns 404. Historical rows sharing only email or Citizen ID do not prevent management of the matching pair. Submission/hiring restriction checks remain email OR Citizen ID. Unblocking does not waive the Recruitment cooldown or unlock an account.
+- Certificate metadata JSON on application/profile is canonical. Legacy URL fields remain for compatibility. New uploads go only to private disk at `TrainerFiles:Root` (`TrainerFiles__Root` environment variable), default `AppContext.BaseDirectory/App_Data/trainer-files`. Preserve old binary content in `LegacyContentBase64` JSON fallback during migration.
+- Use `/api/trainers/applications/{id}/documents/{fileId}` for private application files, `/api/trainers/{profileId}/documents/{fileId}` for public approved certificates, and `/api/trainers/{profileId}/avatar`. Route handlers enforce ownership/publication access; never expose raw disk paths. Document `Id` is a string and `DownloadUrl` is supplied; profile `AvatarUrl` replaces `AvatarFileId`.
+- Nullable `PasswordSetupTokenHash` and `PasswordSetupExpiresAt` belong to `ApplicationUser`. Login/logout contracts remain unchanged. `EmailQueueJson` on each application holds encrypted email body and retry information. Existing `AuditLog` stores action/record IDs and before/after status only, with no PII content or secrets.
 
 ### 4.3 Personal Training (PT 1-on-1) Scheduling & PT Freeze (`GBR-06` to `GBR-17`)
 - Requires an active General Gym Membership covering the training period (`GBR-10`, `MSG-31`).

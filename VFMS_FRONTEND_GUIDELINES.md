@@ -89,7 +89,7 @@ VFMS.Client/
 - Provide approval/rejection controls only for Manager. Assigned PT sees request details and can advise. Preview replacement dates and the exact frozen-day extension; never show a future approved request as already Frozen.
 - Purchase selects trainer, package, start date and fixed recurring days/time. Preview all generated appointments; a two-week view does not limit booking to 14 days. Display a 15-minute hold deadline from the server and a separate late-payment reconciliation state.
 - Show Used/Reserved/Available/Remaining credits distinctly from appointment counts. One credit is 60 minutes; a double appointment uses two. Explain cancellation penalties and request explicit member confirmation for trainer-proposed changes.
-- Public trainer cards link to View My PT Schedule or Explore Packages, not rolling Book Session. Credential edits show pending approval while the approved profile stays public. Recruitment screens support tracking, 30-day cooldown and recruitment restrictions (GBR-96/97); onboarding uses setup links.
+- Public trainer cards link to View My PT Schedule or Explore Packages, not rolling Book Session. Full ProfileUpdate applications show pending approval while the approved profile stays public. The 30-day cooldown is Recruitment-only; onboarding uses setup links. Follow the module 3 simplification decision below.
 
 ### 5.3 Yoga Timetable, Waitlist, No-Show Penalty & Attendance
 - Display weekly Yoga sessions (`View Yoga Schedule`) with studio name, floor, instructor, difficulty, and live free-seat counter.
@@ -199,3 +199,15 @@ Bạn là một Chuyên gia Blazor WebAssembly Frontend Developer (.NET 8 + Tail
 3. **Nghiệp vụ Mới Nhất:** Hỗ trợ Giỏ hàng Combo (GYM, PT, YOGA), Check-out thanh toán VietQR động kèm đếm ngược 15 phút, và bám sát ma trận phân quyền `<AuthorizeView Roles="...">` (7 roles).
 
 **[END PROMPT FOR AI AGENT]**
+
+
+### Module 3 simplification decision of 7 November 2026
+
+- Reuse `TrainerApplication` with `ApplicationType` = `Recruitment` or `ProfileUpdate`. Each accepted submission/resubmission is a new row; retain prior attempts. Do not add `TrainerDocument`, `TrainerCredentialChange`, `TrainerRecruitmentRestriction`, `TrainerSetupToken` or `TrainerEmail` tables.
+- Apply the existing 30-day email/CCCD cooldown to `Recruitment` only. `ProfileUpdate` allows one pending application per PT, including concurrent requests. This is an explicit implementation decision; confirmation in the policy document remains outstanding.
+- PT submits the same full DTO to `POST /api/trainers/applications` with `ApplicationType: ProfileUpdate`. Keep published `TrainerProfile` unchanged until approval. Manager uses `POST /api/trainers/applications/{id}/review`, `Action: Approve` or `Reject` for updates; `Interview`/`Hire` belong to recruitment (which also supports rejection). Remove the separate credential-change endpoints.
+- ProfileUpdate email must match the current account email, and Citizen ID must match the original hired application. Matching the original application email is not required: a verified existing account linked by phone may legitimately have a different email.
+- Recruitment restriction management updates existing application rows matching the exact email AND Citizen ID pair, with a mandatory Manager reason. No exact pair match returns 404. Historical rows sharing only email or Citizen ID do not prevent management of the matching pair. Submission/hiring restriction checks remain email OR Citizen ID. Unblocking does not waive the Recruitment cooldown or unlock an account.
+- Certificate metadata JSON on application/profile is canonical. Legacy URL fields remain for compatibility. New uploads go only to private disk at `TrainerFiles:Root` (`TrainerFiles__Root` environment variable), default `AppContext.BaseDirectory/App_Data/trainer-files`. Preserve old binary content in `LegacyContentBase64` JSON fallback during migration.
+- Use `/api/trainers/applications/{id}/documents/{fileId}` for private application files, `/api/trainers/{profileId}/documents/{fileId}` for public approved certificates, and `/api/trainers/{profileId}/avatar`. Route handlers enforce ownership/publication access; never expose raw disk paths. Document `Id` is a string and `DownloadUrl` is supplied; profile `AvatarUrl` replaces `AvatarFileId`.
+- Nullable `PasswordSetupTokenHash` and `PasswordSetupExpiresAt` belong to `ApplicationUser`. Login/logout contracts remain unchanged. `EmailQueueJson` on each application holds encrypted email body and retry information. Existing `AuditLog` stores action/record IDs and before/after status only, with no PII content or secrets.

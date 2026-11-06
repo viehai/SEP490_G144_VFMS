@@ -1,6 +1,7 @@
 using VFMS.Contracts.Common;
 using VFMS.Domain.Common;
 using VFMS.Domain.Entities;
+using VFMS.Contracts.Trainers;
 
 namespace VFMS.Application.Interfaces;
 
@@ -14,5 +15,7 @@ public interface ITrainerStore
     void Add<T>(T entity) where T : BaseEntity;
     Task Save(CancellationToken ct);
     Task<Result<T>> Write<T>(Func<Task<Result<T>>> action, CancellationToken ct);
-    TrainerEmail Email(string recipient, string subject, string body);
+    TrainerQueuedEmail Email(string recipient, string subject, string body);
+    Task<TrainerStoredFile> SaveFile(TrainerFileInput file, CancellationToken ct);
+    Task<byte[]?> ReadFile(TrainerStoredFile file, CancellationToken ct);
 }

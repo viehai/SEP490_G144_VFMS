@@ -35,16 +35,17 @@ public sealed class TrainersController(TrainerService service) : ControllerBase
     public async Task<IActionResult> Mine(CancellationToken ct) => this.ToActionResult(await service.Mine(Actor, ct));
     [HttpPut("me"), Authorize(Roles = "PT")]
     public async Task<IActionResult> Update(UpdateTrainerProfileRequest request, CancellationToken ct) => this.ToActionResult(await service.Update(request, Actor, ct));
-    [HttpPost("me/credential-changes"), Authorize(Roles = "PT")]
-    public async Task<IActionResult> Credentials(TrainerCredentialRequest request, CancellationToken ct) => this.ToActionResult(await service.RequestCredentials(request, Actor, ct));
-    [HttpGet("credential-changes"), Authorize(Roles = "PT,Manager")]
-    public async Task<IActionResult> Changes(CancellationToken ct, int page = 1, int pageSize = 20) => this.ToActionResult(await service.Changes(Actor, page, pageSize, ct));
-    [HttpPost("credential-changes/{id:int}/review"), Authorize(Roles = "Manager")]
-    public async Task<IActionResult> ReviewCredentials(int id, ReviewTrainerCredentialRequest request, CancellationToken ct) => this.ToActionResult(await service.ReviewCredentials(id, request, Actor, ct));
-    [HttpGet("documents/{id:int}"), AllowAnonymous]
-    public async Task<IActionResult> Document(int id, CancellationToken ct)
+    [HttpGet("me/applications"), Authorize(Roles = "PT")]
+    public async Task<IActionResult> MyApplications([FromQuery] TrainerApplicationFilter query, CancellationToken ct) => this.ToActionResult(await service.MyApplications(query, Actor, ct));
+    [HttpGet("applications/{id:int}/documents/{fileId}"), Authorize(Roles = "Manager,PT")]
+    public async Task<IActionResult> ApplicationDocument(int id, string fileId, CancellationToken ct) => Download(await service.ApplicationDocument(id, fileId, Actor, ct));
+    [HttpGet("{id:int}/documents/{fileId}"), AllowAnonymous]
+    public async Task<IActionResult> Document(int id, string fileId, CancellationToken ct) => Download(await service.Document(id, fileId, User.GetUserId(), ct));
+    [HttpGet("{id:int}/avatar"), AllowAnonymous]
+    public async Task<IActionResult> Avatar(int id, CancellationToken ct) => Download(await service.Avatar(id, User.GetUserId(), ct));
+    private IActionResult Download(VFMS.Contracts.Common.Result<TrainerFileResponse> result)
     {
-        var result = await service.Document(id, User.GetUserId(), ct); if (!result.IsSuccess) return this.ToActionResult(result);
+        if (!result.IsSuccess) return this.ToActionResult(result);
         Response.Headers["X-Content-Type-Options"] = "nosniff"; Response.Headers.CacheControl = "private, no-store";
         return File(result.Data!.Content, result.Data.ContentType, result.Data.FileName);
     }

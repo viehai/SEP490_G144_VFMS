@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using MimeKit;
 using VFMS.Domain.Entities;
 using VFMS.Infrastructure.Data;
+using System.Text.Json;
 
 namespace VFMS.Infrastructure.Identity;
 
@@ -29,8 +30,14 @@ public sealed class TrainerEmailWorker(IServiceScopeFactory scopes, IConfigurati
         using var scope = scopes.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
         var protector = scope.ServiceProvider.GetRequiredService<IDataProtectionProvider>().CreateProtector("VFMS.TrainerEmail.v1");
         await using var tx = await db.Database.BeginTransactionAsync(ct);
-        await db.Database.ExecuteSqlRawAsync("DECLARE @r int; EXEC @r=sys.sp_getapplock @Resource=N'VFMS.TrainerMail', @LockMode='Exclusive', @LockOwner='Transaction', @LockTimeout=0; IF @r < 0 THROW 51001, 'Mail worker busy', 1;", ct);
-        var now = DateTime.UtcNow; var batch = await db.Set<TrainerEmail>().Where(x => !x.IsDeleted && x.SentAt == null && x.NextAttemptAt <= now).OrderBy(x => x.Id).Take(10).ToListAsync(ct);
+        // Same lock as service writes: prevents overwriting newly queued emails or token reissues.
+        // Deliver one message per tick so the lock has a bounded SMTP workload.
+        await db.Database.ExecuteSqlRawAsync("DECLARE @r int; EXEC @r=sys.sp_getapplock @Resource=N'VFMS.TrainerRecruitment', @LockMode='Exclusive', @LockOwner='Transaction', @LockTimeout=0; IF @r < 0 THROW 51001, 'Mail worker busy', 1;", ct);
+        var now = DateTime.UtcNow;
+        var application = await db.TrainerApplications.FromSqlRaw("SELECT TOP (1) a.* FROM TrainerApplications a WHERE a.IsDeleted=0 AND EXISTS (SELECT 1 FROM OPENJSON(a.EmailQueueJson) WITH (SentAt datetime2 '$.SentAt', NextAttemptAt datetime2 '$.NextAttemptAt', IsDeleted bit '$.IsDeleted') e WHERE ISNULL(e.IsDeleted,0)=0 AND e.SentAt IS NULL AND e.NextAttemptAt <= SYSUTCDATETIME()) ORDER BY a.Id").FirstOrDefaultAsync(ct);
+        if (application == null) { await tx.CommitAsync(ct); return; }
+        var emails = JsonSerializer.Deserialize<List<TrainerQueuedEmail>>(application.EmailQueueJson) ?? [];
+        var batch = emails.Where(x => !x.IsDeleted && x.SentAt == null && x.NextAttemptAt <= now).Take(1);
         foreach (var item in batch)
         {
             try
@@ -53,6 +60,7 @@ public sealed class TrainerEmailWorker(IServiceScopeFactory scopes, IConfigurati
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch (Exception) { item.Attempts++; item.NextAttemptAt = DateTime.UtcNow.AddMinutes(Math.Min(1440, Math.Pow(2, Math.Min(item.Attempts, 10)))); log.LogWarning("Trainer email {EmailId} failed; queued for retry.", item.Id); }
         }
+        application.EmailQueueJson = JsonSerializer.Serialize(emails);
         await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
     }
 }

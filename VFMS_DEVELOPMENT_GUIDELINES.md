@@ -105,7 +105,7 @@ Implement scheduled background tasks in `VFMS.Infrastructure/BackgroundServices/
 
 - PT uses fixed recurring schedules selected at purchase: 12/24/36 credits, validity 60/120/180 days. Generate only purchased credits, check both participants' calendars and Gym Membership coverage, and hold dates for 15 minutes from order creation. Late payments require reconciliation; duplicate callbacks cannot duplicate fulfillment.
 - One credit is 60 minutes; a continuous 120-minute appointment uses two. Track Used, Reserved and Available separately. Cancellation at least 4 hours before start releases reserved credits; late cancellation/no-show consumes allocated credits. Schedule changes require member confirmation.
-- Recruitment does not create an account until hiring. Link verified existing accounts, preserve history and use setup links for new accounts. GBR-96 governs recruitment restrictions; GBR-97 governs approval of credential changes while retaining the approved public version.
+- Recruitment does not create an account until hiring. Link verified existing accounts, preserve history and use setup links for new accounts. GBR-96/97 follow the module 3 simplification decision below.
 - Locker online checkout leads to PendingHandover/Reserved, then Active/Occupied after physical handover. Financial settlements and refund completion are explicit records, not inferred from locker status.
 - Notification access is recipient-scoped; announcement access is audience-scoped. Manager and Admin publish announcements. PT check-in records attendance rather than immediate completion.
 - Scheduled responsibilities must also cover locker collection timeout, notification archival, announcement publication/expiration and email retry. These are required behaviors, not a claim that workers exist yet.
@@ -133,3 +133,15 @@ Format: `type(scope): description`
 - Open PRs from `dev/<member-name>` into `main`.
 - Ensure `dotnet build` and unit tests pass before requesting review from the team leader.
 - Use **Squash and merge** to maintain a clean linear history on `main`.
+
+
+### Module 3 simplification decision of 7 November 2026
+
+- Reuse `TrainerApplication` with `ApplicationType` = `Recruitment` or `ProfileUpdate`. Each accepted submission/resubmission is a new row; retain prior attempts. Do not add `TrainerDocument`, `TrainerCredentialChange`, `TrainerRecruitmentRestriction`, `TrainerSetupToken` or `TrainerEmail` tables.
+- Apply the existing 30-day email/CCCD cooldown to `Recruitment` only. `ProfileUpdate` allows one pending application per PT, including concurrent requests. This is an explicit implementation decision; confirmation in the policy document remains outstanding.
+- PT submits the same full DTO to `POST /api/trainers/applications` with `ApplicationType: ProfileUpdate`. Keep published `TrainerProfile` unchanged until approval. Manager uses `POST /api/trainers/applications/{id}/review`, `Action: Approve` or `Reject` for updates; `Interview`/`Hire` belong to recruitment (which also supports rejection). Remove the separate credential-change endpoints.
+- ProfileUpdate email must match the current account email, and Citizen ID must match the original hired application. Matching the original application email is not required: a verified existing account linked by phone may legitimately have a different email.
+- Recruitment restriction management updates existing application rows matching the exact email AND Citizen ID pair, with a mandatory Manager reason. No exact pair match returns 404. Historical rows sharing only email or Citizen ID do not prevent management of the matching pair. Submission/hiring restriction checks remain email OR Citizen ID. Unblocking does not waive the Recruitment cooldown or unlock an account.
+- Certificate metadata JSON on application/profile is canonical. Legacy URL fields remain for compatibility. New uploads go only to private disk at `TrainerFiles:Root` (`TrainerFiles__Root` environment variable), default `AppContext.BaseDirectory/App_Data/trainer-files`. Preserve old binary content in `LegacyContentBase64` JSON fallback during migration.
+- Use `/api/trainers/applications/{id}/documents/{fileId}` for private application files, `/api/trainers/{profileId}/documents/{fileId}` for public approved certificates, and `/api/trainers/{profileId}/avatar`. Route handlers enforce ownership/publication access; never expose raw disk paths. Document `Id` is a string and `DownloadUrl` is supplied; profile `AvatarUrl` replaces `AvatarFileId`.
+- Nullable `PasswordSetupTokenHash` and `PasswordSetupExpiresAt` belong to `ApplicationUser`. Login/logout contracts remain unchanged. `EmailQueueJson` on each application holds encrypted email body and retry information. Existing `AuditLog` stores action/record IDs and before/after status only, with no PII content or secrets.

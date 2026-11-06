@@ -15,6 +15,9 @@ public class ApplicationUser : BaseEntity
     public string Email { get; set; } = string.Empty;
     public string PhoneNumber { get; set; } = string.Empty;
     public string PasswordHash { get; set; } = string.Empty;
+    // First-time onboarding only; login/refresh/logout do not consume these fields.
+    public string? PasswordSetupTokenHash { get; set; }
+    public DateTime? PasswordSetupExpiresAt { get; set; }
     public string? AvatarUrl { get; set; }
     public AccountStatus AccountStatus { get; set; } = AccountStatus.PendingVerification;
     public DateTime? LastLoginAt { get; set; }

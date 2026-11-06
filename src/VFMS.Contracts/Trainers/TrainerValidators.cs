@@ -20,6 +20,7 @@ public sealed class SubmitTrainerApplicationValidator : AbstractValidator<Submit
 {
     public SubmitTrainerApplicationValidator()
     {
+        RuleFor(x => x.ApplicationType).Must(x => x is "Recruitment" or "ProfileUpdate");
         RuleFor(x => x.FullName).NotEmpty().MaximumLength(256);
         RuleFor(x => x.Email).NotEmpty().EmailAddress().MaximumLength(256);
         RuleFor(x => x.PhoneNumber).NotEmpty().Matches(@"^\+?[0-9]{9,15}$");
@@ -39,7 +40,7 @@ public sealed class ReviewTrainerApplicationValidator : AbstractValidator<Review
 {
     public ReviewTrainerApplicationValidator()
     {
-        RuleFor(x => x.Action).Must(x => x is "Interview" or "Reject" or "Hire");
+        RuleFor(x => x.Action).Must(x => x is "Interview" or "Reject" or "Hire" or "Approve");
         RuleFor(x => x.Note).NotEmpty().MaximumLength(2000);
         When(x => x.Action == "Hire", () =>
         {
@@ -67,19 +68,6 @@ public sealed class TrainerProfileValidator : AbstractValidator<UpdateTrainerPro
         RuleFor(x => x.Avatar).Must(x => x == null || TrainerFileRules.ContentType(x, true) != null);
     }
 }
-public sealed class CredentialValidator : AbstractValidator<TrainerCredentialRequest>
-{
-    public CredentialValidator()
-    {
-        RuleFor(x => x.Specialty).NotEmpty().MaximumLength(200);
-        RuleFor(x => x.Certificates).NotNull().Must(x => x is { Count: >= 1 and <= 5 });
-        RuleForEach(x => x.Certificates).Must(x => TrainerFileRules.ContentType(x) != null);
-    }
-}
-public sealed class CredentialReviewValidator : AbstractValidator<ReviewTrainerCredentialRequest>
-{
-    public CredentialReviewValidator() { RuleFor(x => x.Note).NotEmpty().MaximumLength(2000); }
-}
 public sealed class TrainerSetupValidator : AbstractValidator<TrainerSetupRequest>
 {
     public TrainerSetupValidator()
@@ -102,6 +90,7 @@ public sealed class TrainerApplicationFilterValidator : AbstractValidator<Traine
 {
     public TrainerApplicationFilterValidator()
     {
+        RuleFor(x => x.ApplicationType).Must(x => x == null || x is "Recruitment" or "ProfileUpdate");
         RuleFor(x => x.Page).InclusiveBetween(1, 10000); RuleFor(x => x.PageSize).InclusiveBetween(1, 100);
         RuleFor(x => x.Specialty).MaximumLength(200);
         RuleFor(x => x.Status).Must(x => x == null || x is "Pending" or "Interviewing" or "Hired" or "Rejected" or "UnderReview" or "Approved" or "Blacklisted");

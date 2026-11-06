@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using VFMS.Application.Interfaces;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Trainers;
@@ -21,40 +22,75 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
     private async Task<bool> Moderated(string text, CancellationToken ct) =>
         (await store.List(store.Query<BannedWordList>().Where(x => x.IsActive).Select(x => x.Word), ct))
         .Any(w => !string.IsNullOrWhiteSpace(w) && text.Contains(w, StringComparison.OrdinalIgnoreCase));
-    private void Audit(string actor, string entity, int id, string action) => store.Add(new AuditLog
+    private void Audit(string? actor, string entity, int id, string action, string? before = null, string? after = null) => store.Add(new AuditLog
     {
         ActorUserId = actor,
         AuditEntity = entity,
         EntityId = id,
         ActionType = AuditActionType.Update,
-        NewValue = action,
+        OldValue = before == null ? null : JsonSerializer.Serialize(new { Status = before }),
+        NewValue = JsonSerializer.Serialize(new { Action = action, Status = after }),
         OccurredAt = DateTime.UtcNow
     });
-    private void Mail(string email, string subject, string body) => store.Add(store.Email(email, subject, body));
-    private static string Hash(string token) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
-    private static TrainerDocument File(TrainerFileInput f) => new()
+    private static List<T> Records<T>(string? json) => string.IsNullOrWhiteSpace(json) ? [] : JsonSerializer.Deserialize<List<T>>(json) ?? [];
+    private void Mail(TrainerApplication application, string email, string subject, string body)
     {
-        FileName = f.FileName,
-        Content = f.Content,
-        ContentType = TrainerFileRules.ContentType(f)!
-    };
-    private IQueryable<TrainerDocumentResponse> Docs(IQueryable<TrainerDocument> query) => query.Select(d => new TrainerDocumentResponse(d.Id, d.FileName, d.ContentType));
+        var queue = Records<TrainerQueuedEmail>(application.EmailQueueJson);
+        queue.Add(store.Email(email, subject, body));
+        application.EmailQueueJson = JsonSerializer.Serialize(queue);
+    }
+    private static string Hash(string token) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
+    private async Task<string> SaveCertificates(IEnumerable<TrainerFileInput> files, CancellationToken ct)
+    {
+        var saved = new List<TrainerStoredFile>();
+        foreach (var file in files)
+        {
+            var stored = await store.SaveFile(file, ct);
+            stored.IsPublic = false; stored.IsAvatar = false;
+            saved.Add(stored);
+        }
+        return JsonSerializer.Serialize(saved);
+    }
+    private static string PublishCertificates(string json)
+    {
+        var files = Records<TrainerStoredFile>(json);
+        foreach (var file in files) { file.IsPublic = true; file.IsAvatar = false; }
+        return JsonSerializer.Serialize(files);
+    }
+    private static IReadOnlyList<TrainerDocumentResponse> Docs(string json, string path, bool publicOnly = false) =>
+        Records<TrainerStoredFile>(json).Where(d => !d.IsDeleted && !d.IsAvatar && (!publicOnly || d.IsPublic))
+            .Select(d => new TrainerDocumentResponse(d.Id, d.FileName, d.ContentType, path + "/documents/" + Uri.EscapeDataString(d.Id))).ToList();
 
     public Task<Result<TrainerApplicationReceipt>> Submit(SubmitTrainerApplicationRequest r, string? actor, CancellationToken ct) => store.Write(async () =>
     {
         if (!(await new SubmitTrainerApplicationValidator().ValidateAsync(r, ct)).IsValid)
             return Error<TrainerApplicationReceipt>("TRAINER_VALIDATION", "Invalid application fields or certificates.", 400);
-        if (actor != null && !await Role(actor, "Customer", ct)) return Error<TrainerApplicationReceipt>("TRAINER_FORBIDDEN", "Customer role required.", 403);
+        var update = r.ApplicationType == "ProfileUpdate";
+        var pt = await Role(actor, "PT", ct);
+        if (update && !pt) return Error<TrainerApplicationReceipt>("TRAINER_FORBIDDEN", "PT role required.", 403);
+        if (!update && actor != null && !pt && !await Role(actor, "Customer", ct)) return Error<TrainerApplicationReceipt>("TRAINER_FORBIDDEN", "Customer or PT role required.", 403);
         var email = r.Email.Trim().ToLowerInvariant(); var citizen = r.CitizenId.Trim(); var now = DateTime.UtcNow;
-        if (await store.Count(store.Query<TrainerRecruitmentRestriction>().Where(x => x.IsActive && (x.Email == email || x.CitizenId == citizen)), ct) > 0)
+        if (await store.Count(store.Query<TrainerApplication>().Where(x => x.IsRecruitmentRestricted && (x.Email.ToLower() == email || x.CitizenId == citizen)), ct) > 0)
             return Error<TrainerApplicationReceipt>("RECRUITMENT_RESTRICTED", "Recruitment submission is restricted.", 403);
-        var history = store.Query<TrainerApplication>().Where(x => x.Email.ToLower() == email || x.CitizenId == citizen);
+        if (update)
+        {
+            var owner = await store.First(store.Query<ApplicationUser>().Where(x => x.UserId == actor), ct);
+            var profile = await store.First(store.Query<TrainerProfile>().Where(x => x.PTUserId == actor && x.IsActive), ct);
+            var original = await store.First(store.Query<TrainerApplication>().Where(x => x.HiredUserId == actor && x.ApplicationType == "Recruitment" && x.ApplicationStatus == TrainerApplicationStatus.Hired).OrderBy(x => x.SubmittedAt).ThenBy(x => x.Id), ct);
+            if (profile == null || owner == null || original == null || !string.Equals(owner.Email.Trim(), email, StringComparison.OrdinalIgnoreCase) || original.CitizenId != citizen)
+                return Error<TrainerApplicationReceipt>("TRAINER_IDENTITY_CONFLICT", "Email must match the current account and citizen identity must match its hired application.");
+        }
+        if (pt && await store.Count(store.Query<TrainerApplication>().Where(x => (x.ApplicantUserId == actor || x.HiredUserId == actor || x.Email.ToLower() == email || x.CitizenId == citizen) && x.ApplicationType == r.ApplicationType && (x.ApplicationStatus == TrainerApplicationStatus.Pending || x.ApplicationStatus == TrainerApplicationStatus.UnderReview || x.ApplicationStatus == TrainerApplicationStatus.Interviewing)), ct) > 0)
+            return Error<TrainerApplicationReceipt>("TRAINER_CHANGE_PENDING", "An application of this type is already pending.");
+        var history = store.Query<TrainerApplication>().Where(x => x.ApplicationType == r.ApplicationType && (x.Email.ToLower() == email || x.CitizenId == citizen));
         var last = await store.First(history.OrderByDescending(x => x.SubmittedAt), ct);
-        if (last != null && last.SubmittedAt > now.AddDays(-30))
+        if (!update && last != null && last.SubmittedAt > now.AddDays(-30))
             return Error<TrainerApplicationReceipt>("RECRUITMENT_COOLDOWN", $"You can submit again after {last.SubmittedAt.AddDays(30):O}.");
         var a = new TrainerApplication
         {
             ApplicantUserId = actor,
+            ApplicationType = r.ApplicationType,
+            CertificatesJson = await SaveCertificates(r.Certificates, ct),
             FullName = r.FullName.Trim(),
             Email = email,
             PhoneNumber = r.PhoneNumber,
@@ -70,16 +106,30 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
             SubmissionAttempt = await store.Count(history, ct) + 1
         };
         store.Add(a); await store.Save(ct);
-        foreach (var f in r.Certificates) { var d = File(f); d.TrainerApplicationId = a.Id; store.Add(d); }
-        Mail(email, "Trainer application received", $"Your tracking code is {a.TrackingCode}. Your application is Pending Review.");
+        Mail(a, email, "Trainer application received", $"Your tracking code is {a.TrackingCode}. Your application is Pending Review.");
+        if (update)
+        {
+            var managers = await store.List((from ur in store.Query<ApplicationUserRole>() join role in store.Query<ApplicationRole>() on ur.RoleId equals role.Id where role.RoleName == "Manager" select ur.UserId).Distinct(), ct);
+            foreach (var manager in managers) Notify(manager, actor!, a, "TrainerCredentialReview", "Trainer credentials pending review", "A trainer submitted credentials for review.");
+        }
+        Audit(actor, nameof(TrainerApplication), a.Id, "Submit", null, a.ApplicationStatus.ToString());
         return Result<TrainerApplicationReceipt>.Success(new(a.TrackingCode, "Pending", a.SubmissionAttempt), 201);
     }, ct);
 
     public async Task<Result<PagedResponse<TrainerApplicationResponse>>> Applications(TrainerApplicationFilter r, string actor, CancellationToken ct)
     {
         if (!await Role(actor, "Manager", ct)) return Error<PagedResponse<TrainerApplicationResponse>>("TRAINER_FORBIDDEN", "Manager role required.", 403);
+        return await ApplicationList(r, store.Query<TrainerApplication>(), ct);
+    }
+    public async Task<Result<PagedResponse<TrainerApplicationResponse>>> MyApplications(TrainerApplicationFilter r, string actor, CancellationToken ct)
+    {
+        if (!await Role(actor, "PT", ct)) return Error<PagedResponse<TrainerApplicationResponse>>("TRAINER_FORBIDDEN", "PT role required.", 403);
+        return await ApplicationList(r, store.Query<TrainerApplication>().Where(x => x.ApplicantUserId == actor || x.HiredUserId == actor), ct);
+    }
+    private async Task<Result<PagedResponse<TrainerApplicationResponse>>> ApplicationList(TrainerApplicationFilter r, IQueryable<TrainerApplication> q, CancellationToken ct)
+    {
         if (!(await new TrainerApplicationFilterValidator().ValidateAsync(r, ct)).IsValid) return Error<PagedResponse<TrainerApplicationResponse>>("TRAINER_VALIDATION", "Invalid filters.", 400);
-        var q = store.Query<TrainerApplication>();
+        if (r.ApplicationType != null) q = q.Where(x => x.ApplicationType == r.ApplicationType);
         if (r.Status != null) { var status = Enum.Parse<TrainerApplicationStatus>(r.Status); q = q.Where(x => x.ApplicationStatus == status); }
         if (r.Specialty != null) q = q.Where(x => x.Specialty.Contains(r.Specialty));
         if (r.From != null) q = q.Where(x => x.SubmittedAt >= r.From); if (r.To != null) q = q.Where(x => x.SubmittedAt <= r.To);
@@ -87,9 +137,9 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
         var list = new List<TrainerApplicationResponse>(); foreach (var a in items) list.Add(await ApplicationResponse(a, ct));
         return Result<PagedResponse<TrainerApplicationResponse>>.Success(new(r.Page, r.PageSize, total, list));
     }
-    private async Task<TrainerApplicationResponse> ApplicationResponse(TrainerApplication a, CancellationToken ct) =>
-        new(a.Id, a.TrackingCode, a.ApplicationStatus.ToString(), a.FullName, a.Email, a.PhoneNumber, a.CitizenId, a.DateOfBirth, a.Gender, a.Specialty, a.ExperienceYears, a.Bio, a.SubmittedAt, a.SubmissionAttempt, a.ReviewNote, a.HiredUserId,
-            await store.List(Docs(store.Query<TrainerDocument>().Where(d => d.TrainerApplicationId == a.Id)), ct));
+    private Task<TrainerApplicationResponse> ApplicationResponse(TrainerApplication a, CancellationToken ct) =>
+        Task.FromResult(new TrainerApplicationResponse(a.Id, a.TrackingCode, a.ApplicationStatus.ToString(), a.FullName, a.Email, a.PhoneNumber, a.CitizenId, a.DateOfBirth, a.Gender, a.Specialty, a.ExperienceYears, a.Bio, a.SubmittedAt, a.SubmissionAttempt, a.ReviewNote, a.HiredUserId,
+            Docs(a.CertificatesJson, $"/api/trainers/applications/{a.Id}"), a.ApplicationType));
     public async Task<Result<TrainerApplicationResponse>> Application(int id, string actor, CancellationToken ct)
     {
         if (!await Role(actor, "Manager", ct)) return Error<TrainerApplicationResponse>("TRAINER_FORBIDDEN", "Manager role required.", 403);
@@ -103,13 +153,33 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
         if (!(await new ReviewTrainerApplicationValidator().ValidateAsync(r, ct)).IsValid) return Error<TrainerApplicationResponse>("TRAINER_VALIDATION", "Invalid decision or missing identity verification.", 400);
         var a = await store.First(store.Query<TrainerApplication>().Where(x => x.Id == id), ct);
         if (a == null) return Error<TrainerApplicationResponse>("TRAINER_NOT_FOUND", "Application not found.", 404);
+        var before = a.ApplicationStatus.ToString();
+        if (a.ApplicationType == "ProfileUpdate")
+        {
+            if (r.Action is not ("Approve" or "Reject") || a.ApplicationStatus is not (TrainerApplicationStatus.Pending or TrainerApplicationStatus.UnderReview))
+                return Error<TrainerApplicationResponse>("TRAINER_INVALID_STATE", "Pending profile updates can only be approved or rejected.");
+            var profile = await store.First(store.Query<TrainerProfile>().Where(x => x.PTUserId == a.ApplicantUserId && x.IsActive), ct);
+            if (profile == null) return Error<TrainerApplicationResponse>("TRAINER_NOT_FOUND", "Profile not found.", 404);
+            if (r.Action == "Approve")
+            {
+                if (await Moderated(a.Specialty, ct)) return Error<TrainerApplicationResponse>("TRAINER_CONTENT_REJECTED", "Specialty contains prohibited content.", 400);
+                profile.Specialty = a.Specialty;
+                profile.CertificatesJson = PublishCertificates(a.CertificatesJson);
+            }
+            a.ApplicationStatus = r.Action == "Approve" ? TrainerApplicationStatus.Approved : TrainerApplicationStatus.Rejected;
+            a.ReviewNote = r.Note.Trim(); a.ReviewedByUserId = actor; a.ReviewedAt = DateTime.UtcNow;
+            Notify(profile.PTUserId, actor, a, "TrainerCredentialDecision", "Trainer credentials reviewed", $"Your profile update was {a.ApplicationStatus.ToString().ToLowerInvariant()}.");
+            Audit(actor, nameof(TrainerApplication), a.Id, r.Action, before, a.ApplicationStatus.ToString());
+            return Result<TrainerApplicationResponse>.Success(await ApplicationResponse(a, ct));
+        }
+        if (r.Action == "Approve") return Error<TrainerApplicationResponse>("TRAINER_INVALID_STATE", "Recruitment applications require Interview, Hire or Reject.");
         if (a.ApplicationStatus == TrainerApplicationStatus.Hired && r.Action == "Hire") return Result<TrainerApplicationResponse>.Success(await ApplicationResponse(a, ct));
         if (a.ApplicationStatus is not (TrainerApplicationStatus.Pending or TrainerApplicationStatus.UnderReview or TrainerApplicationStatus.Interviewing))
             return Error<TrainerApplicationResponse>("TRAINER_INVALID_STATE", "Only pending/interviewing applications can be reviewed.");
         if (r.Action == "Hire")
         {
             if (a.ApplicationStatus is not (TrainerApplicationStatus.Interviewing or TrainerApplicationStatus.UnderReview)) return Error<TrainerApplicationResponse>("TRAINER_INTERVIEW_REQUIRED", "Record the interview before hiring.");
-            if (await store.Count(store.Query<TrainerRecruitmentRestriction>().Where(x => x.IsActive && (x.Email == a.Email || x.CitizenId == a.CitizenId)), ct) > 0) return Error<TrainerApplicationResponse>("RECRUITMENT_RESTRICTED", "Resolve recruitment restriction before hiring.");
+            if (await store.Count(store.Query<TrainerApplication>().Where(x => x.IsRecruitmentRestricted && (x.Email.ToLower() == a.Email.ToLower() || x.CitizenId == a.CitizenId)), ct) > 0) return Error<TrainerApplicationResponse>("RECRUITMENT_RESTRICTED", "Resolve recruitment restriction before hiring.");
             var matches = await store.List(store.Query<ApplicationUser>().Where(x => x.Email.ToLower() == a.Email || x.PhoneNumber == a.PhoneNumber), ct);
             ApplicationUser? user = null;
             if (matches.Count > 0)
@@ -144,33 +214,29 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
                 PTUserId = user!.UserId,
                 Bio = a.Bio,
                 Specialty = a.Specialty,
+                CertificatesJson = PublishCertificates(a.CertificatesJson),
                 Gender = a.Gender,
                 ExperienceYears = a.ExperienceYears,
                 Level = Enum.Parse<TrainerLevel>(r.Level!),
                 CommissionTier = r.CommissionTier!.Trim()
             }; store.Add(profile); await store.Save(ct);
-            foreach (var d in await store.List(store.Query<TrainerDocument>().Where(x => x.TrainerApplicationId == a.Id), ct))
-            {
-                // Copy approved credentials, keeping the original application attachment private.
-                store.Add(new TrainerDocument { TrainerProfileId = profile.Id, FileName = d.FileName, ContentType = d.ContentType, Content = d.Content, IsPublic = true });
-            }
             a.HiredUserId = user.UserId; a.ApplicationStatus = TrainerApplicationStatus.Hired;
-            if (isNew) QueueSetup(user); else Mail(user.Email, "Trainer role activated", "Your existing account now has PT access. Sign in again to refresh your roles.");
+            if (isNew) QueueSetup(user, a); else Mail(a, user.Email, "Trainer role activated", "Your existing account now has PT access. Sign in again to refresh your roles.");
         }
         else
         {
             a.ApplicationStatus = r.Action == "Interview" ? TrainerApplicationStatus.Interviewing : TrainerApplicationStatus.Rejected;
-            if (r.Action == "Reject") Mail(a.Email, "Trainer application decision", $"Application {a.TrackingCode} was rejected. Contact the gym for details.");
+            if (r.Action == "Reject") Mail(a, a.Email, "Trainer application decision", $"Application {a.TrackingCode} was rejected. Contact the gym for details.");
         }
         a.ReviewNote = r.Note.Trim(); a.ReviewedByUserId = actor; a.ReviewedAt = DateTime.UtcNow;
-        Audit(actor, nameof(TrainerApplication), a.Id, r.Action);
+        Audit(actor, nameof(TrainerApplication), a.Id, r.Action, before, a.ApplicationStatus.ToString());
         return Result<TrainerApplicationResponse>.Success(await ApplicationResponse(a, ct));
     }, ct);
-    private void QueueSetup(ApplicationUser user)
+    private void QueueSetup(ApplicationUser user, TrainerApplication application)
     {
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
-        store.Add(new TrainerSetupToken { UserId = user.UserId, TokenHash = Hash(token), ExpiresAt = DateTime.UtcNow.AddHours(24) });
-        Mail(user.Email, "Set up your trainer account", "SETUP:" + token);
+        user.PasswordSetupTokenHash = Hash(token); user.PasswordSetupExpiresAt = DateTime.UtcNow.AddHours(24);
+        Mail(application, user.Email, "Set up your trainer account", "SETUP:" + token);
     }
     public Task<Result<bool>> ResendSetup(int applicationId, string actor, CancellationToken ct) => store.Write(async () =>
     {
@@ -178,27 +244,35 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
         var a = await store.First(store.Query<TrainerApplication>().Where(x => x.Id == applicationId && x.ApplicationStatus == TrainerApplicationStatus.Hired), ct);
         var u = a == null ? null : await store.First(store.Query<ApplicationUser>().Where(x => x.UserId == a.HiredUserId), ct);
         if (u == null || u.AccountStatus != AccountStatus.PendingVerification) return Error<bool>("TRAINER_INVALID_STATE", "Only pending hired accounts can receive a setup link.");
-        foreach (var t in await store.List(store.Query<TrainerSetupToken>().Where(x => x.UserId == u.UserId && x.UsedAt == null), ct)) t.UsedAt = DateTime.UtcNow;
-        QueueSetup(u); Audit(actor, nameof(TrainerApplication), applicationId, "ResendSetup"); return Result<bool>.Success(true);
+        await ClearSetupEmails(u, ct);
+        QueueSetup(u, a!); Audit(actor, nameof(TrainerApplication), applicationId, "ResendSetup", a!.ApplicationStatus.ToString(), a.ApplicationStatus.ToString()); return Result<bool>.Success(true);
     }, ct);
     public Task<Result<bool>> Setup(TrainerSetupRequest r, CancellationToken ct) => store.Write(async () =>
     {
         if (!(await new TrainerSetupValidator().ValidateAsync(r, ct)).IsValid) return Error<bool>("TRAINER_VALIDATION", "Invalid token/password format.", 400);
         var hash = Hash(r.Token); var now = DateTime.UtcNow;
-        var t = await store.First(store.Query<TrainerSetupToken>().Where(x => x.TokenHash == hash && x.UsedAt == null && x.ExpiresAt > now), ct);
-        var u = t == null ? null : await store.First(store.Query<ApplicationUser>().Where(x => x.UserId == t.UserId), ct);
-        if (t == null || u == null || u.AccountStatus != AccountStatus.PendingVerification || u.IsBanned) return Error<bool>("TRAINER_SETUP_INVALID", "Setup link is invalid or expired.", 400);
-        u.PasswordHash = passwords.Hash(r.Password); u.AccountStatus = AccountStatus.Active; t.UsedAt = now;
-        Audit(u.UserId, nameof(ApplicationUser), u.Id, "TrainerPasswordSetup"); return Result<bool>.Success(true);
+        var u = await store.First(store.Query<ApplicationUser>().Where(x => x.PasswordSetupTokenHash == hash && x.PasswordSetupExpiresAt > now), ct);
+        if (u == null || u.AccountStatus != AccountStatus.PendingVerification || u.IsBanned) return Error<bool>("TRAINER_SETUP_INVALID", "Setup link is invalid or expired.", 400);
+        u.PasswordHash = passwords.Hash(r.Password); u.AccountStatus = AccountStatus.Active;
+        u.PasswordSetupTokenHash = null; u.PasswordSetupExpiresAt = null;
+        await ClearSetupEmails(u, ct);
+        Audit(u.UserId, nameof(ApplicationUser), u.Id, "TrainerPasswordSetup", AccountStatus.PendingVerification.ToString(), AccountStatus.Active.ToString()); return Result<bool>.Success(true);
     }, ct);
     public Task<Result<bool>> Restrict(RecruitmentRestrictionRequest r, string actor, CancellationToken ct) => store.Write(async () =>
     {
         if (!await Role(actor, "Manager", ct)) return Error<bool>("TRAINER_FORBIDDEN", "Manager role required.", 403);
         if (!(await new RestrictionValidator().ValidateAsync(r, ct)).IsValid) return Error<bool>("TRAINER_VALIDATION", "Invalid restriction fields.", 400);
-        var email = r.Email.Trim().ToLowerInvariant(); var rows = await store.List(store.Query<TrainerRecruitmentRestriction>().Where(x => x.Email == email || x.CitizenId == r.CitizenId), ct);
-        if (rows.Any(x => x.Email != email || x.CitizenId != r.CitizenId)) return Error<bool>("TRAINER_IDENTITY_CONFLICT", "Restriction identity differs; resolve the recorded identity first.");
-        var item = rows.FirstOrDefault(); if (item == null) { item = new() { Email = email, CitizenId = r.CitizenId }; store.Add(item); }
-        item.IsActive = r.IsActive; item.Reason = r.Reason; item.ChangedByUserId = actor; await store.Save(ct); Audit(actor, nameof(TrainerRecruitmentRestriction), item.Id, r.IsActive ? "Block" : "Unblock"); return Result<bool>.Success(true);
+        var email = r.Email.Trim().ToLowerInvariant(); var citizen = r.CitizenId.Trim();
+        var rows = await store.List(store.Query<TrainerApplication>().Where(x => x.Email.ToLower() == email && x.CitizenId == citizen), ct);
+        if (rows.Count == 0) return Error<bool>("TRAINER_NOT_FOUND", "Recruitment identity not found.", 404);
+        var now = DateTime.UtcNow;
+        foreach (var item in rows)
+        {
+            var before = item.IsRecruitmentRestricted ? "Restricted" : "Unrestricted";
+            item.IsRecruitmentRestricted = r.IsActive; item.RestrictionReason = r.Reason.Trim(); item.RestrictionChangedByUserId = actor; item.RestrictionChangedAt = now;
+            Audit(actor, nameof(TrainerApplication), item.Id, r.IsActive ? "Block" : "Unblock", before, r.IsActive ? "Restricted" : "Unrestricted");
+        }
+        return Result<bool>.Success(true);
     }, ct);
 
     private IQueryable<TrainerProfileResponse> PublicProfiles() => from p in store.Query<TrainerProfile>()
@@ -214,7 +288,7 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
                                                                        Gender = p.Gender,
                                                                        ExperienceYears = p.ExperienceYears,
                                                                        Bio = p.Bio,
-                                                                       AvatarFileId = p.AvatarFileId,
+                                                                       AvatarUrl = p.AvatarJson != null && p.AvatarJson != "" ? "/api/trainers/" + p.Id + "/avatar" : p.AvatarUrl,
                                                                        AverageRating = store.Query<TrainerReview>().Where(r => r.TrainerUserId == p.PTUserId && r.IsVisible && r.ReviewStatus == TrainerReviewStatus.Approved).Select(r => (decimal?)r.Rating).Average() ?? 0
                                                                    };
     public async Task<Result<PagedResponse<TrainerProfileResponse>>> Search(TrainerSearch r, CancellationToken ct)
@@ -227,7 +301,11 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
     {
         var p = await store.First(PublicProfiles().Where(x => x.Id == id), ct); if (p == null) return Error<TrainerPublicDetail>("TRAINER_NOT_FOUND", "Trainer not found.", 404);
         var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7)); var end = today.AddDays(14);
-        return Result<TrainerPublicDetail>.Success(new(p, await store.List(Docs(store.Query<TrainerDocument>().Where(x => x.TrainerProfileId == id && x.IsPublic && !x.IsAvatar)), ct),
+        var stored = await store.First(store.Query<TrainerProfile>().Where(x => x.Id == id), ct);
+        var certificates = Docs(stored!.CertificatesJson, $"/api/trainers/{id}", true);
+        if (Records<TrainerStoredFile>(stored.CertificatesJson).Count == 0 && !string.IsNullOrWhiteSpace(stored.CertificateUrl))
+            certificates = [new TrainerDocumentResponse("legacy", "Certificate", "application/octet-stream", stored.CertificateUrl)];
+        return Result<TrainerPublicDetail>.Success(new(p, certificates,
             await store.List(store.Query<PTAvailability>().Where(x => x.PTUserId == p.UserId && x.AvailableDate >= today && x.AvailableDate < end).OrderBy(x => x.AvailableDate).ThenBy(x => x.StartTime).Select(x => new TrainerAvailabilityResponse(x.AvailableDate, x.StartTime, x.EndTime, x.SlotStatus.ToString())), ct),
             await store.List(store.Query<TrainerReview>().Where(x => x.TrainerUserId == p.UserId && x.IsVisible && x.ReviewStatus == TrainerReviewStatus.Approved).OrderByDescending(x => x.CreatedAt).Take(20).Select(x => new TrainerReviewResponse(x.Rating, x.Comment)), ct)));
     }
@@ -244,57 +322,57 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
         var p = await store.First(store.Query<TrainerProfile>().Where(x => x.PTUserId == actor && x.IsActive), ct); if (p == null) return Error<bool>("TRAINER_NOT_FOUND", "Profile not found.", 404);
         p.Bio = r.Bio.Trim(); if (r.Avatar != null)
         {
-            foreach (var old in await store.List(store.Query<TrainerDocument>().Where(x => x.TrainerProfileId == p.Id && x.IsAvatar), ct)) old.IsPublic = false;
-            var d = File(r.Avatar); d.TrainerProfileId = p.Id; d.IsAvatar = true; d.IsPublic = true; store.Add(d); await store.Save(ct); p.AvatarFileId = d.Id;
+            var d = await store.SaveFile(r.Avatar, ct); d.IsAvatar = true; d.IsPublic = true;
+            p.AvatarJson = JsonSerializer.Serialize(d);
         }
-        Audit(actor, nameof(TrainerProfile), p.Id, "UpdatePublicProfile"); return Result<bool>.Success(true);
+        Audit(actor, nameof(TrainerProfile), p.Id, "UpdatePublicProfile", "Active", "Active"); return Result<bool>.Success(true);
     }, ct);
-    public Task<Result<int>> RequestCredentials(TrainerCredentialRequest r, string actor, CancellationToken ct) => store.Write(async () =>
+    private async Task ClearSetupEmails(ApplicationUser user, CancellationToken ct)
     {
-        if (!await Role(actor, "PT", ct)) return Error<int>("TRAINER_FORBIDDEN", "PT role required.", 403);
-        if (!(await new CredentialValidator().ValidateAsync(r, ct)).IsValid || await Moderated(r.Specialty, ct)) return Error<int>("TRAINER_VALIDATION", "Invalid specialty or certificates.", 400);
-        var p = await store.First(store.Query<TrainerProfile>().Where(x => x.PTUserId == actor && x.IsActive), ct); if (p == null) return Error<int>("TRAINER_NOT_FOUND", "Profile not found.", 404);
-        if (await store.Count(store.Query<TrainerCredentialChange>().Where(x => x.TrainerProfileId == p.Id && x.Status == "Pending"), ct) > 0) return Error<int>("TRAINER_CHANGE_PENDING", "A credential change is already pending.");
-        var change = new TrainerCredentialChange { TrainerProfileId = p.Id, Specialty = r.Specialty.Trim() }; store.Add(change); await store.Save(ct);
-        foreach (var f in r.Certificates) { var d = File(f); d.TrainerProfileId = p.Id; d.TrainerCredentialChangeId = change.Id; store.Add(d); }
-        var managers = await store.List((from ur in store.Query<ApplicationUserRole>() join role in store.Query<ApplicationRole>() on ur.RoleId equals role.Id where role.RoleName == "Manager" select ur.UserId).Distinct(), ct);
-        foreach (var m in managers) store.Add(new Notification { RecipientUserId = m, SenderUserId = actor, NotificationType = "TrainerCredentialReview", Title = "Trainer credentials pending review", Message = "A trainer submitted credentials for review.", EntityType = nameof(TrainerCredentialChange), EntityId = change.Id, NotifiedAt = DateTime.UtcNow });
-        Audit(actor, nameof(TrainerCredentialChange), change.Id, "Submit"); return Result<int>.Success(change.Id, 201);
-    }, ct);
-    public async Task<Result<PagedResponse<TrainerCredentialResponse>>> Changes(string actor, int page, int size, CancellationToken ct)
-    {
-        if (page < 1 || page > 10000 || size < 1 || size > 100) return Error<PagedResponse<TrainerCredentialResponse>>("TRAINER_VALIDATION", "Invalid pagination.", 400);
-        var manager = await Role(actor, "Manager", ct); if (!manager && !await Role(actor, "PT", ct)) return Error<PagedResponse<TrainerCredentialResponse>>("TRAINER_FORBIDDEN", "PT or Manager role required.", 403);
-        var q = store.Query<TrainerCredentialChange>(); if (!manager) q = q.Where(x => store.Query<TrainerProfile>().Any(p => p.Id == x.TrainerProfileId && p.PTUserId == actor));
-        var total = await store.Count(q, ct); var result = new List<TrainerCredentialResponse>();
-        foreach (var c in await store.List(q.OrderByDescending(x => x.Id).Skip((page - 1) * size).Take(size), ct)) result.Add(new(c.Id, c.TrainerProfileId, c.Specialty, c.Status, c.ReviewNote, c.CreatedAt, await store.List(Docs(store.Query<TrainerDocument>().Where(x => x.TrainerCredentialChangeId == c.Id)), ct)));
-        return Result<PagedResponse<TrainerCredentialResponse>>.Success(new(page, size, total, result));
-    }
-    public Task<Result<bool>> ReviewCredentials(int id, ReviewTrainerCredentialRequest r, string actor, CancellationToken ct) => store.Write(async () =>
-    {
-        if (!await Role(actor, "Manager", ct)) return Error<bool>("TRAINER_FORBIDDEN", "Manager role required.", 403);
-        if (!(await new CredentialReviewValidator().ValidateAsync(r, ct)).IsValid) return Error<bool>("TRAINER_VALIDATION", "Review note required.", 400);
-        var c = await store.First(store.Query<TrainerCredentialChange>().Where(x => x.Id == id), ct); if (c == null) return Error<bool>("TRAINER_NOT_FOUND", "Change not found.", 404);
-        if (c.Status != "Pending") return Error<bool>("TRAINER_INVALID_STATE", "Change was already reviewed.");
-        var p = await store.First(store.Query<TrainerProfile>().Where(x => x.Id == c.TrainerProfileId), ct); if (p == null) return Error<bool>("TRAINER_NOT_FOUND", "Profile not found.", 404);
-        if (r.Approve)
+        var applications = await store.List(store.Query<TrainerApplication>().Where(x => x.HiredUserId == user.UserId || x.ApplicantUserId == user.UserId || x.Email.ToLower() == user.Email.ToLower()), ct);
+        foreach (var application in applications)
         {
-            if (await Moderated(c.Specialty, ct)) return Error<bool>("TRAINER_CONTENT_REJECTED", "Specialty contains prohibited content.", 400);
-            p.Specialty = c.Specialty; foreach (var d in await store.List(store.Query<TrainerDocument>().Where(x => x.TrainerProfileId == p.Id && !x.IsAvatar && x.IsPublic), ct)) d.IsPublic = false;
-            foreach (var d in await store.List(store.Query<TrainerDocument>().Where(x => x.TrainerCredentialChangeId == id), ct)) d.IsPublic = true;
+            var queue = Records<TrainerQueuedEmail>(application.EmailQueueJson);
+            queue.RemoveAll(x => x.SentAt == null && x.Subject == "Set up your trainer account");
+            application.EmailQueueJson = JsonSerializer.Serialize(queue);
         }
-        c.Status = r.Approve ? "Approved" : "Rejected"; c.ReviewNote = r.Note; c.ReviewedByUserId = actor; c.ReviewedAt = DateTime.UtcNow;
-        store.Add(new Notification { RecipientUserId = p.PTUserId, SenderUserId = actor, NotificationType = "TrainerCredentialDecision", Title = "Trainer credentials reviewed", Message = $"Your credential change was {c.Status.ToLowerInvariant()}.", EntityType = nameof(TrainerCredentialChange), EntityId = c.Id, NotifiedAt = DateTime.UtcNow });
-        Audit(actor, nameof(TrainerCredentialChange), id, c.Status); return Result<bool>.Success(true);
-    }, ct);
-    public async Task<Result<TrainerFileResponse>> Document(int id, string? actor, CancellationToken ct)
+    }
+    private void Notify(string recipient, string actor, TrainerApplication application, string type, string title, string message) =>
+        store.Add(new Notification { RecipientUserId = recipient, SenderUserId = actor, NotificationType = type, Title = title, Message = message, EntityType = nameof(TrainerApplication), EntityId = application.Id, NotifiedAt = DateTime.UtcNow });
+
+    private async Task<bool> OwnsApplication(TrainerApplication application, string? actor, CancellationToken ct) =>
+        actor != null && (application.ApplicantUserId == actor || application.HiredUserId == actor) && await Role(actor, "PT", ct);
+
+    public async Task<Result<TrainerFileResponse>> ApplicationDocument(int id, string fileId, string? actor, CancellationToken ct)
     {
-        var meta = await store.First(store.Query<TrainerDocument>().Where(x => x.Id == id).Select(x => new { x.TrainerApplicationId, x.TrainerProfileId, x.IsPublic }), ct);
-        if (meta == null) return Error<TrainerFileResponse>("TRAINER_NOT_FOUND", "Document not found.", 404);
-        var allowed = meta.IsPublic && meta.TrainerProfileId != null && await store.Count(PublicProfiles().Where(x => x.Id == meta.TrainerProfileId), ct) > 0;
-        if (!allowed && actor != null) allowed = await Role(actor, "Manager", ct) || (await Role(actor, "PT", ct) && await store.Count(store.Query<TrainerProfile>().Where(x => x.Id == meta.TrainerProfileId && x.PTUserId == actor), ct) > 0);
-        if (!allowed) return Error<TrainerFileResponse>("TRAINER_NOT_FOUND", "Document not found.", 404);
-        var d = await store.First(store.Query<TrainerDocument>().Where(x => x.Id == id).Select(x => new TrainerFileResponse(x.FileName, x.ContentType, x.Content)), ct);
-        return Result<TrainerFileResponse>.Success(d!);
+        var application = await store.First(store.Query<TrainerApplication>().Where(x => x.Id == id), ct);
+        if (application == null || (!await Role(actor, "Manager", ct) && !await OwnsApplication(application, actor, ct)))
+            return Error<TrainerFileResponse>("TRAINER_NOT_FOUND", "Document not found.", 404);
+        return await ReadDocument(Records<TrainerStoredFile>(application.CertificatesJson).FirstOrDefault(x => x.Id == fileId && !x.IsAvatar), ct);
+    }
+    public async Task<Result<TrainerFileResponse>> Document(int id, string fileId, string? actor, CancellationToken ct) =>
+        await ProfileFile(id, fileId, false, actor, ct);
+
+    public async Task<Result<TrainerFileResponse>> Avatar(int id, string? actor, CancellationToken ct) =>
+        await ProfileFile(id, null, true, actor, ct);
+
+    private async Task<Result<TrainerFileResponse>> ProfileFile(int id, string? fileId, bool avatar, string? actor, CancellationToken ct)
+    {
+        var profile = await store.First(store.Query<TrainerProfile>().Where(x => x.Id == id), ct);
+        if (profile == null) return Error<TrainerFileResponse>("TRAINER_NOT_FOUND", "Document not found.", 404);
+        var file = avatar
+            ? (string.IsNullOrWhiteSpace(profile.AvatarJson) ? null : JsonSerializer.Deserialize<TrainerStoredFile>(profile.AvatarJson))
+            : Records<TrainerStoredFile>(profile.CertificatesJson).FirstOrDefault(x => x.Id == fileId && !x.IsAvatar);
+        if (file == null || file.IsDeleted) return Error<TrainerFileResponse>("TRAINER_NOT_FOUND", "Document not found.", 404);
+        var allowed = file.IsPublic && await store.Count(PublicProfiles().Where(x => x.Id == id), ct) > 0;
+        if (!allowed) allowed = await Role(actor, "Manager", ct) || (actor == profile.PTUserId && await Role(actor, "PT", ct));
+        return allowed ? await ReadDocument(file, ct) : Error<TrainerFileResponse>("TRAINER_NOT_FOUND", "Document not found.", 404);
+    }
+    private async Task<Result<TrainerFileResponse>> ReadDocument(TrainerStoredFile? file, CancellationToken ct)
+    {
+        if (file == null || file.IsDeleted) return Error<TrainerFileResponse>("TRAINER_NOT_FOUND", "Document not found.", 404);
+        var content = await store.ReadFile(file, ct);
+        return content == null ? Error<TrainerFileResponse>("TRAINER_NOT_FOUND", "Document not found.", 404)
+            : Result<TrainerFileResponse>.Success(new(file.FileName, file.ContentType, content));
     }
 }
