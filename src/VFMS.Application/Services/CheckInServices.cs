@@ -83,13 +83,17 @@ public sealed class FaceProfileService : IFaceProfileService
 /// <summary>UC-48/UC-57 View Active Check-ins: who is inside now and current occupancy.</summary>
 public sealed class ActiveCheckInService : IActiveCheckInService
 {
+    public const int DefaultPeakThreshold = 100;
+
     private readonly ICheckInRepository _repository;
     private readonly TimeProvider _clock;
+    private readonly int _peakThreshold;
 
-    public ActiveCheckInService(ICheckInRepository repository, TimeProvider clock)
+    public ActiveCheckInService(ICheckInRepository repository, TimeProvider clock, int peakThreshold = DefaultPeakThreshold)
     {
         _repository = repository;
         _clock = clock;
+        _peakThreshold = peakThreshold;
     }
 
     public async Task<Result<ActiveCheckInsResponse>> GetActiveAsync(string? search, CancellationToken cancellationToken = default)
@@ -109,6 +113,7 @@ public sealed class ActiveCheckInService : IActiveCheckInService
                 c.Id, c.MemberUserId, c.Member.FullName, c.Member.PhoneNumber, c.Member.AvatarUrl, c.CheckinTime,
                 (int)Math.Max(0, (now - c.CheckinTime).TotalMinutes), c.CheckinMethod.ToString(), c.HandledByUser?.FullName))
             .ToArray();
-        return Result<ActiveCheckInsResponse>.Success(new ActiveCheckInsResponse(active.Count, today, items));
+        return Result<ActiveCheckInsResponse>.Success(
+            new ActiveCheckInsResponse(active.Count, today, items, _peakThreshold, active.Count >= _peakThreshold));
     }
 }

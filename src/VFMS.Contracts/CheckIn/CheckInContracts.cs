@@ -24,4 +24,6 @@ public sealed record ActiveCheckInResponse(
     string? HandledByName
 );
 
-public sealed record ActiveCheckInsResponse(int CurrentOccupancy, int CheckInsToday, IReadOnlyList<ActiveCheckInResponse> Items);
+/// <summary>IsPeak: current occupancy reached the configured peak-hour threshold (feature list UC-48).</summary>
+public sealed record ActiveCheckInsResponse(
+    int CurrentOccupancy, int CheckInsToday, IReadOnlyList<ActiveCheckInResponse> Items, int PeakThreshold = 0, bool IsPeak = false);

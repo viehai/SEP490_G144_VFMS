@@ -14,7 +14,14 @@
     </header>
 
     <section class="grid gap-4 sm:grid-cols-2" aria-label="Thống kê">
-        <div class="border-2 border-black bg-white p-6 rounded-none"><p class="workspace-heading text-[11px] font-bold uppercase tracking-wider">Đang có mặt</p><p class="workspace-heading mt-4 text-5xl font-extrabold">@(_data?.CurrentOccupancy ?? 0)</p></div>
+        <div class="border-2 p-6 rounded-none @(_data?.IsPeak == true ? "border-[#EF4444] bg-red-50" : "border-black bg-white")">
+            <p class="workspace-heading text-[11px] font-bold uppercase tracking-wider">Đang có mặt</p>
+            <p class="workspace-heading mt-4 text-5xl font-extrabold">@(_data?.CurrentOccupancy ?? 0)</p>
+            @if (_data is { PeakThreshold: > 0 })
+            {
+                <p class="mt-2 text-xs @(_data.IsPeak ? "font-bold text-[#B91C1C]" : "text-[#545454]")">@(_data.IsPeak ? "Đang quá tải giờ cao điểm" : "Ngưỡng cao điểm") (@_data.PeakThreshold người)</p>
+            }
+        </div>
         <div class="border-2 border-black bg-white p-6 rounded-none"><p class="workspace-heading text-[11px] font-bold uppercase tracking-wider">Lượt check-in hôm nay</p><p class="workspace-heading mt-4 text-5xl font-extrabold">@(_data?.CheckInsToday ?? 0)</p></div>
     </section>
 
@@ -57,6 +64,7 @@
     private string _search = string.Empty;
     private string? _error;
     private Timer? _timer;
+    private int _requestNo;
 
     protected override async Task OnInitializedAsync()
     {
@@ -66,9 +74,13 @@
 
     private async Task Load()
     {
+        var requestNo = ++_requestNo;
         try
         {
-            _data = await Api.GetAsync<ActiveCheckInsResponse>($"api/check-ins/active?search={Uri.EscapeDataString(_search)}");
+            var data = await Api.GetAsync<ActiveCheckInsResponse>($"api/check-ins/active?search={Uri.EscapeDataString(_search)}");
+            if (requestNo != _requestNo)
+                return;   // a newer search is in flight; drop this older answer so typing fast cannot show stale rows
+            _data = data;
             _error = null;
         }
         catch (ApiException ex) { _error = ex.Message; }

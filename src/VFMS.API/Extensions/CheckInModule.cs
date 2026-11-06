@@ -27,7 +27,9 @@ public static class CheckInModule
         services.AddSingleton<IFaceTemplateProtector, DataProtectionFaceTemplateProtector>();
         services.AddScoped<ICheckInRepository, CheckInRepository>();
         services.AddScoped<IFaceProfileService, FaceProfileService>();
-        services.AddScoped<IActiveCheckInService, ActiveCheckInService>();
+        var peakThreshold = configuration.GetValue("CheckIn:PeakOccupancyThreshold", ActiveCheckInService.DefaultPeakThreshold);
+        services.AddScoped<IActiveCheckInService>(sp => new ActiveCheckInService(
+            sp.GetRequiredService<ICheckInRepository>(), sp.GetRequiredService<TimeProvider>(), peakThreshold));
         return services;
     }
 }

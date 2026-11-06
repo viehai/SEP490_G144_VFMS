@@ -86,7 +86,7 @@ public sealed class CheckInTests
             HandledByUser = new ApplicationUser { FullName = "Staff A" }, Status = CheckInStatus.Active
         });
         repo.TodayCount = 7;
-        var service = new ActiveCheckInService(repo, Clock);
+        var service = new ActiveCheckInService(repo, Clock, peakThreshold: 2);
 
         var all = (await service.GetActiveAsync(null)).Data!;
         var filtered = (await service.GetActiveAsync("binh")).Data!;
@@ -96,6 +96,8 @@ public sealed class CheckInTests
         Assert.Equal(45, all.Items[0].MinutesInside);
         Assert.Equal("Staff A", Assert.Single(filtered.Items).HandledByName);
         Assert.Equal(2, filtered.CurrentOccupancy);
+        Assert.True(all.IsPeak);   // 2 inside, threshold 2
+        Assert.False((await new ActiveCheckInService(repo, Clock, peakThreshold: 3).GetActiveAsync(null)).Data!.IsPeak);
     }
 
     private sealed class FixedClock(DateTimeOffset now) : TimeProvider
