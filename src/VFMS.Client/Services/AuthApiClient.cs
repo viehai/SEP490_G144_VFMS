@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using VFMS.Contracts.Auth;
@@ -16,13 +17,22 @@ public sealed class AuthApiClient(HttpClient http) : IDisposable
     public Task<LoginResponse> RefreshAsync(string refreshToken, CancellationToken cancellationToken = default) =>
         PostAsync<RefreshTokenRequest, LoginResponse>("api/auth/refresh", new(refreshToken), cancellationToken);
 
+    public async Task LogoutAsync(string accessToken, string refreshToken, CancellationToken cancellationToken = default)
+    {
+        await PostAsync<LogoutRequest, JsonElement>("api/auth/logout", new(refreshToken), cancellationToken, accessToken);
+    }
+
     public void Dispose() => http.Dispose();
 
-    private async Task<TResponse> PostAsync<TRequest, TResponse>(string path, TRequest request, CancellationToken cancellationToken)
+    private async Task<TResponse> PostAsync<TRequest, TResponse>(string path, TRequest request, CancellationToken cancellationToken,
+        string? accessToken = null)
     {
         try
         {
-            using var response = await http.PostAsJsonAsync(path, request, cancellationToken);
+            using var messageRequest = new HttpRequestMessage(HttpMethod.Post, path) { Content = JsonContent.Create(request) };
+            if (accessToken is not null)
+                messageRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+            using var response = await http.SendAsync(messageRequest, cancellationToken);
             if (response.IsSuccessStatusCode)
             {
                 return await response.Content.ReadFromJsonAsync<TResponse>(cancellationToken: cancellationToken)

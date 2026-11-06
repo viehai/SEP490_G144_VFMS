@@ -28,7 +28,8 @@
         <div class="flex items-center gap-3 flex-shrink-0 whitespace-nowrap">
             <AuthorizeView>
                 <Authorized Context="auth">
-                    <span class="font-['Inter',sans-serif] text-xs text-white max-w-40 truncate" title="@auth.User.Identity?.Name">Chào, @auth.User.Identity?.Name</span>
+                    <span class="hidden xl:inline-block font-['Montserrat',sans-serif] text-[11px] xl:text-xs font-bold uppercase tracking-wider text-neutral-200 max-w-40 truncate" title="@auth.User.Identity?.Name">Chào, @auth.User.Identity?.Name</span>
+                    <LogoutButton Class="bg-white hover:bg-neutral-200 text-neutral-950 font-['Montserrat',sans-serif] font-extrabold text-[11px] xl:text-xs uppercase tracking-wider px-4 py-2 rounded-none transition-colors disabled:opacity-60" />
                 </Authorized>
                 <NotAuthorized>
                     <a href="/auth/login"

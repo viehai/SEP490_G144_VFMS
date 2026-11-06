@@ -51,40 +51,77 @@ public sealed class AuthSession(IJSRuntime js, AuthApiClient api) : Authenticati
         await _gate.WaitAsync();
         try
         {
-            if (!_loaded)
-            {
-                try
-                {
-                    var json = await js.InvokeAsync<string?>("vfmsAuthStorage.read");
-                    if (!string.IsNullOrEmpty(json)) _session = JsonSerializer.Deserialize<StoredAuthSession>(json);
-                    if (_session is not null && (_session.User is null || string.IsNullOrWhiteSpace(_session.User.AccessToken) ||
-                        string.IsNullOrWhiteSpace(_session.User.RefreshToken) || _session.User.Roles is null))
-                    {
-                        _session = null;
-                        await js.InvokeVoidAsync("vfmsAuthStorage.clear");
-                    }
-                }
-                catch (JsonException) { await js.InvokeVoidAsync("vfmsAuthStorage.clear"); }
-                _loaded = true;
-            }
-            if (_session is null) return null;
-            if (_session.ExpiresAt <= DateTimeOffset.UtcNow.AddSeconds(30))
-            {
-                try
-                {
-                    var user = await api.RefreshAsync(_session.User.RefreshToken);
-                    await SaveAsync(new(user, DateTimeOffset.UtcNow.AddSeconds(user.ExpiresIn), _session.RememberMe));
-                }
-                catch (AuthApiException error) when (error.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
-                {
-                    await js.InvokeVoidAsync("vfmsAuthStorage.clear");
-                    _session = null;
-                    return null;
-                }
-            }
-            return _session.User.AccessToken;
+            return await GetAccessTokenCoreAsync();
         }
         finally { _gate.Release(); }
+    }
+
+    public async Task<bool> SignOutAsync()
+    {
+        var serverConfirmed = true;
+        await _gate.WaitAsync();
+        try
+        {
+            try
+            {
+                var accessToken = await GetAccessTokenCoreAsync();
+                if (accessToken is not null && _session is not null)
+                    await api.LogoutAsync(accessToken, _session.User.RefreshToken);
+            }
+            catch (AuthApiException)
+            {
+                // Local sign-out must still work when the API is unavailable.
+                serverConfirmed = false;
+            }
+            finally
+            {
+                await js.InvokeVoidAsync("vfmsAuthStorage.clear");
+                _session = null;
+                _loaded = true;
+            }
+        }
+        finally
+        {
+            _gate.Release();
+            NotifyAuthenticationStateChanged(Task.FromResult(Anonymous));
+        }
+        return serverConfirmed;
+    }
+
+    private async Task<string?> GetAccessTokenCoreAsync()
+    {
+        if (!_loaded)
+        {
+            try
+            {
+                var json = await js.InvokeAsync<string?>("vfmsAuthStorage.read");
+                if (!string.IsNullOrEmpty(json)) _session = JsonSerializer.Deserialize<StoredAuthSession>(json);
+                if (_session is not null && (_session.User is null || string.IsNullOrWhiteSpace(_session.User.AccessToken) ||
+                    string.IsNullOrWhiteSpace(_session.User.RefreshToken) || _session.User.Roles is null))
+                {
+                    _session = null;
+                    await js.InvokeVoidAsync("vfmsAuthStorage.clear");
+                }
+            }
+            catch (JsonException) { await js.InvokeVoidAsync("vfmsAuthStorage.clear"); }
+            _loaded = true;
+        }
+        if (_session is null) return null;
+        if (_session.ExpiresAt <= DateTimeOffset.UtcNow.AddSeconds(30))
+        {
+            try
+            {
+                var user = await api.RefreshAsync(_session.User.RefreshToken);
+                await SaveAsync(new(user, DateTimeOffset.UtcNow.AddSeconds(user.ExpiresIn), _session.RememberMe));
+            }
+            catch (AuthApiException error) when (error.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+            {
+                await js.InvokeVoidAsync("vfmsAuthStorage.clear");
+                _session = null;
+                return null;
+            }
+        }
+        return _session.User.AccessToken;
     }
 
     private async Task SaveAsync(StoredAuthSession session)

@@ -134,6 +134,97 @@ public sealed class AuthenticationTests
     public void ReturnUrl_OnlyAllowsLocalDestinations(string candidate, string expected) =>
         Assert.Equal(expected, AuthNavigation.SafeReturnUrl(candidate));
 
+    [Fact]
+    public async Task SignOut_RevokesCurrentTokenAndPublishesAnonymousState()
+    {
+        var storage = new FakeStorage
+        {
+            Json = JsonSerializer.Serialize(new StoredAuthSession(User(), DateTimeOffset.UtcNow.AddMinutes(10), true))
+        };
+        var calls = 0;
+        var api = Api(async request =>
+        {
+            Assert.Equal("/api/auth/logout", request.RequestUri!.AbsolutePath);
+            Assert.Equal("Bearer", request.Headers.Authorization!.Scheme);
+            Assert.Equal("access", request.Headers.Authorization.Parameter);
+            Assert.Equal("refresh", (await request.Content!.ReadFromJsonAsync<LogoutRequest>())!.RefreshToken);
+            calls++;
+            return Json(new { Message = "Logged out successfully." });
+        });
+        var session = new AuthSession(storage, api);
+        var notified = false;
+        session.AuthenticationStateChanged += _ => notified = true;
+
+        Assert.True(await session.SignOutAsync());
+        Assert.Null(storage.Json);
+        Assert.Null(await session.GetAccessTokenAsync());
+        Assert.False((await session.GetAuthenticationStateAsync()).User.Identity!.IsAuthenticated);
+        Assert.True(notified);
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
+    public async Task SignOut_RefreshesExpiredAccessBeforeRevokingRotatedRefreshToken()
+    {
+        var storage = new FakeStorage
+        {
+            Json = JsonSerializer.Serialize(new StoredAuthSession(User(), DateTimeOffset.UtcNow.AddMinutes(-1), false))
+        };
+        var paths = new List<string>();
+        var api = Api(async request =>
+        {
+            paths.Add(request.RequestUri!.AbsolutePath);
+            if (request.RequestUri.AbsolutePath == "/api/auth/refresh")
+                return Json(User("rotated-access") with { RefreshToken = "rotated-refresh" });
+            Assert.Equal("rotated-access", request.Headers.Authorization!.Parameter);
+            Assert.Equal("rotated-refresh", (await request.Content!.ReadFromJsonAsync<LogoutRequest>())!.RefreshToken);
+            return Json(new { Message = "Logged out successfully." });
+        });
+
+        Assert.True(await new AuthSession(storage, api).SignOutAsync());
+        Assert.Equal(new[] { "/api/auth/refresh", "/api/auth/logout" }, paths);
+        Assert.Null(storage.Json);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Unauthorized)]
+    [InlineData(HttpStatusCode.InternalServerError)]
+    public async Task SignOut_ApiRejectionStillEndsLocalSession(HttpStatusCode status)
+    {
+        var storage = new FakeStorage
+        {
+            Json = JsonSerializer.Serialize(new StoredAuthSession(User(), DateTimeOffset.UtcNow.AddMinutes(10), true))
+        };
+        var api = Api(_ => Task.FromResult(Json(new { Message = "Unavailable" }, status)));
+        var session = new AuthSession(storage, api);
+        Assert.False(await session.SignOutAsync());
+        Assert.Null(storage.Json);
+        Assert.False((await session.GetAuthenticationStateAsync()).User.Identity!.IsAuthenticated);
+    }
+
+    [Fact]
+    public async Task SignOut_OfflineStillClearsRememberedSession()
+    {
+        var storage = new FakeStorage
+        {
+            Json = JsonSerializer.Serialize(new StoredAuthSession(User(), DateTimeOffset.UtcNow.AddMinutes(-1), true))
+        };
+        var api = Api(_ => throw new HttpRequestException("Offline"));
+        var session = new AuthSession(storage, api);
+        Assert.False(await session.SignOutAsync());
+        Assert.Null(storage.Json);
+        Assert.Null(await session.GetAccessTokenAsync());
+    }
+
+    [Fact]
+    public async Task SignOut_AnonymousDoesNotRequestApi()
+    {
+        var storage = new FakeStorage();
+        var session = new AuthSession(storage, Api(_ => throw new InvalidOperationException("Must not call the API")));
+        Assert.True(await session.SignOutAsync());
+        Assert.Null(storage.Json);
+    }
+
     private static AuthApiClient Api(Func<HttpRequestMessage, Task<HttpResponseMessage>> handler) =>
         new(new HttpClient(new FakeHandler(handler)) { BaseAddress = new Uri("https://api.example.test/") });
     private static HttpResponseMessage Json<T>(T value, HttpStatusCode status = HttpStatusCode.OK) =>
