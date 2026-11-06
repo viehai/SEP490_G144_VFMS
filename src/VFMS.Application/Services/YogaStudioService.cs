@@ -57,6 +57,12 @@ public sealed class YogaStudioService : IYogaStudioService
         if (await _repository.StudioNameExistsAsync(studio.GymId, name, id, cancellationToken))
             return NameTaken();
 
+        var largestClass = await _repository.GetLargestClassUsingStudioAsync(id, YogaTime.Today(_clock), cancellationToken);
+        if (request.Capacity < largestClass)
+            return Result<YogaStudioResponse>.Failure(
+                $"Upcoming classes in this studio allow up to {largestClass} participants. Capacity cannot be lower.",
+                "YOGA_STUDIO_CAPACITY_IN_USE", 409);
+
         var before = Describe(studio);
         studio.StudioName = name;
         studio.FloorNumber = request.FloorNumber;

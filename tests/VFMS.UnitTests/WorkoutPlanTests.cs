@@ -145,6 +145,15 @@ public sealed class WorkoutPlanTests
         Assert.Equal(Clock.GetUtcNow().UtcDateTime, item.CompletedAt);
     }
 
+    [Fact]
+    public void HealthNotesLoseContactDetailsBeforeGoingToAi()
+    {
+        var cleaned = WorkoutPlanService.RedactContactDetails("Knee pain, call 0901 234 567 or mail an.nguyen@example.com");
+        Assert.DoesNotContain("0901", cleaned);
+        Assert.DoesNotContain("@", cleaned);
+        Assert.StartsWith("Knee pain", cleaned);
+    }
+
     private static PhysicalProfile CompleteProfile() => new()
     {
         Id = 3, MemberUserId = "u1", WeightKg = 80, HeightCm = 175, FitnessGoal = "WeightLoss", FitnessLevel = "Beginner",

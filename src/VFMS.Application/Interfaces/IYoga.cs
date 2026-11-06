@@ -12,6 +12,8 @@ public interface IYogaRepository : IAuditedRepository
     Task<IReadOnlyList<YogaStudio>> GetStudiosAsync(bool includeInactive, CancellationToken cancellationToken = default);
     Task<YogaStudio?> GetStudioAsync(int id, CancellationToken cancellationToken = default);
     Task<bool> StudioNameExistsAsync(int gymId, string name, int? excludingId, CancellationToken cancellationToken = default);
+    /// <summary>Largest MaxParticipants among classes with upcoming sessions in the studio (0 if none).</summary>
+    Task<int> GetLargestClassUsingStudioAsync(int studioId, DateOnly fromDate, CancellationToken cancellationToken = default);
     Task<bool> StudioHasFutureSessionsAsync(int studioId, DateOnly fromDate, CancellationToken cancellationToken = default);
 
     // Class types

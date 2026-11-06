@@ -196,12 +196,12 @@ public sealed class YogaTests
     // ── GBR-76 cancellation ─────────────────────────────────────
 
     [Fact]
-    public async Task CancellingSessionCancelsBookingsAndNotifiesMembers()
+    public async Task CancellingSessionKeepsEnrolmentsAndNotifiesEnrolledMembers()
     {
         var repo = Seeded(out var yogaClass, out var studio);
         var session = Session(10, studio, yogaClass, Today.AddDays(9), new(9, 0), new(10, 0));
-        session.Bookings.Add(new YogaBooking { Id = 1, MemberUserId = "m1", BookingStatus = YogaBookingStatus.Confirmed });
-        session.Bookings.Add(new YogaBooking { Id = 2, MemberUserId = "m2", BookingStatus = YogaBookingStatus.Cancelled });
+        yogaClass.Bookings.Add(new YogaBooking { Id = 1, MemberUserId = "m1", BookingStatus = YogaBookingStatus.Confirmed });
+        yogaClass.Bookings.Add(new YogaBooking { Id = 2, MemberUserId = "m2", BookingStatus = YogaBookingStatus.Cancelled });
         repo.Sessions.Add(session);
         var service = new YogaClassService(repo, Clock);
 
@@ -209,8 +209,70 @@ public sealed class YogaTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal(YogaScheduleStatus.Cancelled, session.ScheduleStatus);
-        Assert.All(session.Bookings, b => Assert.Equal(YogaBookingStatus.Cancelled, b.BookingStatus));
-        Assert.Equal("m1", Assert.Single(repo.Notifications).RecipientUserId);
+        Assert.Equal(YogaBookingStatus.Confirmed, yogaClass.Bookings.First().BookingStatus);
+        var notification = Assert.Single(repo.Notifications);
+        Assert.Equal("m1", notification.RecipientUserId);
+        Assert.Equal(nameof(NotificationType.YogaSessionCancelled), notification.NotificationType);
+    }
+
+    [Fact]
+    public async Task CancellingClassCancelsEnrolmentsAndFutureSessions()
+    {
+        var repo = Seeded(out var yogaClass, out var studio);
+        yogaClass.ClassStatus = YogaClassStatus.Open;
+        var session = Session(10, studio, yogaClass, Today.AddDays(9), new(9, 0), new(10, 0));
+        yogaClass.Schedules.Add(session);
+        yogaClass.Bookings.Add(new YogaBooking { Id = 1, MemberUserId = "m1", BookingStatus = YogaBookingStatus.Confirmed });
+        var service = new YogaClassService(repo, Clock);
+
+        var result = await service.CancelClassAsync(yogaClass.Id, "manager", null);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(YogaScheduleStatus.Cancelled, session.ScheduleStatus);
+        Assert.Equal(YogaBookingStatus.Cancelled, yogaClass.Bookings.Single().BookingStatus);
+        Assert.Single(repo.Notifications);
+    }
+
+    [Fact]
+    public async Task PublishedClassCannotGetSessionWithinSevenDays()   // GBR-77
+    {
+        var repo = Seeded(out var yogaClass, out var studio);
+        yogaClass.ClassStatus = YogaClassStatus.Open;
+        var service = new YogaClassService(repo, Clock);
+
+        var tooSoon = await service.CreateSessionAsync(
+            new YogaSessionRequest(yogaClass.Id, studio.Id, Today.AddDays(3), new(9, 0), new(10, 0)), "manager", null);
+        var ok = await service.CreateSessionAsync(
+            new YogaSessionRequest(yogaClass.Id, studio.Id, Today.AddDays(7), new(9, 0), new(10, 0)), "manager", null);
+
+        Assert.Equal("YOGA_PUBLISH_TOO_LATE", tooSoon.ErrorCode);
+        Assert.True(ok.IsSuccess, ok.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task ChangingClassInstructorIsBlockedWhenSessionsInheritIt()   // GBR-74
+    {
+        var repo = Seeded(out var yogaClass, out var studio);
+        yogaClass.Schedules.Add(Session(10, studio, yogaClass, Today.AddDays(9), new(9, 0), new(10, 0)));
+        var service = new YogaClassService(repo, Clock);
+        var request = ClassRequest() with { InstructorUserId = "pt-2", StartDate = Today, EndDate = Today.AddDays(30),
+            RegistrationDeadline = new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc) };
+
+        var result = await service.UpdateClassAsync(yogaClass.Id, request, "manager", null);
+
+        Assert.Equal("YOGA_CLASS_INSTRUCTOR_IN_USE", result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task StudioCapacityCannotDropBelowUpcomingClassSize()
+    {
+        var repo = Seeded(out var yogaClass, out var studio);
+        repo.Sessions.Add(Session(10, studio, yogaClass, Today.AddDays(9), new(9, 0), new(10, 0)));
+        var service = new YogaStudioService(repo, Clock);
+
+        var result = await service.UpdateAsync(studio.Id, new YogaStudioRequest("Lotus", 2, yogaClass.MaxParticipants - 1), "manager", null);
+
+        Assert.Equal("YOGA_STUDIO_CAPACITY_IN_USE", result.ErrorCode);
     }
 
     // ── UC-37 / UC-41 views ─────────────────────────────────────
@@ -221,7 +283,7 @@ public sealed class YogaTests
         var repo = Seeded(out var yogaClass, out var studio);
         yogaClass.ClassStatus = YogaClassStatus.Open;
         var visible = Session(10, studio, yogaClass, Today.AddDays(1), new(9, 0), new(10, 0));
-        visible.Bookings.Add(new YogaBooking { MemberUserId = "m1", BookingStatus = YogaBookingStatus.Confirmed });
+        yogaClass.Bookings.Add(new YogaBooking { MemberUserId = "m1", BookingStatus = YogaBookingStatus.Confirmed });
         var cancelled = Session(11, studio, yogaClass, Today.AddDays(2), new(9, 0), new(10, 0));
         cancelled.ScheduleStatus = YogaScheduleStatus.Cancelled;
         var draft = Class("pt-1");
@@ -242,7 +304,7 @@ public sealed class YogaTests
         var repo = Seeded(out var yogaClass, out var studio);
         yogaClass.ClassStatus = YogaClassStatus.Open;
         var mine = Session(10, studio, yogaClass, Today.AddDays(1), new(9, 0), new(10, 0));
-        mine.Bookings.Add(new YogaBooking { Id = 5, MemberUserId = "m1", MatNumber = 3, BookingStatus = YogaBookingStatus.Confirmed });
+        yogaClass.Bookings.Add(new YogaBooking { Id = 5, MemberUserId = "m1", MatNumber = 3, BookingStatus = YogaBookingStatus.Confirmed });
         var substitute = Session(11, studio, yogaClass, Today.AddDays(2), new(9, 0), new(10, 0));
         substitute.InstructorUserId = "pt-2";
         repo.Sessions.AddRange([mine, substitute]);
@@ -347,6 +409,9 @@ public sealed class YogaTests
             Task.FromResult(Studios.FirstOrDefault(s => s.Id == id));
         public Task<bool> StudioNameExistsAsync(int gymId, string name, int? excludingId, CancellationToken cancellationToken = default) =>
             Task.FromResult(Studios.Any(s => s.GymId == gymId && s.StudioName.Equals(name, StringComparison.OrdinalIgnoreCase) && s.Id != excludingId));
+        public Task<int> GetLargestClassUsingStudioAsync(int studioId, DateOnly fromDate, CancellationToken cancellationToken = default) =>
+            Task.FromResult(Sessions.Where(s => s.YogaStudioId == studioId && s.ScheduledDate >= fromDate && s.ScheduleStatus == YogaScheduleStatus.Scheduled)
+                .Select(s => s.YogaClass.MaxParticipants).DefaultIfEmpty(0).Max());
         public Task<bool> StudioHasFutureSessionsAsync(int studioId, DateOnly fromDate, CancellationToken cancellationToken = default) =>
             Task.FromResult(Sessions.Any(s => s.YogaStudioId == studioId && s.ScheduledDate >= fromDate && s.ScheduleStatus == YogaScheduleStatus.Scheduled));
 

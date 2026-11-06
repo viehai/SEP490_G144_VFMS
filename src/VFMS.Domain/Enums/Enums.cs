@@ -435,6 +435,8 @@ public enum NotificationType
     FreezeApproval,
     PTSessionReminder,
     YogaBookingConfirmed,
+    YogaSessionChanged,
+    YogaSessionCancelled,
     PaymentConfirmed,
     EquipmentIssueUpdate,
     CompetitionResult,

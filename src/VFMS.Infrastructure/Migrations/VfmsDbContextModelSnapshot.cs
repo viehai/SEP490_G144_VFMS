@@ -2891,7 +2891,10 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("MemberUserId");
+                    b.HasIndex("MemberUserId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_WorkoutPlans_MemberUserId_ActivePlan")
+                        .HasFilter("[PlanStatus] = 'Active' AND [IsTemplate] = 0 AND [IsDeleted] = 0");
 
                     b.HasIndex("PhysicalProfileId");
 
@@ -2943,8 +2946,7 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.HasIndex("MemberUserId");
 
-                    b.HasIndex("YogaBookingId")
-                        .IsUnique();
+                    b.HasIndex("YogaBookingId");
 
                     b.HasIndex("YogaClassScheduleId");
 
@@ -2973,6 +2975,9 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateOnly?>("EndDate")
+                        .HasColumnType("date");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
@@ -2983,22 +2988,31 @@ namespace VFMS.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(128)");
 
+                    b.Property<int?>("OrderItemId")
+                        .HasColumnType("int");
+
+                    b.Property<DateOnly?>("StartDate")
+                        .HasColumnType("date");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<int>("YogaClassScheduleId")
+                    b.Property<int>("YogaClassId")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
 
                     b.HasIndex("MemberUserId");
 
-                    b.HasIndex("YogaClassScheduleId", "MatNumber")
+                    b.HasIndex("OrderItemId");
+
+                    b.HasIndex("YogaClassId", "MatNumber")
                         .IsUnique()
                         .HasFilter("[MatNumber] IS NOT NULL AND [BookingStatus] = 'Confirmed'");
 
-                    b.HasIndex("YogaClassScheduleId", "MemberUserId")
-                        .IsUnique();
+                    b.HasIndex("YogaClassId", "MemberUserId")
+                        .IsUnique()
+                        .HasFilter("[BookingStatus] = 'Confirmed'");
 
                     b.ToTable("YogaBookings");
                 });
@@ -4137,8 +4151,8 @@ namespace VFMS.Infrastructure.Migrations
                         .IsRequired();
 
                     b.HasOne("VFMS.Domain.Entities.YogaBooking", "YogaBooking")
-                        .WithOne("Attendance")
-                        .HasForeignKey("VFMS.Domain.Entities.YogaAttendance", "YogaBookingId")
+                        .WithMany("Attendances")
+                        .HasForeignKey("YogaBookingId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
@@ -4165,15 +4179,22 @@ namespace VFMS.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("VFMS.Domain.Entities.YogaClassSchedule", "YogaClassSchedule")
+                    b.HasOne("VFMS.Domain.Entities.OrderItem", "OrderItem")
+                        .WithMany()
+                        .HasForeignKey("OrderItemId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("VFMS.Domain.Entities.YogaClass", "YogaClass")
                         .WithMany("Bookings")
-                        .HasForeignKey("YogaClassScheduleId")
+                        .HasForeignKey("YogaClassId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Member");
 
-                    b.Navigation("YogaClassSchedule");
+                    b.Navigation("OrderItem");
+
+                    b.Navigation("YogaClass");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.YogaClass", b =>
@@ -4501,19 +4522,19 @@ namespace VFMS.Infrastructure.Migrations
 
             modelBuilder.Entity("VFMS.Domain.Entities.YogaBooking", b =>
                 {
-                    b.Navigation("Attendance");
+                    b.Navigation("Attendances");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.YogaClass", b =>
                 {
+                    b.Navigation("Bookings");
+
                     b.Navigation("Schedules");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.YogaClassSchedule", b =>
                 {
                     b.Navigation("Attendances");
-
-                    b.Navigation("Bookings");
 
                     b.Navigation("RescheduledSessions");
 

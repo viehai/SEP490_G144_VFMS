@@ -590,15 +590,22 @@ public class VfmsDbContext : DbContext
         modelBuilder.Entity<YogaBooking>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.HasIndex(e => new { e.YogaClassScheduleId, e.MemberUserId }).IsUnique();  // GBR-79
+            // GBR-79: one active enrolment per member per class; cancelled ones do not block rebooking.
+            entity.HasIndex(e => new { e.YogaClassId, e.MemberUserId }).IsUnique()
+                .HasFilter("[BookingStatus] = 'Confirmed'");
             entity.Property(e => e.BookingStatus).HasConversion<string>().HasMaxLength(20);
             // One confirmed booking per mat per session (MSG-33).
-            entity.HasIndex(e => new { e.YogaClassScheduleId, e.MatNumber }).IsUnique()
+            entity.HasIndex(e => new { e.YogaClassId, e.MatNumber }).IsUnique()
                 .HasFilter("[MatNumber] IS NOT NULL AND [BookingStatus] = 'Confirmed'");
 
-            entity.HasOne(e => e.YogaClassSchedule)
-                .WithMany(s => s.Bookings)
-                .HasForeignKey(e => e.YogaClassScheduleId)
+            entity.HasOne(e => e.YogaClass)
+                .WithMany(c => c.Bookings)
+                .HasForeignKey(e => e.YogaClassId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.OrderItem)
+                .WithMany()
+                .HasForeignKey(e => e.OrderItemId)
                 .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasOne(e => e.Member)
@@ -642,8 +649,8 @@ public class VfmsDbContext : DbContext
                 .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasOne(e => e.YogaBooking)
-                .WithOne(b => b.Attendance)
-                .HasForeignKey<YogaAttendance>(e => e.YogaBookingId)
+                .WithMany(b => b.Attendances)
+                .HasForeignKey(e => e.YogaBookingId)
                 .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasOne(e => e.Member)
@@ -817,6 +824,10 @@ public class VfmsDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.PlanStatus).HasConversion<string>().HasMaxLength(20);
+            // GBR-94: at most one active personal plan per member, even under concurrent generation.
+            entity.HasIndex(e => e.MemberUserId).IsUnique()
+                .HasFilter("[PlanStatus] = 'Active' AND [IsTemplate] = 0 AND [IsDeleted] = 0")
+                .HasDatabaseName("IX_WorkoutPlans_MemberUserId_ActivePlan");
 
             entity.HasOne(e => e.Member)
                 .WithMany(u => u.WorkoutPlans)

@@ -252,7 +252,7 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
             age = today.Year - dob.Year - (today < dob.AddYears(today.Year - dob.Year) ? 1 : 0);
         }
         return new AnonymisedSurvey(age, p.Gender, p.WeightKg!.Value, p.HeightCm!.Value, p.FitnessGoal!, p.FitnessLevel!,
-            p.WorkoutFrequencyPerWeek!.Value, p.HealthConditions);
+            p.WorkoutFrequencyPerWeek!.Value, RedactContactDetails(p.HealthConditions));
     }
 
     /// <summary>Keeps only items that reference real catalog exercises and sane values; null if nothing usable remains.</summary>
@@ -278,6 +278,20 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
             return null;
         var name = string.IsNullOrWhiteSpace(plan.Name) ? "Personalised plan" : plan.Name.Trim()[..Math.Min(plan.Name.Trim().Length, 200)];
         return new GeneratedPlan(name, items);
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex EmailPattern =
+        new(@"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly System.Text.RegularExpressions.Regex PhonePattern =
+        new(@"\+?\d[\d\s.-]{7,}\d", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>Removes e-mail addresses and phone-like numbers from free text before it leaves VFMS (PDPL).</summary>
+    public static string? RedactContactDetails(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
+        var cleaned = PhonePattern.Replace(EmailPattern.Replace(text, "[removed]"), "[removed]");
+        return cleaned.Trim();
     }
 
     private static string Canonical(string value, string[] allowed) =>

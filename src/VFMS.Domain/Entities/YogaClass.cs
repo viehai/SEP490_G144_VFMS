@@ -32,5 +32,6 @@ public class YogaClass : BaseEntity
     public YogaClassType YogaClassType { get; set; } = null!;
     public ApplicationUser Instructor { get; set; } = null!;
     public ICollection<YogaClassSchedule> Schedules { get; set; } = [];
+    public ICollection<YogaBooking> Bookings { get; set; } = [];
 }
 

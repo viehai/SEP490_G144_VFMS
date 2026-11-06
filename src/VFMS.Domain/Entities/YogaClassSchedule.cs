@@ -27,7 +27,6 @@ public class YogaClassSchedule : BaseEntity
     public YogaStudio YogaStudio { get; set; } = null!;
     public YogaClassSchedule? RescheduledFrom { get; set; }
     public ICollection<YogaClassSchedule> RescheduledSessions { get; set; } = [];
-    public ICollection<YogaBooking> Bookings { get; set; } = [];
     public ICollection<YogaWaitlist> Waitlists { get; set; } = [];
     public ICollection<YogaAttendance> Attendances { get; set; } = [];
 }

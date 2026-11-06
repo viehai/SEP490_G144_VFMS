@@ -28,6 +28,12 @@ public sealed class YogaRepository : AuditedRepositoryBase, IYogaRepository
         Context.YogaStudios.AnyAsync(s => s.GymId == gymId && s.StudioName.ToLower() == name.ToLower() &&
                                           (excludingId == null || s.Id != excludingId), cancellationToken);
 
+    public async Task<int> GetLargestClassUsingStudioAsync(int studioId, DateOnly fromDate, CancellationToken cancellationToken = default) =>
+        await Context.YogaClassSchedules
+            .Where(s => s.YogaStudioId == studioId && s.ScheduledDate >= fromDate && s.ScheduleStatus == YogaScheduleStatus.Scheduled)
+            .Select(s => (int?)s.YogaClass.MaxParticipants)
+            .MaxAsync(cancellationToken) ?? 0;
+
     public Task<bool> StudioHasFutureSessionsAsync(int studioId, DateOnly fromDate, CancellationToken cancellationToken = default) =>
         Context.YogaClassSchedules.AnyAsync(s => s.YogaStudioId == studioId && s.ScheduledDate >= fromDate &&
                                                  s.ScheduleStatus == YogaScheduleStatus.Scheduled, cancellationToken);
@@ -59,7 +65,7 @@ public sealed class YogaRepository : AuditedRepositoryBase, IYogaRepository
             .Include(c => c.YogaClassType)
             .Include(c => c.Instructor)
             .Include(c => c.Schedules).ThenInclude(s => s.YogaStudio)
-            .Include(c => c.Schedules).ThenInclude(s => s.Bookings)
+            .Include(c => c.Bookings)
             .AsSplitQuery()
             .FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
 
@@ -68,8 +74,8 @@ public sealed class YogaRepository : AuditedRepositoryBase, IYogaRepository
     public Task<YogaClassSchedule?> GetSessionAsync(int id, CancellationToken cancellationToken = default) =>
         Context.YogaClassSchedules
             .Include(s => s.YogaClass).ThenInclude(c => c.YogaClassType)
+            .Include(s => s.YogaClass).ThenInclude(c => c.Bookings)
             .Include(s => s.YogaStudio)
-            .Include(s => s.Bookings)
             .AsSplitQuery()
             .FirstOrDefaultAsync(s => s.Id == id, cancellationToken);
 
@@ -82,8 +88,8 @@ public sealed class YogaRepository : AuditedRepositoryBase, IYogaRepository
     public async Task<IReadOnlyList<YogaClassSchedule>> GetSessionsAsync(DateOnly from, DateOnly to, CancellationToken cancellationToken = default) =>
         await Context.YogaClassSchedules.AsNoTracking()
             .Include(s => s.YogaClass).ThenInclude(c => c.YogaClassType)
+            .Include(s => s.YogaClass).ThenInclude(c => c.Bookings)
             .Include(s => s.YogaStudio)
-            .Include(s => s.Bookings)
             .Where(s => s.ScheduledDate >= from && s.ScheduledDate <= to)
             .OrderBy(s => s.ScheduledDate).ThenBy(s => s.StartTime)
             .AsSplitQuery()

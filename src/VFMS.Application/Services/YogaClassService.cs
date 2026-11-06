@@ -134,6 +134,11 @@ public sealed class YogaClassService : IYogaClassService
             return Result<YogaClassResponse>.Failure(
                 "Existing sessions have a different length. Update or cancel them before changing the duration.", "YOGA_CLASS_DURATION_MISMATCH");
 
+        if (request.InstructorUserId.Trim() != yogaClass.InstructorUserId && active.Any(s => s.InstructorUserId is null))
+            return Result<YogaClassResponse>.Failure(
+                "Existing sessions use the current class instructor. Set the instructor on those sessions or cancel them first.",
+                "YOGA_CLASS_INSTRUCTOR_IN_USE", 409);   // GBR-74
+
         var before = Describe(yogaClass);
         Apply(yogaClass, request);
         yogaClass.UpdatedAt = DateTime.UtcNow;
@@ -189,7 +194,14 @@ public sealed class YogaClassService : IYogaClassService
         yogaClass.ClassStatus = YogaClassStatus.Cancelled;
         yogaClass.UpdatedAt = now;
         foreach (var session in yogaClass.Schedules.Where(s => s.ScheduleStatus == YogaScheduleStatus.Scheduled && s.ScheduledDate >= today))
-            notifications.AddRange(CancelSession(session, yogaClass.ClassName, actorUserId, now));
+            MarkCancelled(session, now);
+        foreach (var booking in yogaClass.Bookings.Where(b => b.BookingStatus == YogaBookingStatus.Confirmed))
+        {
+            booking.BookingStatus = YogaBookingStatus.Cancelled;
+            booking.CancelledAt = now;
+            notifications.Add(AuditedWriter.Notify(booking.MemberUserId, actorUserId, "Yoga class cancelled",
+                $"{yogaClass.ClassName} has been cancelled by the gym.", ClassEntity, NotificationType.YogaSessionCancelled));
+        }
 
         var audit = AuditedWriter.Audit(actorUserId, AuditActionType.Update, ClassEntity, ipAddress, before, Describe(yogaClass));
         await AuditedWriter.SaveChangedAsync(_repository, yogaClass, audit, notifications, cancellationToken);
@@ -249,10 +261,10 @@ public sealed class YogaClassService : IYogaClassService
         session.UpdatedAt = DateTime.UtcNow;
 
         var notifications = moved
-            ? ConfirmedMembers(session).Select(memberId => AuditedWriter.Notify(memberId, actorUserId,
+            ? ConfirmedMembers(session.YogaClass).Select(memberId => AuditedWriter.Notify(memberId, actorUserId,
                 "Yoga session changed",
                 $"{session.YogaClass.ClassName} is now on {session.ScheduledDate:dd/MM/yyyy} at {session.StartTime:HH\\:mm}.",
-                SessionEntity, NotificationType.YogaBookingConfirmed)).ToArray()
+                SessionEntity, NotificationType.YogaSessionChanged)).ToArray()
             : [];
         var audit = AuditedWriter.Audit(actorUserId, AuditActionType.Update, SessionEntity, ipAddress, before, Describe(session));
         await AuditedWriter.SaveChangedAsync(_repository, session, audit, notifications, cancellationToken);
@@ -270,7 +282,11 @@ public sealed class YogaClassService : IYogaClassService
             return Result<YogaSessionResponse>.Failure("Only scheduled sessions can be cancelled.", "YOGA_SESSION_NOT_SCHEDULED", 409);
 
         var before = Describe(session);
-        var notifications = CancelSession(session, session.YogaClass.ClassName, actorUserId, DateTime.UtcNow);
+        MarkCancelled(session, DateTime.UtcNow);
+        var notifications = ConfirmedMembers(session.YogaClass).Select(memberId => AuditedWriter.Notify(memberId, actorUserId,
+            "Yoga session cancelled",
+            $"{session.YogaClass.ClassName} on {session.ScheduledDate:dd/MM/yyyy} at {session.StartTime:HH\\:mm} has been cancelled by the gym.",
+            SessionEntity, NotificationType.YogaSessionCancelled)).ToArray();
         var audit = AuditedWriter.Audit(actorUserId, AuditActionType.Update, SessionEntity, ipAddress, before, Describe(session));
         await AuditedWriter.SaveChangedAsync(_repository, session, audit, notifications, cancellationToken);
         return await SessionResponseAsync(id, 200, cancellationToken);
@@ -305,11 +321,11 @@ public sealed class YogaClassService : IYogaClassService
         var sessions = (await _repository.GetSessionsAsync(from, to, cancellationToken))
             .Where(s => InstructorOf(s, s.YogaClass) == instructorUserId && s.YogaClass.ClassStatus != YogaClassStatus.Draft)
             .ToArray();
-        var memberIds = sessions.SelectMany(s => s.Bookings).Select(b => b.MemberUserId);
+        var memberIds = sessions.SelectMany(s => s.YogaClass.Bookings).Select(b => b.MemberUserId);
         var names = await _repository.GetUserNamesAsync(memberIds.Append(instructorUserId), cancellationToken);
         var result = sessions.Select(s => new YogaAssignedSessionResponse(
                 ToResponse(s, s.YogaClass, names),
-                s.Bookings
+                s.YogaClass.Bookings
                     .Where(b => b.BookingStatus != YogaBookingStatus.Cancelled)
                     .OrderBy(b => b.MatNumber ?? int.MaxValue)
                     .Select(b => new YogaRosterEntry(b.Id, b.MemberUserId, names.GetValueOrDefault(b.MemberUserId, b.MemberUserId),
@@ -341,6 +357,10 @@ public sealed class YogaClassService : IYogaClassService
                 "YOGA_SESSION_OUTSIDE_CLASS");
         if (YogaTime.ToUtc(request.ScheduledDate, request.StartTime) <= _clock.GetUtcNow().UtcDateTime)
             return Result<YogaSessionResponse>.Failure("A session cannot start in the past.", "YOGA_SESSION_IN_PAST");
+        if (yogaClass.ClassStatus != YogaClassStatus.Draft && request.ScheduledDate < YogaTime.Today(_clock).AddDays(PublishLeadDays))
+            return Result<YogaSessionResponse>.Failure(
+                $"The class is already published. New or moved sessions must be at least {PublishLeadDays} days away.",
+                "YOGA_PUBLISH_TOO_LATE");   // GBR-77
         if ((int)(request.EndTime - request.StartTime).TotalMinutes != yogaClass.DurationMinutes)
             return Result<YogaSessionResponse>.Failure(
                 $"Sessions of this class last {yogaClass.DurationMinutes} minutes.", "YOGA_SESSION_DURATION");
@@ -387,25 +407,15 @@ public sealed class YogaClassService : IYogaClassService
         return null;
     }
 
-    private static List<Notification> CancelSession(YogaClassSchedule session, string className, string actorUserId, DateTime now)
+    private static void MarkCancelled(YogaClassSchedule session, DateTime now)
     {
         session.ScheduleStatus = YogaScheduleStatus.Cancelled;
         session.CancelledAt = now;
         session.UpdatedAt = now;
-        var notifications = new List<Notification>();
-        foreach (var booking in session.Bookings.Where(b => b.BookingStatus == YogaBookingStatus.Confirmed))
-        {
-            booking.BookingStatus = YogaBookingStatus.Cancelled;
-            booking.CancelledAt = now;
-            notifications.Add(AuditedWriter.Notify(booking.MemberUserId, actorUserId, "Yoga session cancelled",
-                $"{className} on {session.ScheduledDate:dd/MM/yyyy} at {session.StartTime:HH\\:mm} has been cancelled by the gym.",
-                nameof(YogaClassSchedule), NotificationType.YogaBookingConfirmed));
-        }
-        return notifications;
     }
 
-    private static IEnumerable<string> ConfirmedMembers(YogaClassSchedule session) =>
-        session.Bookings.Where(b => b.BookingStatus == YogaBookingStatus.Confirmed).Select(b => b.MemberUserId);
+    private static IEnumerable<string> ConfirmedMembers(YogaClass yogaClass) =>
+        yogaClass.Bookings.Where(b => b.BookingStatus == YogaBookingStatus.Confirmed).Select(b => b.MemberUserId);
 
     private static bool Matches(YogaClassSchedule s, YogaScheduleQuery query) =>
         (string.IsNullOrWhiteSpace(query.InstructorUserId) || InstructorOf(s, s.YogaClass) == query.InstructorUserId) &&
@@ -475,7 +485,7 @@ public sealed class YogaClassService : IYogaClassService
     private static YogaSessionResponse ToResponse(YogaClassSchedule s, YogaClass c, IReadOnlyDictionary<string, string> names)
     {
         var instructor = InstructorOf(s, c);
-        var confirmed = s.Bookings.Count(b => b.BookingStatus == YogaBookingStatus.Confirmed);
+        var confirmed = c.Bookings.Count(b => b.BookingStatus == YogaBookingStatus.Confirmed);
         return new YogaSessionResponse(
             s.Id, c.Id, c.ClassName, c.YogaClassType?.TypeName ?? string.Empty, c.DifficultyLevel,
             s.YogaStudioId, s.YogaStudio?.StudioName ?? string.Empty, s.YogaStudio?.FloorNumber ?? 0,
