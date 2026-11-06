@@ -79,6 +79,9 @@ public static class DbInitializer
                 await context.SaveChangesAsync();
                 logger.LogInformation("Default Admin account seeded.");
             }
+
+            // 4. Exercise catalog and standard workout plans (GBR-95 fallback)
+            await WorkoutSeed.SeedAsync(context, adminEmail, logger);
         }
         catch (Exception ex)
         {
