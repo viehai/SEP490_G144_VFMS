@@ -36,6 +36,17 @@ public sealed class FitnessSurveyRequestValidator : AbstractValidator<FitnessSur
     }
 }
 
+public sealed class SetPlanItemCompletionRequestValidator : AbstractValidator<SetPlanItemCompletionRequest>
+{
+    public SetPlanItemCompletionRequestValidator()
+    {
+        RuleFor(x => x.SetsDone).InclusiveBetween(1, 20).When(x => x.SetsDone is not null);
+        RuleFor(x => x.RepsDone).InclusiveBetween(1, 200).When(x => x.RepsDone is not null);
+        RuleFor(x => x.WeightKg).InclusiveBetween(0, 500).When(x => x.WeightKg is not null);
+        RuleFor(x => x.DurationMinutes).InclusiveBetween(1, 300).When(x => x.DurationMinutes is not null);
+    }
+}
+
 public sealed class UpdatePlanItemRequestValidator : AbstractValidator<UpdatePlanItemRequest>
 {
     public UpdatePlanItemRequestValidator()
@@ -47,5 +58,6 @@ public sealed class UpdatePlanItemRequestValidator : AbstractValidator<UpdatePla
         RuleFor(x => x).Must(x => x.Reps is not null || x.DurationMinutes is not null)
             .WithName("Reps").WithMessage("Enter reps or a duration.");
         RuleFor(x => x.Note).MaximumLength(500);
+        RuleFor(x => x.EquipmentId).GreaterThan(0).When(x => x.EquipmentId is not null);
     }
 }

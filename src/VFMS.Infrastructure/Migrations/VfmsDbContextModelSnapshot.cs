@@ -2026,9 +2026,6 @@ namespace VFMS.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<DateTime?>("CompletedAt")
-                        .HasColumnType("datetime2");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -2038,11 +2035,11 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<int?>("DurationMinutes")
                         .HasColumnType("int");
 
-                    b.Property<int>("ExerciseId")
+                    b.Property<int?>("EquipmentId")
                         .HasColumnType("int");
 
-                    b.Property<bool>("IsCompleted")
-                        .HasColumnType("bit");
+                    b.Property<int>("ExerciseId")
+                        .HasColumnType("int");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
@@ -2066,6 +2063,8 @@ namespace VFMS.Infrastructure.Migrations
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("EquipmentId");
 
                     b.HasIndex("ExerciseId");
 
@@ -2849,6 +2848,49 @@ namespace VFMS.Infrastructure.Migrations
                     b.HasIndex("VoucherId");
 
                     b.ToTable("VoucherRedemptions");
+                });
+
+            modelBuilder.Entity("VFMS.Domain.Entities.WorkoutLog", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DurationMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateOnly>("LoggedOn")
+                        .HasColumnType("date");
+
+                    b.Property<int>("PlanItemId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("RepsDone")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("SetsDone")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal?>("WeightKg")
+                        .HasColumnType("decimal(6,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlanItemId", "LoggedOn")
+                        .IsUnique();
+
+                    b.ToTable("WorkoutLogs");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.WorkoutPlan", b =>
@@ -3904,6 +3946,11 @@ namespace VFMS.Infrastructure.Migrations
 
             modelBuilder.Entity("VFMS.Domain.Entities.PlanItem", b =>
                 {
+                    b.HasOne("VFMS.Domain.Entities.Equipment", "Equipment")
+                        .WithMany()
+                        .HasForeignKey("EquipmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("VFMS.Domain.Entities.Exercise", "Exercise")
                         .WithMany("PlanItems")
                         .HasForeignKey("ExerciseId")
@@ -3915,6 +3962,8 @@ namespace VFMS.Infrastructure.Migrations
                         .HasForeignKey("PlanId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("Equipment");
 
                     b.Navigation("Exercise");
 
@@ -4129,6 +4178,17 @@ namespace VFMS.Infrastructure.Migrations
                     b.Navigation("Order");
 
                     b.Navigation("Voucher");
+                });
+
+            modelBuilder.Entity("VFMS.Domain.Entities.WorkoutLog", b =>
+                {
+                    b.HasOne("VFMS.Domain.Entities.PlanItem", "PlanItem")
+                        .WithMany("Logs")
+                        .HasForeignKey("PlanItemId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PlanItem");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.WorkoutPlan", b =>
@@ -4491,6 +4551,11 @@ namespace VFMS.Infrastructure.Migrations
             modelBuilder.Entity("VFMS.Domain.Entities.PhysicalProfile", b =>
                 {
                     b.Navigation("WorkoutPlans");
+                });
+
+            modelBuilder.Entity("VFMS.Domain.Entities.PlanItem", b =>
+                {
+                    b.Navigation("Logs");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.PurchaseProposal", b =>

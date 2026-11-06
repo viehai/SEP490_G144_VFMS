@@ -160,7 +160,7 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
         }, cancellationToken);
 
         var saved = await _repository.GetPlanAsync(plan.Id, cancellationToken) ?? plan;
-        return Result<WorkoutPlanResponse>.Success(ToResponse(saved), 201);
+        return Result<WorkoutPlanResponse>.Success(await PlanResponseAsync(saved, cancellationToken), 201);
     }
 
     // ── Manage ───────────────────────────────────────────────────
@@ -172,7 +172,7 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
         if (active is null)
             return Result<WorkoutPlanResponse>.Failure("You do not have an active workout plan yet.", "WORKOUT_NO_ACTIVE_PLAN", 404);
         var plan = await _repository.GetPlanAsync(active.Id, cancellationToken) ?? active;
-        return Result<WorkoutPlanResponse>.Success(ToResponse(plan));
+        return Result<WorkoutPlanResponse>.Success(await PlanResponseAsync(plan, cancellationToken));
     }
 
     public async Task<Result<WorkoutPlanResponse>> GetPlanAsync(string userId, int planId, CancellationToken cancellationToken = default)
@@ -180,7 +180,7 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
         var plan = await _repository.GetPlanAsync(planId, cancellationToken);
         return plan is null || plan.MemberUserId != userId || plan.IsTemplate
             ? PlanNotFound<WorkoutPlanResponse>()
-            : Result<WorkoutPlanResponse>.Success(ToResponse(plan));
+            : Result<WorkoutPlanResponse>.Success(await PlanResponseAsync(plan, cancellationToken));
     }
 
     public async Task<Result<IReadOnlyList<WorkoutPlanSummaryResponse>>> GetHistoryAsync(string userId, CancellationToken cancellationToken = default)
@@ -188,21 +188,47 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
         var plans = await _repository.GetPlanHistoryAsync(userId, cancellationToken);
         return Result<IReadOnlyList<WorkoutPlanSummaryResponse>>.Success(plans
             .Select(p => new WorkoutPlanSummaryResponse(p.Id, p.Name, p.PlanStatus.ToString(), p.FitnessGoal, p.IsFallback,
-                p.GeneratedAt, p.PlanItems.Count(i => i.IsCompleted), p.PlanItems.Count))
+                p.GeneratedAt, p.PlanItems.Count(i => i.Logs.Count > 0), p.PlanItems.Count))
             .ToArray());
     }
 
+    /// <summary>
+    /// UC-50: done = log today's result (one log per exercise per gym-local day, re-ticking updates it);
+    /// not done = remove this week's logs for the exercise.
+    /// </summary>
     public async Task<Result<WorkoutPlanItemResponse>> SetItemCompletionAsync(
-        string userId, int planId, int itemId, bool isCompleted, CancellationToken cancellationToken = default)
+        string userId, int planId, int itemId, SetPlanItemCompletionRequest request, CancellationToken cancellationToken = default)
     {
         var (item, error) = await FindEditableItemAsync(userId, planId, itemId, cancellationToken);
         if (error is not null)
             return error;
-        item!.IsCompleted = isCompleted;
-        item.CompletedAt = isCompleted ? _clock.GetUtcNow().UtcDateTime : null;
-        item.UpdatedAt = DateTime.UtcNow;
+
+        var today = YogaTime.Today(_clock);
+        if (request.IsCompleted)
+        {
+            var log = item!.Logs.FirstOrDefault(l => l.LoggedOn == today);
+            if (log is null)
+            {
+                log = new WorkoutLog { PlanItemId = item.Id, LoggedOn = today };
+                item.Logs.Add(log);
+                _repository.Add(log);
+            }
+            log.SetsDone = request.SetsDone;
+            log.RepsDone = request.RepsDone;
+            log.WeightKg = request.WeightKg;
+            log.DurationMinutes = request.DurationMinutes;
+            log.UpdatedAt = DateTime.UtcNow;
+        }
+        else
+        {
+            foreach (var log in item!.Logs.Where(l => l.LoggedOn >= WeekStart(today)).ToArray())
+            {
+                item.Logs.Remove(log);
+                _repository.Remove(log);
+            }
+        }
         await _repository.SaveChangesAsync(cancellationToken);
-        return Result<WorkoutPlanItemResponse>.Success(ToResponse(item));
+        return Result<WorkoutPlanItemResponse>.Success(ToResponse(item, WeekStart(today)));
     }
 
     public async Task<Result<WorkoutPlanItemResponse>> UpdateItemAsync(
@@ -214,16 +240,39 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
         var exercise = (await _repository.GetActiveExercisesAsync(cancellationToken)).FirstOrDefault(e => e.Id == request.ExerciseId);
         if (exercise is null)
             return Result<WorkoutPlanItemResponse>.Failure("Exercise not found.", "WORKOUT_EXERCISE_NOT_FOUND");
+        Equipment? equipment = null;
+        if (request.EquipmentId is { } equipmentId)
+        {
+            equipment = (await _repository.GetUsableEquipmentAsync(cancellationToken)).FirstOrDefault(e => e.Id == equipmentId);
+            if (equipment is null)
+                return Result<WorkoutPlanItemResponse>.Failure("This equipment is not available.", "WORKOUT_EQUIPMENT_UNAVAILABLE");
+        }
 
         item!.ExerciseId = exercise.Id;
         item.Exercise = exercise;
+        item.EquipmentId = equipment?.Id;   // UC-59: change exercises or equipment
+        item.Equipment = equipment;
         item.Sets = request.Sets;
         item.Reps = request.Reps;
         item.DurationMinutes = request.DurationMinutes;
         item.Note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim();
         item.UpdatedAt = DateTime.UtcNow;
         await _repository.SaveChangesAsync(cancellationToken);
-        return Result<WorkoutPlanItemResponse>.Success(ToResponse(item));
+        return Result<WorkoutPlanItemResponse>.Success(ToResponse(item, WeekStart(YogaTime.Today(_clock))));
+    }
+
+    /// <summary>SRS 9.2 step 5: the member archives the active plan to start over.</summary>
+    public async Task<Result<WorkoutPlanResponse>> ArchivePlanAsync(string userId, int planId, CancellationToken cancellationToken = default)
+    {
+        var plan = await _repository.GetPlanAsync(planId, cancellationToken);
+        if (plan is null || plan.MemberUserId != userId || plan.IsTemplate)
+            return PlanNotFound<WorkoutPlanResponse>();
+        if (plan.PlanStatus != WorkoutPlanStatus.Active)
+            return Result<WorkoutPlanResponse>.Failure("This plan is already archived.", "WORKOUT_PLAN_ARCHIVED", 409);
+        plan.PlanStatus = WorkoutPlanStatus.Archived;
+        plan.UpdatedAt = DateTime.UtcNow;
+        await _repository.SaveChangesAsync(cancellationToken);
+        return Result<WorkoutPlanResponse>.Success(await PlanResponseAsync(plan, cancellationToken));
     }
 
     public async Task<Result<IReadOnlyList<ExerciseResponse>>> GetExercisesAsync(CancellationToken cancellationToken = default)
@@ -231,6 +280,36 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
         var exercises = await _repository.GetActiveExercisesAsync(cancellationToken);
         return Result<IReadOnlyList<ExerciseResponse>>.Success(exercises
             .Select(e => new ExerciseResponse(e.Id, e.Name, e.MuscleGroup, e.DifficultyLevel, e.Description)).ToArray());
+    }
+
+    public async Task<Result<IReadOnlyList<WorkoutEquipmentResponse>>> GetEquipmentAsync(CancellationToken cancellationToken = default)
+    {
+        var equipment = await _repository.GetUsableEquipmentAsync(cancellationToken);
+        return Result<IReadOnlyList<WorkoutEquipmentResponse>>.Success(
+            equipment.Select(e => new WorkoutEquipmentResponse(e.Id, e.EquipmentName)).ToArray());
+    }
+
+    /// <summary>Consecutive gym-local days with at least one logged exercise, ending today (or yesterday if nothing yet today).</summary>
+    public static int Streak(IEnumerable<DateOnly> loggedDays, DateOnly today)
+    {
+        var days = loggedDays.ToHashSet();
+        var day = days.Contains(today) ? today : today.AddDays(-1);
+        var streak = 0;
+        while (days.Contains(day))
+        {
+            streak++;
+            day = day.AddDays(-1);
+        }
+        return streak;
+    }
+
+    private static DateOnly WeekStart(DateOnly day) => day.AddDays(-(((int)day.DayOfWeek + 6) % 7));   // Monday
+
+    private async Task<WorkoutPlanResponse> PlanResponseAsync(WorkoutPlan plan, CancellationToken cancellationToken)
+    {
+        var today = YogaTime.Today(_clock);
+        var days = await _repository.GetLoggedDaysAsync(plan.MemberUserId, today.AddDays(-366), cancellationToken);
+        return ToResponse(plan, WeekStart(today), Streak(days, today));
     }
 
     // ── Helpers ──────────────────────────────────────────────────
@@ -326,17 +405,24 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
             p.Gender, p.DateOfBirth, p.HealthConditions, IsComplete(p), p.BodyFatPercent, p.SkeletalMuscleMassKg,
             p.AiConsentGrantedAt);
 
-    private static WorkoutPlanResponse ToResponse(WorkoutPlan p)
+    private static WorkoutPlanResponse ToResponse(WorkoutPlan p, DateOnly weekStart, int streakDays)
     {
-        var items = p.PlanItems.OrderBy(i => i.DayNumber).ThenBy(i => i.OrderInDay).Select(ToResponse).ToArray();
+        var items = p.PlanItems.OrderBy(i => i.DayNumber).ThenBy(i => i.OrderInDay).Select(i => ToResponse(i, weekStart)).ToArray();
         return new WorkoutPlanResponse(p.Id, p.Name, p.PlanStatus.ToString(), p.FitnessGoal, p.IsFallback, p.GeneratedByAiModel,
-            p.GeneratedAt, items.Count(i => i.IsCompleted), items.Length, items, p.NutritionAdvice);
+            p.GeneratedAt, items.Count(i => i.IsCompleted), items.Length, items, p.NutritionAdvice, streakDays);
     }
 
-    private static WorkoutPlanItemResponse ToResponse(PlanItem i) => new(
-        i.Id, i.DayNumber, i.OrderInDay, i.ExerciseId, i.Exercise?.Name ?? string.Empty, i.Exercise?.MuscleGroup,
-        i.Exercise?.DifficultyLevel, i.Exercise?.ImageUrl, i.Exercise?.VideoUrl, i.Sets, i.Reps, i.DurationMinutes, i.Note,
-        i.IsCompleted, i.CompletedAt);
+    /// <summary>IsCompleted means "logged this week" (Monday-based, gym time), so the weekly plan starts fresh every week.</summary>
+    private static WorkoutPlanItemResponse ToResponse(PlanItem i, DateOnly weekStart)
+    {
+        var last = i.Logs.MaxBy(l => l.LoggedOn);
+        return new WorkoutPlanItemResponse(
+            i.Id, i.DayNumber, i.OrderInDay, i.ExerciseId, i.Exercise?.Name ?? string.Empty, i.Exercise?.MuscleGroup,
+            i.Exercise?.DifficultyLevel, i.Exercise?.ImageUrl, i.Exercise?.VideoUrl, i.Sets, i.Reps, i.DurationMinutes, i.Note,
+            i.Logs.Any(l => l.LoggedOn >= weekStart),
+            last is null ? null : new WorkoutLogResponse(last.LoggedOn, last.SetsDone, last.RepsDone, last.WeightKg, last.DurationMinutes),
+            i.EquipmentId, i.Equipment?.EquipmentName);
+    }
 
     private static Result<T> PlanNotFound<T>() => Result<T>.Failure("Workout plan not found.", "WORKOUT_PLAN_NOT_FOUND", 404);
 }

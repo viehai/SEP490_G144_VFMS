@@ -15,6 +15,11 @@ public interface IWorkoutRepository : IAuditedRepository
     /// <summary>Plan with items and exercises.</summary>
     Task<WorkoutPlan?> GetPlanAsync(int planId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<WorkoutPlan>> GetPlanHistoryAsync(string userId, CancellationToken cancellationToken = default);
+    /// <summary>Operational equipment a member can pick for an exercise (UC-59).</summary>
+    Task<IReadOnlyList<Equipment>> GetUsableEquipmentAsync(CancellationToken cancellationToken = default);
+    /// <summary>Distinct gym-local days on or after <paramref name="from"/> with at least one workout log (streak).</summary>
+    Task<IReadOnlyList<DateOnly>> GetLoggedDaysAsync(string userId, DateOnly from, CancellationToken cancellationToken = default);
+    void Remove(WorkoutLog log);
 }
 
 /// <summary>Anonymised survey data sent to the AI. No name, email, phone, user ID or birth date (PDPL).</summary>
@@ -53,7 +58,9 @@ public interface IWorkoutPlanService
     Task<Result<WorkoutPlanResponse>> GetActivePlanAsync(string userId, CancellationToken cancellationToken = default);
     Task<Result<WorkoutPlanResponse>> GetPlanAsync(string userId, int planId, CancellationToken cancellationToken = default);
     Task<Result<IReadOnlyList<WorkoutPlanSummaryResponse>>> GetHistoryAsync(string userId, CancellationToken cancellationToken = default);
-    Task<Result<WorkoutPlanItemResponse>> SetItemCompletionAsync(string userId, int planId, int itemId, bool isCompleted, CancellationToken cancellationToken = default);
+    Task<Result<WorkoutPlanItemResponse>> SetItemCompletionAsync(string userId, int planId, int itemId, SetPlanItemCompletionRequest request, CancellationToken cancellationToken = default);
+    Task<Result<WorkoutPlanResponse>> ArchivePlanAsync(string userId, int planId, CancellationToken cancellationToken = default);
+    Task<Result<IReadOnlyList<WorkoutEquipmentResponse>>> GetEquipmentAsync(CancellationToken cancellationToken = default);
     Task<Result<WorkoutPlanItemResponse>> UpdateItemAsync(string userId, int planId, int itemId, UpdatePlanItemRequest request, CancellationToken cancellationToken = default);
     Task<Result<IReadOnlyList<ExerciseResponse>>> GetExercisesAsync(CancellationToken cancellationToken = default);
 }

@@ -44,7 +44,7 @@ public sealed class WorkoutPlansController : ControllerBase
     [HttpPatch("plans/{planId:int}/items/{itemId:int}/completion")]
     public async Task<IActionResult> SetCompletion(int planId, int itemId, [FromBody] SetPlanItemCompletionRequest request, CancellationToken cancellationToken) =>
         User.GetUserId() is { } userId
-            ? this.ToActionResult(await _service.SetItemCompletionAsync(userId, planId, itemId, request.IsCompleted, cancellationToken))
+            ? this.ToActionResult(await _service.SetItemCompletionAsync(userId, planId, itemId, request, cancellationToken))
             : Unauthorized();
 
     [HttpPut("plans/{planId:int}/items/{itemId:int}")]
@@ -52,6 +52,16 @@ public sealed class WorkoutPlansController : ControllerBase
         User.GetUserId() is { } userId
             ? this.ToActionResult(await _service.UpdateItemAsync(userId, planId, itemId, request, cancellationToken))
             : Unauthorized();
+
+    [HttpPost("plans/{planId:int}/archive")]
+    public async Task<IActionResult> Archive(int planId, CancellationToken cancellationToken) =>
+        User.GetUserId() is { } userId
+            ? this.ToActionResult(await _service.ArchivePlanAsync(userId, planId, cancellationToken))
+            : Unauthorized();
+
+    [HttpGet("equipment")]
+    public async Task<IActionResult> GetEquipment(CancellationToken cancellationToken) =>
+        this.ToActionResult(await _service.GetEquipmentAsync(cancellationToken));
 
     [HttpGet("exercises")]
     public async Task<IActionResult> GetExercises(CancellationToken cancellationToken) =>

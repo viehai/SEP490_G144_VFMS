@@ -147,24 +147,83 @@ public sealed class WorkoutPlanTests
         other.PlanItems.Add(new PlanItem { Id = 60, PlanId = 6, ExerciseId = 10 });
         repo.Plans.AddRange([archived, other]);
 
-        Assert.Equal(409, (await service.SetItemCompletionAsync("u1", 5, 50, true)).StatusCode);
-        Assert.Equal(404, (await service.SetItemCompletionAsync("u1", 6, 60, true)).StatusCode);
+        Assert.Equal(409, (await service.SetItemCompletionAsync("u1", 5, 50, Done)).StatusCode);
+        Assert.Equal(404, (await service.SetItemCompletionAsync("u1", 6, 60, Done)).StatusCode);
+        Assert.Equal(409, (await service.ArchivePlanAsync("u1", 5)).StatusCode);
+        Assert.Equal(404, (await service.ArchivePlanAsync("u1", 6)).StatusCode);
     }
 
+    // Clock: 2026-11-07 09:00 at the gym (Saturday); the gym week started Monday 2026-11-02.
+    private static readonly DateOnly GymToday = new(2026, 11, 7);
+    private static readonly SetPlanItemCompletionRequest Done = new(true, 3, 10, 40m);
+
     [Fact]
-    public async Task MarkingItemCompleteRecordsTime()
+    public async Task TickingLogsTodaysResultOncePerDayAndCountsThisWeekOnly()   // UC-50
     {
         var (service, repo, _) = Create(CompleteProfile());
+        var item = new PlanItem { Id = 50, PlanId = 5, ExerciseId = 10, Sets = 3, Reps = 12 };
+        item.Logs.Add(new WorkoutLog { Id = 1, PlanItemId = 50, LoggedOn = new DateOnly(2026, 10, 30), WeightKg = 35m });   // last week
         var plan = new WorkoutPlan { Id = 5, MemberUserId = "u1", PlanStatus = WorkoutPlanStatus.Active };
-        var item = new PlanItem { Id = 50, PlanId = 5, ExerciseId = 10 };
         plan.PlanItems.Add(item);
         repo.Plans.Add(plan);
 
-        var result = await service.SetItemCompletionAsync("u1", 5, 50, true);
+        var before = await service.GetPlanAsync("u1", 5);
+        await service.SetItemCompletionAsync("u1", 5, 50, Done);
+        var again = await service.SetItemCompletionAsync("u1", 5, 50, Done with { WeightKg = 42.5m });
+
+        Assert.False(before.Data!.Items[0].IsCompleted);   // last week's log does not count
+        Assert.Equal(2, item.Logs.Count);                  // re-ticking today updates the same log
+        var today = Assert.Single(item.Logs, l => l.LoggedOn == GymToday);
+        Assert.Equal(42.5m, today.WeightKg);
+        Assert.True(again.Data!.IsCompleted);
+        Assert.Equal(GymToday, again.Data.LastLog!.LoggedOn);
+
+        var undone = await service.SetItemCompletionAsync("u1", 5, 50, new SetPlanItemCompletionRequest(false));
+
+        Assert.False(undone.Data!.IsCompleted);
+        Assert.Single(item.Logs);                          // only this week's log is removed
+        Assert.Single(repo.Removed);
+    }
+
+    [Fact]
+    public void StreakCountsConsecutiveDaysEndingTodayOrYesterday()
+    {
+        var days = new[] { GymToday.AddDays(-1), GymToday.AddDays(-2), GymToday.AddDays(-4) };
+        Assert.Equal(2, WorkoutPlanService.Streak(days, GymToday));                    // nothing yet today
+        Assert.Equal(3, WorkoutPlanService.Streak(days.Append(GymToday), GymToday));
+        Assert.Equal(0, WorkoutPlanService.Streak([GymToday.AddDays(-2)], GymToday));
+    }
+
+    [Fact]
+    public async Task SwapSetsEquipmentOnlyWhenOperational()   // UC-59
+    {
+        var (service, repo, _) = Create(CompleteProfile());
+        repo.Equipment.Add(new Equipment { Id = 7, EquipmentName = "Leg press", EquipmentStatus = EquipmentStatus.Operational });
+        var plan = new WorkoutPlan { Id = 5, MemberUserId = "u1", PlanStatus = WorkoutPlanStatus.Active };
+        var item = new PlanItem { Id = 50, PlanId = 5, ExerciseId = 10, Sets = 3, Reps = 12 };
+        plan.PlanItems.Add(item);
+        repo.Plans.Add(plan);
+
+        var ok = await service.UpdateItemAsync("u1", 5, 50, new UpdatePlanItemRequest(11, 3, 12, null, null, 7));
+        var broken = await service.UpdateItemAsync("u1", 5, 50, new UpdatePlanItemRequest(11, 3, 12, null, null, 8));
+
+        Assert.Equal("Leg press", ok.Data!.EquipmentName);
+        Assert.Equal(7, item.EquipmentId);
+        Assert.Equal("WORKOUT_EQUIPMENT_UNAVAILABLE", broken.ErrorCode);
+    }
+
+    [Fact]
+    public async Task MemberCanArchiveActivePlan()   // SRS 9.2 step 5
+    {
+        var (service, repo, _) = Create(CompleteProfile());
+        var plan = new WorkoutPlan { Id = 5, MemberUserId = "u1", PlanStatus = WorkoutPlanStatus.Active };
+        repo.Plans.Add(plan);
+
+        var result = await service.ArchivePlanAsync("u1", 5);
 
         Assert.True(result.IsSuccess);
-        Assert.True(item.IsCompleted);
-        Assert.Equal(Clock.GetUtcNow().UtcDateTime, item.CompletedAt);
+        Assert.Equal(WorkoutPlanStatus.Archived, plan.PlanStatus);
+        Assert.Equal(404, (await service.GetActivePlanAsync("u1")).StatusCode);
     }
 
     [Fact]
@@ -221,6 +280,8 @@ public sealed class WorkoutPlanTests
         public List<Exercise> Exercises { get; } = [];
         public List<WorkoutPlan> Plans { get; } = [];
         public List<Notification> Notifications { get; } = [];
+        public List<Equipment> Equipment { get; } = [];
+        public List<WorkoutLog> Removed { get; } = [];
         private int _nextId = 1000;
 
         public void Add<TEntity>(TEntity entity) where TEntity : BaseEntity
@@ -254,5 +315,11 @@ public sealed class WorkoutPlanTests
             Task.FromResult(Plans.FirstOrDefault(p => p.Id == planId));
         public Task<IReadOnlyList<WorkoutPlan>> GetPlanHistoryAsync(string userId, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<WorkoutPlan>>(Plans.Where(p => p.MemberUserId == userId && !p.IsTemplate).ToArray());
+        public Task<IReadOnlyList<Equipment>> GetUsableEquipmentAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<Equipment>>(Equipment.Where(e => e.EquipmentStatus == EquipmentStatus.Operational).ToArray());
+        public Task<IReadOnlyList<DateOnly>> GetLoggedDaysAsync(string userId, DateOnly from, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<DateOnly>>(Plans.Where(p => p.MemberUserId == userId)
+                .SelectMany(p => p.PlanItems).SelectMany(i => i.Logs).Select(l => l.LoggedOn).Where(d => d >= from).Distinct().ToArray());
+        public void Remove(WorkoutLog log) => Removed.Add(log);
     }
 }

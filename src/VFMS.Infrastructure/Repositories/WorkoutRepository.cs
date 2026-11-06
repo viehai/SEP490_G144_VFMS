@@ -31,12 +31,30 @@ public sealed class WorkoutRepository : AuditedRepositoryBase, IWorkoutRepositor
     public Task<WorkoutPlan?> GetPlanAsync(int planId, CancellationToken cancellationToken = default) =>
         Context.WorkoutPlans
             .Include(p => p.PlanItems).ThenInclude(i => i.Exercise)
+            .Include(p => p.PlanItems).ThenInclude(i => i.Equipment)
+            .Include(p => p.PlanItems).ThenInclude(i => i.Logs)
+            .AsSplitQuery()
             .FirstOrDefaultAsync(p => p.Id == planId, cancellationToken);
 
     public async Task<IReadOnlyList<WorkoutPlan>> GetPlanHistoryAsync(string userId, CancellationToken cancellationToken = default) =>
         await Context.WorkoutPlans.AsNoTracking()
-            .Include(p => p.PlanItems)
+            .Include(p => p.PlanItems).ThenInclude(i => i.Logs)
             .Where(p => p.MemberUserId == userId && !p.IsTemplate)
             .OrderByDescending(p => p.GeneratedAt)
             .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<Equipment>> GetUsableEquipmentAsync(CancellationToken cancellationToken = default) =>
+        await Context.Equipments
+            .Where(e => e.EquipmentStatus == EquipmentStatus.Operational)
+            .OrderBy(e => e.EquipmentName)
+            .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<DateOnly>> GetLoggedDaysAsync(string userId, DateOnly from, CancellationToken cancellationToken = default) =>
+        await Context.WorkoutLogs
+            .Where(l => l.LoggedOn >= from && l.PlanItem.WorkoutPlan.MemberUserId == userId)
+            .Select(l => l.LoggedOn)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+    public void Remove(WorkoutLog log) => Context.WorkoutLogs.Remove(log);
 }

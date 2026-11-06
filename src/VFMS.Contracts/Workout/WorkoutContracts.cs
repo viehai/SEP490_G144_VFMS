@@ -50,8 +50,15 @@ public sealed record WorkoutPlanItemResponse(
     int? DurationMinutes,
     string? Note,
     bool IsCompleted,
-    DateTime? CompletedAt
+    WorkoutLogResponse? LastLog,
+    int? EquipmentId,
+    string? EquipmentName
 );
+
+/// <summary>One day's result for an exercise (UC-50).</summary>
+public sealed record WorkoutLogResponse(DateOnly LoggedOn, int? SetsDone, int? RepsDone, decimal? WeightKg, int? DurationMinutes);
+
+public sealed record WorkoutEquipmentResponse(int Id, string Name);
 
 public sealed record WorkoutPlanResponse(
     int Id,
@@ -64,7 +71,8 @@ public sealed record WorkoutPlanResponse(
     int CompletedItems,
     int TotalItems,
     IReadOnlyList<WorkoutPlanItemResponse> Items,
-    string? NutritionAdvice = null
+    string? NutritionAdvice = null,
+    int StreakDays = 0
 );
 
 public sealed record WorkoutPlanSummaryResponse(
@@ -78,10 +86,18 @@ public sealed record WorkoutPlanSummaryResponse(
     int TotalItems
 );
 
-/// <summary>Mark an exercise done or not done (UC-50).</summary>
-public sealed record SetPlanItemCompletionRequest(bool IsCompleted);
+/// <summary>
+/// Mark an exercise done today with what was actually done (UC-50), or not done this week.
+/// </summary>
+public sealed record SetPlanItemCompletionRequest(
+    bool IsCompleted,
+    int? SetsDone = null,
+    int? RepsDone = null,
+    decimal? WeightKg = null,
+    int? DurationMinutes = null);
 
 /// <summary>Swap an exercise or adjust its volume (UC-59 "change exercises or equipment").</summary>
-public sealed record UpdatePlanItemRequest(int ExerciseId, int? Sets, int? Reps, int? DurationMinutes, string? Note = null);
+public sealed record UpdatePlanItemRequest(
+    int ExerciseId, int? Sets, int? Reps, int? DurationMinutes, string? Note = null, int? EquipmentId = null);
 
 public sealed record ExerciseResponse(int Id, string Name, string? MuscleGroup, string? DifficultyLevel, string? Description);

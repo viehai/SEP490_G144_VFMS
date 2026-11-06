@@ -89,6 +89,7 @@ public class VfmsDbContext : DbContext
     public DbSet<WorkoutPlan> WorkoutPlans { get; set; }
     public DbSet<Exercise> Exercises { get; set; }
     public DbSet<PlanItem> PlanItems { get; set; }
+    public DbSet<WorkoutLog> WorkoutLogs { get; set; }
 
     // ─────────────────────────────────────────────────────────────
     //  Equipment & Procurement (Module 10)
@@ -864,6 +865,24 @@ public class VfmsDbContext : DbContext
                 .WithMany(ex => ex.PlanItems)
                 .HasForeignKey(e => e.ExerciseId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.Equipment)
+                .WithMany()
+                .HasForeignKey(e => e.EquipmentId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ── WorkoutLog ────────────────────────────────────────────
+        modelBuilder.Entity<WorkoutLog>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.WeightKg).HasColumnType("decimal(6,2)");
+            entity.HasIndex(e => new { e.PlanItemId, e.LoggedOn }).IsUnique();   // one log per exercise per day
+
+            entity.HasOne(e => e.PlanItem)
+                .WithMany(i => i.Logs)
+                .HasForeignKey(e => e.PlanItemId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         // ── CatalogCategory ───────────────────────────────────────
