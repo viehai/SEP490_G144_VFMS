@@ -133,14 +133,17 @@ public enum TrainerApplicationStatus
     UnderReview,
     Approved,
     Rejected,
-    Blacklisted
+    Blacklisted,
+    Interviewing,
+    Hired
 }
 
 public enum TrainerLevel
 {
     Junior,
     Senior,
-    Expert
+    Expert,
+    Master
 }
 
 // ─────────────────────────────────────────────────────────────

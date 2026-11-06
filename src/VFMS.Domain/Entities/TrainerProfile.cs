@@ -10,6 +10,10 @@ namespace VFMS.Domain.Entities;
 /// </summary>
 public class TrainerProfile : BaseEntity
 {
+    public string Specialty { get; set; } = string.Empty;
+    public string Gender { get; set; } = string.Empty;
+    public int ExperienceYears { get; set; }
+    public int? AvatarFileId { get; set; }
     public string PTUserId { get; set; } = string.Empty;
     public string? Bio { get; set; }
     public string? AvatarUrl { get; set; }

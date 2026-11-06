@@ -70,10 +70,10 @@ VFMS.Client/
   - `Guest`: Can access `Register Account`, `Submit Trainer Application`, `View Personal Trainers`, `View Yoga Schedule`, `View Competitions & Leaderboard`, and `View Gym Details & Facilities`.
   - `Customer`: Inherits `Guest` (except `Register Account`). Can access `Purchase Membership Packages`, `Apply Voucher`, `View Transaction History`, `Export Invoice`, `Purchase/Track/Cancel/View Supplements`, `Generate/Manage Personalized Workout Plan`, `Manage Face Recognition Profile`, and `View Notifications / Gym Announcements`.
   - `Member`: Inherits `Customer`. Unlocks `View Membership Details`, `Renew Membership`, `Manage & Submit Membership Freeze Request`, `View PT Schedule Options`, `Purchase PT Package`, `View PT Package Progress`, `Manage PT Freeze Request`, `Book/Cancel/View Yoga Bookings`, `Check In / Check Out`, `Report Equipment Issue`, `Manage Competition Registration / History`, `View My Locker Rental`, and `Review Gym & Services`.
-  - `PT`: Accesses `Manage Trainer Profile`, `Configure PT Availability Schedule`, `View Assigned Members`, `View PT Package Progress`, `Process PT Freeze Requests`, `View Assigned Yoga Classes`, and `Take Yoga Attendance` (note: PT uses `Manage Trainer Profile` rather than general `Manage Profile`, per UCD).
+  - `PT`: Accesses trainer profile, availability, assigned members/progress, schedule-change proposals, assigned Yoga classes, attendance and own notifications. PT may view and advise on assigned freeze requests; approval/rejection belongs to Manager only.
   - `Staff`: Accesses `Create Customer Account` (locked to `Customer` role per `GBR-30`), `Check In/Out Member`, `View Active Check-ins`, `Handle Equipment Issues`, `Manage Purchase Proposals`, `Manage Competition Participants & Results`, `Manage Supplement Orders`, `Manage Locker Registry & Contracts`, `Terminate Locker & Settle Deposit`, `Handle Overdue Lockers & Maintenance`, and `View Notifications / Gym Announcements`.
   - `Manager`: Accesses all operational configuration, approval, product/schedule management, announcements, and `View Business Reports` screens per UCD.
-  - `Admin`: Accesses `Manage Staff Accounts`, `Assign Roles`, `Lock/Unlock Account`, `Manage Banned Words`, `View System Audit Logs`, and `View Notifications / Gym Announcements`.
+  - `Admin`: Accesses `Manage Staff Accounts`, `Assign Roles`, `Lock/Unlock Account`, `Manage Banned Words`, `View System Audit Logs`, own notifications and announcement management alongside Manager.
 
 ## 5. UI Handling for Updated VFMS Workflows
 
@@ -86,7 +86,10 @@ VFMS.Client/
 ### 5.2 Membership Freeze, PT Scheduling & PT Freeze
 - Display remaining freeze quota, min/max days (`GBR-40`, `GBR-41`), and advance notice rules (`GBR-42`). Disable freeze actions for weekly Yoga packages (`GBR-85`).
 - For PT booking (`UC-27`, `UC-29`), check that the user holds an active gym membership (`GBR-10`, `MSG-31`). Render available PT schedule options and temporary freeze-window availability notices (`GBR-17`).
-- Provide PT Freeze review screens (`UC-34`) for **both `Manager` and `PT`** roles.
+- Provide approval/rejection controls only for Manager. Assigned PT sees request details and can advise. Preview replacement dates and the exact frozen-day extension; never show a future approved request as already Frozen.
+- Purchase selects trainer, package, start date and fixed recurring days/time. Preview all generated appointments; a two-week view does not limit booking to 14 days. Display a 15-minute hold deadline from the server and a separate late-payment reconciliation state.
+- Show Used/Reserved/Available/Remaining credits distinctly from appointment counts. One credit is 60 minutes; a double appointment uses two. Explain cancellation penalties and request explicit member confirmation for trainer-proposed changes.
+- Public trainer cards link to View My PT Schedule or Explore Packages, not rolling Book Session. Credential edits show pending approval while the approved profile stays public. Recruitment screens support tracking, 30-day cooldown and recruitment restrictions (GBR-96/97); onboarding uses setup links.
 
 ### 5.3 Yoga Timetable, Waitlist, No-Show Penalty & Attendance
 - Display weekly Yoga sessions (`View Yoga Schedule`) with studio name, floor, instructor, difficulty, and live free-seat counter.
@@ -95,9 +98,15 @@ VFMS.Client/
 - Provide the `Take Yoga Attendance` roster screen for `PT` (Instructor) with a 30-minute submission countdown (`GBR-86`).
 
 ### 5.4 Locker Rental, Kiosk Biometrics & AI Workout Plan
-- **Locker Rental:** Member views active locker details, 100,000 VND deposit status, and 7-day overdue grace warnings (`View My Locker Rental`). Staff manages the interactive locker grid (`Available`, `Occupied`, `Overdue`, `Maintenance`), key handover, deposit refund/forfeiture (`MSG-40`), and forced clearance with Manager.
-- **Biometrics & Kiosk (`UC-52` to `UC-57`):** Require an unchecked-by-default **PDPL Biometric Consent checkbox** before opening the camera on the Face ID registration screen. On the Kiosk screen, display `MSG-35` on success, `MSG-36` on inactive/frozen membership or face mismatch, `MSG-37` on 15-minute anti-passback violation, and `MSG-38` when a PT session is auto-completed.
-- **AI Workout Plan (`UC-58`, `UC-59`):** Require PDPL Health Survey consent, show a non-blocking loading state while Gemini (`API-02`) generates the weekly routine, notify the user if a fallback standard plan was used (`GBR-95`), and allow daily exercise completion toggling.
+- **Locker Rental:** Show the actual contract deposit (default 100,000 VND), Reserved/PendingHandover after online payment, 24-hour collection deadline, and Active/Occupied only after Staff confirms key handover. Include Available, Overdue and Maintenance states. Explain renewal dates, itemized overdue/key charges, refund requested versus paid, and additional amounts due. Forced clearance records both witnesses and inventory; safe inspection precedes availability.
+- **Biometrics & Kiosk (`UC-52` to `UC-57`):** Require unchecked-by-default biometric consent before opening the camera. Show check-in, eligibility and anti-passback feedback. PT check-in records attendance only; do not display automatic session completion or consumed credits. Align MSG-38 wording before reusing it.
+
+- **AI Workout Plan (`GBR-93` to `GBR-95`):** Require health-survey consent, show a non-blocking loading state, label standard fallback plans, and allow exercise completion toggling.
+
+### 5.4.1 Notifications and announcements (Report 3 section 6)
+- All authenticated roles, including PT, access their own Notification Center. Archive read/unpinned records after 90 days; do not hide retained unread/pinned records merely because they are older. Handle inaccessible deep-link destinations without exposing content.
+- Manager/Admin manage Draft, Scheduled, Published, Expired and Archived announcements with target audience, publish/expiry times (maximum 60 days), sanitized rich text and optional media. A maximum of 3 active pins applies; scheduled overflow publishes unpinned and informs the author. Edits do not automatically rebroadcast.
+- Guest sees Public only; signed-in users see Public and their role audiences. Backend enforces the same rules for lists and detail views. UI hiding alone is insufficient.
 
 ### 5.5 Equipment, Procurement, Supplements, Competitions & Moderation
 - **Equipment & Procurement:** Member submits issue reports (`UC-71`); Staff triages issues (`Resolve`, `Escalate`, `Mark as Safe`) and builds multi-item purchase proposals with dynamic total budget calculation (`GBR-62`); Manager manages repairs, equipment lifecycle, and proposal approvals (`GBR-68`).

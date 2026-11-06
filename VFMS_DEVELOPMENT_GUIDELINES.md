@@ -2,18 +2,18 @@
 
 ## 1. Purpose and Scope
 
-These guidelines define the shared architectural, coding, and collaboration conventions for the **Victor Fitness and Gym Management System (VFMS)** (`SEP490_G144_VFMS`). They align the entire codebase with the finalized Software Requirement Specification (SRS Report 3), the 7 Use Case Diagrams (85/87 Use Cases across 13 Modules), and the updated Entity Relationship Diagram (ERD).
+These guidelines define shared architectural, coding and collaboration conventions for **Victor Fitness and Gym Management System (VFMS)**. For sections 3–6, the revised Report 3 use-case specifications and business rules (including GBR-96/97) are the business baseline. Older diagrams, UC identifiers and model comments may require alignment; guidelines describe target behavior, not implemented feature coverage.
 
 ## 2. Technology Stack
 
 | Area | Standard |
 |---|---|
 | Runtime / Framework | .NET 8 (`net8.0`) |
-| Architecture | Clean Architecture (6 Core/Presentation Projects + 2 Test Projects) |
+| Architecture | Clean Architecture (6 Core/Presentation Projects + 3 Test Projects) |
 | Frontend | Blazor WebAssembly (`VFMS.Client`) + Tailwind CSS |
 | Backend API | ASP.NET Core 8 Web API (`VFMS.API`) |
 | Shared Contracts | Plain C# DTOs, System Messages & Shared Validators (`VFMS.Contracts`) |
-| Application Layer | Use Case Services, Interfaces, Business Rules `GBR-01`..`GBR-95` (`VFMS.Application`) |
+| Application Layer | Use Case Services, Interfaces, Business Rules through `GBR-97` (`VFMS.Application`) |
 | Domain Layer | Entities, Enums, Value Objects, Domain Exceptions (`VFMS.Domain`) |
 | Infrastructure & DAL | EF Core 8, SQL Server, Background Workers, External Services (`VFMS.Infrastructure`) |
 | Object Mapping | Mapster (centralized profile configurations) |
@@ -22,7 +22,7 @@ These guidelines define the shared architectural, coding, and collaboration conv
 | Authorization | Role-based & Permission Matrix authorization (`Guest`, `Customer`, `Member`, `PT`, `Staff`, `Manager`, `Admin`) |
 | External Integrations | Google Gemini AI (`API-02`), SePay Webhook (`API-03`), VietQR (`API-04`), MailKit SMTP (`API-05`), Cloudinary |
 
-Use compatible stable package versions centralized in `Directory.Packages.props`.
+Currently package versions are declared in individual `.csproj` files. Keep compatible versions consistent; central package management is a future consolidation, not an existing prerequisite.
 
 ## 3. Clean Architecture Solution Structure
 
@@ -39,7 +39,8 @@ SEP490_G144_VFMS/
 │   └── VFMS.Client/                  # Blazor WebAssembly + Tailwind CSS (Depends ONLY on VFMS.Contracts)
 └── tests/
     ├── VFMS.UnitTests/               # Domain & Application Business Rule (GBR) unit tests
-    └── VFMS.IntegrationTests/        # API endpoint & EF Core integration tests
+    ├── VFMS.IntegrationTests/        # API endpoint & EF Core integration tests
+    └── VFMS.ClientTests/             # Client authentication tests
 ```
 
 ### Dependency Direction Rules
@@ -78,10 +79,10 @@ SEP490_G144_VFMS/
   - `Guest`: Unauthenticated visitor (Register Account, Submit Trainer Application, View Personal Trainers, View Yoga Schedule, View Competitions & Leaderboard, View Gym Details & Facilities).
   - `Customer`: Inherits `Guest` (except Register Account). Can purchase packages, apply vouchers, view transactions/export invoices, purchase/track/cancel supplements, generate/manage AI workout plans, register Face ID, and view notifications/announcements.
   - `Member`: Inherits `Customer` upon activating a membership (`GBR-37`). Can self check-in/out at kiosk, view/renew membership, submit membership/PT freeze requests, view PT schedule options & purchase PT packages, book/cancel Yoga classes, report equipment issues, register for competitions, view locker rentals, and review gym services.
-  - `PT` (Personal Trainer / Yoga Instructor): Manage trainer profile, configure PT availability schedule, view assigned members & PT package progress, process PT freeze requests, view assigned Yoga classes, and take Yoga attendance.
+  - `PT` (Personal Trainer / Yoga Instructor): Manage trainer profile, configure availability, view assigned members/progress, propose schedule changes, view/advice on PT freezes (no approval authority), view assigned Yoga classes, take attendance and access own notifications.
   - `Staff`: Create customer accounts, manual member check-in/out, view active check-ins, handle equipment issues, manage purchase proposals, manage competition participants & results, manage supplement orders, and manage locker registry/contracts/deposits/overdue lockers.
   - `Manager`: Full operational management across Membership Plans, Freeze Policies & Approvals, Promotions/Vouchers, Trainer Application Screening, PT Packages/Policies/Freeze Approvals, Yoga Studios/Classes/Schedules, Equipment & Repairs, Purchase Request Approvals, Supplement Products & Orders, Competitions & Result Confirmation, Customer Feedback, Gym Announcements, General Policies, and Business Reports.
-  - `Admin`: System administration including Manage Staff Accounts, Assign Roles, Lock/Unlock Accounts, Manage Banned Words, and View System Audit Logs.
+  - `Admin`: System administration including Manage Staff Accounts, Assign Roles, Lock/Unlock Accounts, Manage Banned Words, View System Audit Logs and manage Gym Announcements alongside Manager.
 - **JWT Security (`GBR-26`, `GBR-27`, `GBR-28`):**
   - Hash passwords with BCrypt/Argon2 (8-32 chars, uppercase, lowercase, digit, special char).
   - Lock accounts for 15 minutes after 5 consecutive failed logins within 15 minutes.
@@ -92,13 +93,22 @@ SEP490_G144_VFMS/
 Implement scheduled background tasks in `VFMS.Infrastructure/BackgroundServices/`:
 1. **`JOB-01` (`PaymentOrderExpirationWorker`):** Cancels unpaid online VietQR orders after 15 minutes (`GBR-48`) and counter cash orders after 24 hours, releasing locked slots and voucher reservations.
 2. **`JOB-02` (`MembershipLifecycleWorker`):** Activates `Scheduled` memberships on their start date (or auto-activates on day 30 per `GBR-35`) and transitions expired `Active` memberships to `Expired`.
-3. **`JOB-03` (`FreezeTransitionWorker`):** Transitions `Approved` membership/PT freezes to `Active` (`Frozen`) on start date, restores `Active` status and extends expiry dates when freeze ends, and expires unapproved `Pending` freeze requests past their start date.
+3. **`JOB-03` (`FreezeTransitionWorker`):** Activates approved freezes on the effective start date and resumes on Resume Date. PT validity is extended exactly once at approval; the worker must not extend it again. Early resumption recalculates actual frozen days. Expire pending requests past their start date.
 4. **`JOB-04` (`AutoCheckOutWorker`):** Automatically closes open `Active` gym check-ins as `AutoClosed` at gym closing time + 30 minutes or 6 hours after check-in.
 5. **`JOB-05` (`CompetitionLifecycleWorker`):** Transitions competitions `Published` -> `Ongoing` -> `Completed` and flags unverified result submissions older than 7 days.
 6. **`JOB-06` (`PromotionAndExpiryReminderWorker`):** Dispatches advance expiration reminders for memberships, lockers, and vouchers/promotions.
 7. **`JOB-07` (`BiometricAndAccountPurgeWorker`):** Removes unverified accounts after 24 hours and purges `FaceData` (`FaceNetEmbedding`) 90 days after a user's last membership expires (PDPL compliance).
 
 ## 8. Git Workflow & Collaboration
+
+### Revised sections 3–6 implementation baseline
+
+- PT uses fixed recurring schedules selected at purchase: 12/24/36 credits, validity 60/120/180 days. Generate only purchased credits, check both participants' calendars and Gym Membership coverage, and hold dates for 15 minutes from order creation. Late payments require reconciliation; duplicate callbacks cannot duplicate fulfillment.
+- One credit is 60 minutes; a continuous 120-minute appointment uses two. Track Used, Reserved and Available separately. Cancellation at least 4 hours before start releases reserved credits; late cancellation/no-show consumes allocated credits. Schedule changes require member confirmation.
+- Recruitment does not create an account until hiring. Link verified existing accounts, preserve history and use setup links for new accounts. GBR-96 governs recruitment restrictions; GBR-97 governs approval of credential changes while retaining the approved public version.
+- Locker online checkout leads to PendingHandover/Reserved, then Active/Occupied after physical handover. Financial settlements and refund completion are explicit records, not inferred from locker status.
+- Notification access is recipient-scoped; announcement access is audience-scoped. Manager and Admin publish announcements. PT check-in records attendance rather than immediate completion.
+- Scheduled responsibilities must also cover locker collection timeout, notification archival, announcement publication/expiration and email retry. These are required behaviors, not a claim that workers exist yet.
 
 ### Branches
 

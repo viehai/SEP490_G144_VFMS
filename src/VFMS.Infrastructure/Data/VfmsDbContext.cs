@@ -413,8 +413,8 @@ public class VfmsDbContext : DbContext
             entity.Property(e => e.CitizenId).HasMaxLength(12).IsRequired();
 
             entity.HasOne(e => e.Applicant)
-                .WithOne(u => u.TrainerApplication)
-                .HasForeignKey<TrainerApplication>(e => e.ApplicantUserId)
+                .WithMany(u => u.TrainerApplications)
+                .HasForeignKey(e => e.ApplicantUserId)
                 .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasOne(e => e.ReviewedByUser)
@@ -1134,7 +1134,7 @@ public class VfmsDbContext : DbContext
             entity.HasIndex(e => e.Word).IsUnique();
             entity.Property(e => e.Word).HasMaxLength(100).IsRequired();
 
-            entity.HasOne(e  => e.Admin)
+            entity.HasOne(e => e.Admin)
                 .WithMany()
                 .HasForeignKey(e => e.CreatedByUserId)
                 .OnDelete(DeleteBehavior.Restrict);
@@ -1179,6 +1179,8 @@ public class VfmsDbContext : DbContext
                 .HasForeignKey(e => e.BusinessReportSnapshotId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
+
+        TrainerModelConfiguration.Configure(modelBuilder);
 
         // ── TrainerProfile → YogaClass ────────────────────────────
         modelBuilder.Entity<TrainerProfile>()

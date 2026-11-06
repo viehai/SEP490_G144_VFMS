@@ -19,6 +19,8 @@ using VFMS.Domain.Enums;
 using VFMS.Infrastructure.Data;
 using VFMS.Infrastructure.Identity;
 using VFMS.Infrastructure.Repositories;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -41,6 +43,21 @@ builder.Services.AddScoped<IUserAdministrationService, UserAdministrationService
 builder.Services.AddSystemAdministrationModule();
 builder.Services.AddEquipmentModule();
 builder.Services.AddSupplementModule();
+builder.Services.AddDataProtection();
+builder.Services.AddScoped<ITrainerStore, TrainerStore>();
+builder.Services.AddScoped<TrainerService>();
+builder.Services.AddHostedService<TrainerEmailWorker>();
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("trainer-public", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 10,
+            Window = TimeSpan.FromMinutes(10),
+            QueueLimit = 0
+        }));
+});
 
 var mapsterConfig = new TypeAdapterConfig();
 mapsterConfig.Scan(typeof(UserAdministrationMapping).Assembly);
@@ -163,6 +180,7 @@ app.UseCors("VfmsClient");
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 app.MapControllers();
 

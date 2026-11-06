@@ -40,7 +40,7 @@ public class ApplicationUser : BaseEntity
     public ICollection<CheckIn> CheckIns { get; set; } = [];
     public ICollection<QRCode> QRCodes { get; set; } = [];
     public FaceData? FaceData { get; set; }
-    public TrainerApplication? TrainerApplication { get; set; }
+    public ICollection<TrainerApplication> TrainerApplications { get; set; } = [];
     public TrainerProfile? TrainerProfile { get; set; }
     public ICollection<TrainerReview> TrainerReviewsGiven { get; set; } = [];
     public ICollection<LockerRentalContract> LockerContracts { get; set; } = [];

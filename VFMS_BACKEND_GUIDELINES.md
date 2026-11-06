@@ -5,7 +5,7 @@
 This document defines the architectural and domain implementation conventions for the backend projects of the **Victor Fitness and Gym Management System (VFMS)**:
 - **`VFMS.Domain`**: Core entities, enums, value objects, and domain exceptions.
 - **`VFMS.Contracts`**: Plain DTOs (Requests/Responses), shared FluentValidation rules, and standardized message codes (`MSG-01` to `MSG-43`).
-- **`VFMS.Application`**: Business workflows implementing all 85/87 Use Cases across 13 Modules and enforcing Business Rules (`GBR-01` to `GBR-95`).
+- **`VFMS.Application`**: Business workflows following Report 3, including revised sections 3–6 and rules through `GBR-97`. These are target requirements, not a statement of current implementation coverage.
 - **`VFMS.Infrastructure`**: EF Core 8 (`VFMSDbContext`), SQL Server migrations, repositories, JWT/BCrypt identity, Background Workers (`JOB-01` to `JOB-07`), and external API integrations.
 - **`VFMS.API`**: ASP.NET Core 8 Web API controllers, webhook endpoints, middlewares, and dependency injection wiring.
 
@@ -61,21 +61,30 @@ This document defines the architectural and domain implementation conventions fo
 - Guests/Customers submit trainer applications with Citizen ID (CCCD), Email, Phone, and certificate attachments (`<= 5MB` PDF/JPG/PNG, `GBR-01`). Enforce 30-day duplicate submission cooldown per CCCD/Email (`GBR-03`) and block blacklisted applicants.
 - Submitting an application does **not** create an `ApplicationUser` account (`GBR-02`). Only when the Manager marks the candidate as `Hired` (`UC-23`) and sets Trainer Level + commission tier (`GBR-04`) does the system provision a PT user account.
 - PTs can update their public bio and avatar (screened against `BannedWordList`), but new certificates/specialties require Manager approval (`GBR-05`).
+- Apply GBR-96 recruitment restrictions separately from account locks, with Manager reason/audit. Preserve multiple application attempts per applicant and enforce cooldown for every submitted status. At hiring, link a verified existing account or create one; preserve roles/history and send a single-use setup link rather than a plaintext password. GBR-97 requires pending credential-change records while retaining approved public data.
 
 ### 4.3 Personal Training (PT 1-on-1) Scheduling & PT Freeze (`GBR-06` to `GBR-17`)
 - Requires an active General Gym Membership covering the training period (`GBR-10`, `MSG-31`).
+- Use fixed recurring schedules selected at purchase, not rolling individual bookings. Packages allocate 12/24/36 credits within 60/120/180 days. A two-week calendar is only a view. Reserve generated dates atomically for 15 minutes from order creation; refresh does not extend holds. Late payment requires reconciliation and callbacks must fulfill once.
+- One credit equals 60 minutes; double appointments use two credits with no internal buffer. Separate appointments require a 15-minute trainer buffer. Check PT/Yoga conflicts for both participants. Published weekly minimum counts booked template slots too.
+- Track `UsedCredits`, `ReservedCredits`, `AvailableCredits = TotalCredits - UsedCredits - ReservedCredits` and `RemainingCredits = TotalCredits - UsedCredits`. Booking is not consumption. Cancellation at least 4 hours before start releases reservations; late cancellation/no-show consumes allocated credits once. Freeze cancellation has no penalty.
+- Trainer-proposed changes require explicit member confirmation and an atomic conflict recheck; preserve the old appointment until accepted. Store one eligible review per completed contract, not just per trainer/member pair.
 - Support PT availability configuration (`UC-26`), schedule option viewing (`UC-27`), and PT package purchase (`UC-29`) with atomic database locking (`GBR-09`, `MSG-30`) to prevent double-booking.
 - **PT Freeze (`UC-32`, `UC-33`, `UC-34`):**
   - Governed by `PTFreezePolicy` (min 7 days; cumulative caps: 12 sessions -> 15 days, 24 sessions -> 30 days, 36 sessions -> 60 days per `GBR-15`).
-  - Per the finalized Use Case Diagrams, **both Manager and the assigned PT** can review and process PT freeze requests (`UC-34`).
-  - Approving a PT freeze cancels scheduled sessions inside the freeze window, releases those dates/slots for temporary booking by other members whose package duration fits inside the freeze window (`GBR-17`), and projects/reschedules remaining sessions from the Resume Date (`GBR-16`).
+  - Only **Manager** may approve/reject; the assigned PT may view and advise (Report 3, section 4.10).
+  - Approval validates a feasible replacement schedule, cancels affected appointments without penalty and releases reserved credits. Extend expiration by exactly `ResumeDate - StartDate` once on approval; enter Frozen only on StartDate. Do not extend again on resumption or set expiration to the final appointment date. Early resumption recalculates actual days and rechecks conflicts and Gym Membership coverage.
+  - Temporary bookings must fit wholly inside released intervals and cannot override resumed appointments or other members' reservations.
 
 ## 5. Locker Rental, Yoga, Check-in & AI Workout Workflows (Modules 5, 7, 8, 9)
 
 ### 5.1 Locker Rental Management (`GBR-18` to `GBR-20`)
-- Restrict each Member to at most **1 active locker** at any time (`GBR-18`, `MSG-39`).
-- Front-desk Staff manages locker registry, contracts (`Manage Locker Registry & Contracts`), and termination/deposit settlement (`Terminate Locker & Settle Deposit`, 100,000 VND refundable Key Deposit per `GBR-19`, `MSG-40`).
-- Staff and Manager handle overdue lockers (`> 7 days` overdue incurs deposit forfeiture and forced clearance per `GBR-20`) and maintenance states.
+- Enforce one allocation per member across checkout holds, PendingHandover, Active and Overdue contracts, atomically across both channels.
+- Online payment creates PendingHandover and a Reserved locker. Staff records identity verification, terms acceptance and physical key handover before Active/Occupied. Collect within 24 hours; timeout releases the locker and creates a tracked full refund request, not an assumed completed refund.
+- Snapshot rent, penalty terms and actual deposit (configurable, default 100,000 VND). Renewal retains the deposit. Before expiry extend the old expiration; after expiry settle overdue charges and start the renewed term at confirmation, without also charging retroactive rent for the same interval.
+- Rental starts at handover; daily rental ends at local closing time, monthly rental uses calendar months with month-end clamping. Use timestamp-capable storage for these boundaries.
+- Itemize deductions: refund = max(0, deposit - deductions); additional due = max(0, deductions - deposit). Prevent duplicate settlements and duplicate key-loss charges. Track requested versus disbursed refunds separately.
+- Forced clearance after more than 7 overdue days requires Staff and Manager witness identities and a belongings inventory. Return to Available only after clearance and safety inspection; otherwise Maintenance.
 
 ### 5.2 Yoga & Group Class Management (`YogaStudio`, `YogaClass`, `YogaClassSchedule`, `YogaBooking`)
 - `YogaStudio`: Unique studio name per gym + floor number (`GBR-71`); cannot deactivate if future active sessions exist (`GBR-72`).
@@ -86,7 +95,7 @@ This document defines the architectural and domain implementation conventions fo
 ### 5.3 Biometrics & Kiosk Check-in/Check-out (`FaceData`, `QRCode`, `GBR-89` to `GBR-92`)
 - Store only encrypted facial embeddings (`VARBINARY(MAX) FaceNetEmbedding` in `FaceData`) after explicit PDPL consent; discard raw camera images immediately and purge embeddings 90 days after last membership expiry (`JOB-07`).
 - Validate active membership (`GBR-89`, `MSG-36`) and enforce a **15-minute anti-passback cooldown** (`GBR-90`, `MSG-37`).
-- Self check-in within `[-30 mins, +15 mins]` of a scheduled PT session automatically marks that PT session as completed (`GBR-92`, `MSG-38`).
+- Self check-in within `[-30 mins, +15 mins]` records PT attendance only (`GBR-92`). Assigned PT confirms completion after the scheduled end. Completion/no-show settles allocated credits once; repeated scans never consume extra credits. Align message text with attendance rather than automatic completion.
 - Staff can perform manual check-in/check-out (`UC-55`, `UC-56`) with Staff UserId logged; Staff and Manager can monitor live occupancy (`View Active Check-ins`, `UC-57`).
 
 ### 5.4 AI Personalized Workout Plan (`API-02`, `GBR-93` to `GBR-95`)
@@ -95,7 +104,7 @@ This document defines the architectural and domain implementation conventions fo
 
 ## 6. Competitions, Equipment, Supplements & System Administration (Modules 6, 10, 11, 12, 13)
 
-- **Communication (`GBR-21` to `GBR-23`):** Retain in-app notifications for 90 days. Manager manages `GymAnnouncement` (expiry `<= 60 days`, maximum **3 concurrent pinned announcements**).
+- **Communication (`GBR-21` to `GBR-23`):** Recipient-scoped notifications archive after 90 days only when read and unpinned; unread/pinned records remain accessible. Critical events produce in-app and email notifications with duplicate prevention and retry tracking; email failure does not roll back business transactions. Manager and Admin manage announcements with Draft/Scheduled/Published/Expired/Archived states, audience checks on list/detail/deep-links, sanitized rich text, expiry within 60 days of publication and at most 3 active pins. Recheck pin capacity at scheduled publication; publish unpinned and notify the author if full. Edits do not automatically rebroadcast.
 - **Competitions (`UC-60` to `UC-66`):** Guest/Customer/Member view competitions & leaderboards; Member registers and views personal history; Staff manages participants and records preliminary results; Manager configures competitions/scoring rules and confirms final results + voucher rewards.
 - **Equipment & Procurement (`GBR-53` to `GBR-56`, `GBR-62`, `GBR-68`):** Members report issues (`UC-71`); Staff handles issues (`Resolve`, `Escalate`, `Mark as Safe` in `UC-72`) and submits multi-item `PurchaseProposal` (`UC-74`); Manager manages `GymEquipment`, arranges `EquipmentRepairs`, and approves/rejects purchase proposals (`PurchaseProposalReview`, `UC-75`).
 - **Supplement Store (`GBR-57` to `GBR-61`, `GBR-69`, `GBR-70`):** Catalog-only (no stock inventory tracking). Status flow: `Pending -> Processing -> ReadyForPickup / OutForDelivery -> Completed`. Offline payment only (`GymPickup` at counter or `HomeDelivery` COD). Customers/Members can cancel only while `Pending`. Staff and Manager process orders; Manager manages products.

@@ -11,6 +11,14 @@ namespace VFMS.Domain.Entities;
 /// </summary>
 public class TrainerApplication : BaseEntity
 {
+    public string TrackingCode { get; set; } = string.Empty;
+    public DateOnly? DateOfBirth { get; set; }
+    public string Gender { get; set; } = string.Empty;
+    public string Specialty { get; set; } = string.Empty;
+    public int ExperienceYears { get; set; }
+    public string Bio { get; set; } = string.Empty;
+    public DateTime? ConsentAt { get; set; }
+    public string? HiredUserId { get; set; }
     public string? ApplicantUserId { get; set; }   // null if submitted as Guest
     public string FullName { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
