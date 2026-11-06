@@ -13,6 +13,8 @@ public class YogaBooking : BaseEntity
 {
     public int YogaClassScheduleId { get; set; }
     public string MemberUserId { get; set; } = string.Empty;
+    /// <summary>Reserved mat position on the studio floorplan (UC-38, MSG-33).</summary>
+    public int? MatNumber { get; set; }
     public DateTime BookedAt { get; set; }
     public YogaBookingStatus BookingStatus { get; set; } = YogaBookingStatus.Confirmed;
     public DateTime? CancelledAt { get; set; }

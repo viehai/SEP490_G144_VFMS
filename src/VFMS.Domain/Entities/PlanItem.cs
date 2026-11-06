@@ -15,6 +15,9 @@ public class PlanItem : BaseEntity
     public int? Reps { get; set; }
     public int? DurationMinutes { get; set; }
     public string? Note { get; set; }
+    /// <summary>Member marked this exercise done (UC-50).</summary>
+    public bool IsCompleted { get; set; }
+    public DateTime? CompletedAt { get; set; }
 
     // ── Navigation Properties ──────────────────────────────────
     public WorkoutPlan WorkoutPlan { get; set; } = null!;

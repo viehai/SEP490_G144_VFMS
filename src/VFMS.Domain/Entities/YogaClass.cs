@@ -18,6 +18,13 @@ public class YogaClass : BaseEntity
     /// <summary>Session duration in minutes (45–90, GBR-75).</summary>
     public int DurationMinutes { get; set; }
     public YogaClassStatus ClassStatus { get; set; } = YogaClassStatus.Draft;
+    /// <summary>Beginner / Intermediate / Advanced (GBR-73).</summary>
+    public string DifficultyLevel { get; set; } = "Beginner";
+    public int SessionsPerWeek { get; set; } = 1;
+    /// <summary>UTC registration deadline (GBR-73, GBR-78).</summary>
+    public DateTime RegistrationDeadline { get; set; }
+    public DateOnly StartDate { get; set; }
+    public DateOnly EndDate { get; set; }
     public bool IsTemplate { get; set; } = false;
     public string? ImageUrl { get; set; }
 

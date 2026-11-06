@@ -547,6 +547,7 @@ public class VfmsDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.ClassName).HasMaxLength(256).IsRequired();
             entity.Property(e => e.ClassStatus).HasConversion<string>().HasMaxLength(20);
+            entity.Property(e => e.DifficultyLevel).HasMaxLength(20).IsRequired();
 
             entity.HasOne(e => e.YogaClassType)
                 .WithMany(t => t.YogaClasses)
@@ -564,6 +565,10 @@ public class VfmsDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.ScheduleStatus).HasConversion<string>().HasMaxLength(50);
+            entity.HasOne<ApplicationUser>()
+                .WithMany()
+                .HasForeignKey(e => e.InstructorUserId)
+                .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasOne(e => e.YogaClass)
                 .WithMany(yc => yc.Schedules)
@@ -587,6 +592,9 @@ public class VfmsDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => new { e.YogaClassScheduleId, e.MemberUserId }).IsUnique();  // GBR-79
             entity.Property(e => e.BookingStatus).HasConversion<string>().HasMaxLength(20);
+            // One confirmed booking per mat per session (MSG-33).
+            entity.HasIndex(e => new { e.YogaClassScheduleId, e.MatNumber }).IsUnique()
+                .HasFilter("[MatNumber] IS NOT NULL AND [BookingStatus] = 'Confirmed'");
 
             entity.HasOne(e => e.YogaClassSchedule)
                 .WithMany(s => s.Bookings)

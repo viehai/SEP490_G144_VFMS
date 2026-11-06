@@ -12,6 +12,8 @@ public class YogaClassSchedule : BaseEntity
 {
     public int YogaClassId { get; set; }
     public int YogaStudioId { get; set; }
+    /// <summary>Instructor for this session; null means the class instructor (GBR-74, UC-45).</summary>
+    public string? InstructorUserId { get; set; }
     public DateOnly ScheduledDate { get; set; }
     public TimeOnly StartTime { get; set; }
     public TimeOnly EndTime { get; set; }

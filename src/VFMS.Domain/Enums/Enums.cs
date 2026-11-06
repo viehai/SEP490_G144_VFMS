@@ -181,7 +181,9 @@ public enum YogaClassStatus
     Draft,
     Published,
     Cancelled,
-    Completed
+    Completed,
+    Open,
+    Full
 }
 
 public enum YogaScheduleStatus

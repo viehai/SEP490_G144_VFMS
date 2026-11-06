@@ -2017,6 +2017,9 @@ namespace VFMS.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -2028,6 +2031,9 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.Property<int>("ExerciseId")
                         .HasColumnType("int");
+
+                    b.Property<bool>("IsCompleted")
+                        .HasColumnType("bit");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
@@ -2970,6 +2976,9 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
+                    b.Property<int?>("MatNumber")
+                        .HasColumnType("int");
+
                     b.Property<string>("MemberUserId")
                         .IsRequired()
                         .HasColumnType("nvarchar(128)");
@@ -2983,6 +2992,10 @@ namespace VFMS.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("MemberUserId");
+
+                    b.HasIndex("YogaClassScheduleId", "MatNumber")
+                        .IsUnique()
+                        .HasFilter("[MatNumber] IS NOT NULL AND [BookingStatus] = 'Confirmed'");
 
                     b.HasIndex("YogaClassScheduleId", "MemberUserId")
                         .IsUnique();
@@ -3014,8 +3027,16 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<string>("Description")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("DifficultyLevel")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<int>("DurationMinutes")
                         .HasColumnType("int");
+
+                    b.Property<DateOnly>("EndDate")
+                        .HasColumnType("date");
 
                     b.Property<string>("ImageUrl")
                         .HasColumnType("nvarchar(max)");
@@ -3035,6 +3056,15 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.Property<int>("MinParticipants")
                         .HasColumnType("int");
+
+                    b.Property<DateTime>("RegistrationDeadline")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("SessionsPerWeek")
+                        .HasColumnType("int");
+
+                    b.Property<DateOnly>("StartDate")
+                        .HasColumnType("date");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
@@ -3068,6 +3098,9 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<TimeOnly>("EndTime")
                         .HasColumnType("time");
 
+                    b.Property<string>("InstructorUserId")
+                        .HasColumnType("nvarchar(128)");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
@@ -3095,6 +3128,8 @@ namespace VFMS.Infrastructure.Migrations
                         .HasColumnType("int");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("InstructorUserId");
 
                     b.HasIndex("RescheduledFromId");
 
@@ -4169,6 +4204,11 @@ namespace VFMS.Infrastructure.Migrations
 
             modelBuilder.Entity("VFMS.Domain.Entities.YogaClassSchedule", b =>
                 {
+                    b.HasOne("VFMS.Domain.Entities.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("InstructorUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("VFMS.Domain.Entities.YogaClassSchedule", "RescheduledFrom")
                         .WithMany("RescheduledSessions")
                         .HasForeignKey("RescheduledFromId")
