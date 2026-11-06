@@ -36,6 +36,7 @@ builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IAuthRepository, AuthRepository>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddPasswordRecovery(builder.Configuration);
 builder.Services.AddScoped<IUserAdministrationRepository, UserAdministrationRepository>();
 builder.Services.AddScoped<IUserAdministrationService, UserAdministrationService>();
 builder.Services.AddSystemAdministrationModule();
@@ -160,6 +161,7 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 app.UseCors("VfmsClient");
+app.UseRateLimiter();
 
 app.UseAuthentication();
 app.UseAuthorization();

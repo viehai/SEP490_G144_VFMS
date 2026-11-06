@@ -1,0 +1,153 @@
+@page "/manager/dashboard"
+@layout ManagerAdminLayout
+@using System.Globalization
+
+<PageTitle>Manager Dashboard | Victor Fitness</PageTitle>
+
+<div class="workspace-page space-y-8 font-['Inter',sans-serif] text-[#252525]">
+    <header class="flex flex-col justify-between gap-5 border-b-2 border-black pb-7 md:flex-row md:items-end">
+        <div>
+            <p class="workspace-heading mb-3 text-[10px] font-bold tracking-[.18em] text-[#71717A]">VFMS / OPERATIONS OVERVIEW</p>
+            <h1 class="workspace-heading text-3xl font-extrabold uppercase tracking-tight sm:text-4xl">Manager Dashboard<span class="text-[#6366F1]">.</span></h1>
+            <p class="mt-3 max-w-2xl text-sm leading-6 text-[#545454]">Theo dõi hiệu quả kinh doanh, hội viên và các yêu cầu cần xử lý.</p>
+        </div>
+        <span class="workspace-heading inline-flex w-fit items-center gap-2 border border-black bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider rounded-none"><span class="h-2 w-2 bg-[#6366F1]" aria-hidden="true"></span>Dữ liệu minh họa</span>
+    </header>
+
+    <section class="grid gap-4 lg:grid-cols-3" aria-label="Thống kê hoạt động kinh doanh">
+        <button type="button" @onclick='() => _activeAction = "reports"' class="group border-2 border-black bg-white p-6 text-left transition-colors hover:bg-[#6366F1] hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#6366F1] rounded-none">
+            <div class="flex items-start justify-between"><span class="workspace-heading text-[11px] font-bold uppercase tracking-wider">Doanh thu tháng</span><span class="text-xl" aria-hidden="true">↗</span></div>
+            <p class="workspace-heading mt-7 text-3xl font-extrabold tracking-tight lg:text-xl xl:text-3xl 2xl:text-4xl">@Money(_monthlyRevenue)<span class="ml-1 text-base">₫</span></p>
+            <p class="mt-3 text-xs text-[#545454] group-hover:text-white">Tháng mẫu · Tổng giá trị thanh toán thành công</p>
+        </button>
+        <button type="button" @onclick='() => _activeAction = "members"' class="group border-2 border-black bg-white p-6 text-left transition-colors hover:bg-[#6366F1] hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#6366F1] rounded-none">
+            <div class="flex items-start justify-between"><span class="workspace-heading text-[11px] font-bold uppercase tracking-wider">Hội viên Active</span><span class="text-xl" aria-hidden="true">↗</span></div>
+            <p class="workspace-heading mt-7 text-5xl font-extrabold tracking-tight">@_activeMembers.ToString("N0", _numberFormat)</p>
+            <p class="mt-3 text-xs text-[#545454] group-hover:text-white">Hội viên có gói tập đang hoạt động</p>
+        </button>
+        <button type="button" @onclick='() => _activeAction = "pending"' class="group border-2 border-black bg-white p-6 text-left transition-colors hover:bg-[#6366F1] hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#6366F1] rounded-none">
+            <div class="flex items-start justify-between"><span class="workspace-heading text-[11px] font-bold uppercase tracking-wider">Yêu cầu Pending</span><span class="text-xl" aria-hidden="true">↗</span></div>
+            <p class="workspace-heading mt-7 text-5xl font-extrabold tracking-tight">@(_freezeRequests + _purchaseProposals)</p>
+            <p class="mt-3 text-xs text-[#545454] group-hover:text-white">@_freezeRequests bảo lưu · @_purchaseProposals đề xuất mua sắm</p>
+        </button>
+    </section>
+
+    <section id="quick-actions" aria-labelledby="manager-actions-title">
+        <div class="mb-4 flex flex-wrap items-center justify-between gap-2"><h2 id="manager-actions-title" class="workspace-heading text-sm font-extrabold uppercase tracking-wider">Truy cập nhanh</h2><span class="text-xs text-[#71717A]">Chọn tác vụ để xem dữ liệu mẫu</span></div>
+        <div class="grid gap-3 lg:grid-cols-3">
+            @foreach (var action in _actions)
+            {
+                <button type="button" @onclick="() => _activeAction = action.Id" aria-pressed="@(_activeAction == action.Id ? "true" : "false")"
+                        class="flex min-h-24 items-center justify-between gap-5 border-2 border-black p-5 text-left transition-colors hover:bg-[#6366F1] hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#6366F1] rounded-none @(_activeAction == action.Id ? "bg-[#6366F1] text-white" : "bg-white text-black")">
+                    <span><span class="workspace-heading block text-xs font-extrabold uppercase tracking-wider">@action.Name</span><span class="mt-2 block text-xs">@action.Description</span></span>
+                    <span class="text-xl" aria-hidden="true">↗</span>
+                </button>
+            }
+        </div>
+    </section>
+
+    <section class="overflow-hidden border-2 border-black bg-white rounded-none" aria-labelledby="manager-table-title" aria-live="polite">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b-2 border-black px-5 py-5 sm:px-6"><h2 id="manager-table-title" class="workspace-heading text-sm font-extrabold uppercase tracking-wider">@ActiveTitle</h2><span class="text-xs text-[#71717A]">Bản xem trước · Không thay đổi dữ liệu thật</span></div>
+        @if (_activeAction == "plans")
+        {
+            <div class="overflow-x-auto"><table class="workspace-table w-full min-w-[650px] text-left text-sm"><thead class="workspace-heading bg-[#F7F7F7] text-[10px] uppercase tracking-wider"><tr><th class="px-6 py-4">Gói tập</th><th class="px-6 py-4">Dịch vụ</th><th class="px-6 py-4">Giá niêm yết</th><th class="px-6 py-4">Trạng thái</th></tr></thead><tbody>
+                @foreach (var plan in _plans)
+                {
+                    <tr class="border-t border-[#CFCFCF]"><td class="px-6 py-5 font-semibold">@plan.Name</td><td class="px-6 py-5 text-[#545454]">@plan.Service</td><td class="workspace-heading px-6 py-5 text-xs font-bold">@Money(plan.Price) ₫</td><td class="px-6 py-5"><span class="inline-block border border-[#10B981] bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase text-[#047857] rounded-none">Đang mở bán</span></td></tr>
+                }
+            </tbody></table></div>
+        }
+        else if (_activeAction == "reports")
+        {
+            <div class="overflow-x-auto"><table class="workspace-table w-full min-w-[650px] text-left text-sm"><thead class="workspace-heading bg-[#F7F7F7] text-[10px] uppercase tracking-wider"><tr><th class="px-6 py-4">Nguồn doanh thu</th><th class="px-6 py-4">Giao dịch</th><th class="px-6 py-4">Doanh thu mẫu</th><th class="px-6 py-4">Tỷ trọng</th></tr></thead><tbody>
+                @foreach (var row in _revenueRows)
+                {
+                    <tr class="border-t border-[#CFCFCF]"><td class="px-6 py-5 font-semibold">@row.Service</td><td class="px-6 py-5">@row.Transactions</td><td class="workspace-heading px-6 py-5 text-xs font-bold">@Money(row.Amount) ₫</td><td class="px-6 py-5"><div class="flex items-center gap-3"><div class="h-2 w-20 bg-[#E4E4E7]" aria-hidden="true"><div class="h-full bg-[#6366F1]" style="@($"width: {row.Amount / _monthlyRevenue * 100m:0}%")"></div></div><span class="text-xs">@((row.Amount / _monthlyRevenue).ToString("P0", _numberFormat))</span></div></td></tr>
+                }
+            </tbody></table></div>
+        }
+        else if (_activeAction == "feedback")
+        {
+            <div class="divide-y divide-[#CFCFCF]">
+                @foreach (var feedback in _feedback)
+                {
+                    <article class="flex flex-col justify-between gap-4 px-6 py-5 sm:flex-row"><div><p class="text-sm font-semibold">@feedback.Member <span class="ml-2 text-xs font-normal text-[#71717A]">@feedback.Category</span></p><p class="mt-2 max-w-2xl text-sm leading-6 text-[#545454]">@feedback.Content</p></div><span class="h-fit whitespace-nowrap border border-[#F59E0B] bg-amber-50 px-2 py-1 text-[10px] font-bold uppercase text-[#92400E] rounded-none">Chờ phản hồi</span></article>
+                }
+            </div>
+        }
+        else if (_activeAction == "members")
+        {
+            <div class="grid gap-0 divide-y divide-[#CFCFCF] lg:grid-cols-3 md:divide-x md:divide-y-0">
+                @foreach (var group in _memberGroups)
+                {
+                    <div class="p-6"><p class="workspace-heading text-xs font-bold uppercase tracking-wider">@group.Service</p><p class="workspace-heading mt-5 text-4xl font-extrabold text-[#6366F1]">@group.Members</p><p class="mt-3 text-xs leading-5 text-[#545454]">Hội viên hoạt động trong dữ liệu mẫu</p></div>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="overflow-x-auto"><table class="workspace-table w-full min-w-[650px] text-left text-sm"><thead class="workspace-heading bg-[#F7F7F7] text-[10px] uppercase tracking-wider"><tr><th class="px-6 py-4">Mã yêu cầu</th><th class="px-6 py-4">Loại</th><th class="px-6 py-4">Nội dung</th><th class="px-6 py-4">Trạng thái</th></tr></thead><tbody>
+                @foreach (var request in _pending)
+                {
+                    <tr class="border-t border-[#CFCFCF]"><td class="workspace-heading px-6 py-5 text-xs font-bold">@request.Code</td><td class="px-6 py-5">@request.Type</td><td class="px-6 py-5 text-[#545454]">@request.Description</td><td class="px-6 py-5"><span class="inline-block border border-[#F59E0B] bg-amber-50 px-2 py-1 text-[10px] font-bold uppercase text-[#92400E] rounded-none">Đang chờ</span></td></tr>
+                }
+            </tbody></table></div>
+        }
+    </section>
+</div>
+
+@code {
+    private static readonly NumberFormatInfo _numberFormat = new()
+    {
+        NumberGroupSeparator = ".",
+        NumberDecimalSeparator = ",",
+        PercentPositivePattern = 1
+    };
+    private string _activeAction = "plans";
+    private readonly decimal _monthlyRevenue = 356_800_000m;
+    private readonly int _activeMembers = 842;
+    private readonly int _freezeRequests = 7;
+    private readonly int _purchaseProposals = 5;
+    private readonly List<QuickAction> _actions =
+    [
+        new("plans", "Membership Plans", "Danh mục gói hội viên"),
+        new("reports", "Business Reports", "Tổng quan doanh thu và dịch vụ"),
+        new("feedback", "Feedback Management", "Lắng nghe phản hồi hội viên")
+    ];
+    private readonly List<PlanRow> _plans =
+    [
+        new("Gym 3 tháng", "GYM", 2_400_000m),
+        new("Gym 6 tháng", "GYM", 4_200_000m),
+        new("Gym 12 tháng", "GYM", 7_200_000m),
+        new("Yoga Studio · 12 buổi", "YOGA", 1_350_000m)
+    ];
+    private readonly List<RevenueRow> _revenueRows =
+    [
+        new("Gym Membership", 136, 214_800_000m),
+        new("Personal Training", 42, 92_000_000m),
+        new("Yoga Studio", 38, 50_000_000m)
+    ];
+    private readonly List<MemberGroup> _memberGroups = [new("GYM", 578), new("YOGA", 168), new("PT", 96)];
+    private readonly List<FeedbackRow> _feedback =
+    [
+        new("Nguyễn Minh Anh", "Thiết bị", "Mong phòng tập bổ sung hướng dẫn sử dụng tại khu máy cáp."),
+        new("Trần Hoàng Nam", "Yoga Studio", "Khung giờ yoga cuối tuần phù hợp; mong có thêm lớp vào buổi sáng."),
+        new("Lê Bảo Ngọc", "Dịch vụ", "Đề xuất bổ sung móc treo đồ tại khu thay đồ.")
+    ];
+    private readonly List<PendingRow> _pending =
+    [
+        new("FRZ-024", "Bảo lưu gói", "Hội viên đề nghị bảo lưu 7 ngày"),
+        new("PR-018", "Mua sắm", "Đề xuất bổ sung dây kéo và thảm tập"),
+        new("FRZ-025", "Bảo lưu PT", "Yêu cầu bảo lưu lịch huấn luyện cá nhân"),
+        new("PR-019", "Mua sắm", "Đề xuất thay linh kiện máy chạy bộ")
+    ];
+
+    private static string Money(decimal amount) => amount.ToString("N0", _numberFormat);
+    private string ActiveTitle => _activeAction switch { "reports" => "Tổng quan doanh thu tháng mẫu", "feedback" => "Phản hồi cần theo dõi", "members" => "Phân bổ hội viên hoạt động", "pending" => "Yêu cầu đang chờ xử lý", _ => "Danh mục gói hội viên mẫu" };
+    private sealed record QuickAction(string Id, string Name, string Description);
+    private sealed record PlanRow(string Name, string Service, decimal Price);
+    private sealed record RevenueRow(string Service, int Transactions, decimal Amount);
+    private sealed record MemberGroup(string Service, int Members);
+    private sealed record FeedbackRow(string Member, string Category, string Content);
+    private sealed record PendingRow(string Code, string Type, string Description);
+}

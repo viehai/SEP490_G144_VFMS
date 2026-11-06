@@ -104,6 +104,13 @@ namespace VFMS.Infrastructure.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<DateTime?>("ResetTokenExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ResetTokenHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
 
@@ -113,6 +120,10 @@ namespace VFMS.Infrastructure.Migrations
                         .IsUnique();
 
                     b.HasIndex("GymId");
+
+                    b.HasIndex("ResetTokenHash")
+                        .IsUnique()
+                        .HasFilter("[ResetTokenHash] IS NOT NULL");
 
                     b.ToTable("ApplicationUsers");
                 });

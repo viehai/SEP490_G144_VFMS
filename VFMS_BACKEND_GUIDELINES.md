@@ -17,6 +17,10 @@ This document defines the architectural and domain implementation conventions fo
 - **Authentication:** JWT Bearer Access Token (30-minute lifespan) + Refresh Token (7 days, or 30 days with Remember Me) with immediate token blacklisting on logout (`GBR-28`). Passwords hashed via BCrypt/Argon2 (`GBR-26`).
 - **Strict Dependency Flow:** `VFMS.API` -> `VFMS.Application` -> `VFMS.Domain`. `VFMS.Infrastructure` implements interfaces defined in `VFMS.Application`. Never return EF Core entities directly from API controllers.
 
+### Implemented authentication recovery (Module 1)
+
+`POST /api/auth/forgot-password` queues generic email instructions; `POST /api/auth/reset-password` consumes a 15-minute, single-use token and revokes existing refresh tokens in the same transaction as the password change. SMTP uses the existing MailKit dependency. Configuration, response contracts, migration, deployment limits and tests are documented in [VFMS_PASSWORD_RECOVERY_API.md](VFMS_PASSWORD_RECOVERY_API.md). This backend feature does not wire the current mock Profile form or add a frontend reset screen.
+
 ## 3. Unified Package, Order, Voucher & Payment Workflow (Module 2)
 
 ### 3.1 Composite Package & Component Catalog (`Package` & `PackageComponent`)

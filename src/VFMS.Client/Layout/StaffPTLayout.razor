@@ -1,0 +1,8 @@
+@inherits LayoutComponentBase
+@inject NavigationManager Navigation
+
+<WorkspaceShell Variant="@Variant">@Body</WorkspaceShell>
+
+@code {
+    private string Variant => Navigation.ToBaseRelativePath(Navigation.Uri).StartsWith("pt/", StringComparison.OrdinalIgnoreCase) ? "pt" : "staff";
+}
