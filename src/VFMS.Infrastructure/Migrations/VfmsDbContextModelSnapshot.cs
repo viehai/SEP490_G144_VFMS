@@ -4272,13 +4272,6 @@ namespace VFMS.Infrastructure.Migrations
 
             modelBuilder.Entity("VFMS.Domain.Entities.YogaClass", b =>
                 {
-                    b.HasOne("VFMS.Domain.Entities.TrainerProfile", null)
-                        .WithMany("AssignedYogaClasses")
-                        .HasForeignKey("InstructorUserId")
-                        .HasPrincipalKey("PTUserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.HasOne("VFMS.Domain.Entities.ApplicationUser", "Instructor")
                         .WithMany()
                         .HasForeignKey("InstructorUserId")
@@ -4579,8 +4572,6 @@ namespace VFMS.Infrastructure.Migrations
 
             modelBuilder.Entity("VFMS.Domain.Entities.TrainerProfile", b =>
                 {
-                    b.Navigation("AssignedYogaClasses");
-
                     b.Navigation("Availabilities");
 
                     b.Navigation("PTPurchases");

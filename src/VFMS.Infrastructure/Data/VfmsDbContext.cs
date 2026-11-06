@@ -1223,17 +1223,12 @@ public class VfmsDbContext : DbContext
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
-        // ── TrainerProfile → YogaClass ────────────────────────────
+        // ── TrainerProfile ────────────────────────────────────────
+        // One profile per trainer. YogaClass.InstructorUserId points at ApplicationUsers only: a Yoga Instructor
+        // created by an Admin has no TrainerProfile yet, so a second FK to TrainerProfiles broke every class insert.
         modelBuilder.Entity<TrainerProfile>()
             .HasIndex(tp => tp.PTUserId)
             .IsUnique();
-
-        modelBuilder.Entity<YogaClass>()
-            .HasOne<TrainerProfile>()
-            .WithMany(tp => tp.AssignedYogaClasses)
-            .HasForeignKey(yc => yc.InstructorUserId)
-            .HasPrincipalKey(tp => tp.PTUserId)
-            .OnDelete(DeleteBehavior.Restrict);
     }
 
     // ─────────────────────────────────────────────────────────────
