@@ -43,7 +43,7 @@ public static class DbInitializer
             }
 
             // 2. Seed Roles
-            var roleNames = new[] { "Customer", "Member", "PT", "Staff", "Manager", "Admin" };
+            var roleNames = new[] { "Customer", "Member", "PT", "YogaInstructor", "Staff", "Manager", "Admin" };
             foreach (var roleName in roleNames)
             {
                 if (!await context.ApplicationRoles.AnyAsync(r => r.RoleName == roleName))

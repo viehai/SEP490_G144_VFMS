@@ -339,6 +339,21 @@ public sealed class YogaTests
 
     // ── Helpers ─────────────────────────────────────────────────
 
+    [Fact]
+    public async Task OnlyYogaInstructorRoleCanTeachAClass()   // GBR-02: PT and Yoga Instructor are separate roles
+    {
+        var repo = Seeded(out _, out _);
+        repo.Roles["gym-pt"] = "PT";
+        var service = new YogaClassService(repo, Clock);
+
+        var personalTrainer = await service.CreateClassAsync(ClassRequest() with { InstructorUserId = "gym-pt" }, "manager", null);
+        var yogaInstructor = await service.CreateClassAsync(ClassRequest(), "manager", null);
+
+        Assert.Equal("YOGA_INVALID_INSTRUCTOR", personalTrainer.ErrorCode);
+        Assert.True(yogaInstructor.IsSuccess, yogaInstructor.ErrorMessage);
+        Assert.Equal("YogaInstructor", YogaClassService.InstructorRole);
+    }
+
     private static YogaRepositoryFake Seeded(out YogaClass yogaClass, out YogaStudio studio)
     {
         var repo = new YogaRepositoryFake();
@@ -347,8 +362,8 @@ public sealed class YogaTests
         yogaClass.Id = 7;
         repo.Studios.Add(studio);
         repo.Classes.Add(yogaClass);
-        repo.Roles["pt-1"] = "PT";
-        repo.Roles["pt-2"] = "PT";
+        repo.Roles["pt-1"] = YogaClassService.InstructorRole;
+        repo.Roles["pt-2"] = YogaClassService.InstructorRole;
         return repo;
     }
 

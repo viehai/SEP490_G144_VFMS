@@ -13,11 +13,8 @@ namespace VFMS.Application.Services;
 /// </summary>
 public sealed class YogaClassService : IYogaClassService
 {
-    /// <summary>
-    /// Role allowed to teach yoga. Report 3 lists 7 roles, so yoga instructors are PT accounts for now.
-    /// Change this one constant if a separate Yoga Instructor role is added.
-    /// </summary>
-    public const string InstructorRole = "PT";
+    /// <summary>Role allowed to teach yoga (Report 3 GBR-02: "PT or Yoga Instructor roles").</summary>
+    public const string InstructorRole = "YogaInstructor";
     public const int StudioGapMinutes = 15;     // GBR-75
     public const int PublishLeadDays = 7;       // GBR-77
 
@@ -352,7 +349,7 @@ public sealed class YogaClassService : IYogaClassService
         if (await _repository.GetClassTypeAsync(request.YogaClassTypeId, cancellationToken) is null)
             return Result<YogaClassResponse>.Failure("Class type not found.", "YOGA_TYPE_NOT_FOUND");
         if (!await _repository.UserHasRoleAsync(request.InstructorUserId, InstructorRole, cancellationToken))
-            return Result<YogaClassResponse>.Failure("The selected instructor is not a trainer.", "YOGA_INVALID_INSTRUCTOR");
+            return Result<YogaClassResponse>.Failure("The selected instructor is not a yoga instructor.", "YOGA_INVALID_INSTRUCTOR");
         return null;
     }
 
@@ -388,7 +385,7 @@ public sealed class YogaClassService : IYogaClassService
         var instructorId = string.IsNullOrWhiteSpace(request.InstructorUserId) ? yogaClass.InstructorUserId : request.InstructorUserId.Trim();
         if (instructorId != yogaClass.InstructorUserId &&
             !await _repository.UserHasRoleAsync(instructorId, InstructorRole, cancellationToken))
-            return Result<YogaSessionResponse>.Failure("The selected instructor is not a trainer.", "YOGA_INVALID_INSTRUCTOR");
+            return Result<YogaSessionResponse>.Failure("The selected instructor is not a yoga instructor.", "YOGA_INVALID_INSTRUCTOR");
 
         var sameDay = (await _repository.GetActiveSessionsOnDateAsync(request.ScheduledDate, cancellationToken))
             .Where(s => s.Id != existing?.Id)

@@ -16,6 +16,7 @@ public sealed class UserAdministrationValidatorTests
 {
     [Theory]
     [InlineData("PT")]
+    [InlineData("YogaInstructor")]
     [InlineData("Staff")]
     [InlineData("Manager")]
     public void CreateStaffAcceptsAssignableRoles(string role)

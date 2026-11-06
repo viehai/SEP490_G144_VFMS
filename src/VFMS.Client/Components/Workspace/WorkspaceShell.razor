@@ -31,6 +31,7 @@
                     <option value="/manager/dashboard">Manager</option>
                     <option value="/staff/dashboard">Staff</option>
                     <option value="/pt/dashboard">Personal Trainer</option>
+                    <option value="/instructor/yoga">Yoga Instructor</option>
                     <option value="/profile">Hồ sơ cá nhân</option>
                 </select>
             </div>
@@ -45,13 +46,12 @@
     [Parameter] public string Variant { get; set; } = "staff";
     [Parameter] public RenderFragment? ChildContent { get; set; }
     private string SidebarTone => Variant == "manager" ? "bg-[#0F172A]" : "bg-[#0A0A0A]";
-    private string RoleName => Variant switch { "admin" => "ADMIN", "manager" => "MANAGER", "pt" => "PERSONAL TRAINER", _ => "STAFF" };
-    private string RoleMark => Variant switch { "admin" => "AD", "manager" => "MG", "pt" => "PT", _ => "ST" };
-    private string DashboardRoute => Variant switch { "admin" => "/admin/dashboard", "manager" => "/manager/dashboard", "pt" => "/pt/dashboard", _ => "/staff/dashboard" };
+    private string RoleName => Variant switch { "admin" => "ADMIN", "manager" => "MANAGER", "pt" => "PERSONAL TRAINER", "yoga" => "YOGA INSTRUCTOR", _ => "STAFF" };
+    private string RoleMark => Variant switch { "admin" => "AD", "manager" => "MG", "pt" => "PT", "yoga" => "YI", _ => "ST" };
+    private string DashboardRoute => Variant switch { "admin" => "/admin/dashboard", "manager" => "/manager/dashboard", "pt" => "/pt/dashboard", "yoga" => "/instructor/yoga", _ => "/staff/dashboard" };
     private (string Href, string Label)[] FeatureLinks => Variant switch
     {
         "manager" => [("/manager/yoga", "Quản lý Yoga"), ("/staff/check-ins", "Đang có mặt")],
-        "pt" => [("/pt/yoga", "Lớp Yoga của tôi")],
         "staff" => [("/staff/check-ins", "Đang có mặt")],
         _ => []
     };
@@ -59,6 +59,6 @@
     private void ChangePreview(ChangeEventArgs args)
     {
         var target = args.Value?.ToString();
-        if (target is "/admin/dashboard" or "/manager/dashboard" or "/staff/dashboard" or "/pt/dashboard" or "/profile") Navigation.NavigateTo(target);
+        if (target is "/admin/dashboard" or "/manager/dashboard" or "/staff/dashboard" or "/pt/dashboard" or "/instructor/yoga" or "/profile") Navigation.NavigateTo(target);
     }
 }

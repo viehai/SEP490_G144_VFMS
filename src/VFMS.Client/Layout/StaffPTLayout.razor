@@ -4,5 +4,10 @@
 <WorkspaceShell Variant="@Variant">@Body</WorkspaceShell>
 
 @code {
-    private string Variant => Navigation.ToBaseRelativePath(Navigation.Uri).StartsWith("pt/", StringComparison.OrdinalIgnoreCase) ? "pt" : "staff";
+    private string Variant => Navigation.ToBaseRelativePath(Navigation.Uri) switch
+    {
+        var path when path.StartsWith("pt/", StringComparison.OrdinalIgnoreCase) => "pt",
+        var path when path.StartsWith("instructor/", StringComparison.OrdinalIgnoreCase) => "yoga",
+        _ => "staff"
+    };
 }

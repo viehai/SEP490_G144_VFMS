@@ -4,7 +4,7 @@ namespace VFMS.Contracts.Users.Validators;
 
 public sealed class UserListRequestValidator : AbstractValidator<UserListRequest>
 {
-    private static readonly string[] FilterableRoles = ["Customer", "Member", "PT", "Staff", "Manager", "Admin"];
+    private static readonly string[] FilterableRoles = ["Customer", "Member", "PT", "YogaInstructor", "Staff", "Manager", "Admin"];
     private static readonly string[] AccountStatuses = ["Active", "Locked", "Inactive", "PendingVerification"];
 
     public UserListRequestValidator()
