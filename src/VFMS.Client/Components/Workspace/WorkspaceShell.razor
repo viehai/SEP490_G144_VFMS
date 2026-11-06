@@ -1,0 +1,53 @@
+@inject NavigationManager Navigation
+
+<div class="workspace-shell workspace-shell--@Variant rounded-none">
+    <aside class="workspace-sidebar @SidebarTone rounded-none" aria-label="Điều hướng không gian làm việc">
+        <a href="/" class="workspace-logo rounded-none"><img src="/brand/logo-remove.png" alt="Victor Fitness - Trang chủ" /></a>
+        <div class="workspace-sidebar-label">V-FITNESS MANAGEMENT</div>
+        <div class="workspace-role rounded-none"><span aria-hidden="true">@RoleMark</span><div><strong>@RoleName</strong><small>KHÔNG GIAN LÀM VIỆC</small></div></div>
+        <p class="workspace-sidebar-label workspace-sidebar-label--menu">ĐIỀU HƯỚNG</p>
+        <nav class="workspace-nav">
+            <NavLink href="@DashboardRoute" Match="NavLinkMatch.All" class="workspace-nav-link rounded-none" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">01</span> Tổng quan <span aria-hidden="true">↗</span></NavLink>
+            <a href="@(DashboardRoute + "#quick-actions")" class="workspace-nav-link rounded-none"><span aria-hidden="true">02</span> Truy cập nhanh <span aria-hidden="true">↗</span></a>
+            <NavLink href="/profile" Match="NavLinkMatch.All" class="workspace-nav-link rounded-none" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">03</span> Hồ sơ cá nhân <span aria-hidden="true">↗</span></NavLink>
+            <a href="/" class="workspace-nav-link rounded-none"><span aria-hidden="true">04</span> Trang chủ <span aria-hidden="true">↗</span></a>
+        </nav>
+        <div class="workspace-sidebar-bottom">
+            <p class="workspace-sidebar-label">VICTOR FITNESS / VFMS</p>
+            <p>Vận hành có kỷ luật.<br />Phát triển có định hướng.</p>
+        </div>
+    </aside>
+    <div class="workspace-content">
+        <header class="workspace-topbar rounded-none">
+            <div class="workspace-breadcrumb"><a href="/">VFMS</a><span aria-hidden="true">/</span><strong>@RoleName</strong></div>
+            <div class="workspace-preview-picker">
+                <label for="workspace-preview">XEM GIAO DIỆN</label>
+                <select id="workspace-preview" value="@CurrentRoute" @onchange="ChangePreview" class="rounded-none">
+                    <option value="/admin/dashboard">Admin</option>
+                    <option value="/manager/dashboard">Manager</option>
+                    <option value="/staff/dashboard">Staff</option>
+                    <option value="/pt/dashboard">Personal Trainer</option>
+                    <option value="/profile">Hồ sơ cá nhân</option>
+                </select>
+            </div>
+        </header>
+        <div class="workspace-demo-note"><span aria-hidden="true">◼</span> BẢN XEM TRƯỚC <span aria-hidden="true">/</span> Dữ liệu minh họa, chưa phản ánh hoạt động thực tế.</div>
+        <main class="workspace-main">@ChildContent</main>
+        <footer class="workspace-footer"><span>© @DateTime.Now.Year VICTOR FITNESS</span><span>V-FITNESS MANAGEMENT SYSTEM</span></footer>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Variant { get; set; } = "staff";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    private string SidebarTone => Variant == "manager" ? "bg-[#0F172A]" : "bg-[#0A0A0A]";
+    private string RoleName => Variant switch { "admin" => "ADMIN", "manager" => "MANAGER", "pt" => "PERSONAL TRAINER", _ => "STAFF" };
+    private string RoleMark => Variant switch { "admin" => "AD", "manager" => "MG", "pt" => "PT", _ => "ST" };
+    private string DashboardRoute => Variant switch { "admin" => "/admin/dashboard", "manager" => "/manager/dashboard", "pt" => "/pt/dashboard", _ => "/staff/dashboard" };
+    private string CurrentRoute => "/" + Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].Trim('/');
+    private void ChangePreview(ChangeEventArgs args)
+    {
+        var target = args.Value?.ToString();
+        if (target is "/admin/dashboard" or "/manager/dashboard" or "/staff/dashboard" or "/pt/dashboard" or "/profile") Navigation.NavigateTo(target);
+    }
+}

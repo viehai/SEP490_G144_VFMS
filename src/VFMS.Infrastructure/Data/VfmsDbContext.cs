@@ -162,6 +162,8 @@ public class VfmsDbContext : DbContext
             entity.Property(e => e.Email).HasMaxLength(256).IsRequired();
             entity.Property(e => e.PhoneNumber).HasMaxLength(20);
             entity.Property(e => e.PasswordHash).HasMaxLength(512).IsRequired();
+            entity.Property(e => e.ResetTokenHash).HasMaxLength(64);
+            entity.HasIndex(e => e.ResetTokenHash).IsUnique();
             entity.Property(e => e.AccountStatus).HasConversion<string>().HasMaxLength(50);
 
             entity.HasOne(e => e.Gym)
@@ -1220,6 +1222,14 @@ public class VfmsDbContext : DbContext
             }
             else if (entry.State == EntityState.Modified)
             {
+                if (entry.Entity is ApplicationUser user && entry.Property(nameof(ApplicationUser.PasswordHash)).IsModified)
+                {
+                    // Clear reset links on any tracked password change, including concurrent token issuance.
+                    user.ResetTokenHash = null;
+                    user.ResetTokenExpiresAt = null;
+                    entry.Property(nameof(ApplicationUser.ResetTokenHash)).IsModified = true;
+                    entry.Property(nameof(ApplicationUser.ResetTokenExpiresAt)).IsModified = true;
+                }
                 entry.Entity.UpdatedAt = DateTime.UtcNow;
             }
         }
