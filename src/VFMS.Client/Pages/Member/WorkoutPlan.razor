@@ -46,10 +46,6 @@
                 </label>
                 <label class="block text-xs font-semibold">Ngày sinh<input type="date" class="mt-1 w-full border border-[#CFCFCF] px-3 py-2 text-sm rounded-none" @bind="_survey.Dob" /></label>
             </div>
-            <div class="grid grid-cols-2 gap-3">
-                <label class="block text-xs font-semibold">Mỡ cơ thể (%, InBody)<input type="number" step="0.1" class="mt-1 w-full border border-[#CFCFCF] px-3 py-2 text-sm rounded-none" @bind="_survey.BodyFat" /></label>
-                <label class="block text-xs font-semibold">Khối cơ (kg, InBody)<input type="number" step="0.1" class="mt-1 w-full border border-[#CFCFCF] px-3 py-2 text-sm rounded-none" @bind="_survey.Muscle" /></label>
-            </div>
             <label class="block text-xs font-semibold">Tình trạng sức khỏe / chấn thương
                 <textarea rows="3" maxlength="500" class="mt-1 w-full border border-[#CFCFCF] px-3 py-2 text-sm rounded-none" @bind="_survey.Health"></textarea>
                 <span class="mt-1 block font-normal text-[#71717A]">Không nhập tên, số điện thoại hay thông tin cá nhân khác.</span>
@@ -61,10 +57,6 @@
                     <input type="checkbox" class="mt-1" @bind="_consent" />
                     <span>Tôi đồng ý gửi dữ liệu khảo sát đã ẩn danh (không có tên, email, số điện thoại) tới Google Gemini để tạo giáo án.</span>
                 </label>
-                @if (_consentAt is { } consentAt)
-                {
-                    <p class="text-xs text-[#71717A]">Lần đồng ý gần nhất: @consentAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</p>
-                }
                 <button type="button" disabled="@(_busy || !_consent || !_surveyComplete)" @onclick="Generate"
                         class="w-full border-2 border-black bg-white px-6 py-3 font-['Montserrat'] text-xs font-bold uppercase rounded-none hover:bg-black hover:text-white disabled:opacity-40">
                     @(_busy ? "Đang tạo giáo án…" : "Tạo giáo án mới")
@@ -88,21 +80,11 @@
                         <p class="font-['Montserrat'] text-lg font-extrabold uppercase">@_plan.Name</p>
                         <p class="text-xs text-neutral-300">Tạo lúc @_plan.GeneratedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm") · @(_plan.IsFallback ? "Giáo án tiêu chuẩn" : _plan.GeneratedByAiModel)</p>
                     </div>
-                    <div class="text-right">
-                        <p class="font-['Montserrat'] text-2xl font-extrabold">@WeeklyPercent%</p>
-                        <p class="text-xs text-neutral-300">Tuần này @_plan.CompletedItems/@_plan.TotalItems · Chuỗi @_plan.StreakDays ngày</p>
-                    </div>
+                    <p class="font-['Montserrat'] text-2xl font-extrabold">@_plan.CompletedItems/@_plan.TotalItems</p>
                 </div>
                 @if (_plan.IsFallback)
                 {
                     <p class="border border-[#F59E0B] bg-amber-50 px-4 py-3 text-xs text-[#92400E] rounded-none">Dịch vụ AI tạm thời không khả dụng nên hệ thống đã áp dụng giáo án tiêu chuẩn cho mục tiêu của bạn.</p>
-                }
-                @if (_plan.NutritionAdvice is not null)
-                {
-                    <section class="border-2 border-black bg-white px-5 py-4 rounded-none">
-                        <h2 class="font-['Montserrat'] text-xs font-extrabold uppercase tracking-wider">Gợi ý dinh dưỡng</h2>
-                        <p class="mt-2 text-sm leading-6 text-neutral-700">@_plan.NutritionAdvice</p>
-                    </section>
                 }
                 @foreach (var day in _plan.Items.GroupBy(i => i.DayNumber))
                 {
@@ -113,41 +95,18 @@
                             {
                                 <li class="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
                                     <label class="flex items-start gap-3">
-                                        <input type="checkbox" class="mt-1" checked="@(item.IsCompleted || _logItemId == item.Id)" disabled="@_busy" @onchange="e => Toggle(item, (bool)(e.Value ?? false))" aria-label="Đã tập @item.ExerciseName tuần này" />
+                                        <input type="checkbox" class="mt-1" checked="@item.IsCompleted" disabled="@_busy" @onchange="e => Toggle(item, (bool)(e.Value ?? false))" />
                                         <span>
                                             <span class="font-semibold @(item.IsCompleted ? "line-through text-neutral-500" : "")">@item.ExerciseName</span>
                                             <span class="block text-xs text-neutral-600">@Volume(item)@(item.MuscleGroup is null ? "" : $" · {item.MuscleGroup}")</span>
-                                            @if (item.EquipmentName is not null) { <span class="block text-xs text-neutral-600">Thiết bị: @item.EquipmentName</span> }
                                             @if (item.Note is not null) { <span class="block text-xs text-neutral-500">@item.Note</span> }
-                                            @if (item.LastLog is { } last) { <span class="block text-xs text-[#047857]">Lần gần nhất @last.LoggedOn.ToString("dd/MM"): @LogText(last)</span> }
                                         </span>
                                     </label>
-                                    @if (_logItemId == item.Id)
-                                    {
-                                        <span class="flex w-full flex-wrap items-end gap-2 text-xs">
-                                            @if (item.Reps is not null)
-                                            {
-                                                <label>Hiệp<input type="number" min="1" max="20" class="ml-1 w-14 border border-[#CFCFCF] px-2 py-1 rounded-none" @bind="_log.Sets" /></label>
-                                                <label>Lần<input type="number" min="1" max="200" class="ml-1 w-14 border border-[#CFCFCF] px-2 py-1 rounded-none" @bind="_log.Reps" /></label>
-                                                <label>Mức tạ (kg)<input type="number" min="0" step="0.5" class="ml-1 w-20 border border-[#CFCFCF] px-2 py-1 rounded-none" @bind="_log.Weight" /></label>
-                                            }
-                                            else
-                                            {
-                                                <label>Phút<input type="number" min="1" max="300" class="ml-1 w-16 border border-[#CFCFCF] px-2 py-1 rounded-none" @bind="_log.Minutes" /></label>
-                                            }
-                                            <button type="button" disabled="@_busy" class="bg-black px-3 py-1 text-[11px] font-bold uppercase text-white rounded-none" @onclick="() => SaveLog(item)">Lưu kết quả</button>
-                                            <button type="button" class="text-[11px] underline" @onclick="() => _logItemId = null">Hủy</button>
-                                        </span>
-                                    }
                                     @if (_swapItemId == item.Id)
                                     {
                                         <span class="flex items-center gap-2">
-                                            <select class="border border-[#CFCFCF] px-2 py-1 text-xs rounded-none" @bind="_swapExerciseId" aria-label="Bài tập">
+                                            <select class="border border-[#CFCFCF] px-2 py-1 text-xs rounded-none" @bind="_swapExerciseId">
                                                 @foreach (var e in _exercises) { <option value="@e.Id">@e.Name (@e.MuscleGroup)</option> }
-                                            </select>
-                                            <select class="border border-[#CFCFCF] px-2 py-1 text-xs rounded-none" @bind="_swapEquipmentId" aria-label="Thiết bị">
-                                                <option value="0">Không chọn thiết bị</option>
-                                                @foreach (var e in _equipment) { <option value="@e.Id">@e.Name</option> }
                                             </select>
                                             <button type="button" class="bg-black px-3 py-1 text-[11px] font-bold uppercase text-white rounded-none" @onclick="() => Swap(item)">Đổi</button>
                                             <button type="button" class="text-[11px] underline" @onclick="() => _swapItemId = null">Hủy</button>
@@ -162,18 +121,6 @@
                         </ul>
                     </section>
                 }
-                <div class="flex flex-wrap items-center gap-3">
-                    @if (_confirmArchive)
-                    {
-                        <span class="text-xs">Lưu trữ giáo án này? Tiến độ vẫn được giữ trong lịch sử.</span>
-                        <button type="button" disabled="@_busy" class="border-2 border-[#EF4444] px-4 py-2 text-xs font-bold uppercase text-[#B91C1C] rounded-none" @onclick="Archive">Xác nhận lưu trữ</button>
-                        <button type="button" class="text-xs underline" @onclick="() => _confirmArchive = false">Hủy</button>
-                    }
-                    else
-                    {
-                        <button type="button" class="border-2 border-black px-4 py-2 text-xs font-bold uppercase rounded-none" @onclick="() => _confirmArchive = true">Lưu trữ giáo án</button>
-                    }
-                </div>
             }
 
             @if (_history.Count > 1)
@@ -196,17 +143,11 @@
     private SurveyForm _survey = new();
     private bool _surveyComplete, _consent, _busy, _isError;
     private string? _message;
-    private DateTime? _consentAt;
     private WorkoutPlanResponse? _plan;
     private List<WorkoutPlanSummaryResponse> _history = [];
     private List<ExerciseResponse> _exercises = [];
-    private List<WorkoutEquipmentResponse> _equipment = [];
-    private int? _swapItemId, _logItemId;
-    private int _swapExerciseId, _swapEquipmentId;
-    private bool _confirmArchive;
-    private LogForm _log = new();
-
-    private int WeeklyPercent => _plan is null || _plan.TotalItems == 0 ? 0 : _plan.CompletedItems * 100 / _plan.TotalItems;
+    private int? _swapItemId;
+    private int _swapExerciseId;
 
     protected override async Task OnInitializedAsync()
     {
@@ -214,16 +155,13 @@
         {
             var survey = await Api.GetAsync<FitnessSurveyResponse>("api/workout/survey");
             _surveyComplete = survey.IsComplete;
-            _consentAt = survey.AiConsentGrantedAt;
             _survey = new()
             {
                 Weight = survey.WeightKg ?? 60, Height = survey.HeightCm ?? 165, Goal = survey.FitnessGoal ?? "GeneralFitness",
                 Level = survey.FitnessLevel ?? "Beginner", Frequency = survey.WorkoutFrequencyPerWeek ?? 3, Gender = survey.Gender ?? "",
-                Dob = survey.DateOfBirth, Health = survey.HealthConditions,
-                BodyFat = survey.BodyFatPercent, Muscle = survey.SkeletalMuscleMassKg
+                Dob = survey.DateOfBirth, Health = survey.HealthConditions
             };
             _exercises = await Api.GetAsync<List<ExerciseResponse>>("api/workout/exercises");
-            _equipment = await Api.GetAsync<List<WorkoutEquipmentResponse>>("api/workout/equipment");
             await LoadPlan();
         }
         catch (ApiException ex) { Show(ex.Message, true); }
@@ -242,8 +180,7 @@
         {
             var saved = await Api.PutAsync<FitnessSurveyResponse>("api/workout/survey", new FitnessSurveyRequest(
                 _survey.Weight, _survey.Height, _survey.Goal, _survey.Level, _survey.Frequency,
-                string.IsNullOrEmpty(_survey.Gender) ? null : _survey.Gender, _survey.Dob, _survey.Health,
-                _survey.BodyFat, _survey.Muscle));
+                string.IsNullOrEmpty(_survey.Gender) ? null : _survey.Gender, _survey.Dob, _survey.Health));
             _surveyComplete = saved.IsComplete;
             Show("Fitness survey updated successfully.", false);
         });
@@ -253,54 +190,21 @@
     {
         _plan = await Api.PostAsync<WorkoutPlanResponse>("api/workout/plans/generate", new GenerateWorkoutPlanRequest(_consent));
         _history = await Api.GetAsync<List<WorkoutPlanSummaryResponse>>("api/workout/plans");
-        _consentAt = DateTime.UtcNow;
         Show(_plan.IsFallback ? "Đã áp dụng giáo án tiêu chuẩn." : "Workout plan created successfully.", false);
     });
 
-    // Ticking opens a small form for what was actually done; unticking clears this week's log.
-    private async Task Toggle(WorkoutPlanItemResponse item, bool done)
+    private Task Toggle(WorkoutPlanItemResponse item, bool done) => Busy(async () =>
     {
-        if (done)
-        {
-            _logItemId = item.Id;
-            _log = new LogForm
-            {
-                Sets = item.LastLog?.SetsDone ?? item.Sets, Reps = item.LastLog?.RepsDone ?? item.Reps,
-                Weight = item.LastLog?.WeightKg, Minutes = item.LastLog?.DurationMinutes ?? item.DurationMinutes
-            };
-            return;
-        }
-        await SendLog(item, new SetPlanItemCompletionRequest(false));
-    }
-
-    private Task SaveLog(WorkoutPlanItemResponse item) =>
-        SendLog(item, item.Reps is not null
-            ? new SetPlanItemCompletionRequest(true, _log.Sets, _log.Reps, _log.Weight)
-            : new SetPlanItemCompletionRequest(true, DurationMinutes: _log.Minutes));
-
-    private Task SendLog(WorkoutPlanItemResponse item, SetPlanItemCompletionRequest request) => Busy(async () =>
-    {
-        await Api.PatchAsync<WorkoutPlanItemResponse>($"api/workout/plans/{_plan!.Id}/items/{item.Id}/completion", request);
-        _logItemId = null;
+        await Api.PatchAsync<WorkoutPlanItemResponse>($"api/workout/plans/{_plan!.Id}/items/{item.Id}/completion", new SetPlanItemCompletionRequest(done));
         _plan = await Api.GetAsync<WorkoutPlanResponse>($"api/workout/plans/{_plan.Id}");
     });
 
-    private Task Archive() => Busy(async () =>
-    {
-        await Api.PostAsync<WorkoutPlanResponse>($"api/workout/plans/{_plan!.Id}/archive");
-        _confirmArchive = false;
-        _plan = null;
-        _history = await Api.GetAsync<List<WorkoutPlanSummaryResponse>>("api/workout/plans");
-        Show("Workout plan updated successfully.", false);
-    });
-
-    private void StartSwap(WorkoutPlanItemResponse item) { _swapItemId = item.Id; _swapExerciseId = item.ExerciseId; _swapEquipmentId = item.EquipmentId ?? 0; }
+    private void StartSwap(WorkoutPlanItemResponse item) { _swapItemId = item.Id; _swapExerciseId = item.ExerciseId; }
 
     private Task Swap(WorkoutPlanItemResponse item) => Busy(async () =>
     {
         await Api.PutAsync<WorkoutPlanItemResponse>($"api/workout/plans/{_plan!.Id}/items/{item.Id}",
-            new UpdatePlanItemRequest(_swapExerciseId, item.Sets, item.Reps, item.DurationMinutes ?? (item.Reps is null ? 10 : null), item.Note,
-                _swapEquipmentId == 0 ? null : _swapEquipmentId));
+            new UpdatePlanItemRequest(_swapExerciseId, item.Sets, item.Reps, item.DurationMinutes ?? (item.Reps is null ? 10 : null), item.Note));
         _swapItemId = null;
         _plan = await Api.GetAsync<WorkoutPlanResponse>($"api/workout/plans/{_plan.Id}");
         Show("Workout plan updated successfully.", false);
@@ -320,18 +224,6 @@
     private static string Volume(WorkoutPlanItemResponse i) =>
         i.Reps is not null ? $"{i.Sets ?? 1} × {i.Reps}" : i.DurationMinutes is not null ? $"{i.DurationMinutes} phút" : "";
 
-    private static string LogText(WorkoutLogResponse l) =>
-        l.DurationMinutes is not null ? $"{l.DurationMinutes} phút"
-            : $"{l.SetsDone ?? 1} × {l.RepsDone}" + (l.WeightKg is null ? "" : $" · {l.WeightKg:0.#} kg");
-
-    private sealed class LogForm
-    {
-        public int? Sets { get; set; }
-        public int? Reps { get; set; }
-        public decimal? Weight { get; set; }
-        public int? Minutes { get; set; }
-    }
-
     private sealed class SurveyForm
     {
         public decimal Weight { get; set; } = 60;
@@ -342,7 +234,5 @@
         public string Gender { get; set; } = "";
         public DateOnly? Dob { get; set; }
         public string? Health { get; set; }
-        public decimal? BodyFat { get; set; }
-        public decimal? Muscle { get; set; }
     }
 }
