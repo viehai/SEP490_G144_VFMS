@@ -1,0 +1,152 @@
+@page "/pt/dashboard"
+@layout StaffPTLayout
+
+<PageTitle>PT Dashboard | Victor Fitness</PageTitle>
+
+<div class="workspace-page space-y-8">
+    <header class="flex flex-col justify-between gap-5 border-b-2 border-black pb-7 lg:flex-row lg:items-end">
+        <div>
+            <p class="workspace-heading mb-3 text-[10px] font-bold tracking-[0.18em] text-neutral-500">VFMS / PERSONAL TRAINER WORKSPACE</p>
+            <h1 class="workspace-heading text-3xl font-extrabold tracking-tight text-[#0A0A0A] sm:text-4xl">PT DASHBOARD</h1>
+            <p class="mt-3 max-w-xl text-sm leading-relaxed text-neutral-600">Tập trung vào hội viên, chủ động lịch huấn luyện và theo sát từng bước tiến.</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+            <span class="workspace-heading border border-black bg-white px-3 py-2 text-[10px] font-bold rounded-none">@_demoDate.ToString("dd / MM / yyyy")</span>
+            <span class="border border-neutral-300 bg-[#F7F7F7] px-3 py-2 text-xs text-neutral-600 rounded-none">Dữ liệu minh họa</span>
+        </div>
+    </header>
+
+    <section class="grid gap-4 lg:grid-cols-3" aria-label="Thống kê huấn luyện">
+        @foreach (var stat in _stats)
+        {
+            <article class="group flex min-h-[190px] flex-col justify-between border-2 border-black bg-white p-6 transition-colors hover:bg-black hover:text-white rounded-none">
+                <div class="flex items-start justify-between gap-4">
+                    <p class="workspace-heading max-w-[190px] text-xs font-bold leading-relaxed">@stat.Label</p>
+                    <span class="workspace-heading text-xs font-bold text-neutral-500 group-hover:text-neutral-400">@stat.Index</span>
+                </div>
+                <div class="mt-7 flex items-end justify-between gap-4">
+                    <p class="workspace-heading text-5xl font-extrabold leading-none tracking-tight">@stat.Value.ToString("00")</p>
+                    <span class="text-right text-xs text-neutral-500 group-hover:text-neutral-300">@stat.Note</span>
+                </div>
+            </article>
+        }
+    </section>
+
+    <section id="quick-actions" aria-labelledby="pt-actions-title" class="space-y-4">
+        <div class="flex flex-wrap items-end justify-between gap-3">
+            <div>
+                <p class="workspace-heading mb-2 text-[10px] font-bold tracking-[0.18em] text-neutral-500">WORKSPACE / 01</p>
+                <h2 id="pt-actions-title" class="workspace-heading text-lg font-extrabold">QUICK ACTIONS</h2>
+            </div>
+            <span class="text-xs text-neutral-500">Chọn nội dung để xem dữ liệu mẫu</span>
+        </div>
+        <div class="grid gap-3 lg:grid-cols-3">
+            @foreach (var action in _actions)
+            {
+                <button type="button" @onclick="() => _selectedAction = action.Id" aria-pressed="@(_selectedAction == action.Id ? "true" : "false")"
+                        class="flex min-h-[106px] items-center justify-between gap-4 border-2 border-black p-5 text-left transition-colors rounded-none focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-black @(_selectedAction == action.Id ? "bg-black text-white" : "bg-white text-black hover:bg-black hover:text-white")">
+                    <span><span class="workspace-heading block text-xs font-extrabold">@action.Title</span><span class="mt-2 block text-xs opacity-70">@action.Description</span></span>
+                    <span class="text-xl" aria-hidden="true">↗</span>
+                </button>
+            }
+        </div>
+    </section>
+
+    <section class="overflow-hidden border-2 border-black bg-white rounded-none" aria-labelledby="pt-list-title" aria-live="polite">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b-2 border-black p-5 sm:px-6">
+            <div><h2 id="pt-list-title" class="workspace-heading text-sm font-extrabold">@SelectedTitle</h2><p class="mt-2 text-xs text-neutral-500">@SelectedDescription</p></div>
+            <span class="workspace-heading border border-black px-3 py-1 text-[10px] font-bold rounded-none">@SelectedCount.ToString("00") BẢN GHI MẪU</span>
+        </div>
+        <div class="overflow-x-auto">
+            @if (_selectedAction == "attendance")
+            {
+                <table class="workspace-table w-full min-w-[660px] text-left text-sm">
+                    <caption class="sr-only">Danh sách điểm danh mẫu của lớp Yoga</caption>
+                    <thead class="workspace-heading bg-[#F7F7F7] text-[10px] tracking-wider text-neutral-500"><tr><th scope="col" class="px-6 py-4">HỘI VIÊN</th><th scope="col" class="px-6 py-4">LỚP HỌC</th><th scope="col" class="px-6 py-4">GIỜ HỌC</th><th scope="col" class="px-6 py-4">ĐIỂM DANH</th></tr></thead>
+                    <tbody class="divide-y divide-neutral-200">
+                        @foreach (var attendee in _attendance)
+                        {
+                            <tr class="hover:bg-neutral-50"><th scope="row" class="px-6 py-5 font-medium">@attendee.Name</th><td class="px-6 py-5 text-neutral-600">@attendee.ClassName</td><td class="px-6 py-5">@attendee.Time</td><td class="px-6 py-5"><span class="inline-flex border px-2 py-1 text-[10px] font-semibold rounded-none @(attendee.Present ? "border-[#10B981] bg-emerald-50 text-emerald-800" : "border-[#F59E0B] bg-amber-50 text-amber-900")">@(attendee.Present ? "Có mặt" : "Chưa điểm danh")</span></td></tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            else if (_selectedAction == "progress")
+            {
+                <table class="workspace-table w-full min-w-[660px] text-left text-sm">
+                    <caption class="sr-only">Tiến độ gói huấn luyện của các hội viên mẫu</caption>
+                    <thead class="workspace-heading bg-[#F7F7F7] text-[10px] tracking-wider text-neutral-500"><tr><th scope="col" class="px-6 py-4">HỘI VIÊN</th><th scope="col" class="px-6 py-4">MỤC TIÊU</th><th scope="col" class="px-6 py-4">SỐ BUỔI</th><th scope="col" class="px-6 py-4">TIẾN ĐỘ GÓI TẬP</th></tr></thead>
+                    <tbody class="divide-y divide-neutral-200">
+                        @foreach (var member in _members)
+                        {
+                            <tr class="hover:bg-neutral-50"><th scope="row" class="px-6 py-5 font-medium">@member.Name</th><td class="px-6 py-5 text-neutral-600">@member.Goal</td><td class="workspace-heading px-6 py-5 text-xs font-bold">@member.Completed / @member.Total BUỔI</td><td class="min-w-[190px] px-6 py-5"><div class="flex items-center gap-3"><div class="h-2 flex-1 bg-neutral-200 rounded-none"><div class="h-full bg-black rounded-none" style="@($"width: {member.Progress}%;")"></div></div><span class="workspace-heading text-xs font-bold">@member.Progress%</span></div></td></tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            else
+            {
+                <table class="workspace-table w-full min-w-[660px] text-left text-sm">
+                    <caption class="sr-only">Các buổi huấn luyện mẫu trong ngày</caption>
+                    <thead class="workspace-heading bg-[#F7F7F7] text-[10px] tracking-wider text-neutral-500"><tr><th scope="col" class="px-6 py-4">THỜI GIAN</th><th scope="col" class="px-6 py-4">BUỔI TẬP</th><th scope="col" class="px-6 py-4">ĐỊA ĐIỂM</th><th scope="col" class="px-6 py-4">TRẠNG THÁI</th></tr></thead>
+                    <tbody class="divide-y divide-neutral-200">
+                        @foreach (var session in _schedule)
+                        {
+                            <tr class="hover:bg-neutral-50"><th scope="row" class="workspace-heading px-6 py-5 text-xs font-bold">@session.Time</th><td class="px-6 py-5"><span class="block font-medium">@session.Title</span><span class="mt-1 block text-xs text-neutral-500">@session.Subject</span></td><td class="px-6 py-5 text-neutral-600">@session.Location</td><td class="px-6 py-5"><span class="inline-flex border border-[#F59E0B] bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-900 rounded-none">Sắp diễn ra</span></td></tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+        <p class="border-t border-neutral-200 bg-[#F7F7F7] px-6 py-4 text-xs leading-relaxed text-neutral-500">Bản xem trước giao diện. Lịch, điểm danh và tiến độ trên đây là dữ liệu mẫu, chưa phản ánh hoạt động thực tế.</p>
+    </section>
+</div>
+
+@code {
+    private readonly DateOnly _demoDate = new(2026, 11, 6);
+    private string _selectedAction = "schedule";
+    private readonly StatItem[] _stats =
+    [
+        new("01", "ASSIGNED MEMBERS", 18, "Hội viên đang huấn luyện"),
+        new("02", "LỚP YOGA TRONG NGÀY", 3, "Theo lịch phân công"),
+        new("03", "LỊCH PT SẮP TỚI", 4, "Buổi tập cá nhân hôm nay")
+    ];
+    private readonly ActionItem[] _actions =
+    [
+        new("schedule", "MY SCHEDULE", "Xem các buổi huấn luyện trong ngày"),
+        new("attendance", "YOGA ATTENDANCE", "Theo dõi danh sách lớp Yoga"),
+        new("progress", "PT PROGRESS", "Theo sát tiến độ gói huấn luyện")
+    ];
+    private readonly SessionItem[] _schedule =
+    [
+        new("10:00–11:00", "Strength Foundation", "Nguyễn Minh Anh · PT 1-1", "Strength Zone"),
+        new("13:30–14:30", "Mobility & Core", "Trần Quốc Bảo · PT 1-1", "Functional Zone"),
+        new("15:00–16:00", "Full Body Conditioning", "Lê Hoàng Nam · PT 1-1", "Strength Zone"),
+        new("17:00–18:00", "Strength Progression", "Phạm Ngọc Linh · PT 1-1", "Strength Zone")
+    ];
+    private readonly AttendanceItem[] _attendance =
+    [
+        new("Đỗ Mai Chi", "Ashtanga Flow", "06:30–07:45", true),
+        new("Phạm Ngọc Linh", "Ashtanga Flow", "06:30–07:45", true),
+        new("Nguyễn Minh Anh", "Vinyasa Dynamic", "18:30–19:45", false),
+        new("Bùi Thanh Sơn", "Vinyasa Dynamic", "18:30–19:45", false)
+    ];
+    private readonly MemberProgress[] _members =
+    [
+        new("Nguyễn Minh Anh", "Tăng sức mạnh", 9, 12),
+        new("Trần Quốc Bảo", "Cải thiện thể lực", 6, 12),
+        new("Lê Hoàng Nam", "Phát triển cơ bắp", 18, 24),
+        new("Phạm Ngọc Linh", "Tăng sức bền", 3, 12)
+    ];
+    private string SelectedTitle => _selectedAction switch { "attendance" => "DANH SÁCH LỚP YOGA", "progress" => "TIẾN ĐỘ HUẤN LUYỆN", _ => "LỊCH HUẤN LUYỆN TRONG NGÀY" };
+    private string SelectedDescription => _selectedAction switch { "attendance" => "Tổng hợp điểm danh của các lớp mẫu.", "progress" => "Số buổi đã hoàn thành trong gói PT.", _ => "Chủ động chuẩn bị cho từng buổi tập." };
+    private int SelectedCount => _selectedAction switch { "attendance" => _attendance.Length, "progress" => _members.Length, _ => _schedule.Length };
+    private sealed record StatItem(string Index, string Label, int Value, string Note);
+    private sealed record ActionItem(string Id, string Title, string Description);
+    private sealed record SessionItem(string Time, string Title, string Subject, string Location);
+    private sealed record AttendanceItem(string Name, string ClassName, string Time, bool Present);
+    private sealed record MemberProgress(string Name, string Goal, int Completed, int Total)
+    {
+        public int Progress => (int)Math.Round(Completed * 100d / Total);
+    }
+}

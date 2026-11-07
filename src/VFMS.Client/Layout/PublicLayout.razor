@@ -1,34 +1,40 @@
 @inherits LayoutComponentBase
 @inject IJSRuntime JS
+@inject NavigationManager Navigation
+@implements IAsyncDisposable
 
 <div class="min-h-screen flex flex-col bg-white text-[#252525] font-['Inter',sans-serif] w-full max-w-full overflow-x-hidden">
     
     <!-- ============================================================== -->
     <!-- FLOATING NAVBAR (Cách 2: Tailwind CSS + JS Scroll Effect)       -->
     <!-- ============================================================== -->
-    <header id="vfms-navbar" 
+    <header id="vfms-navbar" @ref="_navbar"
             class="fixed left-1/2 -translate-x-1/2 z-50 flex items-center justify-between text-white transition-all duration-300 ease-in-out
-                   top-0 w-full h-20 px-6 md:px-10 bg-transparent border-b border-transparent shadow-none rounded-none">
+                   top-0 w-full h-20 px-6 md:px-10 border-b border-transparent shadow-none rounded-none @(IsHome ? "bg-transparent" : "bg-[#0A0A0A]")">
         
         <!-- Brand Logo (flex-shrink-0, không bao giờ bị ép vỡ) -->
-        <a href="/" class="flex items-center gap-2.5 flex-shrink-0 group whitespace-nowrap">
-            <img src="/brand/logo-remove.png" alt="Victor Fitness" class="w-32 h-14 object-contain transition-opacity duration-300 group-hover:opacity-80" />
+        <a href="/" class="flex items-center gap-2.5 flex-shrink-0 group whitespace-nowrap" aria-label="Victor Fitness - Trang chủ">
+            <img src="/brand/logo-remove.png" alt="Victor Fitness" class="w-24 sm:w-32 h-14 object-contain transition-opacity duration-300 group-hover:opacity-80" />
         </a>
 
         <!-- Menu Links (Căn giữa, whitespace-nowrap chống rớt dòng chữ) -->
-        <nav class="hidden lg:flex items-center gap-4 xl:ga-7 font-['Montserrat',sans-serif] text-[11px] xl:text-xs font-bold uppercase tracking-wider text-neutral-200 whitespace-nowrap">
-            <a href="#featured-classes" class="hover:text-white transition-colors">LỚP HỌC NỔI BẬT</a>
-            <a href="#" class="hover:text-white transition-colors">GÓI HỘI VIÊN</a>
-            <a href="#" class="hover:text-white transition-colors">LỊCH TẬP YOGA</a>
-            <a href="#" class="hover:text-white transition-colors">HUẤN LUYỆN VIÊN</a>
-            <a href="#" class="hover:text-white transition-colors">TIỆN ÍCH &amp; DỊCH VỤ</a>
+        <nav class="hidden xl:flex items-center gap-4 2xl:gap-7 font-['Montserrat',sans-serif] text-[11px] 2xl:text-xs font-bold uppercase tracking-wider text-neutral-200 whitespace-nowrap" aria-label="Điều hướng chính">
+            <a href="/#featured-classes" class="hover:text-white transition-colors">LỚP HỌC NỔI BẬT</a>
+            <a href="/#pricing-memberships" class="hover:text-white transition-colors">GÓI HỘI VIÊN</a>
+            <a href="/" class="hover:text-white transition-colors">LỊCH TẬP YOGA</a>
+            <a href="/" class="hover:text-white transition-colors">HUẤN LUYỆN VIÊN</a>
+            <a href="/#explore-equipment" class="hover:text-white transition-colors">TIỆN ÍCH &amp; DỊCH VỤ</a>
         </nav>
 
         <!-- Action Button (flex-shrink-0, kích thước cân đối) -->
-        <div class="flex items-center gap-3 flex-shrink-0 whitespace-nowrap">
+        <div class="flex items-center gap-2 sm:gap-3 flex-shrink-0 whitespace-nowrap">
             <AuthorizeView>
                 <Authorized Context="auth">
-                    <span class="hidden xl:inline-block font-['Montserrat',sans-serif] text-[11px] xl:text-xs font-bold uppercase tracking-wider text-neutral-200 max-w-40 truncate" title="@auth.User.Identity?.Name">Chào, @auth.User.Identity?.Name</span>
+                    <NavLink href="/profile" Match="NavLinkMatch.All" ActiveClass="underline underline-offset-4"
+                             class="inline-block max-w-40 truncate rounded-none font-['Montserrat',sans-serif] text-[10px] sm:text-[11px] 2xl:text-xs font-bold uppercase tracking-wider text-neutral-200 hover:text-white transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
+                             title="@auth.User.Identity?.Name" aria-label="Hồ sơ cá nhân">
+                        <span class="hidden xl:inline">Chào, @auth.User.Identity?.Name</span><span class="xl:hidden">HỒ SƠ</span>
+                    </NavLink>
                     <LogoutButton Class="bg-white hover:bg-neutral-200 text-neutral-950 font-['Montserrat',sans-serif] font-extrabold text-[11px] xl:text-xs uppercase tracking-wider px-4 py-2 rounded-none transition-colors disabled:opacity-60" />
                 </Authorized>
                 <NotAuthorized>
@@ -130,32 +136,38 @@
 </div>
 
 @code {
+    private ElementReference _navbar;
+    private IJSObjectReference? _navigationModule;
+    private readonly string _navigationId = Guid.NewGuid().ToString("N");
+    private bool _disposed;
+    private bool IsHome => string.IsNullOrEmpty(Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].Trim('/'));
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender)
+        if (_disposed) return;
+        var module = _navigationModule;
+        if (module is null)
         {
-            await JS.InvokeVoidAsync("eval", @"
-                (function() {
-                    const nav = document.getElementById('vfms-navbar');
-                    if (!nav) return;
-                    
-                    const def = ['top-0', 'w-full', 'h-20', 'px-6', 'md:px-10', 'bg-transparent', 'border-transparent', 'shadow-none', 'rounded-none'];
-                    const scr = ['top-3', 'md:top-4', 'w-[95%]', 'max-w-7xl', 'h-16', 'px-5', 'md:px-7', 'bg-neutral-800/90', 'backdrop-blur-md', 'border-neutral-600/40', 'border', 'shadow-2xl', 'rounded-xl', 'md:rounded-2xl'];
-
-                    function updateNavbar() {
-                        if (window.scrollY > 50) {
-                            nav.classList.remove(...def);
-                            nav.classList.add(...scr);
-                        } else {
-                            nav.classList.remove(...scr);
-                            nav.classList.add(...def);
-                        }
-                    }
-
-                    window.addEventListener('scroll', updateNavbar, { passive: true });
-                    updateNavbar(); // Khởi tạo ngay khi tải
-                })();
-            ");
+            module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/public-navigation.js");
+            if (_disposed)
+            {
+                await module.DisposeAsync();
+                return;
+            }
+            _navigationModule = module;
         }
+        await module.InvokeVoidAsync("sync", _navigationId, _navbar, IsHome);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        if (_navigationModule is null) return;
+        try
+        {
+            await _navigationModule.InvokeVoidAsync("dispose", _navigationId);
+            await _navigationModule.DisposeAsync();
+        }
+        catch (JSDisconnectedException) { }
     }
 }

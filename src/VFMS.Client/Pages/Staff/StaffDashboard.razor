@@ -1,0 +1,149 @@
+@page "/staff/dashboard"
+@layout StaffPTLayout
+
+<PageTitle>Staff Dashboard | Victor Fitness</PageTitle>
+
+<div class="workspace-page space-y-8">
+    <header class="flex flex-col justify-between gap-5 border-b-2 border-black pb-7 lg:flex-row lg:items-end">
+        <div>
+            <p class="workspace-heading mb-3 text-[10px] font-bold tracking-[0.18em] text-neutral-500">VFMS / FRONT DESK OPERATIONS</p>
+            <h1 class="workspace-heading text-3xl font-extrabold tracking-tight text-[#0A0A0A] sm:text-4xl">STAFF DASHBOARD</h1>
+            <p class="mt-3 max-w-xl text-sm leading-relaxed text-neutral-600">Nắm bắt tình hình phòng tập, hỗ trợ hội viên và xử lý công việc tại quầy.</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+            <span class="workspace-heading border border-black bg-white px-3 py-2 text-[10px] font-bold rounded-none">CA SÁNG · 07:00–15:00</span>
+            <span class="border border-neutral-300 bg-[#F7F7F7] px-3 py-2 text-xs text-neutral-600 rounded-none">Dữ liệu minh họa</span>
+        </div>
+    </header>
+
+    <section class="grid gap-4 lg:grid-cols-3" aria-label="Thống kê vận hành">
+        @foreach (var stat in _stats)
+        {
+            <article class="group flex min-h-[190px] flex-col justify-between border-2 border-black bg-white p-6 transition-colors hover:bg-black hover:text-white rounded-none">
+                <div class="flex items-start justify-between gap-4">
+                    <p class="workspace-heading max-w-[190px] text-xs font-bold leading-relaxed">@stat.Label</p>
+                    <span class="workspace-heading text-xs font-bold text-neutral-500 group-hover:text-neutral-400">@stat.Index</span>
+                </div>
+                <div class="mt-7 flex items-end justify-between gap-4">
+                    <p class="workspace-heading text-5xl font-extrabold leading-none tracking-tight">@stat.Value.ToString("00")</p>
+                    <span class="text-right text-xs text-neutral-500 group-hover:text-neutral-300">@stat.Note</span>
+                </div>
+            </article>
+        }
+    </section>
+
+    <section id="quick-actions" aria-labelledby="staff-actions-title" class="space-y-4">
+        <div class="flex flex-wrap items-end justify-between gap-3">
+            <div>
+                <p class="workspace-heading mb-2 text-[10px] font-bold tracking-[0.18em] text-neutral-500">WORKSPACE / 01</p>
+                <h2 id="staff-actions-title" class="workspace-heading text-lg font-extrabold">QUICK ACTIONS</h2>
+            </div>
+            <span class="text-xs text-neutral-500">Chọn công việc để xem danh sách minh họa</span>
+        </div>
+        <div class="grid gap-3 lg:grid-cols-3">
+            @foreach (var action in _actions)
+            {
+                <button type="button" @onclick="() => _selectedAction = action.Id" aria-pressed="@(_selectedAction == action.Id ? "true" : "false")"
+                        class="flex min-h-[106px] items-center justify-between gap-4 border-2 border-black p-5 text-left transition-colors rounded-none focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-black @(_selectedAction == action.Id ? "bg-black text-white" : "bg-white text-black hover:bg-black hover:text-white")">
+                    <span><span class="workspace-heading block text-xs font-extrabold">@action.Title</span><span class="mt-2 block text-xs opacity-70">@action.Description</span></span>
+                    <span class="text-xl" aria-hidden="true">↗</span>
+                </button>
+            }
+        </div>
+    </section>
+
+    <section class="overflow-hidden border-2 border-black bg-white rounded-none" aria-labelledby="staff-list-title" aria-live="polite">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b-2 border-black p-5 sm:px-6">
+            <div>
+                <h2 id="staff-list-title" class="workspace-heading text-sm font-extrabold">@SelectedTitle</h2>
+                <p class="mt-2 text-xs text-neutral-500">@SelectedDescription</p>
+            </div>
+            <span class="workspace-heading border border-black px-3 py-1 text-[10px] font-bold rounded-none">@_demoDate.ToString("dd / MM / yyyy")</span>
+        </div>
+        <div class="overflow-x-auto">
+            @if (_selectedAction == "customers")
+            {
+                <table class="workspace-table w-full min-w-[640px] text-left text-sm">
+                    <caption class="sr-only">Khách hàng cần hỗ trợ đăng ký tài khoản</caption>
+                    <thead class="workspace-heading bg-[#F7F7F7] text-[10px] tracking-wider text-neutral-500"><tr><th scope="col" class="px-6 py-4">KHÁCH HÀNG</th><th scope="col" class="px-6 py-4">LIÊN HỆ</th><th scope="col" class="px-6 py-4">NHU CẦU</th><th scope="col" class="px-6 py-4">TRẠNG THÁI</th></tr></thead>
+                    <tbody class="divide-y divide-neutral-200">
+                        @foreach (var customer in _customers)
+                        {
+                            <tr class="hover:bg-neutral-50"><th scope="row" class="px-6 py-5 font-medium">@customer.Name</th><td class="px-6 py-5 text-neutral-600">@customer.Email</td><td class="px-6 py-5">@customer.Interest</td><td class="px-6 py-5"><span class="inline-flex border border-[#F59E0B] bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-900 rounded-none">Chờ tư vấn</span></td></tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            else if (_selectedAction == "lockers")
+            {
+                <table class="workspace-table w-full min-w-[640px] text-left text-sm">
+                    <caption class="sr-only">Tủ đồ cần xử lý</caption>
+                    <thead class="workspace-heading bg-[#F7F7F7] text-[10px] tracking-wider text-neutral-500"><tr><th scope="col" class="px-6 py-4">TỦ ĐỒ</th><th scope="col" class="px-6 py-4">HỘI VIÊN</th><th scope="col" class="px-6 py-4">NGÀY HẾT HẠN</th><th scope="col" class="px-6 py-4">TRẠNG THÁI</th></tr></thead>
+                    <tbody class="divide-y divide-neutral-200">
+                        @foreach (var locker in _lockers)
+                        {
+                            <tr class="hover:bg-neutral-50"><th scope="row" class="workspace-heading px-6 py-5 font-bold">@locker.Code</th><td class="px-6 py-5">@locker.Member</td><td class="px-6 py-5 text-neutral-600">@locker.ExpiredOn.ToString("dd/MM/yyyy")</td><td class="px-6 py-5"><span class="inline-flex border border-[#EF4444] bg-red-50 px-2 py-1 text-[10px] font-semibold text-red-800 rounded-none">Quá hạn @locker.OverdueDays ngày</span></td></tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            else
+            {
+                <table class="workspace-table w-full min-w-[640px] text-left text-sm">
+                    <caption class="sr-only">Hoạt động check-in gần đây</caption>
+                    <thead class="workspace-heading bg-[#F7F7F7] text-[10px] tracking-wider text-neutral-500"><tr><th scope="col" class="px-6 py-4">HỘI VIÊN</th><th scope="col" class="px-6 py-4">MÃ THẺ</th><th scope="col" class="px-6 py-4">GIỜ VÀO</th><th scope="col" class="px-6 py-4">TRẠNG THÁI</th></tr></thead>
+                    <tbody class="divide-y divide-neutral-200">
+                        @foreach (var checkIn in _checkIns)
+                        {
+                            <tr class="hover:bg-neutral-50"><th scope="row" class="px-6 py-5 font-medium">@checkIn.Name</th><td class="workspace-heading px-6 py-5 text-xs font-bold text-neutral-500">@checkIn.MemberCode</td><td class="px-6 py-5">@checkIn.Time</td><td class="px-6 py-5"><span class="inline-flex border border-[#10B981] bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-800 rounded-none">Đang tập</span></td></tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+        <p class="border-t border-neutral-200 bg-[#F7F7F7] px-6 py-4 text-xs leading-relaxed text-neutral-500">Bản xem trước giao diện. Các thao tác tạo tài khoản, check-in và quản lý tủ sẽ được kết nối với màn hình nghiệp vụ tương ứng.</p>
+    </section>
+</div>
+
+@code {
+    private readonly DateOnly _demoDate = new(2026, 11, 6);
+    private string _selectedAction = "checkin";
+    private readonly StatItem[] _stats =
+    [
+        new("01", "KHÁCH ĐANG CHECK-IN", 42, "Trong phòng tập"),
+        new("02", "TỦ ĐỒ QUÁ HẠN", 3, "Cần liên hệ hội viên"),
+        new("03", "THIẾT BỊ BÁO HỎNG", 5, "Chờ tiếp nhận xử lý")
+    ];
+    private readonly ActionItem[] _actions =
+    [
+        new("customers", "CREATE CUSTOMER ACCOUNT", "Tiếp nhận và hỗ trợ khách hàng mới"),
+        new("checkin", "MANUAL CHECK-IN", "Theo dõi lượt vào phòng tập"),
+        new("lockers", "MANAGE LOCKERS", "Kiểm tra tủ đồ cần xử lý")
+    ];
+    private readonly CheckInItem[] _checkIns =
+    [
+        new("Nguyễn Minh Anh", "VF-000128", "09:42"),
+        new("Trần Quốc Bảo", "VF-000256", "09:38"),
+        new("Lê Hoàng Nam", "VF-000314", "09:35"),
+        new("Phạm Ngọc Linh", "VF-000407", "09:28")
+    ];
+    private readonly CustomerItem[] _customers =
+    [
+        new("Vũ Gia Huy", "giahuy@example.com", "Gói Gym 3 tháng"),
+        new("Đỗ Mai Chi", "maichi@example.com", "Yoga Studio"),
+        new("Bùi Thanh Sơn", "thanhson@example.com", "Personal Training")
+    ];
+    private readonly LockerItem[] _lockers =
+    [
+        new("A-012", "Nguyễn Minh Anh", new DateOnly(2026, 11, 4), 2),
+        new("A-028", "Lê Hoàng Nam", new DateOnly(2026, 11, 3), 3),
+        new("B-006", "Đỗ Mai Chi", new DateOnly(2026, 11, 5), 1)
+    ];
+    private string SelectedTitle => _selectedAction switch { "customers" => "KHÁCH HÀNG CẦN HỖ TRỢ", "lockers" => "TỦ ĐỒ CẦN XỬ LÝ", _ => "CHECK-IN GẦN ĐÂY" };
+    private string SelectedDescription => _selectedAction switch { "customers" => "03 khách hàng mẫu đang chờ tư vấn tại quầy.", "lockers" => "03 tủ đồ mẫu đã quá ngày hết hạn.", _ => "04 lượt vào mẫu trong ca làm việc." };
+    private sealed record StatItem(string Index, string Label, int Value, string Note);
+    private sealed record ActionItem(string Id, string Title, string Description);
+    private sealed record CheckInItem(string Name, string MemberCode, string Time);
+    private sealed record CustomerItem(string Name, string Email, string Interest);
+    private sealed record LockerItem(string Code, string Member, DateOnly ExpiredOn, int OverdueDays);
+}
