@@ -14,7 +14,6 @@ All paths below start with `/api/trainers`. Success returns the DTO directly; er
 | GET me/applications | PT | Own submitted/hired applications, same filters; includes review result/history |
 | POST applications/{id}/review | Manager | Recruitment: Interview/Hire/Reject; ProfileUpdate: Approve/Reject |
 | POST applications/{id}/setup-email | Manager | Reissue onboarding link only for a pending hired account |
-| PUT recruitment-restrictions | Manager | Block/unblock an existing applicant identity; 404 without application |
 | POST setup-password | Guest | Redeem token, set password and activate pending account |
 | GET / | Public | Search active trainers by search/specialty/gender/minimumRating/page/pageSize |
 | GET {id} | Public | Published profile, certificates, 14-day availability, latest 20 visible approved reviews |
@@ -30,15 +29,13 @@ Old `credential-changes` and global `documents/{id}` routes are removed. Documen
 
 SubmitTrainerApplicationRequest retains fullName, email, phoneNumber, citizenId, dateOfBirth, gender, specialty, experienceYears, bio, consent and certificates, and adds optional `applicationType` (default `Recruitment`). Each certificate is `{ "fileName": "proof.pdf", "content": "<base64>" }`.
 
-Recruitment checks restriction across historical applications and a rolling 30-day cooldown by email OR citizen ID. Submission creates no account. Manager records Interview before Hire and explicitly confirms identity (`identityVerified=true`, level, commissionTier). If contact details match an existing account, supply its verified existingUserId; ambiguity/locked accounts fail. Existing active accounts keep passwords, roles and refresh tokens and receive PT role/profile. Sign in again to obtain an access token with PT role. New accounts remain PendingVerification until setup. Repeated Hire returns the existing outcome without duplicates.
+Recruitment checks a rolling 30-day cooldown by email OR citizen ID. Submission creates no account. Manager records Interview before Hire and explicitly confirms identity (`identityVerified=true`, level, commissionTier). If contact details match an existing account, supply its verified existingUserId; ambiguity/locked accounts fail. Existing active accounts keep passwords, roles and refresh tokens and receive PT role/profile. Sign in again to obtain an access token with PT role. New accounts remain PendingVerification until setup. Repeated Hire returns the existing outcome without duplicates.
 
 A PT resubmits using the same POST with `applicationType: "ProfileUpdate"`. Email must match their current account, citizen ID must match the original recruitment application linked by HiredUserId. Historical application email may differ after a verified existing-account hire by phone. Only one update may be pending. The 30-day recruitment cooldown does not apply to ProfileUpdate (explicit implementation decision). Application row stores the proposed specialty/certificates and its own review history. Manager sends `{ "action": "Approve", "note": "Verified" }` or Reject to the same review endpoint. Approval replaces only published specialty/certificates; does not create users/profiles or overwrite more recent direct bio/avatar edits. Rejection retains the published profile. A further update is a new application row.
 
-Restriction request retains email/citizenId/isActive/reason; updates rows with the exact recorded email/citizen-ID pair. No exact pair returns 404; other historical pairs do not prevent management. Submission/hiring checks any active restriction matching email OR citizen ID. If multiple recorded pairs are restricted, each restriction must be lifted explicitly. There is no pre-application blacklist entry or fake application. Restriction does not automatically lock an account; use existing account management for that separate purpose.
-
 ## Limits and error codes
 
-Implementation limits: name/email 256 chars, bio 4,000, specialty 200, review/restriction note 2,000, commissionTier 100; DOB from 1900 and before today; experience 0–80; gender Male/Female/Other; citizenId 12 digits; phone optional + then 9–15 digits. Page 1–10,000, pageSize 1–100; minimumRating 0–5. Hire accepts Junior/Senior/Master; old Expert remains readable. Consent required.
+Implementation limits: name/email 256 chars, bio 4,000, specialty 200, review note 2,000, commissionTier 100; DOB from 1900 and before today; experience 0–80; gender Male/Female/Other; citizenId 12 digits; phone optional + then 9–15 digits. Page 1–10,000, pageSize 1–100; minimumRating 0–5. Hire accepts Junior/Senior/Master; old Expert remains readable. Consent required.
 
 Certificates: 1–5 files, each <=5 MiB, PDF/JPEG/PNG extension + signature; avatar JPEG/PNG only. Whole request limit 36 MiB. Validation does not decode image dimensions or perform antivirus scanning. New files use private disk storage; metadata JSON contains no client-controlled storage path. Old binary files are retained as legacy base64 JSON during migration and remain downloadable. Legacy URL columns are retained for compatibility, not populated by new uploads.
 
@@ -47,19 +44,18 @@ Certificates: 1–5 files, each <=5 MiB, PDF/JPEG/PNG extension + signature; ava
 | TRAINER_VALIDATION / TRAINER_CONTENT_REJECTED / TRAINER_SETUP_INVALID | 400 |
 | TRAINER_FORBIDDEN | 403 |
 | TRAINER_NOT_FOUND | 404 |
-| RECRUITMENT_RESTRICTED | 403 on submission, 409 on hiring |
 | RECRUITMENT_COOLDOWN / TRAINER_CHANGE_PENDING | 409 |
 | TRAINER_IDENTITY_CONFLICT / TRAINER_PROFILE_EXISTS | 409 |
 | TRAINER_INVALID_STATE / TRAINER_INTERVIEW_REQUIRED / TRAINER_CONFLICT | 409 |
 | TRAINER_CONFIGURATION | 503 |
 
-Submit/setup/resend share a per-IP quota of 10 requests/10 minutes (429). Public payloads exclude identity/contact details, restriction notes, email queue, token hashes and storage keys. Empty public search is 200 with empty items, not 404; no ratings means averageRating=0.
+Submit/setup/resend share a per-IP quota of 10 requests/10 minutes (429). Public payloads exclude identity/contact details, email queue, token hashes and storage keys. Empty public search is 200 with empty items, not 404; no ratings means averageRating=0.
 
 ## Password setup, auth compatibility and audit
 
-Only two nullable columns are added to ApplicationUsers: PasswordSetupTokenHash and PasswordSetupExpiresAt. Existing users get NULL. Login, register, refresh, logout DTOs/services and refresh-token table are unchanged. Setup validates hash+24-hour expiry and PendingVerification/non-banned status, sets the existing PasswordHash, activates the user and clears both setup fields. Reissue replaces the previous hash. Old/used links cannot reactivate locked or active accounts.
+Only two nullable columns are added to ApplicationUsers: PasswordSetupTokenHash and PasswordSetupExpiresAt. Existing users get NULL. Login, register, refresh, logout DTOs/services and refresh-token table are unchanged. Setup validates hash+48-hour expiry and PendingVerification/non-banned status, sets the existing PasswordHash, activates the user and clears both setup fields. Reissue replaces the previous hash. Old/used links cannot reactivate locked or active accounts.
 
-AuditLog records application submission (Guest actor null), Interview/Hire/Reject, ProfileUpdate Approve/Reject, restriction Block/Unblock, profile update, resend and successful setup. Payloads contain operation and before/after states, linked actor/entity IDs and timestamp. No passwords/hashes/raw setup tokens, attachments or copied applicant PII. Review/restriction reasons stay on their application, not duplicated in the audit payload. This is an action log, not a full version history of every biography edit.
+AuditLog records application submission (Guest actor null), Interview/Hire/Reject, ProfileUpdate Approve/Reject, profile update, resend and successful setup. Payloads contain operation and before/after states, linked actor/entity IDs and timestamp. No passwords/hashes/raw setup tokens, attachments or copied applicant PII. Review reasons stay on their application, not duplicated in the audit payload. This is an action log, not a full version history of every biography edit.
 
 ## Storage and email configuration
 

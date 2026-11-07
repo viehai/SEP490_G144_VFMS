@@ -16,13 +16,11 @@ internal static class TrainerModelConfiguration
             e.Property(x => x.Gender).HasMaxLength(20); e.Property(x => x.Specialty).HasMaxLength(200); e.Property(x => x.Bio).HasMaxLength(4000);
             e.Property(x => x.ReviewNote).HasMaxLength(2000);
             e.Property(x => x.ApplicationType).HasMaxLength(20);
-            e.Property(x => x.RestrictionReason).HasMaxLength(2000);
             e.HasIndex(x => new { x.Email, x.SubmittedAt }); e.HasIndex(x => new { x.CitizenId, x.SubmittedAt });
             e.HasIndex(x => x.ApplicantUserId).IsUnique(false);
             e.HasIndex(x => x.ApplicantUserId, "PendingProfileUpdate").IsUnique().HasDatabaseName("IX_TrainerApplications_PendingProfileUpdate")
                 .HasFilter("[ApplicationType] = 'ProfileUpdate' AND [ApplicationStatus] = 'Pending' AND [IsDeleted] = 0");
             e.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.HiredUserId).OnDelete(DeleteBehavior.Restrict);
-            e.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.RestrictionChangedByUserId).OnDelete(DeleteBehavior.Restrict);
         });
         b.Entity<TrainerProfile>(e => {
             e.Property(x => x.Specialty).HasMaxLength(200); e.Property(x => x.Gender).HasMaxLength(20);

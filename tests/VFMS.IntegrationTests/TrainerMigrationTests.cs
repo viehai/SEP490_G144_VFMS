@@ -11,7 +11,7 @@ namespace VFMS.IntegrationTests;
 public class TrainerMigrationTests
 {
     [SqlTrainerFact]
-    public async Task Nonempty_legacy_tables_preserve_documents_reviews_restrictions_tokens_and_mail()
+    public async Task Nonempty_legacy_tables_preserve_documents_reviews_tokens_and_mail()
     {
         await using var fixture = new TrainerTestDatabase(); var db = fixture.Db;
         await db.GetService<IMigrator>().MigrateAsync("20261106152017_TrainerRecruitmentAndProfiles");
@@ -62,9 +62,6 @@ public class TrainerMigrationTests
         var original = Assert.Single(apps.Where(x => x.TrackingCode == "TR-LEGACY-HIRED"));
         Assert.Equal("Recruitment", original.ApplicationType);
         Assert.Equal(TrainerApplicationStatus.Hired, original.ApplicationStatus);
-        Assert.True(original.IsRecruitmentRestricted);
-        Assert.Equal("Legacy restriction", original.RestrictionReason);
-        Assert.Equal("legacy-manager", original.RestrictionChangedByUserId);
         var changes = apps.Where(x => x.ApplicationType == "ProfileUpdate").ToList();
         Assert.Equal(3, changes.Count);
         Assert.All(changes, x => Assert.Equal("legacy-pt", x.ApplicantUserId));
@@ -124,6 +121,11 @@ public class TrainerMigrationTests
         Assert.Null(await db.TrainerApplications.FromSqlRaw(workerQuery).FirstOrDefaultAsync());
         var removedCount = await db.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM sys.tables WHERE name IN ('TrainerDocument','TrainerEmail','TrainerSetupToken','TrainerCredentialChange','TrainerRecruitmentRestriction')").SingleAsync();
         Assert.Equal(0, removedCount);
+        var restrictionColumnCount = await db.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM sys.columns c JOIN sys.tables t ON t.object_id = c.object_id WHERE t.name = 'TrainerApplications' AND c.name IN ('IsRecruitmentRestricted','RestrictionReason','RestrictionChangedByUserId','RestrictionChangedAt')").SingleAsync();
+        Assert.Equal(0, restrictionColumnCount);
+        var restrictionForeignKeyCount = await db.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM sys.foreign_keys WHERE name = 'FK_TrainerApplications_ApplicationUsers_RestrictionChangedByUserId'").SingleAsync();
+        var restrictionIndexCount = await db.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM sys.indexes WHERE object_id = OBJECT_ID('TrainerApplications') AND name = 'IX_TrainerApplications_RestrictionChangedByUserId'").SingleAsync();
+        Assert.Equal(0, restrictionForeignKeyCount); Assert.Equal(0, restrictionIndexCount);
         Assert.Equal(2, await db.ApplicationUsers.CountAsync());
     }
 }

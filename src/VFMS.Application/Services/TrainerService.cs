@@ -70,8 +70,6 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
         if (update && !pt) return Error<TrainerApplicationReceipt>("TRAINER_FORBIDDEN", "PT role required.", 403);
         if (!update && actor != null && !pt && !await Role(actor, "Customer", ct)) return Error<TrainerApplicationReceipt>("TRAINER_FORBIDDEN", "Customer or PT role required.", 403);
         var email = r.Email.Trim().ToLowerInvariant(); var citizen = r.CitizenId.Trim(); var now = DateTime.UtcNow;
-        if (await store.Count(store.Query<TrainerApplication>().Where(x => x.IsRecruitmentRestricted && (x.Email.ToLower() == email || x.CitizenId == citizen)), ct) > 0)
-            return Error<TrainerApplicationReceipt>("RECRUITMENT_RESTRICTED", "Recruitment submission is restricted.", 403);
         if (update)
         {
             var owner = await store.First(store.Query<ApplicationUser>().Where(x => x.UserId == actor), ct);
@@ -106,7 +104,7 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
             SubmissionAttempt = await store.Count(history, ct) + 1
         };
         store.Add(a); await store.Save(ct);
-        Mail(a, email, "Trainer application received", $"Your tracking code is {a.TrackingCode}. Your application is Pending Review.");
+        Mail(a, email, "Trainer application received", $"Your tracking code is {a.TrackingCode}. Your application is Pending.");
         if (update)
         {
             var managers = await store.List((from ur in store.Query<ApplicationUserRole>() join role in store.Query<ApplicationRole>() on ur.RoleId equals role.Id where role.RoleName == "Manager" select ur.UserId).Distinct(), ct);
@@ -179,7 +177,6 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
         if (r.Action == "Hire")
         {
             if (a.ApplicationStatus is not (TrainerApplicationStatus.Interviewing or TrainerApplicationStatus.UnderReview)) return Error<TrainerApplicationResponse>("TRAINER_INTERVIEW_REQUIRED", "Record the interview before hiring.");
-            if (await store.Count(store.Query<TrainerApplication>().Where(x => x.IsRecruitmentRestricted && (x.Email.ToLower() == a.Email.ToLower() || x.CitizenId == a.CitizenId)), ct) > 0) return Error<TrainerApplicationResponse>("RECRUITMENT_RESTRICTED", "Resolve recruitment restriction before hiring.");
             var matches = await store.List(store.Query<ApplicationUser>().Where(x => x.Email.ToLower() == a.Email || x.PhoneNumber == a.PhoneNumber), ct);
             ApplicationUser? user = null;
             if (matches.Count > 0)
@@ -235,7 +232,7 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
     private void QueueSetup(ApplicationUser user, TrainerApplication application)
     {
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
-        user.PasswordSetupTokenHash = Hash(token); user.PasswordSetupExpiresAt = DateTime.UtcNow.AddHours(24);
+        user.PasswordSetupTokenHash = Hash(token); user.PasswordSetupExpiresAt = DateTime.UtcNow.AddHours(48);
         Mail(application, user.Email, "Set up your trainer account", "SETUP:" + token);
     }
     public Task<Result<bool>> ResendSetup(int applicationId, string actor, CancellationToken ct) => store.Write(async () =>
@@ -258,23 +255,6 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
         await ClearSetupEmails(u, ct);
         Audit(u.UserId, nameof(ApplicationUser), u.Id, "TrainerPasswordSetup", AccountStatus.PendingVerification.ToString(), AccountStatus.Active.ToString()); return Result<bool>.Success(true);
     }, ct);
-    public Task<Result<bool>> Restrict(RecruitmentRestrictionRequest r, string actor, CancellationToken ct) => store.Write(async () =>
-    {
-        if (!await Role(actor, "Manager", ct)) return Error<bool>("TRAINER_FORBIDDEN", "Manager role required.", 403);
-        if (!(await new RestrictionValidator().ValidateAsync(r, ct)).IsValid) return Error<bool>("TRAINER_VALIDATION", "Invalid restriction fields.", 400);
-        var email = r.Email.Trim().ToLowerInvariant(); var citizen = r.CitizenId.Trim();
-        var rows = await store.List(store.Query<TrainerApplication>().Where(x => x.Email.ToLower() == email && x.CitizenId == citizen), ct);
-        if (rows.Count == 0) return Error<bool>("TRAINER_NOT_FOUND", "Recruitment identity not found.", 404);
-        var now = DateTime.UtcNow;
-        foreach (var item in rows)
-        {
-            var before = item.IsRecruitmentRestricted ? "Restricted" : "Unrestricted";
-            item.IsRecruitmentRestricted = r.IsActive; item.RestrictionReason = r.Reason.Trim(); item.RestrictionChangedByUserId = actor; item.RestrictionChangedAt = now;
-            Audit(actor, nameof(TrainerApplication), item.Id, r.IsActive ? "Block" : "Unblock", before, r.IsActive ? "Restricted" : "Unrestricted");
-        }
-        return Result<bool>.Success(true);
-    }, ct);
-
     private IQueryable<TrainerProfileResponse> PublicProfiles() => from p in store.Query<TrainerProfile>()
                                                                    join u in store.Query<ApplicationUser>() on p.PTUserId equals u.UserId
                                                                    where p.IsActive && u.AccountStatus == AccountStatus.Active && !u.IsBanned

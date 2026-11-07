@@ -31,7 +31,12 @@ public class TrainerModelTests
         var application = db.Model.FindEntityType(typeof(TrainerApplication))!;
         Assert.NotNull(application.FindProperty("CertificatesJson"));
         Assert.NotNull(application.FindProperty("EmailQueueJson"));
-        Assert.NotNull(application.FindProperty("IsRecruitmentRestricted"));
+        Assert.Null(application.FindProperty("IsRecruitmentRestricted"));
+        Assert.Null(application.FindProperty("RestrictionReason"));
+        Assert.Null(application.FindProperty("RestrictionChangedByUserId"));
+        Assert.Null(application.FindProperty("RestrictionChangedAt"));
+        Assert.DoesNotContain(application.GetIndexes(), i => i.Properties.Any(p => p.Name == "RestrictionChangedByUserId"));
+        Assert.DoesNotContain(application.GetForeignKeys(), fk => fk.Properties.Any(p => p.Name == "RestrictionChangedByUserId"));
         var profile = db.Model.FindEntityType(typeof(TrainerProfile))!;
         Assert.NotNull(profile.FindProperty("CertificatesJson"));
         Assert.NotNull(profile.FindProperty("AvatarJson"));

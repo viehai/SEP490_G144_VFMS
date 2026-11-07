@@ -10,7 +10,6 @@ public sealed record TrainerApplicationFilter(string? Status = null, string? Spe
     DateTime? From = null, DateTime? To = null, int Page = 1, int PageSize = 20, string? ApplicationType = null);
 public sealed record ReviewTrainerApplicationRequest(string Action, string Note, string? Level = null,
     string? CommissionTier = null, string? ExistingUserId = null, bool IdentityVerified = false);
-public sealed record RecruitmentRestrictionRequest(string Email, string CitizenId, bool IsActive, string Reason);
 public sealed record UpdateTrainerProfileRequest(string Bio, TrainerFileInput? Avatar = null);
 public sealed record TrainerSetupRequest(string Token, string Password);
 public sealed record TrainerSearch(string? Search = null, string? Specialty = null, string? Gender = null,

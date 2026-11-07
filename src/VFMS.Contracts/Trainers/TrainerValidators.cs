@@ -51,15 +51,6 @@ public sealed class ReviewTrainerApplicationValidator : AbstractValidator<Review
         RuleFor(x => x.ExistingUserId).MaximumLength(450);
     }
 }
-public sealed class RestrictionValidator : AbstractValidator<RecruitmentRestrictionRequest>
-{
-    public RestrictionValidator()
-    {
-        RuleFor(x => x.Email).NotEmpty().EmailAddress().MaximumLength(256);
-        RuleFor(x => x.CitizenId).NotEmpty().Matches(@"^[0-9]{12}$");
-        RuleFor(x => x.Reason).NotEmpty().MaximumLength(2000);
-    }
-}
 public sealed class TrainerProfileValidator : AbstractValidator<UpdateTrainerProfileRequest>
 {
     public TrainerProfileValidator()

@@ -27,8 +27,6 @@ public sealed class TrainersController(TrainerService service) : ControllerBase
     public async Task<IActionResult> Review(int id, ReviewTrainerApplicationRequest request, CancellationToken ct) => this.ToActionResult(await service.Review(id, request, Actor, ct));
     [HttpPost("applications/{id:int}/setup-email"), Authorize(Roles = "Manager"), EnableRateLimiting("trainer-public")]
     public async Task<IActionResult> Resend(int id, CancellationToken ct) => this.ToActionResult(await service.ResendSetup(id, Actor, ct));
-    [HttpPut("recruitment-restrictions"), Authorize(Roles = "Manager")]
-    public async Task<IActionResult> Restrict(RecruitmentRestrictionRequest request, CancellationToken ct) => this.ToActionResult(await service.Restrict(request, Actor, ct));
     [HttpPost("setup-password"), AllowAnonymous, EnableRateLimiting("trainer-public")]
     public async Task<IActionResult> Setup(TrainerSetupRequest request, CancellationToken ct) => this.ToActionResult(await service.Setup(request, ct));
     [HttpGet("me"), Authorize(Roles = "PT")]

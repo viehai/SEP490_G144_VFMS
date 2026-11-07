@@ -97,7 +97,7 @@ internal sealed class TrainerTestDatabase : IAsyncDisposable
 public class TrainerWorkflowTests
 {
     [SqlTrainerFact]
-    public async Task Verified_existing_account_can_update_with_current_email_and_restrictions_match_exact_history_pairs()
+    public async Task Verified_existing_account_can_update_with_current_email()
     {
         await using var fixture = new TrainerTestDatabase(); await fixture.Initialize();
         var db = fixture.Db; var service = fixture.Service; var request = TrainerTestDatabase.Request;
@@ -123,26 +123,6 @@ public class TrainerWorkflowTests
         var firstUpdate = await db.TrainerApplications.SingleAsync(x => x.ApplicationType == "ProfileUpdate");
         TrainerTestDatabase.Success(await service.Review(firstUpdate.Id, new("Reject", "Resubmit certificate"), "manager", default));
         TrainerTestDatabase.Success(await service.Submit(update, customer.UserId, default));
-        // A second recruitment identity shares the citizen ID and is pending before the restriction is applied.
-        var trackedOriginal = await db.TrainerApplications.SingleAsync(x => x.Id == original.Id);
-        trackedOriginal.SubmittedAt = DateTime.UtcNow.AddDays(-31); await db.SaveChangesAsync();
-        TrainerTestDatabase.Success(await service.Submit(request with { Email = "other-history@example.test", PhoneNumber = "0900000044" }, null, default));
-        var otherHistory = await db.TrainerApplications.SingleAsync(x => x.Email == "other-history@example.test");
-        TrainerTestDatabase.Success(await service.Review(otherHistory.Id, new("Interview", "Interview before restriction"), "manager", default));
-        var restriction = new RecruitmentRestrictionRequest(request.Email, request.CitizenId, true, "Verified exact historical pair");
-        Assert.Equal(404, (await service.Restrict(restriction with { CitizenId = "000000000099" }, "manager", default)).StatusCode);
-        TrainerTestDatabase.Success(await service.Restrict(restriction, "manager", default));
-        db.ChangeTracker.Clear();
-        Assert.True((await db.TrainerApplications.SingleAsync(x => x.Id == original.Id)).IsRecruitmentRestricted);
-        Assert.All(await db.TrainerApplications.Where(x => x.Email != request.Email).ToListAsync(), x => Assert.False(x.IsRecruitmentRestricted));
-        // The restriction mutation matches both fields; enforcement deliberately matches either field.
-        Assert.Equal("RECRUITMENT_RESTRICTED", (await service.Submit(update, customer.UserId, default)).ErrorCode);
-        Assert.Equal("RECRUITMENT_RESTRICTED", (await service.Submit(request with { CitizenId = "000000000098" }, null, default)).ErrorCode);
-        Assert.Equal("RECRUITMENT_RESTRICTED", (await service.Review(otherHistory.Id, new("Hire", "Blocked shared citizen", "Junior", "Tier1", null, true), "manager", default)).ErrorCode);
-        TrainerTestDatabase.Success(await service.Restrict(restriction with { Email = customer.Email }, "manager", default));
-        db.ChangeTracker.Clear();
-        var currentHistory = await db.TrainerApplications.Where(x => x.Email == customer.Email).ToListAsync();
-        Assert.Equal(2, currentHistory.Count); Assert.All(currentHistory, x => Assert.True(x.IsRecruitmentRestricted));
         var unchangedAccount = await db.ApplicationUsers.SingleAsync(x => x.UserId == customer.UserId);
         Assert.Equal(passwordBefore, unchangedAccount.PasswordHash); Assert.Equal(customer.Email, unchangedAccount.Email);
         Assert.Null(unchangedAccount.PasswordSetupTokenHash); Assert.Equal(AccountStatus.Active, unchangedAccount.AccountStatus);
@@ -154,10 +134,14 @@ public class TrainerWorkflowTests
     {
         await using var fixture = new TrainerTestDatabase(); await fixture.Initialize();
         var db = fixture.Db; var service = fixture.Service;
-        TrainerTestDatabase.Success(await service.Submit(TrainerTestDatabase.Request, null, default));
+        var receipt = TrainerTestDatabase.Success(await service.Submit(TrainerTestDatabase.Request, null, default));
+        Assert.Equal("Pending", receipt.Status);
         Assert.Equal(1, await db.ApplicationUsers.CountAsync());
         Assert.Equal("RECRUITMENT_COOLDOWN", (await service.Submit(TrainerTestDatabase.Request, null, default)).ErrorCode);
         var app = await db.TrainerApplications.SingleAsync();
+        var receiptEmail = JsonSerializer.Deserialize<List<TrainerQueuedEmail>>(app.EmailQueueJson)!.Single(x => x.Subject == "Trainer application received");
+        var receiptBody = fixture.Protection.CreateProtector("VFMS.TrainerEmail.v1").Unprotect(receiptEmail.ProtectedBody);
+        Assert.DoesNotContain("Pending Review", receiptBody); Assert.Contains("Pending.", receiptBody);
         var file = JsonSerializer.Deserialize<List<TrainerStoredFile>>(app.CertificatesJson)!.Single();
         Assert.Equal(404, (await service.ApplicationDocument(app.Id, file.Id, null, default)).StatusCode);
         Assert.Equal(TrainerTestDatabase.Request.Certificates[0].Content, TrainerTestDatabase.Success(await service.ApplicationDocument(app.Id, file.Id, "manager", default)).Content);
@@ -167,13 +151,15 @@ public class TrainerWorkflowTests
         TrainerTestDatabase.Success(await service.Review(app.Id, new("Hire", "Retry", "Junior", "Tier1", null, true), "manager", default));
         Assert.Equal(2, await db.ApplicationUsers.CountAsync()); Assert.Equal(1, await db.TrainerProfiles.CountAsync());
         Assert.Empty(TrainerTestDatabase.Success(await service.Search(new(), default)).Items);
+        var initialUser = await db.ApplicationUsers.SingleAsync(x => x.Email == TrainerTestDatabase.Request.Email);
+        Assert.InRange(initialUser.PasswordSetupExpiresAt!.Value, DateTime.UtcNow.AddHours(47), DateTime.UtcNow.AddHours(49));
         var originalToken = await fixture.SetupToken(app.Id);
         TrainerTestDatabase.Success(await service.ResendSetup(app.Id, "manager", default));
         var replacementToken = await fixture.SetupToken(app.Id); Assert.NotEqual(originalToken, replacementToken);
         Assert.Equal("TRAINER_SETUP_INVALID", (await service.Setup(new(originalToken, "TestPassword1!"), default)).ErrorCode);
         var user = await db.ApplicationUsers.SingleAsync(x => x.Email == TrainerTestDatabase.Request.Email);
         Assert.NotNull(user.PasswordSetupTokenHash); Assert.NotEqual(replacementToken, user.PasswordSetupTokenHash);
-        Assert.True(user.PasswordSetupExpiresAt > DateTime.UtcNow);
+        Assert.InRange(user.PasswordSetupExpiresAt!.Value, DateTime.UtcNow.AddHours(47), DateTime.UtcNow.AddHours(49));
         TrainerTestDatabase.Success(await service.Setup(new(replacementToken, "TestPassword1!"), default));
         Assert.False((await service.Setup(new(replacementToken, "OtherPassword1!"), default)).IsSuccess);
         db.ChangeTracker.Clear(); user = await db.ApplicationUsers.SingleAsync(x => x.UserId == user.UserId);
@@ -242,22 +228,4 @@ public class TrainerWorkflowTests
         Assert.True(await db.AuditLogs.AnyAsync());
     }
 
-    [SqlTrainerFact]
-    public async Task Restrictions_require_recorded_identity_and_apply_to_all_applications()
-    {
-        await using var fixture = new TrainerTestDatabase(); await fixture.Initialize();
-        var db = fixture.Db; var service = fixture.Service; var request = TrainerTestDatabase.Request;
-        var restriction = new RecruitmentRestrictionRequest(request.Email, request.CitizenId, true, "Verified restriction");
-        Assert.Equal(404, (await service.Restrict(restriction, "manager", default)).StatusCode);
-        Assert.Empty(await db.TrainerApplications.ToListAsync());
-        var app = await fixture.Hire();
-        TrainerTestDatabase.Success(await service.Setup(new(await fixture.SetupToken(app.Id), "TestPassword1!"), default));
-        var userId = (await db.TrainerProfiles.SingleAsync()).PTUserId;
-        TrainerTestDatabase.Success(await service.Submit(request with { ApplicationType = "ProfileUpdate" }, userId, default));
-        TrainerTestDatabase.Success(await service.Restrict(restriction, "manager", default));
-        db.ChangeTracker.Clear(); Assert.All(await db.TrainerApplications.ToListAsync(), x => Assert.True(x.IsRecruitmentRestricted));
-        Assert.Equal("RECRUITMENT_RESTRICTED", (await service.Submit(request, null, default)).ErrorCode);
-        TrainerTestDatabase.Success(await service.Restrict(restriction with { IsActive = false }, "manager", default));
-        db.ChangeTracker.Clear(); Assert.All(await db.TrainerApplications.ToListAsync(), x => Assert.False(x.IsRecruitmentRestricted));
-    }
 }

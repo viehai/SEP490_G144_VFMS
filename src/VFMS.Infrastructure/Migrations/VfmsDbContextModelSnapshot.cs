@@ -2616,23 +2616,10 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
-                    b.Property<bool>("IsRecruitmentRestricted")
-                        .HasColumnType("bit");
-
                     b.Property<string>("PhoneNumber")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
-
-                    b.Property<DateTime?>("RestrictionChangedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("RestrictionChangedByUserId")
-                        .HasColumnType("nvarchar(128)");
-
-                    b.Property<string>("RestrictionReason")
-                        .HasMaxLength(2000)
-                        .HasColumnType("nvarchar(2000)");
 
                     b.Property<string>("ReviewNote")
                         .HasMaxLength(2000)
@@ -2668,8 +2655,6 @@ namespace VFMS.Infrastructure.Migrations
                     b.HasIndex("ApplicantUserId");
 
                     b.HasIndex("HiredUserId");
-
-                    b.HasIndex("RestrictionChangedByUserId");
 
                     b.HasIndex("ReviewedByUserId");
 
@@ -4097,11 +4082,6 @@ namespace VFMS.Infrastructure.Migrations
                     b.HasOne("VFMS.Domain.Entities.ApplicationUser", null)
                         .WithMany()
                         .HasForeignKey("HiredUserId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("VFMS.Domain.Entities.ApplicationUser", null)
-                        .WithMany()
-                        .HasForeignKey("RestrictionChangedByUserId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("VFMS.Domain.Entities.ApplicationUser", "ReviewedByUser")
