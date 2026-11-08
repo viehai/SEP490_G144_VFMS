@@ -42,6 +42,7 @@ builder.Services.AddScoped<IUserAdministrationService, UserAdministrationService
 builder.Services.AddSystemAdministrationModule();
 builder.Services.AddEquipmentModule();
 builder.Services.AddSupplementModule();
+builder.Services.AddMembershipPlanModule();
 
 var mapsterConfig = new TypeAdapterConfig();
 mapsterConfig.Scan(typeof(UserAdministrationMapping).Assembly);

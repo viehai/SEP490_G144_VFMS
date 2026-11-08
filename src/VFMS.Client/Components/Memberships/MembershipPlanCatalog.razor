@@ -1,0 +1,102 @@
+@using System.Globalization
+@using VFMS.Contracts.Common
+@using VFMS.Contracts.Memberships
+@inject MembershipPlanApiClient Plans
+@implements IDisposable
+
+@if (_loading)
+{
+    <p role="status" class="font-body text-sm">Đang tải các gói tập...</p>
+}
+else if (_error is not null)
+{
+    <div role="alert" class="border border-black p-5 font-body text-sm">
+        <p>@_error</p>
+        <button type="button" class="mt-3 font-bold underline" @onclick="() => LoadAsync(_requestedPage)">Thử lại</button>
+    </div>
+}
+else if (_page is { Items.Count: > 0 } catalog)
+{
+    <div class="grid grid-cols-1 gap-8 md:grid-cols-3">
+        @foreach (var plan in catalog.Items)
+        {
+            <article @key="plan.Id" class="brutal-pricing-card flex flex-col gap-5 border-2 border-black bg-white p-8">
+                <header class="border-b-2 border-black pb-5">
+                    <h3 class="font-heading mt-1 text-2xl font-black">@plan.Name</h3>
+                    <p class="mt-2 font-body text-sm">@Duration(plan)</p>
+                </header>
+                <p class="font-heading text-2xl font-black">@plan.Price.ToString("#,0.##", Vietnamese) ₫</p>
+                @if (!string.IsNullOrWhiteSpace(plan.Description))
+                {
+                    <p class="whitespace-pre-line font-body text-sm">@plan.Description</p>
+                }
+            </article>
+        }
+    </div>
+    @if (catalog.TotalCount > catalog.PageSize)
+    {
+        <nav aria-label="Phân trang gói tập" class="mt-8 flex items-center gap-4 font-body text-sm">
+            <button type="button" class="border border-black px-3 py-2 disabled:opacity-50" disabled="@(catalog.Page == 1)"
+                    @onclick="() => LoadAsync(catalog.Page - 1)">Trước</button>
+            <span>Trang @catalog.Page</span>
+            <button type="button" class="border border-black px-3 py-2 disabled:opacity-50"
+                    disabled="@(catalog.Page * catalog.PageSize >= catalog.TotalCount)"
+                    @onclick="() => LoadAsync(catalog.Page + 1)">Sau</button>
+        </nav>
+    }
+}
+else
+{
+    <p role="status" class="font-body text-sm">Hiện chưa có gói tập Gym mở bán.</p>
+}
+
+@code {
+    private static readonly NumberFormatInfo Vietnamese = new() { NumberGroupSeparator = ".", NumberDecimalSeparator = "," };
+    private readonly CancellationTokenSource _lifetime = new();
+    private PagedResponse<MembershipPlanCatalogItemResponse>? _page;
+    private int _requestedPage = 1;
+    private bool _loading = true;
+    private string? _error;
+
+    protected override Task OnInitializedAsync() => LoadAsync(1);
+
+    private async Task LoadAsync(int page)
+    {
+        if (_lifetime.IsCancellationRequested)
+            return;
+
+        _requestedPage = page;
+        _loading = true;
+        _error = null;
+        var cancellationToken = _lifetime.Token;
+        try
+        {
+            _page = await Plans.ListCatalogAsync(page, cancellationToken);
+            if (_page.Items.Count == 0 && page > 1)
+                _page = await Plans.ListCatalogAsync(1, cancellationToken);
+        }
+        catch (AuthApiException ex)
+        {
+            _error = ex.Message;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The user left the catalog.
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string Duration(MembershipPlanCatalogItemResponse plan) =>
+        plan.DurationInMonths is > 0 ? $"{plan.DurationInMonths} tháng"
+            : plan.DurationInDays is > 0 ? $"{plan.DurationInDays} ngày"
+            : "Chưa có thời hạn";
+
+    public void Dispose()
+    {
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+    }
+}

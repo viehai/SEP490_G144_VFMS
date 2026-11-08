@@ -35,6 +35,12 @@
     <section id="quick-actions" aria-labelledby="manager-actions-title">
         <div class="mb-4 flex flex-wrap items-center justify-between gap-2"><h2 id="manager-actions-title" class="workspace-heading text-sm font-extrabold uppercase tracking-wider">Truy cập nhanh</h2><span class="text-xs text-[#71717A]">Chọn tác vụ để xem dữ liệu mẫu</span></div>
         <div class="grid gap-3 lg:grid-cols-3">
+            <AuthorizeView Roles="Manager">
+                <a href="/manager/membership-plans" class="flex min-h-24 items-center justify-between gap-5 border-2 border-black bg-white p-5 text-left text-black transition-colors hover:bg-[#6366F1] hover:text-white rounded-none">
+                    <span><span class="workspace-heading block text-xs font-extrabold uppercase tracking-wider">Membership Plans</span><span class="mt-2 block text-xs">Quản lý danh mục gói hội viên</span></span>
+                    <span class="text-xl" aria-hidden="true">↗</span>
+                </a>
+            </AuthorizeView>
             @foreach (var action in _actions)
             {
                 <button type="button" @onclick="() => _activeAction = action.Id" aria-pressed="@(_activeAction == action.Id ? "true" : "false")"
@@ -48,16 +54,7 @@
 
     <section class="overflow-hidden border-2 border-black bg-white rounded-none" aria-labelledby="manager-table-title" aria-live="polite">
         <div class="flex flex-wrap items-center justify-between gap-3 border-b-2 border-black px-5 py-5 sm:px-6"><h2 id="manager-table-title" class="workspace-heading text-sm font-extrabold uppercase tracking-wider">@ActiveTitle</h2><span class="text-xs text-[#71717A]">Bản xem trước · Không thay đổi dữ liệu thật</span></div>
-        @if (_activeAction == "plans")
-        {
-            <div class="overflow-x-auto"><table class="workspace-table w-full min-w-[650px] text-left text-sm"><thead class="workspace-heading bg-[#F7F7F7] text-[10px] uppercase tracking-wider"><tr><th class="px-6 py-4">Gói tập</th><th class="px-6 py-4">Dịch vụ</th><th class="px-6 py-4">Giá niêm yết</th><th class="px-6 py-4">Trạng thái</th></tr></thead><tbody>
-                @foreach (var plan in _plans)
-                {
-                    <tr class="border-t border-[#CFCFCF]"><td class="px-6 py-5 font-semibold">@plan.Name</td><td class="px-6 py-5 text-[#545454]">@plan.Service</td><td class="workspace-heading px-6 py-5 text-xs font-bold">@Money(plan.Price) ₫</td><td class="px-6 py-5"><span class="inline-block border border-[#10B981] bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase text-[#047857] rounded-none">Đang mở bán</span></td></tr>
-                }
-            </tbody></table></div>
-        }
-        else if (_activeAction == "reports")
+        @if (_activeAction == "reports")
         {
             <div class="overflow-x-auto"><table class="workspace-table w-full min-w-[650px] text-left text-sm"><thead class="workspace-heading bg-[#F7F7F7] text-[10px] uppercase tracking-wider"><tr><th class="px-6 py-4">Nguồn doanh thu</th><th class="px-6 py-4">Giao dịch</th><th class="px-6 py-4">Doanh thu mẫu</th><th class="px-6 py-4">Tỷ trọng</th></tr></thead><tbody>
                 @foreach (var row in _revenueRows)
@@ -103,23 +100,15 @@
         NumberDecimalSeparator = ",",
         PercentPositivePattern = 1
     };
-    private string _activeAction = "plans";
+    private string _activeAction = "reports";
     private readonly decimal _monthlyRevenue = 356_800_000m;
     private readonly int _activeMembers = 842;
     private readonly int _freezeRequests = 7;
     private readonly int _purchaseProposals = 5;
     private readonly List<QuickAction> _actions =
     [
-        new("plans", "Membership Plans", "Danh mục gói hội viên"),
         new("reports", "Business Reports", "Tổng quan doanh thu và dịch vụ"),
         new("feedback", "Feedback Management", "Lắng nghe phản hồi hội viên")
-    ];
-    private readonly List<PlanRow> _plans =
-    [
-        new("Gym 3 tháng", "GYM", 2_400_000m),
-        new("Gym 6 tháng", "GYM", 4_200_000m),
-        new("Gym 12 tháng", "GYM", 7_200_000m),
-        new("Yoga Studio · 12 buổi", "YOGA", 1_350_000m)
     ];
     private readonly List<RevenueRow> _revenueRows =
     [
@@ -143,9 +132,8 @@
     ];
 
     private static string Money(decimal amount) => amount.ToString("N0", _numberFormat);
-    private string ActiveTitle => _activeAction switch { "reports" => "Tổng quan doanh thu tháng mẫu", "feedback" => "Phản hồi cần theo dõi", "members" => "Phân bổ hội viên hoạt động", "pending" => "Yêu cầu đang chờ xử lý", _ => "Danh mục gói hội viên mẫu" };
+    private string ActiveTitle => _activeAction switch { "reports" => "Tổng quan doanh thu tháng mẫu", "feedback" => "Phản hồi cần theo dõi", "members" => "Phân bổ hội viên hoạt động", _ => "Yêu cầu đang chờ xử lý" };
     private sealed record QuickAction(string Id, string Name, string Description);
-    private sealed record PlanRow(string Name, string Service, decimal Price);
     private sealed record RevenueRow(string Service, int Transactions, decimal Amount);
     private sealed record MemberGroup(string Service, int Members);
     private sealed record FeedbackRow(string Member, string Category, string Content);

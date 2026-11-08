@@ -1,8 +1,8 @@
 namespace VFMS.Domain.Common;
 
 /// <summary>
-/// Base class for all domain entities. Enforces soft-delete (GBR-33) and audit timestamps.
-/// Every entity must inherit from this class; hard-deletion is strictly forbidden.
+/// Base class for domain entities with audit timestamps and a soft-delete flag.
+/// Use soft deletion by default and preserve records protected by GBR-33.
 /// </summary>
 public abstract class BaseEntity
 {
@@ -16,8 +16,7 @@ public abstract class BaseEntity
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     /// <summary>
-    /// Soft-delete flag (GBR-33). Never set to <c>true</c> via a hard DELETE statement.
-    /// All queries must filter on <c>IsDeleted == false</c> by default (global query filter).
+    /// Soft-delete flag. Global query filters exclude these records from normal reads.
     /// </summary>
     public bool IsDeleted { get; set; } = false;
 }
