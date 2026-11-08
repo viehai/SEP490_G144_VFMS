@@ -11,6 +11,12 @@
             <a href="@(DashboardRoute + "#quick-actions")" class="workspace-nav-link rounded-none"><span aria-hidden="true">02</span> Truy cập nhanh <span aria-hidden="true">↗</span></a>
             <NavLink href="/profile" Match="NavLinkMatch.All" class="workspace-nav-link rounded-none" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">03</span> Hồ sơ cá nhân <span aria-hidden="true">↗</span></NavLink>
             <a href="/" class="workspace-nav-link rounded-none"><span aria-hidden="true">04</span> Trang chủ <span aria-hidden="true">↗</span></a>
+            @if (Variant == "manager")
+            {
+                <AuthorizeView Roles="Manager">
+                    <NavLink href="/manager/membership-plans" Match="NavLinkMatch.All" class="workspace-nav-link rounded-none" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">05</span> Gói hội viên <span aria-hidden="true">↗</span></NavLink>
+                </AuthorizeView>
+            }
         </nav>
         <div class="workspace-sidebar-bottom">
             <p class="workspace-sidebar-label">VICTOR FITNESS / VFMS</p>
@@ -20,18 +26,28 @@
     <div class="workspace-content">
         <header class="workspace-topbar rounded-none">
             <div class="workspace-breadcrumb"><a href="/">VFMS</a><span aria-hidden="true">/</span><strong>@RoleName</strong></div>
-            <div class="workspace-preview-picker">
-                <label for="workspace-preview">XEM GIAO DIỆN</label>
-                <select id="workspace-preview" value="@CurrentRoute" @onchange="ChangePreview" class="rounded-none">
-                    <option value="/admin/dashboard">Admin</option>
-                    <option value="/manager/dashboard">Manager</option>
-                    <option value="/staff/dashboard">Staff</option>
-                    <option value="/pt/dashboard">Personal Trainer</option>
-                    <option value="/profile">Hồ sơ cá nhân</option>
-                </select>
-            </div>
+            @if (IsPreview)
+            {
+                <div class="workspace-preview-picker">
+                    <label for="workspace-preview">XEM GIAO DIỆN</label>
+                    <select id="workspace-preview" value="@CurrentRoute" @onchange="ChangePreview" class="rounded-none">
+                        <option value="/admin/dashboard">Admin</option>
+                        <option value="/manager/dashboard">Manager</option>
+                        <option value="/staff/dashboard">Staff</option>
+                        <option value="/pt/dashboard">Personal Trainer</option>
+                        <option value="/profile">Hồ sơ cá nhân</option>
+                    </select>
+                </div>
+            }
+            else
+            {
+                <AuthorizeView><LogoutButton Class="border border-black bg-white px-3 py-2 text-xs font-bold" /></AuthorizeView>
+            }
         </header>
-        <div class="workspace-demo-note"><span aria-hidden="true">◼</span> BẢN XEM TRƯỚC <span aria-hidden="true">/</span> Dữ liệu minh họa, chưa phản ánh hoạt động thực tế.</div>
+        @if (IsPreview)
+        {
+            <div class="workspace-demo-note"><span aria-hidden="true">◼</span> BẢN XEM TRƯỚC <span aria-hidden="true">/</span> Dữ liệu minh họa, chưa phản ánh hoạt động thực tế.</div>
+        }
         <main class="workspace-main">@ChildContent</main>
         <footer class="workspace-footer"><span>© @DateTime.Now.Year VICTOR FITNESS</span><span>V-FITNESS MANAGEMENT SYSTEM</span></footer>
     </div>
@@ -39,6 +55,7 @@
 
 @code {
     [Parameter] public string Variant { get; set; } = "staff";
+    [Parameter] public bool IsPreview { get; set; } = true;
     [Parameter] public RenderFragment? ChildContent { get; set; }
     private string SidebarTone => Variant == "manager" ? "bg-[#0F172A]" : "bg-[#0A0A0A]";
     private string RoleName => Variant switch { "admin" => "ADMIN", "manager" => "MANAGER", "pt" => "PERSONAL TRAINER", _ => "STAFF" };

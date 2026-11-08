@@ -27,11 +27,17 @@ public sealed class AuthApiClient(HttpClient http) : IDisposable
     private async Task<TResponse> PostAsync<TRequest, TResponse>(string path, TRequest request, CancellationToken cancellationToken,
         string? accessToken = null)
     {
+        using var messageRequest = new HttpRequestMessage(HttpMethod.Post, path) { Content = JsonContent.Create(request) };
+        if (accessToken is not null)
+            messageRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        return await SendAsync<TResponse>(http, messageRequest, cancellationToken);
+    }
+
+    internal static async Task<TResponse> SendAsync<TResponse>(HttpClient http, HttpRequestMessage messageRequest,
+        CancellationToken cancellationToken)
+    {
         try
         {
-            using var messageRequest = new HttpRequestMessage(HttpMethod.Post, path) { Content = JsonContent.Create(request) };
-            if (accessToken is not null)
-                messageRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
             using var response = await http.SendAsync(messageRequest, cancellationToken);
             if (response.IsSuccessStatusCode)
             {
@@ -39,9 +45,13 @@ public sealed class AuthApiClient(HttpClient http) : IDisposable
                     ?? throw new AuthApiException("Máy chủ chưa trả về dữ liệu. Vui lòng thử lại.");
             }
 
-            var message = response.StatusCode == HttpStatusCode.TooManyRequests
-                ? "Bạn đã thử quá nhiều lần. Vui lòng đợi rồi thử lại."
-                : "Không thể hoàn tất yêu cầu. Vui lòng thử lại.";
+            var message = response.StatusCode switch
+            {
+                HttpStatusCode.Unauthorized when messageRequest.Headers.Authorization is not null => "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
+                HttpStatusCode.Forbidden when messageRequest.Headers.Authorization is not null => "Tài khoản của bạn không có quyền thực hiện thao tác này.",
+                HttpStatusCode.TooManyRequests => "Bạn đã thử quá nhiều lần. Vui lòng đợi rồi thử lại.",
+                _ => "Không thể hoàn tất yêu cầu. Vui lòng thử lại."
+            };
             var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
             try
             {

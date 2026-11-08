@@ -1,6 +1,24 @@
-﻿<Router AppAssembly="@typeof(App).Assembly">
+﻿@inject NavigationManager Navigation
+
+<Router AppAssembly="@typeof(App).Assembly">
     <Found Context="routeData">
-        <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+        <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
+            <Authorizing><p role="status">Đang kiểm tra phiên đăng nhập...</p></Authorizing>
+            <NotAuthorized Context="auth">
+                <section class="space-y-3">
+                    @if (auth.User.Identity?.IsAuthenticated == true)
+                    {
+                        <h1>Không có quyền truy cập</h1>
+                        <p role="alert">Tài khoản của bạn không có quyền truy cập trang này.</p>
+                    }
+                    else
+                    {
+                        <h1>Vui lòng đăng nhập</h1>
+                        <a href="@LoginUrl" class="underline">Đăng nhập để tiếp tục</a>
+                    }
+                </section>
+            </NotAuthorized>
+        </AuthorizeRouteView>
         <FocusOnNavigate RouteData="@routeData" Selector="h1" />
     </Found>
     <NotFound>
@@ -10,3 +28,7 @@
         </LayoutView>
     </NotFound>
 </Router>
+
+@code {
+    private string LoginUrl => $"/auth/login?returnUrl={Uri.EscapeDataString("/" + Navigation.ToBaseRelativePath(Navigation.Uri))}";
+}

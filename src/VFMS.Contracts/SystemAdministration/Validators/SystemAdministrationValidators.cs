@@ -25,7 +25,10 @@ public sealed class BannedWordListRequestValidator : AbstractValidator<BannedWor
 public sealed class AuditLogListRequestValidator : AbstractValidator<AuditLogListRequest>
 {
     public static readonly string[] ActionTypes =
-        ["Create", "Update", "Delete", "Login", "Logout", "RoleChange", "AccountLock", "AccountUnlock", "PasswordChange"];
+    [
+        "Create", "Update", "Delete", "Login", "Logout", "RoleChange", "AccountLock", "AccountUnlock", "PasswordChange",
+        "CreateMembershipPlan", "UpdateMembershipPlan", "ActivateMembershipPlan", "DeactivateMembershipPlan", "DeleteMembershipPlan"
+    ];
 
     public AuditLogListRequestValidator()
     {

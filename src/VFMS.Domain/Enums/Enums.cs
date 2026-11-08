@@ -457,7 +457,12 @@ public enum AuditActionType
     RoleChange,
     AccountLock,
     AccountUnlock,
-    PasswordChange
+    PasswordChange,
+    CreateMembershipPlan,
+    UpdateMembershipPlan,
+    ActivateMembershipPlan,
+    DeactivateMembershipPlan,
+    DeleteMembershipPlan
 }
 
 // ─────────────────────────────────────────────────────────────
