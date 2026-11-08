@@ -15,6 +15,16 @@
             {
                 <AuthorizeView Roles="Manager">
                     <NavLink href="/manager/membership-plans" Match="NavLinkMatch.All" class="workspace-nav-link rounded-none" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">05</span> Gói hội viên <span aria-hidden="true">↗</span></NavLink>
+                    <NavLink href="/manager/general-policies" Match="NavLinkMatch.All" class="workspace-nav-link rounded-none" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">06</span> Chính sách chung <span aria-hidden="true">↗</span></NavLink>
+                    <NavLink href="/manager/business-reports" Match="NavLinkMatch.All" class="workspace-nav-link rounded-none" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">07</span> Báo cáo kinh doanh <span aria-hidden="true">↗</span></NavLink>
+                </AuthorizeView>
+            }
+            @if (Variant == "admin")
+            {
+                <AuthorizeView Roles="Admin">
+                    <NavLink href="/admin/business-reports" Match="NavLinkMatch.All" class="workspace-nav-link rounded-none" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">05</span> Báo cáo kinh doanh <span aria-hidden="true">↗</span></NavLink>
+                    <NavLink href="/admin/banned-words" Match="NavLinkMatch.All" class="workspace-nav-link rounded-none" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">06</span> Từ khóa cấm <span aria-hidden="true">↗</span></NavLink>
+                    <NavLink href="/admin/audit-logs" Match="NavLinkMatch.All" class="workspace-nav-link rounded-none" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">07</span> Nhật ký hệ thống <span aria-hidden="true">↗</span></NavLink>
                 </AuthorizeView>
             }
         </nav>

@@ -5,6 +5,12 @@
 
 @code {
     private string Variant => Navigation.ToBaseRelativePath(Navigation.Uri).StartsWith("admin/", StringComparison.OrdinalIgnoreCase) ? "admin" : "manager";
-    private bool IsPreview => !Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].TrimEnd('/')
-        .Equals("manager/membership-plans", StringComparison.OrdinalIgnoreCase);
+    private static readonly string[] LivePages =
+    [
+        "manager/membership-plans", "manager/general-policies", "manager/business-reports",
+        "admin/business-reports", "admin/banned-words", "admin/audit-logs"
+    ];
+
+    private bool IsPreview => !LivePages.Contains(Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].TrimEnd('/'),
+        StringComparer.OrdinalIgnoreCase);
 }
