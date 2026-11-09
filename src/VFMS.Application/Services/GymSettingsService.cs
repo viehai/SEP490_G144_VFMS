@@ -7,7 +7,7 @@ using VFMS.Domain.Enums;
 namespace VFMS.Application.Services;
 
 /// <summary>
-/// UC-84 Manage General Policies: the gym's name, contact details, opening hours and whether it accepts new members.
+/// UC-84 Manage General Policies: gym details, opening hours, new member intake and renewal windows.
 /// Old and new values are written to the audit log.
 /// </summary>
 public sealed class GymSettingsService : IGymSettingsService
@@ -33,6 +33,10 @@ public sealed class GymSettingsService : IGymSettingsService
             return Result<GymSettingsResponse>.Failure(
                 "Opening time must be earlier than closing time.", "GYM_SETTINGS_INVALID_HOURS");
 
+        if (request.RenewalAdvanceDays is < 0 || request.RenewalGraceDays is < 0)
+            return Result<GymSettingsResponse>.Failure(
+                "Membership renewal windows cannot be negative.", "GYM_SETTINGS_INVALID_RENEWAL_WINDOW");
+
         var gym = await _repository.GetDefaultGymAsync(cancellationToken);
         if (gym is null)
             return NoGym();
@@ -45,6 +49,8 @@ public sealed class GymSettingsService : IGymSettingsService
         gym.OpenTime = request.OpenTime;
         gym.CloseTime = request.CloseTime;
         gym.IsAcceptingMembers = request.IsAcceptingMembers;
+        gym.RenewalAdvanceDays = request.RenewalAdvanceDays ?? gym.RenewalAdvanceDays;
+        gym.RenewalGraceDays = request.RenewalGraceDays ?? gym.RenewalGraceDays;
         var after = Describe(gym);
         if (before == after)
             return Result<GymSettingsResponse>.Success(ToResponse(gym)); // nothing changed, nothing to audit
@@ -56,10 +62,12 @@ public sealed class GymSettingsService : IGymSettingsService
 
     private static string Describe(Gym g) =>
         $"Name={g.GymName}; Address={g.Address}; Phone={g.PhoneNumber}; Email={g.Email}; " +
-        $"Open={g.OpenTime:HH\\:mm}; Close={g.CloseTime:HH\\:mm}; AcceptingMembers={g.IsAcceptingMembers}";
+        $"Open={g.OpenTime:HH\\:mm}; Close={g.CloseTime:HH\\:mm}; AcceptingMembers={g.IsAcceptingMembers}; " +
+        $"RenewalAdvanceDays={g.RenewalAdvanceDays}; RenewalGraceDays={g.RenewalGraceDays}";
 
     private static GymSettingsResponse ToResponse(Gym g) =>
-        new(g.Id, g.GymName, g.Address, g.PhoneNumber, g.Email, g.OpenTime, g.CloseTime, g.IsAcceptingMembers, g.UpdatedAt);
+        new(g.Id, g.GymName, g.Address, g.PhoneNumber, g.Email, g.OpenTime, g.CloseTime, g.IsAcceptingMembers,
+            g.UpdatedAt, g.RenewalAdvanceDays, g.RenewalGraceDays);
 
     private static Result<GymSettingsResponse> NoGym() =>
         Result<GymSettingsResponse>.Failure("No gym is configured in the system.", "GYM_NOT_CONFIGURED", 404);

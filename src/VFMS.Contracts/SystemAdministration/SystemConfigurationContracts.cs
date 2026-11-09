@@ -8,6 +8,7 @@ namespace VFMS.Contracts.SystemAdministration;
 /// <summary>
 /// Gym settings (UC-84). Times are gym local time ("HH:mm" or "HH:mm:ss").
 /// Opening and closing time are set together; opening must be earlier than closing.
+/// Omitted renewal windows leave the current policy unchanged.
 /// </summary>
 public sealed record GymSettingsRequest(
     string GymName,
@@ -16,7 +17,9 @@ public sealed record GymSettingsRequest(
     string? Email,
     [property: JsonConverter(typeof(FlexibleTimeOnlyConverter))] TimeOnly? OpenTime,
     [property: JsonConverter(typeof(FlexibleTimeOnlyConverter))] TimeOnly? CloseTime,
-    bool IsAcceptingMembers
+    bool IsAcceptingMembers,
+    int? RenewalAdvanceDays = null,
+    int? RenewalGraceDays = null
 );
 
 public sealed record GymSettingsResponse(
@@ -28,7 +31,9 @@ public sealed record GymSettingsResponse(
     TimeOnly? OpenTime,
     TimeOnly? CloseTime,
     bool IsAcceptingMembers,
-    DateTime UpdatedAt
+    DateTime UpdatedAt,
+    int RenewalAdvanceDays,
+    int RenewalGraceDays
 );
 
 // ── Business Reports (UC-86) ─────────────────────────────────────

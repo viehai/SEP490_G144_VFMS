@@ -10,6 +10,8 @@ namespace VFMS.Client.Services;
 public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session) : IDisposable
 {
     private const string BasePath = "api/manager/membership-plans";
+    private const string PurchasesPath = "api/membership-purchases";
+    private const string RenewalsPath = "api/membership-renewals";
 
     public Task<PagedResponse<MembershipPlanResponse>> ListAsync(MembershipPlanListRequest request, CancellationToken cancellationToken = default)
     {
@@ -40,6 +42,24 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
     public Task<PagedResponse<MembershipPlanCatalogItemResponse>> ListCatalogAsync(int page, CancellationToken cancellationToken = default) =>
         SendAsync<PagedResponse<MembershipPlanCatalogItemResponse>>(HttpMethod.Get,
             FormattableString.Invariant($"api/membership-plans?page={page}&pageSize=9"), cancellationToken);
+
+    public Task<MembershipPurchaseResponse> PurchaseAsync(MembershipPurchaseRequest request, CancellationToken cancellationToken = default) =>
+        SendAsync<MembershipPurchaseResponse>(HttpMethod.Post, PurchasesPath, cancellationToken, JsonContent.Create(request));
+
+    public Task<MembershipPurchaseResponse> GetPurchaseAsync(string orderNumber, CancellationToken cancellationToken = default) =>
+        SendAsync<MembershipPurchaseResponse>(HttpMethod.Get, $"{PurchasesPath}/{Uri.EscapeDataString(orderNumber)}", cancellationToken);
+
+    public Task<IReadOnlyList<MembershipRenewalOption>> ListRenewalsAsync(CancellationToken cancellationToken = default) =>
+        SendAsync<IReadOnlyList<MembershipRenewalOption>>(HttpMethod.Get, RenewalsPath, cancellationToken);
+
+    public Task<MembershipPurchaseResponse> RenewAsync(RenewMembershipRequest request, CancellationToken cancellationToken = default) =>
+        SendAsync<MembershipPurchaseResponse>(HttpMethod.Post, RenewalsPath, cancellationToken, JsonContent.Create(request));
+
+    public Task<MembershipPurchaseResponse> ConfirmCashAsync(
+        string orderNumber, ConfirmMembershipCashRequest request, CancellationToken cancellationToken = default) =>
+        SendAsync<MembershipPurchaseResponse>(HttpMethod.Post,
+            $"api/staff/membership-purchases/{Uri.EscapeDataString(orderNumber)}/confirm-cash", cancellationToken,
+            JsonContent.Create(request));
 
     private async Task<T> SendAsync<T>(HttpMethod method, string path, CancellationToken cancellationToken, HttpContent? content = null)
     {

@@ -7,6 +7,9 @@ namespace VFMS.Domain.Entities;
 /// </summary>
 public class Gym : BaseEntity
 {
+    public const int DefaultRenewalAdvanceDays = 30;
+    public const int DefaultRenewalGraceDays = 60;
+
     public string GymName { get; set; } = string.Empty;
     public string? Address { get; set; }
     public string? PhoneNumber { get; set; }
@@ -14,6 +17,8 @@ public class Gym : BaseEntity
     public TimeOnly? OpenTime { get; set; }
     public TimeOnly? CloseTime { get; set; }
     public bool IsAcceptingMembers { get; set; } = true;
+    public int RenewalAdvanceDays { get; set; } = DefaultRenewalAdvanceDays;
+    public int RenewalGraceDays { get; set; } = DefaultRenewalGraceDays;
 
     // ── Navigation Properties ──────────────────────────────────
     public ICollection<ApplicationUser> Users { get; set; } = [];

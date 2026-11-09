@@ -34,6 +34,13 @@
                     {
                         <a href="/manager/membership-plans" class="text-[10px] font-bold uppercase text-neutral-200 hover:text-white" aria-label="Quản lý gói hội viên">Quản lý</a>
                     }
+                    @if (auth.User.IsInRole("Member"))
+                    {
+                        <NavLink href="/my-memberships" Match="NavLinkMatch.All" ActiveClass="underline underline-offset-4"
+                                 class="max-w-12 whitespace-normal text-center text-[10px] font-bold uppercase leading-tight text-neutral-200 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white sm:max-w-none sm:whitespace-nowrap sm:text-[11px]">
+                            Gói của tôi
+                        </NavLink>
+                    }
                     <NavLink href="/profile" Match="NavLinkMatch.All" ActiveClass="underline underline-offset-4"
                              class="inline-block max-w-40 truncate rounded-none font-['Montserrat',sans-serif] text-[10px] sm:text-[11px] 2xl:text-xs font-bold uppercase tracking-wider text-neutral-200 hover:text-white transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white"
                              title="@auth.User.Identity?.Name" aria-label="Hồ sơ cá nhân">
