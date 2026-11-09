@@ -41,6 +41,12 @@
             <span class="text-xs text-neutral-500">Chọn công việc để xem danh sách minh họa</span>
         </div>
         <div class="grid gap-3 lg:grid-cols-3">
+            <AuthorizeView Roles="Staff">
+                <a href="/staff/membership-cash-receipt"
+                   class="flex min-h-[106px] items-center border-2 border-black bg-white p-5 text-sm font-bold hover:bg-black hover:text-white">
+                    Xác nhận tiền mặt mua gói tập
+                </a>
+            </AuthorizeView>
             @foreach (var action in _actions)
             {
                 <button type="button" @onclick="() => _selectedAction = action.Id" aria-pressed="@(_selectedAction == action.Id ? "true" : "false")"
