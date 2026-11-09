@@ -1,0 +1,170 @@
+@page "/my-memberships"
+@layout PublicLayout
+@using Microsoft.AspNetCore.Authorization
+@using System.Globalization
+@using VFMS.Contracts.Memberships
+@attribute [Authorize(Roles = "Member")]
+@inject MembershipPlanApiClient Plans
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<PageTitle>Gói của tôi | Victor Fitness</PageTitle>
+
+<section class="mx-auto max-w-4xl space-y-6 px-5 pb-12 pt-28" aria-labelledby="my-memberships-title">
+    <header class="space-y-2 border-b-2 border-black pb-5">
+        <h1 id="my-memberships-title" class="font-['Montserrat',sans-serif] text-3xl font-black">Gói của tôi</h1>
+        <p class="text-sm">Kiểm tra ngày hết hạn và gia hạn gói hội viên bằng VietQR.</p>
+    </header>
+
+    @if (_loading)
+    {
+        <p role="status">Đang tải gói hội viên...</p>
+    }
+    else if (_loadError is not null)
+    {
+        <p role="alert" class="text-sm text-red-800">@_loadError</p>
+        <button type="button" class="border border-black px-4 py-2 text-sm font-bold" @onclick="LoadAsync">Thử lại</button>
+    }
+    else if (_options.Count == 0)
+    {
+        <p role="status">Bạn chưa có gói hội viên để gia hạn.</p>
+    }
+    else
+    {
+        <ul class="space-y-4">
+            @foreach (var option in _options)
+            {
+                <li @key="option.MembershipId" class="space-y-4 border-2 border-black bg-white p-5">
+                    <div class="flex flex-wrap items-baseline justify-between gap-2">
+                        <h2 class="font-['Montserrat',sans-serif] text-xl font-bold">@option.PlanName</h2>
+                        <p class="text-sm">@StatusLabel(option.Status)</p>
+                    </div>
+                    <dl class="grid gap-3 text-sm sm:grid-cols-3">
+                        <div>
+                            <dt class="font-bold">Ngày hết hạn</dt>
+                            <dd><time datetime="@IsoDate(option.EndDate)">@DisplayDate(option.EndDate)</time></dd>
+                        </div>
+                        @if (option.RenewalStartDate is { } start)
+                        {
+                            <div>
+                                <dt class="font-bold">Ngày bắt đầu sau gia hạn</dt>
+                                <dd><time datetime="@IsoDate(start)">@DisplayDate(start)</time></dd>
+                            </div>
+                        }
+                        @if (option.Price is { } price)
+                        {
+                            <div>
+                                <dt class="font-bold">Giá gia hạn</dt>
+                                <dd>@(price.ToString("#,0", VietnameseCulture)) ₫</dd>
+                            </div>
+                        }
+                    </dl>
+                    @if (option.Message is { } message)
+                    {
+                        <p class="text-sm text-neutral-700">@message</p>
+                    }
+                    @if (_renewalErrorMembershipId == option.MembershipId)
+                    {
+                        <p role="alert" class="text-sm text-red-800">@_renewalError</p>
+                    }
+                    <button type="button"
+                            class="border border-black bg-black px-5 py-3 text-sm font-bold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 disabled:opacity-50"
+                            disabled="@(!option.Eligible || _submittingMembershipId.HasValue)"
+                            @onclick="() => RenewAsync(option)">
+                        @(_submittingMembershipId == option.MembershipId ? "Đang tạo đơn..." : "Gia hạn")
+                    </button>
+                </li>
+            }
+        </ul>
+    }
+    <a href="/#pricing-memberships" class="inline-block text-sm font-bold underline">Xem danh sách gói tập</a>
+</section>
+
+@code {
+    private static readonly CultureInfo VietnameseCulture = CultureInfo.GetCultureInfo("vi-VN");
+    private readonly CancellationTokenSource _lifetime = new();
+    private IReadOnlyList<MembershipRenewalOption> _options = [];
+    private bool _loading;
+    private string? _loadError;
+    private int? _submittingMembershipId;
+    private string? _renewalError;
+    private int? _renewalErrorMembershipId;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        if (_loading)
+            return;
+        var ct = _lifetime.Token;
+        _loading = true;
+        _loadError = null;
+        try
+        {
+            _options = await Plans.ListRenewalsAsync(ct);
+        }
+        catch (AuthApiException ex)
+        {
+            _loadError = ex.Message;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // The user left the page.
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task RenewAsync(MembershipRenewalOption option)
+    {
+        if (!option.Eligible || _submittingMembershipId.HasValue)
+            return;
+        var ct = _lifetime.Token;
+        _submittingMembershipId = option.MembershipId;
+        _renewalError = null;
+        _renewalErrorMembershipId = null;
+        try
+        {
+            var purchase = await Plans.RenewAsync(new(option.MembershipId), ct);
+            if (!ct.IsCancellationRequested)
+                Navigation.NavigateTo($"/membership-purchases/{Uri.EscapeDataString(purchase.OrderNumber)}?renewal=true");
+        }
+        catch (AuthApiException ex)
+        {
+            _renewalErrorMembershipId = option.MembershipId;
+            _renewalError = ex.ErrorCode == "PAYMENT_UNAVAILABLE"
+                ? "VietQR hiện chưa khả dụng. Vui lòng thử lại sau."
+                : ex.Message;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // The user left the page.
+        }
+        finally
+        {
+            _submittingMembershipId = null;
+        }
+    }
+
+    private static string IsoDate(DateOnly date) => date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    private static string DisplayDate(DateOnly date) => date.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
+
+    private static string StatusLabel(string status) => status switch
+    {
+        "Active" => "Đang hoạt động",
+        "Expired" => "Đã hết hạn",
+        "Scheduled" => "Chờ kích hoạt",
+        "Frozen" => "Đang bảo lưu",
+        "Suspended" => "Đang tạm ngưng",
+        "Cancelled" => "Đã hủy",
+        _ => status
+    };
+
+    public void Dispose()
+    {
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+    }
+}

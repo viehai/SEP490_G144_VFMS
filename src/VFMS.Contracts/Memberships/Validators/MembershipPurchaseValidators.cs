@@ -2,6 +2,12 @@ using FluentValidation;
 
 namespace VFMS.Contracts.Memberships.Validators;
 
+public sealed class RenewMembershipRequestValidator : AbstractValidator<RenewMembershipRequest>
+{
+    public RenewMembershipRequestValidator() =>
+        RuleFor(x => x.MembershipId).GreaterThan(0);
+}
+
 public sealed class MembershipPurchaseRequestValidator : AbstractValidator<MembershipPurchaseRequest>
 {
     public MembershipPurchaseRequestValidator()

@@ -20,7 +20,15 @@ public static class MembershipPurchaseMessages
     public const string Failed = "Giao dịch trực tuyến thất bại hoặc đã hết hiệu lực.";
     public const string ActivationDateCode = "MSG-25";
     public const string ActivationDate = "Chọn ngày kích hoạt từ hôm nay đến tối đa 30 ngày tới.";
+    public const string RenewalBlockedCode = "MSG-26";
+    public const string RenewalBlocked = "Không thể gia hạn gói hội viên đang đóng băng hoặc bị tạm đình chỉ.";
 }
+
+public sealed record RenewMembershipRequest(int MembershipId);
+
+public sealed record MembershipRenewalOption(
+    int MembershipId, string PlanName, string Status, DateOnly EndDate, DateOnly? RenewalStartDate,
+    decimal? Price, bool Eligible, string? MessageCode, string? Message);
 
 public sealed record MembershipPurchaseRequest(
     IReadOnlyList<MembershipPurchaseItemRequest> Items, string PaymentMethod);

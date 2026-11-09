@@ -272,6 +272,11 @@ public class VfmsDbContext : DbContext
                 .WithMany(u => u.BeneficiaryOrderItems)
                 .HasForeignKey(e => e.BeneficiaryUserId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.RenewedFromMembership)
+                .WithMany()
+                .HasForeignKey(e => e.RenewedFromMembershipId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         // ── PaymentTransaction ────────────────────────────────────

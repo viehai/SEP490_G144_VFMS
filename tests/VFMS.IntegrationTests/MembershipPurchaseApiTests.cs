@@ -30,7 +30,7 @@ using VFMS.Infrastructure.Workers;
 
 namespace VFMS.IntegrationTests;
 
-public sealed class MembershipPurchaseApiTests : IAsyncLifetime
+public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
 {
     private const string Route = "/api/membership-purchases";
     private const string WebhookRoute = "/api/v1/commerce/payment/webhook/sepay";

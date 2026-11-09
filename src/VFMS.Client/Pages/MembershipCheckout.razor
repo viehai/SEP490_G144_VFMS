@@ -8,11 +8,13 @@
 @inject MembershipPlanApiClient Plans
 @implements IDisposable
 
-<PageTitle>Thanh toán gói tập | Victor Fitness</PageTitle>
+<PageTitle>@(IsRenewal ? "Thanh toán gia hạn" : "Thanh toán gói tập") | Victor Fitness</PageTitle>
 
-<main class="mx-auto max-w-3xl space-y-5 px-5 py-10 font-body">
-    <h1 class="font-heading text-3xl font-black">Thanh toán gói tập</h1>
-    <a href="/#pricing-memberships" class="inline-block text-sm font-bold underline">Về danh sách gói tập</a>
+<section class="mx-auto max-w-3xl space-y-5 px-5 font-body @(IsRenewal ? "pb-10 pt-28" : "py-10")">
+    <h1 class="font-heading text-3xl font-black">@(IsRenewal ? "Thanh toán gia hạn" : "Thanh toán gói tập")</h1>
+    <a href="@(IsRenewal ? "/my-memberships" : "/#pricing-memberships")" class="inline-block text-sm font-bold underline">
+        @(IsRenewal ? "Về Gói của tôi" : "Về danh sách gói tập")
+    </a>
     @if (_purchase is { } purchase)
     {
         <section class="space-y-4 border-2 border-black bg-white p-6" aria-label="Tóm tắt đơn hàng">
@@ -21,7 +23,13 @@
                 @foreach (var item in purchase.Items)
                 {
                     <li class="flex flex-wrap justify-between gap-2">
-                        <span>@item.PlanName · @(item.IsForPurchaser ? "Cho mình" : "Tặng người khác")</span>
+                        <span>
+                            @item.PlanName · @(item.IsForPurchaser ? "Cho mình" : "Tặng người khác")
+                            @if (IsRenewal && item.ActivationDate is { } start)
+                            {
+                                <span class="block">Ngày bắt đầu: @start.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)</span>
+                            }
+                        </span>
                         <span>@Money(item.UnitPrice)</span>
                     </li>
                 }
@@ -76,10 +84,11 @@
         <button type="button" class="border border-black px-4 py-2 text-sm font-bold disabled:opacity-50"
                 disabled="@_refreshing" @onclick="RefreshAsync">Cập nhật trạng thái</button>
     }
-</main>
+</section>
 
 @code {
     [Parameter] public string OrderNumber { get; set; } = "";
+    [SupplyParameterFromQuery(Name = "renewal")] public bool IsRenewal { get; set; }
 
     private CancellationTokenSource? _lifetime;
     private MembershipPurchaseResponse? _purchase;

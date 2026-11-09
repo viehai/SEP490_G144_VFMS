@@ -2,7 +2,7 @@ using FluentValidation;
 
 namespace VFMS.Contracts.SystemAdministration.Validators;
 
-/// <summary>UC-84: name required, valid email and phone, opening time earlier than closing time.</summary>
+/// <summary>UC-84: validates gym details, hours and membership renewal windows.</summary>
 public sealed class GymSettingsRequestValidator : AbstractValidator<GymSettingsRequest>
 {
     public GymSettingsRequestValidator()
@@ -27,6 +27,8 @@ public sealed class GymSettingsRequestValidator : AbstractValidator<GymSettingsR
             .Must(x => x.OpenTime is null || x.CloseTime is null || x.OpenTime < x.CloseTime)
             .OverridePropertyName("OpenTime")
             .WithMessage("Opening time must be earlier than closing time.");
+        RuleFor(x => x.RenewalAdvanceDays).GreaterThanOrEqualTo(0);
+        RuleFor(x => x.RenewalGraceDays).GreaterThanOrEqualTo(0);
     }
 }
 
