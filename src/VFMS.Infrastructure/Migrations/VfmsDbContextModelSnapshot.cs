@@ -899,6 +899,12 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<string>("PhoneNumber")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<int>("RenewalAdvanceDays")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RenewalGraceDays")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
 
@@ -1516,6 +1522,9 @@ namespace VFMS.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(128)");
 
+                    b.Property<string>("ComponentTermsSnapshot")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -1533,6 +1542,9 @@ namespace VFMS.Infrastructure.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
 
+                    b.Property<int?>("RenewedFromMembershipId")
+                        .HasColumnType("int");
+
                     b.Property<decimal>("UnitPriceSnapshot")
                         .HasColumnType("decimal(18,2)");
 
@@ -1546,6 +1558,8 @@ namespace VFMS.Infrastructure.Migrations
                     b.HasIndex("OrderId");
 
                     b.HasIndex("PackageId");
+
+                    b.HasIndex("RenewedFromMembershipId");
 
                     b.ToTable("OrderItems");
                 });
@@ -1909,7 +1923,8 @@ namespace VFMS.Infrastructure.Migrations
                         .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("GatewayTransactionReference")
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
@@ -1941,6 +1956,10 @@ namespace VFMS.Infrastructure.Migrations
                         .HasColumnType("nvarchar(128)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("GatewayTransactionReference")
+                        .IsUnique()
+                        .HasFilter("[GatewayName] = 'SePay' AND [GatewayTransactionReference] IS NOT NULL");
 
                     b.HasIndex("OrderId")
                         .IsUnique();
@@ -3678,11 +3697,18 @@ namespace VFMS.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("VFMS.Domain.Entities.MemberMembership", "RenewedFromMembership")
+                        .WithMany()
+                        .HasForeignKey("RenewedFromMembershipId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Beneficiary");
 
                     b.Navigation("Order");
 
                     b.Navigation("Package");
+
+                    b.Navigation("RenewedFromMembership");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.PTAvailability", b =>

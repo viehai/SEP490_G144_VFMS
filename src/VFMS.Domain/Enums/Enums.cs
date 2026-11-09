@@ -46,7 +46,8 @@ public enum MembershipStatus
     Active,
     Frozen,
     Expired,
-    Cancelled
+    Cancelled,
+    Suspended
 }
 
 public enum FreezeRequestStatus

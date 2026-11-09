@@ -43,6 +43,7 @@ builder.Services.AddSystemAdministrationModule();
 builder.Services.AddEquipmentModule();
 builder.Services.AddSupplementModule();
 builder.Services.AddMembershipPlanModule();
+builder.Services.AddMembershipPurchaseModule(builder.Configuration);
 
 var mapsterConfig = new TypeAdapterConfig();
 mapsterConfig.Scan(typeof(UserAdministrationMapping).Assembly);

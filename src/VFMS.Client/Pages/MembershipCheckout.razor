@@ -1,0 +1,183 @@
+@page "/membership-purchases/{OrderNumber}"
+@layout PublicLayout
+@using Microsoft.AspNetCore.Authorization
+@using System.Diagnostics
+@using System.Globalization
+@using VFMS.Contracts.Memberships
+@attribute [Authorize(Roles = "Customer,Member")]
+@inject MembershipPlanApiClient Plans
+@implements IDisposable
+
+<PageTitle>@(IsRenewal ? "Thanh toán gia hạn" : "Thanh toán gói tập") | Victor Fitness</PageTitle>
+
+<section class="mx-auto max-w-3xl space-y-5 px-5 font-body @(IsRenewal ? "pb-10 pt-28" : "py-10")">
+    <h1 class="font-heading text-3xl font-black">@(IsRenewal ? "Thanh toán gia hạn" : "Thanh toán gói tập")</h1>
+    <a href="@(IsRenewal ? "/my-memberships" : "/#pricing-memberships")" class="inline-block text-sm font-bold underline">
+        @(IsRenewal ? "Về Gói của tôi" : "Về danh sách gói tập")
+    </a>
+    @if (_purchase is { } purchase)
+    {
+        <section class="space-y-4 border-2 border-black bg-white p-6" aria-label="Tóm tắt đơn hàng">
+            <h2 class="font-heading text-xl font-black">Đơn @purchase.OrderNumber</h2>
+            <ul class="space-y-2 border-b border-neutral-300 pb-4 text-sm">
+                @foreach (var item in purchase.Items)
+                {
+                    <li class="flex flex-wrap justify-between gap-2">
+                        <span>
+                            @item.PlanName · @(item.IsForPurchaser ? "Cho mình" : "Tặng người khác")
+                            @if (IsRenewal && item.ActivationDate is { } start)
+                            {
+                                <span class="block">Ngày bắt đầu: @start.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)</span>
+                            }
+                        </span>
+                        <span>@Money(item.UnitPrice)</span>
+                    </li>
+                }
+            </ul>
+            <p class="font-heading text-lg font-bold">Tổng thanh toán @Money(purchase.AmountDue)</p>
+            @if (purchase.OrderStatus == MembershipPurchaseStatuses.Pending)
+            {
+                <p role="status">Đang chờ xác nhận thanh toán.</p>
+                @if (purchase.VietQr is { } qr && Remaining > TimeSpan.Zero)
+                {
+                    <img src="@qr.ImageUrl" alt="Mã VietQR thanh toán đơn hàng" class="mx-auto w-64 max-w-full"
+                         referrerpolicy="no-referrer" width="256" />
+                    <dl class="grid gap-2 text-sm">
+                        <div><dt class="font-bold">Ngân hàng</dt><dd>@qr.BankId</dd></div>
+                        <div><dt class="font-bold">Số tài khoản</dt><dd>@qr.AccountNumber</dd></div>
+                        <div><dt class="font-bold">Chủ tài khoản</dt><dd>@qr.AccountName</dd></div>
+                        <div><dt class="font-bold">Nội dung chuyển khoản</dt><dd>@qr.TransferContent</dd></div>
+                    </dl>
+                }
+                @if (purchase.PaymentMethod == MembershipPaymentMethods.Cash)
+                {
+                    <p class="text-sm">Đưa mã đơn cho lễ tân và thanh toán tại quầy.</p>
+                }
+                else if (purchase.VietQr is null && Remaining > TimeSpan.Zero)
+                {
+                    <p role="alert">Mã VietQR tạm thời không khả dụng.</p>
+                }
+                <p class="tabular-nums text-sm">
+                    Thời gian còn lại <time>@($"{(int)Remaining.TotalHours:00}:{Remaining.Minutes:00}:{Remaining.Seconds:00}")</time>
+                </p>
+            }
+            else
+            {
+                <p role="status" class="font-bold">@purchase.Message</p>
+                @if (purchase.InvoiceNumber is { } invoice)
+                {
+                    <p class="text-sm">Số hóa đơn @invoice</p>
+                }
+            }
+        </section>
+    }
+    else if (_error is null)
+    {
+        <p role="status">Đang tải trạng thái đơn hàng...</p>
+    }
+    @if (_error is not null)
+    {
+        <p role="alert" class="text-sm text-red-800">@_error</p>
+    }
+    @if (_purchase?.OrderStatus != MembershipPurchaseStatuses.Paid)
+    {
+        <button type="button" class="border border-black px-4 py-2 text-sm font-bold disabled:opacity-50"
+                disabled="@_refreshing" @onclick="RefreshAsync">Cập nhật trạng thái</button>
+    }
+</section>
+
+@code {
+    [Parameter] public string OrderNumber { get; set; } = "";
+    [SupplyParameterFromQuery(Name = "renewal")] public bool IsRenewal { get; set; }
+
+    private CancellationTokenSource? _lifetime;
+    private MembershipPurchaseResponse? _purchase;
+    private string? _error;
+    private bool _refreshing;
+    private long _receivedAt;
+    private TimeSpan Remaining
+    {
+        get
+        {
+            if (_purchase is not { } purchase)
+                return TimeSpan.Zero;
+            var remaining = purchase.ExpiresAt - purchase.ServerTime - Stopwatch.GetElapsedTime(_receivedAt);
+            return remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero;
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        Dispose();
+        _purchase = null;
+        _error = null;
+        _refreshing = false;
+        var lifetime = _lifetime = new CancellationTokenSource();
+        await RefreshAsync();
+        if (!lifetime.IsCancellationRequested)
+            _ = PollAsync(lifetime.Token);
+    }
+
+    private async Task RefreshAsync()
+    {
+        if (_refreshing || _lifetime is null)
+            return;
+        var ct = _lifetime.Token;
+        _refreshing = true;
+        try
+        {
+            var purchase = await Plans.GetPurchaseAsync(OrderNumber, ct);
+            if (!ct.IsCancellationRequested)
+            {
+                _purchase = purchase;
+                _receivedAt = Stopwatch.GetTimestamp();
+                _error = null;
+            }
+        }
+        catch (AuthApiException ex) when (!ct.IsCancellationRequested)
+        {
+            _error = ex.Message;
+        }
+        catch (Exception ex) when (ct.IsCancellationRequested && ex is OperationCanceledException or AuthApiException)
+        {
+            // The user left this order.
+        }
+        finally
+        {
+            if (!ct.IsCancellationRequested)
+                _refreshing = false;
+        }
+    }
+
+    private async Task PollAsync(CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+        var seconds = 0;
+        try
+        {
+            while ((_purchase is null || _purchase.OrderStatus == MembershipPurchaseStatuses.Pending) &&
+                await timer.WaitForNextTickAsync(ct))
+            {
+                if (_purchase is null)
+                    continue;
+                if (++seconds % 3 == 0)
+                    await RefreshAsync();
+                if (!ct.IsCancellationRequested)
+                    await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // The user left this order.
+        }
+    }
+
+    private static string Money(decimal value) => $"{value.ToString("#,0", CultureInfo.GetCultureInfo("vi-VN"))} ₫";
+
+    public void Dispose()
+    {
+        _lifetime?.Cancel();
+        _lifetime?.Dispose();
+        _lifetime = null;
+    }
+}

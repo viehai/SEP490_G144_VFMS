@@ -53,11 +53,12 @@ public sealed class AuthApiClient(HttpClient http) : IDisposable
                 _ => "Không thể hoàn tất yêu cầu. Vui lòng thử lại."
             };
             var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+            string? code = null;
             try
             {
                 using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
                 var root = document.RootElement;
-                var code = root.TryGetProperty("errorCode", out var errorCode) ? errorCode.GetString()
+                code = root.TryGetProperty("errorCode", out var errorCode) ? errorCode.GetString()
                     : root.TryGetProperty("code", out var problemCode) ? problemCode.GetString() : null;
                 message = code switch
                 {
@@ -67,6 +68,7 @@ public sealed class AuthApiClient(HttpClient http) : IDisposable
                     "AUTH_ACCOUNT_INACTIVE" or "AUTH_ACCOUNT_NOT_ACTIVE" => "Tài khoản chưa hoạt động. Vui lòng liên hệ lễ tân.",
                     "AUTH_PENDING_VERIFICATION" => "Tài khoản đang chờ xác minh. Vui lòng liên hệ lễ tân.",
                     "AUTH_INVALID_REFRESH_TOKEN" => "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại. (MSG-11)",
+                    "PAYMENT_UNAVAILABLE" => "VietQR hiện chưa khả dụng. Bạn có thể chọn thanh toán tại quầy.",
                     _ when (int)response.StatusCode >= 500 => "Hệ thống tạm thời chưa sẵn sàng. Vui lòng thử lại sau.",
                     _ => root.TryGetProperty("errorMessage", out var detail) ? detail.GetString() ?? message
                         : root.TryGetProperty("detail", out detail) ? detail.GetString() ?? message : message
@@ -80,7 +82,7 @@ public sealed class AuthApiClient(HttpClient http) : IDisposable
                 }
             }
             catch (JsonException) { /* A gateway may return a non-JSON error page. */ }
-            throw new AuthApiException(message, response.StatusCode, errors);
+            throw new AuthApiException(message, response.StatusCode, errors, code);
         }
         catch (HttpRequestException)
         {
@@ -98,8 +100,9 @@ public sealed class AuthApiClient(HttpClient http) : IDisposable
 }
 
 public sealed class AuthApiException(string message, HttpStatusCode? statusCode = null,
-    IReadOnlyDictionary<string, string[]>? errors = null) : Exception(message)
+    IReadOnlyDictionary<string, string[]>? errors = null, string? errorCode = null) : Exception(message)
 {
     public HttpStatusCode? StatusCode { get; } = statusCode;
     public IReadOnlyDictionary<string, string[]> Errors { get; } = errors ?? new Dictionary<string, string[]>();
+    public string? ErrorCode { get; } = errorCode;
 }
