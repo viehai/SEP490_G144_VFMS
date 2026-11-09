@@ -77,8 +77,36 @@ public sealed class MembershipPurchaseRepository(VfmsDbContext context) : IMembe
             .Where(membership => userIds.Contains(membership.MemberUserId) && membership.EndDate >= today &&
                 (membership.MembershipStatus == MembershipStatus.Active ||
                  membership.MembershipStatus == MembershipStatus.Scheduled ||
-                 membership.MembershipStatus == MembershipStatus.Frozen))
+                 membership.MembershipStatus == MembershipStatus.Frozen ||
+                 membership.MembershipStatus == MembershipStatus.Suspended))
             .Include(membership => membership.PackageComponent).ToListAsync(ct);
+
+    // General Policies configures renewal windows on the default gym.
+    public Task<Gym?> GetRenewalPolicyGymAsync(CancellationToken ct) =>
+        context.Gyms.AsNoTracking().OrderBy(gym => gym.Id).FirstOrDefaultAsync(ct);
+
+    public Task<List<MemberMembership>> LoadRenewableMembershipsAsync(
+        string memberId, int? membershipId, CancellationToken ct) =>
+        context.MemberMemberships.AsNoTracking()
+            .Where(membership => membership.MemberUserId == memberId &&
+                membership.PackageComponent.ComponentType == ComponentType.GYM &&
+                (membershipId == null || membership.Id == membershipId))
+            .Include(membership => membership.OrderItem)
+            .OrderByDescending(membership => membership.EndDate).ThenByDescending(membership => membership.Id)
+            .ToListAsync(ct);
+
+    public Task<List<Order>> LoadRenewalOrdersAsync(int[] membershipIds, bool forUpdate, CancellationToken ct) =>
+        (forUpdate ? context.Orders : context.Orders.AsNoTracking())
+            .Where(order => (order.OrderStatus == OrderStatus.Pending || order.OrderStatus == OrderStatus.Paid) &&
+                order.Items.Any(item => item.RenewedFromMembershipId.HasValue &&
+                    membershipIds.Contains(item.RenewedFromMembershipId.Value)))
+            .Include(order => order.Items).Include(order => order.PaymentTransaction)
+            .AsSplitQuery().ToListAsync(ct);
+
+    public Task<string?> FindRenewalPurchaserAsync(string orderNumber, CancellationToken ct) =>
+        context.Orders.AsNoTracking()
+            .Where(order => order.OrderNumber == orderNumber && order.Items.Any(item => item.RenewedFromMembershipId != null))
+            .Select(order => order.PurchaserUserId).SingleOrDefaultAsync(ct);
 
     public Task<List<MemberMembership>> LoadDueMembershipsAsync(DateOnly today, CancellationToken ct) =>
         context.MemberMemberships.Where(membership =>

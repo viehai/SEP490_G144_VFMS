@@ -53,11 +53,12 @@ public sealed class AuthApiClient(HttpClient http) : IDisposable
                 _ => "Không thể hoàn tất yêu cầu. Vui lòng thử lại."
             };
             var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+            string? code = null;
             try
             {
                 using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
                 var root = document.RootElement;
-                var code = root.TryGetProperty("errorCode", out var errorCode) ? errorCode.GetString()
+                code = root.TryGetProperty("errorCode", out var errorCode) ? errorCode.GetString()
                     : root.TryGetProperty("code", out var problemCode) ? problemCode.GetString() : null;
                 message = code switch
                 {
@@ -81,7 +82,7 @@ public sealed class AuthApiClient(HttpClient http) : IDisposable
                 }
             }
             catch (JsonException) { /* A gateway may return a non-JSON error page. */ }
-            throw new AuthApiException(message, response.StatusCode, errors);
+            throw new AuthApiException(message, response.StatusCode, errors, code);
         }
         catch (HttpRequestException)
         {
@@ -99,8 +100,9 @@ public sealed class AuthApiClient(HttpClient http) : IDisposable
 }
 
 public sealed class AuthApiException(string message, HttpStatusCode? statusCode = null,
-    IReadOnlyDictionary<string, string[]>? errors = null) : Exception(message)
+    IReadOnlyDictionary<string, string[]>? errors = null, string? errorCode = null) : Exception(message)
 {
     public HttpStatusCode? StatusCode { get; } = statusCode;
     public IReadOnlyDictionary<string, string[]> Errors { get; } = errors ?? new Dictionary<string, string[]>();
+    public string? ErrorCode { get; } = errorCode;
 }

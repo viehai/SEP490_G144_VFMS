@@ -116,12 +116,85 @@ public sealed class MembershipPlanApiClientTests
         Assert.Equal(500_000m, purchase.AmountDue);
     }
 
+    [Fact]
+    public async Task ListRenewals_UsesMemberSessionAndReadsServerEligibility()
+    {
+        var end = new DateOnly(2026, 12, 31);
+        MembershipRenewalOption[] options =
+        [
+            new(7, "Gym", "Active", end, end.AddDays(1), 500_000m, true, null, null),
+            new(8, "Gym Plus", "Frozen", end, null, null, false,
+                MembershipPurchaseMessages.RenewalBlockedCode, MembershipPurchaseMessages.RenewalBlocked)
+        ];
+        using var api = CreateClient(request =>
+        {
+            Assert.Equal(HttpMethod.Get, request.Method);
+            Assert.Equal("/api/membership-renewals", request.RequestUri!.AbsolutePath);
+            Assert.Equal("Bearer access-token", request.Headers.Authorization?.ToString());
+            return Task.FromResult(Json(options));
+        }, role: "Member");
+
+        Assert.Collection(await api.ListRenewalsAsync(),
+            active =>
+            {
+                Assert.True(active.Eligible);
+                Assert.Equal(end.AddDays(1), active.RenewalStartDate);
+                Assert.Equal(500_000m, active.Price);
+            },
+            frozen =>
+            {
+                Assert.False(frozen.Eligible);
+                Assert.Equal(MembershipPurchaseMessages.RenewalBlockedCode, frozen.MessageCode);
+            });
+    }
+
+    [Fact]
+    public async Task Renew_SendsOnlyMembershipIdAndReadsSharedCheckoutResponse()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var start = new DateOnly(2027, 1, 1);
+        using var api = CreateClient(async request =>
+        {
+            Assert.Equal(HttpMethod.Post, request.Method);
+            Assert.Equal("/api/membership-renewals", request.RequestUri!.AbsolutePath);
+            Assert.Equal("Bearer access-token", request.Headers.Authorization?.ToString());
+            var body = await request.Content!.ReadFromJsonAsync<JsonElement>();
+            var membershipId = Assert.Single(body.EnumerateObject());
+            Assert.Equal("membershipId", membershipId.Name);
+            Assert.Equal(7, membershipId.Value.GetInt32());
+            return Json(new MembershipPurchaseResponse("ORD-RENEWAL", "Pending", "Pending", "VietQR", now,
+                now.AddMinutes(15), now, 500_000m, 500_000m, [new(12, "Gym", true, start, 500_000m)],
+                new("https://qr.example.test/", "BANK", "123", "VFMS", "ORDRENEWAL"), null, null, null),
+                HttpStatusCode.Created);
+        }, role: "Member");
+
+        var purchase = await api.RenewAsync(new(7));
+
+        Assert.Equal(MembershipPurchaseStatuses.Pending, purchase.OrderStatus);
+        Assert.Equal(500_000m, purchase.AmountDue);
+        Assert.Equal(start, Assert.Single(purchase.Items).ActivationDate);
+        Assert.Equal("ORDRENEWAL", purchase.VietQr?.TransferContent);
+    }
+
+    [Fact]
+    public async Task Renew_PreservesPaymentErrorCodeForOnlineOnlyCheckout()
+    {
+        using var api = CreateClient(_ => Task.FromResult(Json(
+            new { errorCode = "PAYMENT_UNAVAILABLE" }, HttpStatusCode.ServiceUnavailable)), role: "Member");
+
+        var error = await Assert.ThrowsAsync<AuthApiException>(() => api.RenewAsync(new(7)));
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, error.StatusCode);
+        Assert.Equal("PAYMENT_UNAVAILABLE", error.ErrorCode);
+    }
+
     private static MembershipPlanResponse Plan(string status) => new(7, "Gym", null, 30, 500_000m, status, 3, null);
 
-    private static MembershipPlanApiClient CreateClient(Func<HttpRequestMessage, Task<HttpResponseMessage>> handler, bool authenticated = true)
+    private static MembershipPlanApiClient CreateClient(
+        Func<HttpRequestMessage, Task<HttpResponseMessage>> handler, bool authenticated = true, string role = "Manager")
     {
         var http = new HttpClient(new FakeHandler(handler)) { BaseAddress = new Uri("https://api.example.test/") };
-        var login = new LoginResponse("access-token", "refresh-token", "Bearer", 1800, "manager", "Manager", "manager@example.com", ["Manager"]);
+        var login = new LoginResponse("access-token", "refresh-token", "Bearer", 1800, "user", role, "user@example.com", [role]);
         var storedSession = authenticated ? JsonSerializer.Serialize(new StoredAuthSession(login, DateTimeOffset.UtcNow.AddMinutes(10), false)) : null;
         return new MembershipPlanApiClient(http, new AuthSession(new ReadOnlyStorage(storedSession), new AuthApiClient(http)));
     }

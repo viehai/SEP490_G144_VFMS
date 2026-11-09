@@ -9,7 +9,7 @@ using VFMS.Domain.Enums;
 
 namespace VFMS.Application.Services;
 
-public sealed class MembershipPurchaseService(
+public sealed partial class MembershipPurchaseService(
     IMembershipPurchaseRepository repository, IMembershipPaymentGateway gateway, TimeProvider clock)
     : IMembershipPurchaseService
 {
@@ -36,12 +36,8 @@ public sealed class MembershipPurchaseService(
             var planIds = request.Items.Select(item => item.PlanId).Distinct().ToArray();
             var plans = (await repository.LoadPlansAsync(planIds, ct)).ToDictionary(plan => plan.Id);
             var byEmail = users.ToLookup(user => NormalizeEmail(user.Email));
-            var order = new Order
-            {
-                PurchaserUserId = purchaserId,
-                OrderNumber = $"ORD-{today.ToString("yyyyMMdd", CultureInfo.InvariantCulture)}-{Guid.NewGuid().ToString("N")[..12].ToUpperInvariant()}",
-                Channel = request.PaymentMethod == MembershipPaymentMethods.Cash ? OrderChannel.Counter : OrderChannel.Online
-            };
+            var order = NewOrder(purchaserId, today,
+                request.PaymentMethod == MembershipPaymentMethods.Cash ? OrderChannel.Counter : OrderChannel.Online);
 
             foreach (var item in request.Items)
             {
@@ -51,41 +47,55 @@ public sealed class MembershipPurchaseService(
                     return Result<MembershipPurchaseResponse>.Failure(
                         "Người thụ hưởng phải có tài khoản Khách hàng hoặc Hội viên đang hoạt động.", "BENEFICIARY_NOT_ELIGIBLE");
 
-                if (!plans.TryGetValue(item.PlanId, out var plan) || !IsPurchasable(plan, today))
+                if (!plans.TryGetValue(item.PlanId, out var plan) || !IsPurchasable(plan, today.AddDays(30)))
                     return Result<MembershipPurchaseResponse>.Failure(
                         "Một hoặc nhiều gói tập không còn mở bán hoặc chưa có cấu hình thanh toán hợp lệ.", "PLAN_NOT_PURCHASABLE");
 
-                order.Items.Add(new OrderItem
-                {
-                    PackageId = plan.Id,
-                    BeneficiaryUserId = beneficiary!.UserId,
-                    UnitPriceSnapshot = plan.Price,
-                    PackageNameSnapshot = plan.Name,
-                    ActivationStartDate = item.ActivationDate,
-                    ComponentTermsSnapshot = JsonSerializer.Serialize(plan.Components.OrderBy(component => component.Id).Select(ToTerms))
-                });
+                order.Items.Add(NewOrderItem(plan, beneficiary!.UserId, item.ActivationDate));
             }
 
-            var subtotal = order.Items.Sum(item => item.UnitPriceSnapshot);
-            if (subtotal > 9_999_999_999_999_999m)
-                return Result<MembershipPurchaseResponse>.Failure("Tổng tiền vượt giới hạn thanh toán.", "ORDER_AMOUNT_INVALID");
-
-            var online = order.Channel == OrderChannel.Online;
-            var qr = online ? gateway.CreateVietQr(order.OrderNumber, subtotal) : null;
-            if (online && qr is null)
-                return Result<MembershipPurchaseResponse>.Failure("Thanh toán VietQR chưa được cấu hình.", "PAYMENT_UNAVAILABLE", 503);
-
-            order.PaymentTransaction = new PaymentTransaction
-            {
-                UserId = purchaserId,
-                GatewayName = online ? "SePay" : "Cash",
-                PaymentMethod = online ? PaymentMethod.VietQR : PaymentMethod.Cash,
-                AmountDue = subtotal
-            };
-            repository.Add(order);
-            await repository.SaveChangesAsync(ct);
-            return Result<MembershipPurchaseResponse>.Success(ToResponse(order, OrderStatus.Pending, qr), 201);
+            return await SavePendingOrderAsync(order, ct);
         }, ct);
+
+    private static Order NewOrder(string purchaserId, DateOnly today, OrderChannel channel) => new()
+    {
+        PurchaserUserId = purchaserId,
+        OrderNumber = $"ORD-{today.ToString("yyyyMMdd", CultureInfo.InvariantCulture)}-{Guid.NewGuid().ToString("N")[..12].ToUpperInvariant()}",
+        Channel = channel
+    };
+
+    private static OrderItem NewOrderItem(Package plan, string beneficiaryId, DateOnly? startDate) => new()
+    {
+        PackageId = plan.Id,
+        BeneficiaryUserId = beneficiaryId,
+        UnitPriceSnapshot = plan.Price,
+        PackageNameSnapshot = plan.Name,
+        ActivationStartDate = startDate,
+        ComponentTermsSnapshot = JsonSerializer.Serialize(plan.Components.OrderBy(component => component.Id).Select(ToTerms))
+    };
+
+    private async Task<Result<MembershipPurchaseResponse>> SavePendingOrderAsync(Order order, CancellationToken ct)
+    {
+        var subtotal = order.Items.Sum(item => item.UnitPriceSnapshot);
+        if (subtotal > 9_999_999_999_999_999m)
+            return Result<MembershipPurchaseResponse>.Failure("Tổng tiền vượt giới hạn thanh toán.", "ORDER_AMOUNT_INVALID");
+
+        var online = order.Channel == OrderChannel.Online;
+        var qr = online ? gateway.CreateVietQr(order.OrderNumber, subtotal) : null;
+        if (online && qr is null)
+            return Result<MembershipPurchaseResponse>.Failure("Thanh toán VietQR chưa được cấu hình.", "PAYMENT_UNAVAILABLE", 503);
+
+        order.PaymentTransaction = new PaymentTransaction
+        {
+            UserId = order.PurchaserUserId,
+            GatewayName = online ? "SePay" : "Cash",
+            PaymentMethod = online ? PaymentMethod.VietQR : PaymentMethod.Cash,
+            AmountDue = subtotal
+        };
+        repository.Add(order);
+        await repository.SaveChangesAsync(ct);
+        return Result<MembershipPurchaseResponse>.Success(ToResponse(order, OrderStatus.Pending, qr), 201);
+    }
 
     public async Task<Result<MembershipPurchaseResponse>> GetAsync(string purchaserId, string orderNumber, CancellationToken ct)
     {
@@ -110,8 +120,13 @@ public sealed class MembershipPurchaseService(
             return Result<SepayWebhookResponse>.Failure(verified.ErrorMessage!, verified.ErrorCode!, verified.StatusCode);
 
         var transfer = verified.Data!;
+        var renewalPurchaserId = await repository.FindRenewalPurchaserAsync(transfer.OrderNumber, ct);
         return await repository.ExecuteInSerializableTransactionAsync(async () =>
         {
+            // Renewal creation and callbacks lock the member before inspecting renewal orders.
+            if (renewalPurchaserId is not null)
+                await repository.LockUsersAsync([renewalPurchaserId], ct);
+
             var order = await repository.FindOrderAsync(transfer.OrderNumber, purchaserId: null, forUpdate: true, ct);
             if (order?.PaymentTransaction is not { PaymentMethod: PaymentMethod.VietQR, GatewayName: "SePay" } payment)
                 return OrderNotFound<SepayWebhookResponse>();
@@ -128,6 +143,9 @@ public sealed class MembershipPurchaseService(
                 transfer.TransferredAt < createdSecond ||
                 transfer.TransferredAt >= ExpiresAt(order) ||
                 await repository.SepayReferenceUsedAsync(transfer.TransactionId, ct))
+                return PaymentRejected<SepayWebhookResponse>();
+
+            if (renewalPurchaserId is not null && !await PrepareRenewalFulfillmentAsync(order, ct))
                 return PaymentRejected<SepayWebhookResponse>();
 
             await FulfillAsync(order, transfer.Amount, transfer.TransferredAt, transfer.TransactionId, ct);
@@ -213,28 +231,30 @@ public sealed class MembershipPurchaseService(
 
         foreach (var item in order.Items.OrderBy(item => item.Id))
         {
-            var components = item.ComponentTermsSnapshot is { } snapshot
-                ? JsonSerializer.Deserialize<ComponentTerms[]>(snapshot)!
-                : item.Package.Components.OrderBy(component => component.Id).Select(ToTerms).ToArray();
-            foreach (var component in components)
+            foreach (var component in ReadComponentTerms(item))
             {
                 var start = item.ActivationStartDate is { } requested && requested > today ? requested : today;
                 var key = (item.BeneficiaryUserId, component.Type);
-                if (endDates.TryGetValue(key, out var lastEnd) && lastEnd >= start)
+                if (item.RenewedFromMembershipId is not null && item.ActivationStartDate is { } renewalStart)
+                    start = renewalStart;
+                else if (endDates.TryGetValue(key, out var lastEnd) && lastEnd >= start)
                     start = lastEnd.AddDays(1);
 
                 var end = EndDate(start, component);
-                endDates[key] = end;
+                var status = end < today ? MembershipStatus.Expired
+                    : start > today ? MembershipStatus.Scheduled : MembershipStatus.Active;
+                if (!endDates.TryGetValue(key, out var latestEnd) || end > latestEnd)
+                    endDates[key] = end;
                 item.MemberMemberships.Add(new MemberMembership
                 {
                     PackageComponentId = component.Id,
                     MemberUserId = item.BeneficiaryUserId,
                     StartDate = start,
                     EndDate = end,
-                    MembershipStatus = start == today ? MembershipStatus.Active : MembershipStatus.Scheduled,
+                    MembershipStatus = status,
                     RemainingSessionCount = component.Type == ComponentType.PT ? component.SessionCount : null
                 });
-                if (start == today)
+                if (status == MembershipStatus.Active)
                     active.Add(item.BeneficiaryUserId);
             }
         }
@@ -288,10 +308,15 @@ public sealed class MembershipPurchaseService(
                 : failed ? "Đơn thanh toán tại quầy đã hết hiệu lực." : null);
     }
 
-    private static bool IsPurchasable(Package plan, DateOnly today) =>
+    private static bool IsPurchasable(Package plan, DateOnly latestStart) =>
         plan.PackageStatus == PackageStatus.Active && plan.Price > 0 && decimal.Truncate(plan.Price) == plan.Price &&
         plan.Components.Any(component => component.ComponentType == ComponentType.GYM) &&
-        plan.Components.All(component => IsValidComponent(component, today.AddDays(30)));
+        plan.Components.All(component => IsValidComponent(component, latestStart));
+
+    private static ComponentTerms[] ReadComponentTerms(OrderItem item) =>
+        item.ComponentTermsSnapshot is { } snapshot
+            ? JsonSerializer.Deserialize<ComponentTerms[]>(snapshot)!
+            : item.Package.Components.OrderBy(component => component.Id).Select(ToTerms).ToArray();
 
     private static bool IsValidComponent(PackageComponent component, DateOnly latestStart)
     {
