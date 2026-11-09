@@ -90,6 +90,32 @@ public sealed class MembershipPlanApiClientTests
         Assert.Equal(HttpStatusCode.Unauthorized, error.StatusCode);
     }
 
+    [Fact]
+    public async Task Purchase_SendsOptionsWithoutPriceAndReadsAuthoritativePendingOrder()
+    {
+        using var api = CreateClient(async request =>
+        {
+            Assert.Equal(HttpMethod.Post, request.Method);
+            Assert.Equal("/api/membership-purchases", request.RequestUri!.AbsolutePath);
+            Assert.Equal("Bearer access-token", request.Headers.Authorization?.ToString());
+            var body = await request.Content!.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("VietQR", body.GetProperty("paymentMethod").GetString());
+            Assert.False(body.TryGetProperty("purchaserUserId", out _));
+            Assert.False(body.TryGetProperty("amountDue", out _));
+            var item = body.GetProperty("items")[0];
+            Assert.Equal(7, item.GetProperty("planId").GetInt32());
+            Assert.Equal("gift@example.com", item.GetProperty("beneficiaryEmail").GetString());
+            Assert.False(item.TryGetProperty("unitPrice", out _));
+            var now = DateTimeOffset.UtcNow;
+            return Json(new MembershipPurchaseResponse("ORD-TEST", "Pending", "Pending", "VietQR", now,
+                now.AddMinutes(15), now, 500_000m, 500_000m, [], null, null, null, null), HttpStatusCode.Created);
+        });
+
+        var purchase = await api.PurchaseAsync(new([new(7, "gift@example.com")], MembershipPaymentMethods.VietQr));
+        Assert.Equal(MembershipPurchaseStatuses.Pending, purchase.OrderStatus);
+        Assert.Equal(500_000m, purchase.AmountDue);
+    }
+
     private static MembershipPlanResponse Plan(string status) => new(7, "Gym", null, 30, 500_000m, status, 3, null);
 
     private static MembershipPlanApiClient CreateClient(Func<HttpRequestMessage, Task<HttpResponseMessage>> handler, bool authenticated = true)

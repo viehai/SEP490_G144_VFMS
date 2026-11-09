@@ -67,6 +67,7 @@ public sealed class AuthApiClient(HttpClient http) : IDisposable
                     "AUTH_ACCOUNT_INACTIVE" or "AUTH_ACCOUNT_NOT_ACTIVE" => "Tài khoản chưa hoạt động. Vui lòng liên hệ lễ tân.",
                     "AUTH_PENDING_VERIFICATION" => "Tài khoản đang chờ xác minh. Vui lòng liên hệ lễ tân.",
                     "AUTH_INVALID_REFRESH_TOKEN" => "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại. (MSG-11)",
+                    "PAYMENT_UNAVAILABLE" => "VietQR hiện chưa khả dụng. Bạn có thể chọn thanh toán tại quầy.",
                     _ when (int)response.StatusCode >= 500 => "Hệ thống tạm thời chưa sẵn sàng. Vui lòng thử lại sau.",
                     _ => root.TryGetProperty("errorMessage", out var detail) ? detail.GetString() ?? message
                         : root.TryGetProperty("detail", out detail) ? detail.GetString() ?? message : message

@@ -19,6 +19,8 @@ public class OrderItem : BaseEntity
     public string PackageNameSnapshot { get; set; } = string.Empty;
     /// <summary>Requested activation start date (null = immediate).</summary>
     public DateOnly? ActivationStartDate { get; set; }
+    /// <summary>Purchased component terms, persisted so later catalog edits cannot alter fulfillment.</summary>
+    public string? ComponentTermsSnapshot { get; set; }
 
     // ── Navigation Properties ──────────────────────────────────
     public Order Order { get; set; } = null!;

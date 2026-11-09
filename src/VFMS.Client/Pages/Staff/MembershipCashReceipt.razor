@@ -1,0 +1,80 @@
+@page "/staff/membership-cash-receipt"
+@layout StaffPTLayout
+@using Microsoft.AspNetCore.Authorization
+@using VFMS.Contracts.Memberships
+@attribute [Authorize(Roles = "Staff")]
+@inject MembershipPlanApiClient Plans
+@implements IDisposable
+
+<PageTitle>Xác nhận tiền mặt | Victor Fitness</PageTitle>
+
+<section class="workspace-page space-y-5" aria-labelledby="cash-receipt-title">
+    <h1 id="cash-receipt-title" class="workspace-heading text-2xl font-extrabold">Xác nhận tiền mặt mua gói tập</h1>
+    <p class="text-sm">Nhập mã đơn và số tiền thực tế đã nhận tại quầy.</p>
+    <form @onsubmit="ConfirmAsync" @onsubmit:preventDefault>
+        <fieldset disabled="@_submitting" class="max-w-md space-y-4 border-2 border-black bg-white p-5">
+            <label class="block text-sm">
+                Mã đơn
+                <input class="mt-1 block w-full border border-black p-2" @bind="_orderNumber" required maxlength="50" />
+            </label>
+            <label class="block text-sm">
+                Số tiền đã nhận (₫)
+                <input type="number" class="mt-1 block w-full border border-black p-2" @bind="_amount" required min="1" step="1" />
+            </label>
+            <button type="submit" class="border border-black bg-black px-5 py-3 font-bold text-white">
+                @(_submitting ? "Đang xác nhận..." : "Xác nhận đã nhận tiền")
+            </button>
+        </fieldset>
+    </form>
+    @if (_error is not null)
+    {
+        <p role="alert" class="text-sm text-red-800">@_error</p>
+    }
+    @if (_confirmed is { } purchase)
+    {
+        <p role="status">@purchase.Message Đơn @purchase.OrderNumber · Hóa đơn @purchase.InvoiceNumber</p>
+    }
+</section>
+
+@code {
+    private readonly CancellationTokenSource _lifetime = new();
+    private string _orderNumber = "";
+    private decimal? _amount;
+    private bool _submitting;
+    private string? _error;
+    private MembershipPurchaseResponse? _confirmed;
+
+    private async Task ConfirmAsync()
+    {
+        if (_submitting || _amount is not > 0 || string.IsNullOrWhiteSpace(_orderNumber))
+            return;
+        _submitting = true;
+        _confirmed = null;
+        _error = null;
+        var ct = _lifetime.Token;
+        try
+        {
+            _confirmed = await Plans.ConfirmCashAsync(_orderNumber.Trim().ToUpperInvariant(), new(_amount.Value), ct);
+            _orderNumber = "";
+            _amount = null;
+        }
+        catch (AuthApiException ex)
+        {
+            _error = ex.Message;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // The user left the receipt form.
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+
+    public void Dispose()
+    {
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+    }
+}
