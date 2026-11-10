@@ -8,17 +8,15 @@
     <!-- ============================================================== -->
     <!-- PUBLIC NAVBAR (Sage Green text, Frosted Warm Ivory on scroll)    -->
     <!-- ============================================================== -->
-    <header id="vfms-navbar" @ref="_navbar"
-            class="fixed left-0 top-0 w-full z-50 flex items-center justify-between transition-all duration-300 ease-in-out
-                   h-20 px-6 md:px-10 bg-transparent border-b border-transparent shadow-none text-[#5F6F52]">
+    <header id="vfms-navbar" @ref="_navbar" class="public-navbar">
         
         <!-- Brand Logo -->
-        <a href="/" class="flex items-center gap-2.5 flex-shrink-0 group whitespace-nowrap" aria-label="Victor Fitness - Trang chủ">
-            <img src="/brand/logo-dark.png" alt="Victor Fitness" class="w-24 sm:w-32 h-12 object-contain transition-opacity duration-300 group-hover:opacity-80" />
+        <a href="/" class="public-navbar__logo flex items-center gap-2.5 flex-shrink-0 group whitespace-nowrap" aria-label="Victor Fitness - Trang chủ">
+            <img src="/brand/logo-dark.png" alt="Victor Fitness" class="w-24 sm:w-32 h-10 object-contain transition-opacity duration-300 group-hover:opacity-80" />
         </a>
 
         <!-- Menu Links -->
-        <nav class="hidden xl:flex items-center gap-5 2xl:gap-7 font-['Montserrat',sans-serif] text-[11px] 2xl:text-xs font-bold uppercase tracking-wider whitespace-nowrap" aria-label="Điều hướng chính">
+        <nav class="public-navbar__nav hidden xl:flex items-center font-['Montserrat',sans-serif] text-[11px] 2xl:text-xs font-bold uppercase tracking-wider whitespace-nowrap" aria-label="Điều hướng chính">
             <a href="/#featured-classes" class="@NavLinkCls">LỚP HỌC NỔI BẬT</a>
             <a href="/#pricing-memberships" class="@NavLinkCls">GÓI HỘI VIÊN</a>
             <a href="/" class="@NavLinkCls">LỊCH TẬP YOGA</a>
@@ -27,7 +25,7 @@
         </nav>
 
         <!-- Action Buttons -->
-        <div class="flex items-center gap-2 sm:gap-3 flex-shrink-0 whitespace-nowrap">
+        <div class="public-navbar__actions flex items-center whitespace-nowrap">
             <AuthorizeView>
                 <Authorized Context="auth">
                     @if (auth.User.IsInRole("Manager"))
@@ -36,12 +34,12 @@
                     }
                     @if (auth.User.IsInRole("Member"))
                     {
-                        <NavLink href="/my-memberships" Match="NavLinkMatch.All" ActiveClass="text-[#383E43] underline underline-offset-4"
+                        <NavLink href="/my-memberships" Match="NavLinkMatch.All" ActiveClass="text-[#5F6F52] underline underline-offset-4"
                                  class="@MyMembershipsClass">
                             Gói của tôi
                         </NavLink>
                     }
-                    <NavLink href="/profile" Match="NavLinkMatch.All" ActiveClass="text-[#383E43] underline underline-offset-4"
+                    <NavLink href="/profile" Match="NavLinkMatch.All" ActiveClass="text-[#5F6F52] underline underline-offset-4"
                              class="@ProfileLinkClass"
                              title="@auth.User.Identity?.Name" aria-label="Hồ sơ cá nhân">
                         <span class="hidden xl:inline">Chào, @auth.User.Identity?.Name</span><span class="xl:hidden">HỒ SƠ</span>
@@ -151,12 +149,12 @@
     private readonly string _navigationId = Guid.NewGuid().ToString("N");
     private bool _disposed;
     private bool IsHome => string.IsNullOrEmpty(Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].Trim('/'));
-    private string NavLinkCls => "text-[#5F6F52] hover:text-[#383E43] font-bold transition-colors";
-    private string ManagerLinkClass => "text-[10px] font-bold uppercase text-[#5F6F52] hover:text-[#383E43] transition-colors";
-    private string MyMembershipsClass => "max-w-12 whitespace-normal text-center text-[10px] font-bold uppercase leading-tight text-[#5F6F52] hover:text-[#383E43] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 sm:max-w-none sm:whitespace-nowrap sm:text-[11px]";
-    private string ProfileLinkClass => "inline-block max-w-40 truncate font-['Montserrat',sans-serif] text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-[#5F6F52] hover:text-[#383E43] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4";
+    private string NavLinkCls => "text-[#383E43] hover:text-[#5F6F52] font-bold transition-colors";
+    private string ManagerLinkClass => "text-[10px] font-bold uppercase text-[#383E43] hover:text-[#5F6F52] transition-colors";
+    private string MyMembershipsClass => "max-w-12 whitespace-normal text-center text-[10px] font-bold uppercase leading-tight text-[#383E43] hover:text-[#5F6F52] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 sm:max-w-none sm:whitespace-nowrap sm:text-[11px]";
+    private string ProfileLinkClass => "inline-block max-w-40 truncate font-['Montserrat',sans-serif] text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-[#383E43] hover:text-[#5F6F52] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4";
     private string LogoutBtnClass => "bg-[#5F6F52] hover:bg-[#4E5D44] text-white font-['Montserrat',sans-serif] font-bold text-[11px] xl:text-xs uppercase tracking-wider px-3.5 py-2 rounded-lg transition-colors shadow-sm disabled:opacity-60";
-    private string LoginLinkClass => "hidden sm:inline-block font-['Montserrat',sans-serif] text-[11px] xl:text-xs font-bold uppercase tracking-wider text-[#5F6F52] hover:text-[#383E43] px-3 py-1.5 transition-colors";
+    private string LoginLinkClass => "hidden sm:inline-block font-['Montserrat',sans-serif] text-[11px] xl:text-xs font-bold uppercase tracking-wider text-[#383E43] hover:text-[#5F6F52] px-3 py-1.5 transition-colors";
     private string RegisterLinkClass => "bg-[#5F6F52] hover:bg-[#4E5D44] text-white font-['Montserrat',sans-serif] font-bold text-[11px] xl:text-xs uppercase tracking-wider px-4 py-2 transition-all duration-200 rounded-lg shadow-sm";
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

@@ -1,11 +1,5 @@
 const navigationStates = new Map();
 
-// Top of page: transparent, full-width
-const restingClasses = ['top-0', 'w-full', 'h-20', 'px-6', 'md:px-10', 'bg-transparent', 'border-b', 'border-transparent', 'shadow-none'];
-
-// Scrolled down: Warm Ivory Frosted Glass, clean & elegant
-const floatingClasses = ['top-0', 'w-full', 'h-16', 'px-6', 'md:px-10', 'bg-[#F7F4EC]/95', 'backdrop-blur-md', 'border-b', 'border-[#D8DED2]', 'shadow-sm'];
-
 export function sync(ownerId, nav, isHome) {
     if (!nav) return;
     let state = navigationStates.get(ownerId);
@@ -16,18 +10,12 @@ export function sync(ownerId, nav, isHome) {
     if (!state) {
         state = { nav, isHome, mode: null, frame: null, update: null, onScroll: null };
         state.update = () => {
-            const scrolled = window.scrollY > 40;
+            const scrolled = window.scrollY > 24;
             const mode = scrolled ? 'floating' : 'resting';
             if (mode === state.mode) return;
             state.mode = mode;
 
-            if (mode === 'floating') {
-                nav.classList.remove(...restingClasses);
-                nav.classList.add(...floatingClasses);
-            } else {
-                nav.classList.remove(...floatingClasses);
-                nav.classList.add(...restingClasses);
-            }
+            nav.classList.toggle('is-scrolled', scrolled);
         };
         state.onScroll = () => {
             if (state.frame !== null) return;
