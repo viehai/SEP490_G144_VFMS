@@ -12,6 +12,7 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
     private const string BasePath = "api/manager/membership-plans";
     private const string PurchasesPath = "api/membership-purchases";
     private const string RenewalsPath = "api/membership-renewals";
+    private const string MembershipsPath = "api/memberships";
 
     public Task<PagedResponse<MembershipPlanResponse>> ListAsync(MembershipPlanListRequest request, CancellationToken cancellationToken = default)
     {
@@ -48,6 +49,13 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
 
     public Task<MembershipPurchaseResponse> GetPurchaseAsync(string orderNumber, CancellationToken cancellationToken = default) =>
         SendAsync<MembershipPurchaseResponse>(HttpMethod.Get, $"{PurchasesPath}/{Uri.EscapeDataString(orderNumber)}", cancellationToken);
+
+    public Task<IReadOnlyList<MembershipSummaryResponse>> GetMyMembershipsAsync(CancellationToken cancellationToken = default) =>
+        SendAsync<IReadOnlyList<MembershipSummaryResponse>>(HttpMethod.Get, $"{MembershipsPath}/me", cancellationToken);
+
+    public Task<MembershipDetailResponse> GetMembershipDetailAsync(int membershipId, CancellationToken cancellationToken = default) =>
+        SendAsync<MembershipDetailResponse>(HttpMethod.Get,
+            FormattableString.Invariant($"{MembershipsPath}/{membershipId}"), cancellationToken);
 
     public Task<IReadOnlyList<MembershipRenewalOption>> ListRenewalsAsync(CancellationToken cancellationToken = default) =>
         SendAsync<IReadOnlyList<MembershipRenewalOption>>(HttpMethod.Get, RenewalsPath, cancellationToken);

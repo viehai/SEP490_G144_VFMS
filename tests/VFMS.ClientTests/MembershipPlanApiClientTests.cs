@@ -116,6 +116,63 @@ public sealed class MembershipPlanApiClientTests
         Assert.Equal(500_000m, purchase.AmountDue);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task GetMyMemberships_UsesCurrentSessionAndReadsOwnedMemberships(bool hasMemberships)
+    {
+        MembershipSummaryResponse[] memberships = hasMemberships ? [FrozenMembership()] : [];
+        using var api = CreateClient(request =>
+        {
+            Assert.Equal(HttpMethod.Get, request.Method);
+            Assert.Equal("Bearer access-token", request.Headers.Authorization?.ToString());
+            Assert.Equal("/api/memberships/me", request.RequestUri!.PathAndQuery);
+            Assert.Null(request.Content);
+            return Task.FromResult(Json(memberships));
+        }, role: "Member");
+
+        Assert.Equal(memberships, await api.GetMyMembershipsAsync());
+    }
+
+    [Fact]
+    public async Task GetMembershipDetail_ReadsMembershipAndPersistedFreezeHistory()
+    {
+        var summary = FrozenMembership();
+        var freezeStart = summary.StartDate.AddDays(5);
+        var period = new MembershipFreezePeriodResponse(freezeStart, freezeStart.AddDays(4), freezeStart, null, "Active");
+        var purchasedAt = new DateTimeOffset(2026, 11, 30, 17, 0, 0, TimeSpan.Zero);
+        var expected = new MembershipDetailResponse(summary, purchasedAt, "INV-20261201-0007", new(2, 1, [period]));
+        using var api = CreateClient(request =>
+        {
+            Assert.Equal(HttpMethod.Get, request.Method);
+            Assert.Equal("Bearer access-token", request.Headers.Authorization?.ToString());
+            Assert.Equal("/api/memberships/7", request.RequestUri!.PathAndQuery);
+            Assert.Null(request.Content);
+            return Task.FromResult(Json(expected));
+        }, role: "Member");
+
+        var detail = await api.GetMembershipDetailAsync(7);
+
+        Assert.Equal(summary, detail.Membership);
+        Assert.Equal(purchasedAt, detail.PurchasedAt);
+        Assert.Equal(expected.InvoiceNumber, detail.InvoiceNumber);
+        Assert.Equal(2, detail.Freeze.TotalFrozenDays);
+        Assert.Equal(1, detail.Freeze.FreezeCount);
+        Assert.Equal(period, Assert.Single(detail.Freeze.History));
+    }
+
+    [Fact]
+    public async Task GetMembershipDetail_PreservesNotFoundResponse()
+    {
+        using var api = CreateClient(_ => Task.FromResult(Json(
+            new { code = "MEMBERSHIP_NOT_FOUND" }, HttpStatusCode.NotFound)), role: "Member");
+
+        var error = await Assert.ThrowsAsync<AuthApiException>(() => api.GetMembershipDetailAsync(7));
+
+        Assert.Equal(HttpStatusCode.NotFound, error.StatusCode);
+        Assert.Equal("MEMBERSHIP_NOT_FOUND", error.ErrorCode);
+    }
+
     [Fact]
     public async Task ListRenewals_UsesMemberSessionAndReadsServerEligibility()
     {
@@ -189,6 +246,9 @@ public sealed class MembershipPlanApiClientTests
     }
 
     private static MembershipPlanResponse Plan(string status) => new(7, "Gym", null, 30, 500_000m, status, 3, null);
+
+    private static MembershipSummaryResponse FrozenMembership() =>
+        new(7, 42, "Gym", "GYM", new DateOnly(2026, 12, 1), new DateOnly(2026, 12, 30), "Frozen");
 
     private static MembershipPlanApiClient CreateClient(
         Func<HttpRequestMessage, Task<HttpResponseMessage>> handler, bool authenticated = true, string role = "Manager")

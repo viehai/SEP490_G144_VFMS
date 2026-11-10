@@ -1,0 +1,28 @@
+@using VFMS.Contracts.Memberships
+
+<dl class="grid gap-3 text-sm sm:grid-cols-3">
+    <div>
+        <dt class="text-xs font-semibold text-vfms-text-secondary">Dịch vụ</dt>
+        <dd class="mt-1 font-bold text-vfms-text">@ComponentLabel</dd>
+    </div>
+    <div>
+        <dt class="text-xs font-semibold text-vfms-text-secondary">Ngày kích hoạt</dt>
+        <dd class="mt-1 font-bold text-vfms-text"><MembershipDate Date="@Membership.StartDate" /></dd>
+    </div>
+    <div>
+        <dt class="text-xs font-semibold text-vfms-text-secondary">Ngày hết hạn</dt>
+        <dd class="mt-1 font-bold text-vfms-text"><MembershipDate Date="@Membership.EndDate" /></dd>
+    </div>
+</dl>
+
+@code {
+    [Parameter, EditorRequired] public MembershipSummaryResponse Membership { get; set; } = default!;
+
+    private string ComponentLabel => Membership.ComponentType switch
+    {
+        "GYM" => "Gym",
+        "YOGA" => "Yoga",
+        "PT" => "Huấn luyện cá nhân (PT)",
+        _ => Membership.ComponentType
+    };
+}

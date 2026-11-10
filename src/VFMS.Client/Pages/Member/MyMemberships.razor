@@ -2,6 +2,7 @@
 @layout PublicLayout
 @using Microsoft.AspNetCore.Authorization
 @using System.Globalization
+@using VFMS.Client.Components.Memberships
 @using VFMS.Contracts.Memberships
 @attribute [Authorize(Roles = "Member")]
 @inject MembershipPlanApiClient Plans
@@ -10,95 +11,131 @@
 
 <PageTitle>Gói của tôi | Victor Fitness</PageTitle>
 
-<section class="mx-auto max-w-4xl space-y-6 px-5 pb-16 pt-28" aria-labelledby="my-memberships-title">
-    <header class="space-y-2 border-b border-[#D8DED2] pb-5">
-        <h1 id="my-memberships-title" class="font-['Montserrat',sans-serif] text-3xl font-black text-[#383E43]">Gói của tôi</h1>
-        <p class="text-sm text-[#69706A]">Kiểm tra ngày hết hạn và gia hạn gói hội viên bằng VietQR.</p>
+<section class="mx-auto max-w-4xl space-y-6 px-5 pb-16 pt-28 font-body" aria-labelledby="my-memberships-title">
+    <header class="space-y-2 border-b border-vfms-border pb-5">
+        <h1 id="my-memberships-title" class="font-heading text-3xl font-extrabold text-vfms-text">Gói của tôi</h1>
+        <p class="text-sm text-vfms-text-secondary">Xem thời hạn, trạng thái và thông tin bảo lưu của các gói hội viên của bạn.</p>
     </header>
 
     @if (_loading)
     {
-        <div class="flex items-center gap-3 py-8 text-sm text-[#69706A]" role="status">
-            <svg class="h-5 w-5 animate-spin text-[#5F6F52]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
-            Đang tải gói hội viên...
-        </div>
+        <p class="py-8 text-sm text-vfms-text-secondary" role="status">Đang tải gói hội viên...</p>
     }
     else if (_loadError is not null)
     {
         <div class="rounded-xl border border-red-200 bg-red-50 p-4">
             <p role="alert" class="text-sm text-red-800">@_loadError</p>
-            <button type="button" class="mt-3 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-800 hover:bg-red-50 transition" @onclick="LoadAsync">Thử lại</button>
+            <button type="button" class="mt-3 min-h-[44px] rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-800 hover:bg-red-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary" @onclick="LoadAsync">Thử lại</button>
         </div>
     }
-    else if (_options.Count == 0)
+    else if (_memberships.Count == 0)
     {
-        <div class="rounded-xl border border-[#D8DED2] bg-white p-8 text-center text-sm text-[#69706A] shadow-sm">
-            <p role="status">Bạn chưa có gói hội viên để gia hạn.</p>
+        <div class="space-y-4 rounded-xl border border-vfms-border bg-vfms-surface p-8 text-center">
+            <p role="status" class="text-sm text-vfms-text-secondary">Bạn chưa có gói hội viên nào.</p>
+            <a href="/#pricing-memberships" class="inline-flex min-h-[44px] items-center rounded-lg bg-vfms-primary px-5 py-2 text-sm font-semibold text-white hover:bg-vfms-primary-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary">
+                Khám phá gói hội viên
+            </a>
         </div>
     }
     else
     {
-        <ul class="space-y-4">
-            @foreach (var option in _options)
+        @if (_loadingRenewals)
+        {
+            <p class="text-sm text-vfms-text-secondary" role="status">Đang tải thông tin gia hạn...</p>
+        }
+        else if (_renewalsLoadError is not null)
+        {
+            <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2">
+                <p role="alert" class="text-sm text-red-800">Không thể tải thông tin gia hạn. @_renewalsLoadError</p>
+                <button type="button" class="min-h-[44px] rounded-lg px-3 text-sm font-semibold text-red-800 underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary"
+                        @onclick="LoadRenewalsAsync">Thử lại</button>
+            </div>
+        }
+
+        <ul class="list-none space-y-4 p-0">
+            @foreach (var membership in _memberships)
             {
-                <li @key="option.MembershipId" class="space-y-4 rounded-xl border border-[#D8DED2] bg-white p-6 shadow-sm">
-                    <div class="flex flex-wrap items-baseline justify-between gap-2 border-b border-[#D8DED2] pb-4">
-                        <h2 class="font-['Montserrat',sans-serif] text-xl font-bold text-[#383E43]">@option.PlanName</h2>
-                        <span class="rounded-md border border-[#D8DED2] bg-[#EEF1EA] px-2.5 py-1 text-xs font-semibold text-[#5F6F52]">@StatusLabel(option.Status)</span>
+                _options.TryGetValue(membership.MembershipId, out var option);
+                <li @key="membership.MembershipId" class="space-y-4 rounded-xl border border-vfms-border bg-vfms-surface p-5 sm:p-6">
+                    <div class="flex flex-wrap items-baseline justify-between gap-2 border-b border-vfms-border pb-4">
+                        <h2 class="min-w-0 break-words font-heading text-xl font-bold text-vfms-text">@membership.PlanName</h2>
+                        <MembershipStatusBadge Status="@membership.Status" />
                     </div>
-                    <dl class="grid gap-3 text-sm sm:grid-cols-3">
-                        <div>
-                            <dt class="text-xs font-semibold text-[#69706A]">Ngày hết hạn</dt>
-                            <dd class="mt-1 text-sm font-bold text-[#383E43]"><time datetime="@IsoDate(option.EndDate)">@DisplayDate(option.EndDate)</time></dd>
-                        </div>
-                        @if (option.RenewalStartDate is { } start)
-                        {
-                            <div>
-                                <dt class="text-xs font-semibold text-[#69706A]">Ngày bắt đầu sau gia hạn</dt>
-                                <dd class="mt-1 text-sm font-bold text-[#383E43]"><time datetime="@IsoDate(start)">@DisplayDate(start)</time></dd>
-                            </div>
-                        }
-                        @if (option.Price is { } price)
-                        {
-                            <div>
-                                <dt class="text-xs font-semibold text-[#69706A]">Giá gia hạn</dt>
-                                <dd class="mt-1 text-sm font-bold text-[#5F6F52]">@(price.ToString("#,0", VietnameseCulture)) ₫</dd>
-                            </div>
-                        }
-                    </dl>
-                    @if (option.Message is { } message)
+                    <MembershipTermDetails Membership="@membership" />
+                    @if (option is not null)
                     {
-                        <p class="text-sm text-[#69706A] rounded-lg bg-[#EEF1EA]/60 p-3">@message</p>
+                        <div class="space-y-3 border-t border-vfms-border pt-4">
+                            <h3 class="font-heading text-sm font-bold text-vfms-text">Gia hạn gói</h3>
+                            @if (option.PlanName != membership.PlanName || option.RenewalStartDate.HasValue || option.Price.HasValue)
+                            {
+                                <dl class="grid gap-3 text-sm sm:grid-cols-3">
+                                    @if (option.PlanName != membership.PlanName)
+                                    {
+                                        <div>
+                                            <dt class="text-xs font-semibold text-vfms-text-secondary">Gói gia hạn</dt>
+                                            <dd class="mt-1 break-words font-bold text-vfms-text">@option.PlanName</dd>
+                                        </div>
+                                    }
+                                    @if (option.RenewalStartDate is { } start)
+                                    {
+                                        <div>
+                                            <dt class="text-xs font-semibold text-vfms-text-secondary">Ngày bắt đầu sau gia hạn</dt>
+                                            <dd class="mt-1 font-bold text-vfms-text"><MembershipDate Date="@start" /></dd>
+                                        </div>
+                                    }
+                                    @if (option.Price is { } price)
+                                    {
+                                        <div>
+                                            <dt class="text-xs font-semibold text-vfms-text-secondary">Giá gia hạn</dt>
+                                            <dd class="mt-1 font-bold text-vfms-text">@(price.ToString("#,0", VietnameseCulture)) ₫</dd>
+                                        </div>
+                                    }
+                                </dl>
+                            }
+                            @if (option.Message is { } message)
+                            {
+                                <p class="rounded-lg bg-vfms-muted p-3 text-sm text-vfms-text-secondary">@message</p>
+                            }
+                        </div>
                     }
-                    @if (_renewalErrorMembershipId == option.MembershipId)
+                    @if (_renewalErrorMembershipId == membership.MembershipId)
                     {
                         <p role="alert" class="text-sm text-red-800 rounded-lg bg-red-50 border border-red-200 p-3">@_renewalError</p>
                     }
-                    <div class="pt-2">
-                        <button type="button"
-                                class="rounded-lg bg-[#5F6F52] hover:bg-[#4E5D44] px-6 py-2.5 text-sm font-semibold text-white transition shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-50"
-                                disabled="@(!option.Eligible || _submittingMembershipId.HasValue)"
-                                @onclick="() => RenewAsync(option)">
-                            @(_submittingMembershipId == option.MembershipId ? "Đang tạo đơn..." : "Gia hạn gói")
-                        </button>
+                    <div class="flex flex-wrap gap-3">
+                        <a href="/my-memberships/@membership.MembershipId"
+                           aria-label="@($"Xem chi tiết gói {membership.PlanName}, ngày kích hoạt {membership.StartDate.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)}")"
+                           class="inline-flex min-h-[44px] items-center rounded-lg border border-vfms-primary px-5 py-2 text-sm font-semibold text-vfms-primary hover:bg-vfms-primary-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary">
+                            Xem chi tiết
+                        </a>
+                        @if (option is not null)
+                        {
+                            <button type="button"
+                                    class="min-h-[44px] rounded-lg bg-vfms-primary px-5 py-2 text-sm font-semibold text-white enabled:hover:bg-vfms-primary-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary disabled:opacity-50"
+                                    disabled="@(!option.Eligible || _submittingMembershipId.HasValue)"
+                                    @onclick="() => RenewAsync(option)">
+                                @(_submittingMembershipId == option.MembershipId ? "Đang tạo đơn..." : "Gia hạn gói")
+                            </button>
+                        }
                     </div>
                 </li>
             }
         </ul>
-    }
-    <div>
-        <a href="/#pricing-memberships" class="inline-flex items-center gap-1.5 text-sm font-bold text-[#5F6F52] hover:underline">
-            <span>←</span> Xem danh sách tất cả các gói tập
+        <a href="/#pricing-memberships" class="inline-flex min-h-[44px] items-center text-sm font-bold text-vfms-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary">
+            Xem tất cả gói hội viên
         </a>
-    </div>
+    }
 </section>
 
 @code {
     private static readonly CultureInfo VietnameseCulture = CultureInfo.GetCultureInfo("vi-VN");
     private readonly CancellationTokenSource _lifetime = new();
-    private IReadOnlyList<MembershipRenewalOption> _options = [];
+    private IReadOnlyList<MembershipSummaryResponse> _memberships = [];
+    private IReadOnlyDictionary<int, MembershipRenewalOption> _options = new Dictionary<int, MembershipRenewalOption>();
     private bool _loading;
     private string? _loadError;
+    private bool _loadingRenewals;
+    private string? _renewalsLoadError;
     private int? _submittingMembershipId;
     private string? _renewalError;
     private int? _renewalErrorMembershipId;
@@ -114,7 +151,7 @@
         _loadError = null;
         try
         {
-            _options = await Plans.ListRenewalsAsync(ct);
+            _memberships = await Plans.GetMyMembershipsAsync(ct);
         }
         catch (AuthApiException ex)
         {
@@ -127,6 +164,34 @@
         finally
         {
             _loading = false;
+        }
+        if (_memberships.Count > 0 && !ct.IsCancellationRequested)
+            await LoadRenewalsAsync();
+    }
+
+    private async Task LoadRenewalsAsync()
+    {
+        if (_loadingRenewals)
+            return;
+        var ct = _lifetime.Token;
+        _loadingRenewals = true;
+        _renewalsLoadError = null;
+        StateHasChanged();
+        try
+        {
+            _options = (await Plans.ListRenewalsAsync(ct)).ToDictionary(option => option.MembershipId);
+        }
+        catch (AuthApiException ex)
+        {
+            _renewalsLoadError = ex.Message;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // The user left the page.
+        }
+        finally
+        {
+            _loadingRenewals = false;
         }
     }
 
@@ -160,20 +225,6 @@
             _submittingMembershipId = null;
         }
     }
-
-    private static string IsoDate(DateOnly date) => date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-    private static string DisplayDate(DateOnly date) => date.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
-
-    private static string StatusLabel(string status) => status switch
-    {
-        "Active" => "Đang hoạt động",
-        "Expired" => "Đã hết hạn",
-        "Scheduled" => "Chờ kích hoạt",
-        "Frozen" => "Đang bảo lưu",
-        "Suspended" => "Đang tạm ngưng",
-        "Cancelled" => "Đã hủy",
-        _ => status
-    };
 
     public void Dispose()
     {
