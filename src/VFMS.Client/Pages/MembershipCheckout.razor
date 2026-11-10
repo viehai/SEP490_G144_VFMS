@@ -10,78 +10,103 @@
 
 <PageTitle>@(IsRenewal ? "Thanh toán gia hạn" : "Thanh toán gói tập") | Victor Fitness</PageTitle>
 
-<section class="mx-auto max-w-3xl space-y-5 px-5 font-body @(IsRenewal ? "pb-10 pt-28" : "py-10")">
-    <h1 class="font-heading text-3xl font-black">@(IsRenewal ? "Thanh toán gia hạn" : "Thanh toán gói tập")</h1>
-    <a href="@(IsRenewal ? "/my-memberships" : "/#pricing-memberships")" class="inline-block text-sm font-bold underline">
-        @(IsRenewal ? "Về Gói của tôi" : "Về danh sách gói tập")
-    </a>
+<section class="mx-auto max-w-3xl space-y-6 px-5 font-body @(IsRenewal ? "pb-16 pt-28" : "py-12")">
+    <div class="space-y-2">
+        <a href="@(IsRenewal ? "/my-memberships" : "/#pricing-memberships")" class="inline-flex items-center gap-1.5 text-sm font-bold text-[#5F6F52] hover:underline">
+            <span>←</span> @(IsRenewal ? "Về Gói của tôi" : "Về danh sách gói tập")
+        </a>
+        <h1 class="font-['Montserrat',sans-serif] text-3xl font-extrabold text-[#383E43]">@(IsRenewal ? "Thanh toán gia hạn" : "Thanh toán gói tập")</h1>
+    </div>
+
     @if (_purchase is { } purchase)
     {
-        <section class="space-y-4 border-2 border-black bg-white p-6" aria-label="Tóm tắt đơn hàng">
-            <h2 class="font-heading text-xl font-black">Đơn @purchase.OrderNumber</h2>
-            <ul class="space-y-2 border-b border-neutral-300 pb-4 text-sm">
+        <section class="space-y-5 rounded-xl border border-[#D8DED2] bg-white p-6 shadow-sm sm:p-8" aria-label="Tóm tắt đơn hàng">
+            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[#D8DED2] pb-4">
+                <h2 class="font-['Montserrat',sans-serif] text-xl font-bold text-[#383E43]">Đơn hàng #@purchase.OrderNumber</h2>
+                <span class="rounded-md border border-[#D8DED2] bg-[#EEF1EA] px-3 py-1 text-xs font-semibold text-[#5F6F52]">
+                    @(purchase.OrderStatus == MembershipPurchaseStatuses.Pending ? "Chờ thanh toán" : purchase.OrderStatus)
+                </span>
+            </div>
+            <ul class="space-y-3 border-b border-[#D8DED2] pb-4 text-sm">
                 @foreach (var item in purchase.Items)
                 {
                     <li class="flex flex-wrap justify-between gap-2">
-                        <span>
-                            @item.PlanName · @(item.IsForPurchaser ? "Cho mình" : "Tặng người khác")
+                        <span class="text-[#383E43] font-medium">
+                            @item.PlanName · <span class="text-[#69706A]">@(item.IsForPurchaser ? "Cho mình" : "Tặng người khác")</span>
                             @if (IsRenewal && item.ActivationDate is { } start)
                             {
-                                <span class="block">Ngày bắt đầu: @start.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)</span>
+                                <span class="block text-xs text-[#69706A] mt-0.5">Ngày bắt đầu: @start.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)</span>
                             }
                         </span>
-                        <span>@Money(item.UnitPrice)</span>
+                        <span class="font-bold text-[#383E43]">@Money(item.UnitPrice)</span>
                     </li>
                 }
             </ul>
-            <p class="font-heading text-lg font-bold">Tổng thanh toán @Money(purchase.AmountDue)</p>
+            <div class="flex items-baseline justify-between pt-1">
+                <span class="text-base font-semibold text-[#69706A]">Tổng thanh toán</span>
+                <span class="font-['Montserrat',sans-serif] text-2xl font-extrabold text-[#5F6F52]">@Money(purchase.AmountDue)</span>
+            </div>
             @if (purchase.OrderStatus == MembershipPurchaseStatuses.Pending)
             {
-                <p role="status">Đang chờ xác nhận thanh toán.</p>
-                @if (purchase.VietQr is { } qr && Remaining > TimeSpan.Zero)
-                {
-                    <img src="@qr.ImageUrl" alt="Mã VietQR thanh toán đơn hàng" class="mx-auto w-64 max-w-full"
-                         referrerpolicy="no-referrer" width="256" />
-                    <dl class="grid gap-2 text-sm">
-                        <div><dt class="font-bold">Ngân hàng</dt><dd>@qr.BankId</dd></div>
-                        <div><dt class="font-bold">Số tài khoản</dt><dd>@qr.AccountNumber</dd></div>
-                        <div><dt class="font-bold">Chủ tài khoản</dt><dd>@qr.AccountName</dd></div>
-                        <div><dt class="font-bold">Nội dung chuyển khoản</dt><dd>@qr.TransferContent</dd></div>
-                    </dl>
-                }
-                @if (purchase.PaymentMethod == MembershipPaymentMethods.Cash)
-                {
-                    <p class="text-sm">Đưa mã đơn cho lễ tân và thanh toán tại quầy.</p>
-                }
-                else if (purchase.VietQr is null && Remaining > TimeSpan.Zero)
-                {
-                    <p role="alert">Mã VietQR tạm thời không khả dụng.</p>
-                }
-                <p class="tabular-nums text-sm">
-                    Thời gian còn lại <time>@($"{(int)Remaining.TotalHours:00}:{Remaining.Minutes:00}:{Remaining.Seconds:00}")</time>
-                </p>
+                <div class="rounded-xl border border-[#D8DED2] bg-[#F7F4EC]/60 p-5 space-y-4">
+                    <p role="status" class="text-sm font-semibold text-[#383E43]">Đang chờ xác nhận thanh toán qua hệ thống ngân hàng.</p>
+                    @if (purchase.VietQr is { } qr && Remaining > TimeSpan.Zero)
+                    {
+                        <div class="flex flex-col items-center gap-4 sm:flex-row sm:items-start sm:gap-6">
+                            <div class="rounded-xl border border-[#D8DED2] bg-white p-3 shadow-sm shrink-0">
+                                <img src="@qr.ImageUrl" alt="Mã VietQR thanh toán đơn hàng" class="w-56 max-w-full rounded-lg"
+                                     referrerpolicy="no-referrer" width="224" />
+                            </div>
+                            <dl class="grid flex-1 gap-2.5 text-xs">
+                                <div><dt class="font-semibold text-[#69706A]">Ngân hàng</dt><dd class="text-sm font-bold text-[#383E43]">@qr.BankId</dd></div>
+                                <div><dt class="font-semibold text-[#69706A]">Số tài khoản</dt><dd class="text-sm font-bold text-[#383E43]">@qr.AccountNumber</dd></div>
+                                <div><dt class="font-semibold text-[#69706A]">Chủ tài khoản</dt><dd class="text-sm font-bold text-[#383E43]">@qr.AccountName</dd></div>
+                                <div><dt class="font-semibold text-[#69706A]">Nội dung chuyển khoản</dt><dd class="text-sm font-bold text-[#5F6F52] bg-white border border-[#D8DED2] rounded-md px-2 py-1 select-all">@qr.TransferContent</dd></div>
+                            </dl>
+                        </div>
+                    }
+                    @if (purchase.PaymentMethod == MembershipPaymentMethods.Cash)
+                    {
+                        <p class="text-sm text-[#69706A]">Đưa mã đơn cho lễ tân và thanh toán tại quầy.</p>
+                    }
+                    else if (purchase.VietQr is null && Remaining > TimeSpan.Zero)
+                    {
+                        <p role="alert" class="text-sm text-amber-800">Mã VietQR tạm thời không khả dụng.</p>
+                    }
+                    <div class="flex items-center gap-2 pt-2 text-xs font-semibold text-[#69706A]">
+                        <span>Thời gian còn lại:</span>
+                        <time class="tabular-nums font-mono text-sm font-bold text-[#383E43]">@($"{(int)Remaining.TotalHours:00}:{Remaining.Minutes:00}:{Remaining.Seconds:00}")</time>
+                    </div>
+                </div>
             }
             else
             {
-                <p role="status" class="font-bold">@purchase.Message</p>
-                @if (purchase.InvoiceNumber is { } invoice)
-                {
-                    <p class="text-sm">Số hóa đơn @invoice</p>
-                }
+                <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                    <p role="status" class="font-bold text-emerald-900">@purchase.Message</p>
+                    @if (purchase.InvoiceNumber is { } invoice)
+                    {
+                        <p class="mt-1 text-xs text-emerald-800">Số hóa đơn: <strong>@invoice</strong></p>
+                    }
+                </div>
             }
         </section>
     }
     else if (_error is null)
     {
-        <p role="status">Đang tải trạng thái đơn hàng...</p>
+        <div class="flex items-center gap-3 py-8 text-sm text-[#69706A]" role="status">
+            <svg class="h-5 w-5 animate-spin text-[#5F6F52]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
+            Đang tải trạng thái đơn hàng...
+        </div>
     }
     @if (_error is not null)
     {
-        <p role="alert" class="text-sm text-red-800">@_error</p>
+        <div class="rounded-xl border border-red-200 bg-red-50 p-4">
+            <p role="alert" class="text-sm text-red-800">@_error</p>
+        </div>
     }
     @if (_purchase?.OrderStatus != MembershipPurchaseStatuses.Paid)
     {
-        <button type="button" class="border border-black px-4 py-2 text-sm font-bold disabled:opacity-50"
+        <button type="button" class="rounded-lg border border-[#5F6F52] text-[#5F6F52] hover:bg-[#5F6F52] hover:text-white px-5 py-2.5 text-sm font-semibold transition disabled:opacity-50"
                 disabled="@_refreshing" @onclick="RefreshAsync">Cập nhật trạng thái</button>
     }
 </section>

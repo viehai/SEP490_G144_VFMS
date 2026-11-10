@@ -5,14 +5,14 @@
     min-height: calc(100vh - 80px);
     margin: 0 auto;
     padding: 128px 24px 80px;
-    background: #FFFFFF;
-    color: #252525;
+    background: transparent;
+    color: #383E43;
     font-family: 'Inter', sans-serif;
 }
 
 .profile-page .profile-heading {
     font-family: 'Montserrat', sans-serif;
-    text-transform: uppercase;
+    letter-spacing: -0.01em;
 }
 
 .profile-page h1 {
@@ -21,16 +21,26 @@
 
 .profile-page input,
 .profile-page button {
-    border-radius: 0;
-    box-shadow: none;
+    border-radius: 8px;
+    transition: all 0.2s ease;
 }
 
 .profile-page input:not([readonly]) {
-    border: 1px solid #0A0A0A !important;
+    border: 1px solid #D8DED2 !important;
+    background-color: #FFFFFF !important;
+    color: #383E43 !important;
 }
 
 .profile-page input:not([readonly]):focus {
-    border-width: 2px !important;
+    border-color: #5F6F52 !important;
+    box-shadow: 0 0 0 3px rgba(95, 111, 82, 0.15) !important;
+    outline: none !important;
+}
+
+.profile-page input[readonly] {
+    border: 1px solid #D8DED2 !important;
+    background-color: #EEF1EA !important;
+    color: #69706A !important;
 }
 
 .profile-page input.valid.modified:not([type=checkbox]),
@@ -53,7 +63,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .profile-page button {
+    .profile-page button,
+    .profile-page input {
         transition: none;
     }
 }

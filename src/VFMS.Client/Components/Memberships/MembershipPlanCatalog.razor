@@ -12,28 +12,29 @@
 }
 else if (_error is not null)
 {
-    <div role="alert" class="border border-black p-5 font-body text-sm">
+    <div role="alert" class="rounded-xl border border-red-200 bg-red-50 p-5 font-body text-sm text-red-900">
         <p>@_error</p>
-        <button type="button" class="mt-3 font-bold underline" @onclick="() => LoadAsync(_requestedPage)">Thử lại</button>
+        <button type="button" class="mt-3 font-semibold text-red-800 underline hover:text-red-950" @onclick="() => LoadAsync(_requestedPage)">Thử lại</button>
     </div>
 }
 else if (_page is { Items.Count: > 0 } catalog)
 {
-    <div class="grid grid-cols-1 gap-8 md:grid-cols-3">
+    <div class="grid grid-cols-1 gap-6 md:grid-cols-3">
         @foreach (var plan in catalog.Items)
         {
-            <article @key="plan.Id" class="brutal-pricing-card flex flex-col gap-5 border-2 border-black bg-white p-8">
-                <header class="border-b-2 border-black pb-5">
-                    <h3 class="font-heading mt-1 text-2xl font-black">@plan.Name</h3>
-                    <p class="mt-2 font-body text-sm">@Duration(plan)</p>
+            <article @key="plan.Id" class="flex flex-col gap-5 border border-[#D8DED2] bg-white p-7 rounded-xl hover:border-[#5F6F52] transition-colors">
+                <header class="border-b border-[#EEF1EA] pb-5">
+                    <span class="text-[10px] font-bold uppercase tracking-widest text-[#5F6F52] block mb-1">GÓI TẬP GYM</span>
+                    <h3 class="font-heading mt-1 text-2xl font-black text-[#383E43]">@plan.Name</h3>
+                    <p class="mt-1 font-body text-xs text-[#69706A]">@Duration(plan)</p>
                 </header>
-                <p class="font-heading text-2xl font-black">@plan.Price.ToString("#,0.##", Vietnamese) ₫</p>
+                <p class="font-heading text-2xl font-black text-[#383E43]">@plan.Price.ToString("#,0.##", Vietnamese) <span class="text-lg font-bold text-[#5F6F52]">₫</span></p>
                 @if (!string.IsNullOrWhiteSpace(plan.Description))
                 {
-                    <p class="whitespace-pre-line font-body text-sm">@plan.Description</p>
+                    <p class="whitespace-pre-line font-body text-xs text-[#69706A] leading-relaxed">@plan.Description</p>
                 }
                 <button type="button" disabled="@(_submitting || _cart.Count >= 50)"
-                        class="mt-auto border border-black bg-black px-4 py-3 font-heading text-sm font-bold text-white disabled:opacity-50"
+                        class="mt-auto bg-[#5F6F52] hover:bg-[#4E5D44] px-4 py-3 font-heading text-xs uppercase tracking-wider font-bold text-white rounded-lg transition-colors disabled:opacity-50"
                         @onclick="() => _cart.Add(new CartLine(plan))">Thêm gói tập</button>
             </article>
         }
@@ -41,10 +42,10 @@ else if (_page is { Items.Count: > 0 } catalog)
     @if (catalog.TotalCount > catalog.PageSize)
     {
         <nav aria-label="Phân trang gói tập" class="mt-8 flex items-center gap-4 font-body text-sm">
-            <button type="button" class="border border-black px-3 py-2 disabled:opacity-50" disabled="@(catalog.Page == 1)"
+            <button type="button" class="border border-[#D8DED2] px-3.5 py-2 rounded-lg hover:border-[#5F6F52] disabled:opacity-50" disabled="@(catalog.Page == 1)"
                     @onclick="() => LoadAsync(catalog.Page - 1)">Trước</button>
-            <span>Trang @catalog.Page</span>
-            <button type="button" class="border border-black px-3 py-2 disabled:opacity-50"
+            <span class="text-[#69706A]">Trang @catalog.Page</span>
+            <button type="button" class="border border-[#D8DED2] px-3.5 py-2 rounded-lg hover:border-[#5F6F52] disabled:opacity-50"
                     disabled="@(catalog.Page * catalog.PageSize >= catalog.TotalCount)"
                     @onclick="() => LoadAsync(catalog.Page + 1)">Sau</button>
         </nav>
@@ -52,43 +53,43 @@ else if (_page is { Items.Count: > 0 } catalog)
 }
 else
 {
-    <p role="status" class="font-body text-sm">Hiện chưa có gói tập Gym mở bán.</p>
+    <p role="status" class="font-body text-sm text-[#69706A]">Hiện chưa có gói tập Gym mở bán.</p>
 }
 
 @if (_cart.Count > 0)
 {
-    <form class="mt-10 space-y-5 border-2 border-black bg-white p-6 font-body"
+    <form class="mt-10 space-y-5 border border-[#D8DED2] bg-white p-6 font-body rounded-xl shadow-sm"
           @onsubmit="CheckoutAsync" @onsubmit:preventDefault aria-labelledby="membership-cart-title">
-        <h3 id="membership-cart-title" class="font-heading text-xl font-black">Giỏ gói tập (@_cart.Count)</h3>
+        <h3 id="membership-cart-title" class="font-heading text-xl font-black text-[#383E43]">Giỏ gói tập (@_cart.Count)</h3>
         <fieldset class="space-y-5" disabled="@_submitting">
             @foreach (var line in _cart)
             {
-                <fieldset @key="line" class="grid gap-3 border border-neutral-300 p-4 md:grid-cols-2">
-                    <legend class="px-2 font-heading font-bold">@line.Plan.Name · @Money(line.Plan.Price)</legend>
-                    <label class="block text-sm">
+                <fieldset @key="line" class="grid gap-3 border border-[#D8DED2] p-4 md:grid-cols-2 rounded-lg bg-[#F7F4EC]/50">
+                    <legend class="px-2 font-heading font-bold text-[#383E43]">@line.Plan.Name · @Money(line.Plan.Price)</legend>
+                    <label class="block text-xs font-medium text-[#383E43]">
                         Email người thụ hưởng (để trống nếu mua cho mình)
-                        <input type="email" class="mt-1 block w-full border border-black p-2"
+                        <input type="email" class="mt-1 block w-full border border-[#D8DED2] bg-white p-2 text-sm rounded-lg focus:border-[#5F6F52] focus:outline-none"
                                autocomplete="off" maxlength="256" @bind="line.BeneficiaryEmail" />
                     </label>
-                    <label class="block text-sm">
+                    <label class="block text-xs font-medium text-[#383E43]">
                         Ngày bắt đầu (để trống để hệ thống xếp lịch)
-                        <input type="date" class="mt-1 block w-full border border-black p-2"
+                        <input type="date" class="mt-1 block w-full border border-[#D8DED2] bg-white p-2 text-sm rounded-lg focus:border-[#5F6F52] focus:outline-none"
                                min="@DateInput(Today)" max="@DateInput(Today.AddDays(30))" @bind="line.ActivationDate" />
                     </label>
-                    <button type="button" class="justify-self-start text-sm font-bold underline"
+                    <button type="button" class="justify-self-start text-xs font-bold text-[#DC2626] hover:underline"
                             @onclick="() => _cart.Remove(line)">Bỏ gói @line.Plan.Name</button>
                 </fieldset>
             }
-            <p class="text-sm">Gói cùng loại dịch vụ được xếp nối tiếp sau gói hiện có.</p>
-            <p class="font-heading text-lg font-bold">Tạm tính @Money(_cart.Sum(line => line.Plan.Price))</p>
-            <label class="block text-sm">
+            <p class="text-xs text-[#69706A]">Gói cùng loại dịch vụ được xếp nối tiếp sau gói hiện có.</p>
+            <p class="font-heading text-lg font-bold text-[#383E43]">Tạm tính: <span class="text-[#5F6F52]">@Money(_cart.Sum(line => line.Plan.Price))</span></p>
+            <label class="block text-xs font-medium text-[#383E43]">
                 Hình thức thanh toán
-                <select class="mt-1 block border border-black bg-white p-2" @bind="_paymentMethod">
+                <select class="mt-1 block border border-[#D8DED2] bg-white p-2 text-sm rounded-lg focus:border-[#5F6F52] focus:outline-none" @bind="_paymentMethod">
                     <option value="@MembershipPaymentMethods.VietQr">Chuyển khoản VietQR</option>
                     <option value="@MembershipPaymentMethods.Cash">Tiền mặt tại quầy</option>
                 </select>
             </label>
-            <button type="submit" class="border border-black bg-black px-5 py-3 font-heading font-bold text-white">
+            <button type="submit" class="bg-[#5F6F52] hover:bg-[#4E5D44] px-6 py-3 font-heading text-xs font-bold uppercase tracking-wider text-white rounded-lg transition-colors">
                 @(_submitting ? "Đang tạo đơn..." : "Tạo đơn thanh toán")
             </button>
         </fieldset>

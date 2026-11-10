@@ -4,126 +4,126 @@
 
 <PageTitle>Hồ sơ cá nhân | Victor Fitness</PageTitle>
 
-<div class="profile-page space-y-8 rounded-none">
-    <header class="flex flex-col justify-between gap-5 border-b-2 border-black pb-7 sm:flex-row sm:items-end">
+<div class="profile-page space-y-8">
+    <header class="flex flex-col justify-between gap-5 border-b border-[#D8DED2] pb-7 sm:flex-row sm:items-end">
         <div>
-            <p class="profile-heading mb-3 text-[10px] font-bold tracking-[0.18em] text-neutral-500">TÀI KHOẢN / HỒ SƠ CÁ NHÂN</p>
-            <h1 class="profile-heading text-3xl font-extrabold leading-tight tracking-tight text-black sm:text-4xl">HỒ SƠ CỦA BẠN<span class="text-neutral-400">.</span></h1>
-            <p class="mt-3 max-w-xl text-sm leading-7 text-neutral-600">Quản lý thông tin cá nhân và thiết lập bảo mật trong cùng một không gian.</p>
+            <p class="mb-2 text-xs font-bold tracking-wider text-[#5F6F52]">TÀI KHOẢN / HỒ SƠ CÁ NHÂN</p>
+            <h1 class="text-3xl font-extrabold leading-tight tracking-tight text-[#383E43] sm:text-4xl">HỒ SƠ CỦA BẠN<span class="text-[#5F6F52]">.</span></h1>
+            <p class="mt-2 max-w-xl text-sm leading-relaxed text-[#69706A]">Quản lý thông tin cá nhân và thiết lập bảo mật trong cùng một không gian.</p>
         </div>
     </header>
 
-    <p class="rounded-none border border-[#CFCFCF] bg-[#F7F7F7] px-4 py-3 text-xs leading-6 text-neutral-600"><strong class="font-medium text-black">Dữ liệu minh họa.</strong> Thay đổi chỉ áp dụng trên trang, chưa được lưu vào tài khoản thật.</p>
+    <p class="rounded-xl border border-[#D8DED2] bg-[#EEF1EA] px-4 py-3 text-xs leading-6 text-[#383E43]"><strong class="font-semibold text-[#383E43]">Dữ liệu minh họa.</strong> Thay đổi chỉ áp dụng trên trang, chưa được lưu vào tài khoản thật.</p>
 
     <div class="grid items-start gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <aside class="space-y-5 rounded-none" aria-label="Thông tin tài khoản minh họa">
-            <section class="rounded-none border-2 border-black bg-white p-6">
-                <div class="flex h-28 w-28 items-center justify-center rounded-none border-2 border-black bg-[#0A0A0A] text-white" aria-label="Ảnh đại diện bằng chữ viết tắt">
-                    <span class="profile-heading text-4xl font-extrabold tracking-tight">@Initials</span>
+        <aside class="space-y-5" aria-label="Thông tin tài khoản minh họa">
+            <section class="rounded-xl border border-[#D8DED2] bg-white p-6 shadow-sm">
+                <div class="flex h-24 w-24 items-center justify-center rounded-2xl bg-[#5F6F52] text-white shadow-sm" aria-label="Ảnh đại diện bằng chữ viết tắt">
+                    <span class="text-3xl font-bold tracking-tight">@Initials</span>
                 </div>
-                <p class="profile-heading mt-6 text-[10px] font-bold tracking-[0.16em] text-neutral-500">VFMS / PROFILE</p>
-                <h2 class="profile-heading mt-2 break-words text-xl font-extrabold leading-snug text-black">@_savedProfile.FullName</h2>
-                <p class="mt-2 break-all text-xs text-neutral-600">@_email</p>
-                <div class="mt-5 flex flex-wrap gap-2">
-                    <span class="profile-heading rounded-none bg-black px-3 py-1.5 text-[10px] font-bold tracking-wider text-white">@_role</span>
-                    <span class="inline-flex items-center gap-1.5 rounded-none border border-[#10B981] px-2.5 py-1 text-[11px] font-medium text-emerald-800"><span aria-hidden="true">✓</span> Đang hoạt động</span>
+                <p class="mt-6 text-[10px] font-bold tracking-wider text-[#69706A]">VFMS / PROFILE</p>
+                <h2 class="mt-1 break-words text-xl font-bold leading-snug text-[#383E43]">@_savedProfile.FullName</h2>
+                <p class="mt-1 break-all text-xs text-[#69706A]">@_email</p>
+                <div class="mt-4 flex flex-wrap gap-2">
+                    <span class="rounded-md bg-[#EEF1EA] border border-[#D8DED2] px-3 py-1 text-xs font-semibold text-[#5F6F52]">@_role</span>
+                    <span class="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-800"><span aria-hidden="true">✓</span> Đang hoạt động</span>
                 </div>
-                <dl class="mt-6 divide-y divide-neutral-200 border-t border-neutral-200 text-xs">
-                    <div class="flex justify-between gap-3 py-4"><dt class="text-neutral-500">Mã tài khoản</dt><dd class="font-medium text-black">@_userCode</dd></div>
-                    <div class="flex justify-between gap-3 py-4"><dt class="text-neutral-500">Tham gia từ</dt><dd class="font-medium text-black">@_joinedOn.ToString("dd/MM/yyyy")</dd></div>
-                    <div class="flex justify-between gap-3 pt-4"><dt class="text-neutral-500">Ngày sinh</dt><dd class="font-medium text-black">@_savedProfile.BirthDate.ToString("dd/MM/yyyy")</dd></div>
+                <dl class="mt-6 divide-y divide-[#D8DED2] border-t border-[#D8DED2] text-xs">
+                    <div class="flex justify-between gap-3 py-3.5"><dt class="text-[#69706A]">Mã tài khoản</dt><dd class="font-semibold text-[#383E43]">@_userCode</dd></div>
+                    <div class="flex justify-between gap-3 py-3.5"><dt class="text-[#69706A]">Tham gia từ</dt><dd class="font-semibold text-[#383E43]">@_joinedOn.ToString("dd/MM/yyyy")</dd></div>
+                    <div class="flex justify-between gap-3 pt-3.5"><dt class="text-[#69706A]">Ngày sinh</dt><dd class="font-semibold text-[#383E43]">@_savedProfile.BirthDate.ToString("dd/MM/yyyy")</dd></div>
                 </dl>
             </section>
         </aside>
 
-        <div class="min-w-0 space-y-6 rounded-none">
-            <section class="rounded-none border-2 border-black bg-white" aria-labelledby="profile-information-title">
-                <div class="flex items-center justify-between gap-4 border-b-2 border-black px-6 py-5 sm:px-8">
-                    <h2 id="profile-information-title" class="profile-heading text-base font-extrabold text-black">THÔNG TIN CÁ NHÂN</h2>
-                    <span class="profile-heading text-[10px] font-bold tracking-wider text-neutral-500">01 / THÔNG TIN</span>
+        <div class="min-w-0 space-y-6">
+            <section class="rounded-xl border border-[#D8DED2] bg-white shadow-sm overflow-hidden" aria-labelledby="profile-information-title">
+                <div class="flex items-center justify-between gap-4 border-b border-[#D8DED2] px-6 py-5 sm:px-8 bg-[#EEF1EA]/50">
+                    <h2 id="profile-information-title" class="text-base font-bold text-[#383E43]">THÔNG TIN CÁ NHÂN</h2>
+                    <span class="text-[10px] font-bold tracking-wider text-[#69706A]">01 / THÔNG TIN</span>
                 </div>
                 <div class="p-6 sm:p-8">
                     @if (_profileNotice is not null)
                     {
-                        <p class="mb-6 rounded-none border border-black bg-[#F7F7F7] px-4 py-3 text-sm leading-6 text-black" role="status">@_profileNotice</p>
+                        <p class="mb-6 rounded-lg border border-[#D8DED2] bg-[#EEF1EA] px-4 py-3 text-sm leading-6 text-[#383E43]" role="status">@_profileNotice</p>
                     }
                     <EditForm Model="_profile" OnValidSubmit="SaveProfileDemo" OnInvalidSubmit="ProfileInvalid" @key="_profile" novalidate>
                         <DataAnnotationsValidator />
                         <div class="grid gap-x-6 gap-y-5 sm:grid-cols-2">
                             <div class="sm:col-span-2">
-                                <label for="profile-full-name" class="mb-2 block text-sm font-medium text-black">Họ và tên <span aria-hidden="true">*</span></label>
-                                <InputText id="profile-full-name" class="w-full rounded-none border border-black bg-white px-4 py-3 text-sm text-black outline-none focus:border-2 focus:border-black" @bind-Value="_profile.FullName" autocomplete="name" maxlength="256" aria-describedby="profile-name-error" />
-                                <div id="profile-name-error" class="mt-1 text-xs text-red-700"><ValidationMessage For="() => _profile.FullName" /></div>
+                                <label for="profile-full-name" class="mb-2 block text-sm font-medium text-[#383E43]">Họ và tên <span class="text-red-600" aria-hidden="true">*</span></label>
+                                <InputText id="profile-full-name" class="w-full rounded-lg border border-[#D8DED2] bg-white px-4 py-2.5 text-sm text-[#383E43] outline-none transition focus:border-[#5F6F52] focus:ring-2 focus:ring-[#5F6F52]/20" @bind-Value="_profile.FullName" autocomplete="name" maxlength="256" aria-describedby="profile-name-error" />
+                                <div id="profile-name-error" class="mt-1 text-xs text-red-600"><ValidationMessage For="() => _profile.FullName" /></div>
                             </div>
                             <div>
-                                <label for="profile-phone" class="mb-2 block text-sm font-medium text-black">Số điện thoại <span aria-hidden="true">*</span></label>
-                                <InputText id="profile-phone" type="tel" class="w-full rounded-none border border-black bg-white px-4 py-3 text-sm text-black outline-none focus:border-2 focus:border-black" @bind-Value="_profile.PhoneNumber" autocomplete="tel" maxlength="20" aria-describedby="profile-phone-error" />
-                                <div id="profile-phone-error" class="mt-1 text-xs text-red-700"><ValidationMessage For="() => _profile.PhoneNumber" /></div>
+                                <label for="profile-phone" class="mb-2 block text-sm font-medium text-[#383E43]">Số điện thoại <span class="text-red-600" aria-hidden="true">*</span></label>
+                                <InputText id="profile-phone" type="tel" class="w-full rounded-lg border border-[#D8DED2] bg-white px-4 py-2.5 text-sm text-[#383E43] outline-none transition focus:border-[#5F6F52] focus:ring-2 focus:ring-[#5F6F52]/20" @bind-Value="_profile.PhoneNumber" autocomplete="tel" maxlength="20" aria-describedby="profile-phone-error" />
+                                <div id="profile-phone-error" class="mt-1 text-xs text-red-600"><ValidationMessage For="() => _profile.PhoneNumber" /></div>
                             </div>
                             <div>
-                                <label for="profile-birth-date" class="mb-2 block text-sm font-medium text-black">Ngày sinh <span aria-hidden="true">*</span></label>
-                                <InputDate id="profile-birth-date" class="w-full rounded-none border border-black bg-white px-4 py-3 text-sm text-black outline-none focus:border-2 focus:border-black" @bind-Value="_profile.BirthDate" max="@Today.ToString("yyyy-MM-dd")" autocomplete="bday" aria-describedby="profile-birth-error" />
-                                <div id="profile-birth-error" class="mt-1 text-xs text-red-700"><ValidationMessage For="() => _profile.BirthDate" /></div>
+                                <label for="profile-birth-date" class="mb-2 block text-sm font-medium text-[#383E43]">Ngày sinh <span class="text-red-600" aria-hidden="true">*</span></label>
+                                <InputDate id="profile-birth-date" class="w-full rounded-lg border border-[#D8DED2] bg-white px-4 py-2.5 text-sm text-[#383E43] outline-none transition focus:border-[#5F6F52] focus:ring-2 focus:ring-[#5F6F52]/20" @bind-Value="_profile.BirthDate" max="@Today.ToString("yyyy-MM-dd")" autocomplete="bday" aria-describedby="profile-birth-error" />
+                                <div id="profile-birth-error" class="mt-1 text-xs text-red-600"><ValidationMessage For="() => _profile.BirthDate" /></div>
                             </div>
                             <div class="sm:col-span-2">
-                                <label for="profile-email" class="mb-2 block text-sm font-medium text-black">Email</label>
-                                <input id="profile-email" type="email" class="w-full rounded-none border border-[#CFCFCF] bg-[#F7F7F7] px-4 py-3 text-sm text-neutral-600" value="@_email" readonly />
-                                <p class="mt-2 text-xs leading-6 text-neutral-500">Email được dùng để nhận diện tài khoản.</p>
+                                <label for="profile-email" class="mb-2 block text-sm font-medium text-[#383E43]">Email</label>
+                                <input id="profile-email" type="email" class="w-full rounded-lg border border-[#D8DED2] bg-[#EEF1EA] px-4 py-2.5 text-sm text-[#69706A] cursor-not-allowed" value="@_email" readonly />
+                                <p class="mt-2 text-xs leading-relaxed text-[#69706A]">Email được dùng để nhận diện tài khoản.</p>
                             </div>
                         </div>
-                        <div class="mt-7 flex flex-col-reverse gap-3 border-t border-[#CFCFCF] pt-6 sm:flex-row sm:justify-end">
-                            <button type="button" class="profile-heading rounded-none border-2 border-black bg-white px-6 py-3 text-[11px] font-extrabold tracking-wider text-black transition-colors hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black" @onclick="ResetProfile">HỦY THAY ĐỔI</button>
-                            <button type="submit" class="profile-heading rounded-none border-2 border-black bg-black px-6 py-3 text-[11px] font-extrabold tracking-wider text-white transition-colors hover:bg-white hover:text-black focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black">LƯU THAY ĐỔI <span aria-hidden="true">↗</span></button>
+                        <div class="mt-7 flex flex-col-reverse gap-3 border-t border-[#D8DED2] pt-6 sm:flex-row sm:justify-end">
+                            <button type="button" class="rounded-lg border border-[#D8DED2] bg-white px-6 py-2.5 text-xs font-semibold text-[#383E43] transition hover:bg-[#EEF1EA]" @onclick="ResetProfile">HỦY THAY ĐỔI</button>
+                            <button type="submit" class="rounded-lg bg-[#5F6F52] px-6 py-2.5 text-xs font-semibold text-white transition hover:bg-[#4E5D44] shadow-sm">LƯU THAY ĐỔI <span aria-hidden="true">↗</span></button>
                         </div>
                     </EditForm>
                 </div>
             </section>
 
-            <section class="rounded-none border-2 border-black bg-white" aria-labelledby="profile-security-title">
-                <div class="flex items-center justify-between gap-4 border-b-2 border-black px-6 py-5 sm:px-8">
-                    <h2 id="profile-security-title" class="profile-heading text-base font-extrabold text-black">BẢO MẬT TÀI KHOẢN</h2>
-                    <span class="profile-heading text-[10px] font-bold tracking-wider text-neutral-500">02 / MẬT KHẨU</span>
+            <section class="rounded-xl border border-[#D8DED2] bg-white shadow-sm overflow-hidden" aria-labelledby="profile-security-title">
+                <div class="flex items-center justify-between gap-4 border-b border-[#D8DED2] px-6 py-5 sm:px-8 bg-[#EEF1EA]/50">
+                    <h2 id="profile-security-title" class="text-base font-bold text-[#383E43]">BẢO MẬT TÀI KHOẢN</h2>
+                    <span class="text-[10px] font-bold tracking-wider text-[#69706A]">02 / MẬT KHẨU</span>
                 </div>
                 <div class="p-6 sm:p-8">
                     <div class="flex flex-col justify-between gap-5 sm:flex-row sm:items-center">
                         <div>
-                            <h3 class="profile-heading text-sm font-bold text-black">CHANGE PASSWORD</h3>
-                            <p class="mt-2 max-w-lg text-xs leading-6 text-neutral-600">Sử dụng mật khẩu mạnh để bảo vệ tài khoản của bạn.</p>
+                            <h3 class="text-sm font-bold text-[#383E43]">ĐỔI MẬT KHẨU</h3>
+                            <p class="mt-1 max-w-lg text-xs leading-relaxed text-[#69706A]">Sử dụng mật khẩu mạnh để bảo vệ tài khoản của bạn.</p>
                         </div>
                         @if (!_passwordExpanded)
                         {
-                            <button type="button" class="profile-heading shrink-0 rounded-none border-2 border-black bg-white px-5 py-3 text-[11px] font-extrabold tracking-wider text-black transition-colors hover:bg-black hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black" @onclick="OpenPasswordForm">ĐỔI MẬT KHẨU <span aria-hidden="true">↗</span></button>
+                            <button type="button" class="shrink-0 rounded-lg border border-[#5F6F52] text-[#5F6F52] hover:bg-[#5F6F52] hover:text-white px-5 py-2.5 text-xs font-semibold transition" @onclick="OpenPasswordForm">ĐỔI MẬT KHẨU <span aria-hidden="true">↗</span></button>
                         }
                     </div>
                     @if (_passwordNotice is not null)
                     {
-                        <p class="mt-5 rounded-none border border-black bg-[#F7F7F7] px-4 py-3 text-sm leading-6 text-black" role="status">@_passwordNotice</p>
+                        <p class="mt-5 rounded-lg border border-[#D8DED2] bg-[#EEF1EA] px-4 py-3 text-sm leading-6 text-[#383E43]" role="status">@_passwordNotice</p>
                     }
                     @if (_passwordExpanded)
                     {
                         <EditForm Model="_password" OnValidSubmit="ValidatePasswordDemo" @key="_password" novalidate>
                             <DataAnnotationsValidator />
-                            <div class="mt-6 grid gap-5 border-t border-[#CFCFCF] pt-6">
+                            <div class="mt-6 grid gap-5 border-t border-[#D8DED2] pt-6">
                                 <div>
-                                    <label for="profile-old-password" class="mb-2 block text-sm font-medium text-black">Mật khẩu hiện tại</label>
-                                    <InputText id="profile-old-password" type="password" class="w-full rounded-none border border-black bg-white px-4 py-3 text-sm text-black outline-none focus:border-2 focus:border-black" @bind-Value="_password.OldPassword" autocomplete="current-password" aria-describedby="profile-old-password-error" />
-                                    <div id="profile-old-password-error" class="mt-1 text-xs text-red-700"><ValidationMessage For="() => _password.OldPassword" /></div>
+                                    <label for="profile-old-password" class="mb-2 block text-sm font-medium text-[#383E43]">Mật khẩu hiện tại</label>
+                                    <InputText id="profile-old-password" type="password" class="w-full rounded-lg border border-[#D8DED2] bg-white px-4 py-2.5 text-sm text-[#383E43] outline-none transition focus:border-[#5F6F52] focus:ring-2 focus:ring-[#5F6F52]/20" @bind-Value="_password.OldPassword" autocomplete="current-password" aria-describedby="profile-old-password-error" />
+                                    <div id="profile-old-password-error" class="mt-1 text-xs text-red-600"><ValidationMessage For="() => _password.OldPassword" /></div>
                                 </div>
                                 <div>
-                                    <label for="profile-new-password" class="mb-2 block text-sm font-medium text-black">Mật khẩu mới</label>
-                                    <InputText id="profile-new-password" type="password" class="w-full rounded-none border border-black bg-white px-4 py-3 text-sm text-black outline-none focus:border-2 focus:border-black" @bind-Value="_password.NewPassword" maxlength="32" autocomplete="new-password" aria-describedby="profile-password-guidance profile-new-password-error" />
-                                    <p id="profile-password-guidance" class="mt-2 text-xs leading-6 text-neutral-500">8–32 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt.</p>
-                                    <div id="profile-new-password-error" class="mt-1 text-xs text-red-700"><ValidationMessage For="() => _password.NewPassword" /></div>
+                                    <label for="profile-new-password" class="mb-2 block text-sm font-medium text-[#383E43]">Mật khẩu mới</label>
+                                    <InputText id="profile-new-password" type="password" class="w-full rounded-lg border border-[#D8DED2] bg-white px-4 py-2.5 text-sm text-[#383E43] outline-none transition focus:border-[#5F6F52] focus:ring-2 focus:ring-[#5F6F52]/20" @bind-Value="_password.NewPassword" maxlength="32" autocomplete="new-password" aria-describedby="profile-password-guidance profile-new-password-error" />
+                                    <p id="profile-password-guidance" class="mt-2 text-xs leading-relaxed text-[#69706A]">8–32 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt.</p>
+                                    <div id="profile-new-password-error" class="mt-1 text-xs text-red-600"><ValidationMessage For="() => _password.NewPassword" /></div>
                                 </div>
                                 <div>
-                                    <label for="profile-confirm-password" class="mb-2 block text-sm font-medium text-black">Xác nhận mật khẩu mới</label>
-                                    <InputText id="profile-confirm-password" type="password" class="w-full rounded-none border border-black bg-white px-4 py-3 text-sm text-black outline-none focus:border-2 focus:border-black" @bind-Value="_password.ConfirmPassword" maxlength="32" autocomplete="new-password" aria-describedby="profile-confirm-password-error" />
-                                    <div id="profile-confirm-password-error" class="mt-1 text-xs text-red-700"><ValidationMessage For="() => _password.ConfirmPassword" /></div>
+                                    <label for="profile-confirm-password" class="mb-2 block text-sm font-medium text-[#383E43]">Xác nhận mật khẩu mới</label>
+                                    <InputText id="profile-confirm-password" type="password" class="w-full rounded-lg border border-[#D8DED2] bg-white px-4 py-2.5 text-sm text-[#383E43] outline-none transition focus:border-[#5F6F52] focus:ring-2 focus:ring-[#5F6F52]/20" @bind-Value="_password.ConfirmPassword" maxlength="32" autocomplete="new-password" aria-describedby="profile-confirm-password-error" />
+                                    <div id="profile-confirm-password-error" class="mt-1 text-xs text-red-600"><ValidationMessage For="() => _password.ConfirmPassword" /></div>
                                 </div>
                             </div>
                             <div class="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                                <button type="button" class="profile-heading rounded-none border-2 border-black bg-white px-5 py-3 text-[11px] font-extrabold tracking-wider text-black hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black" @onclick="ClosePasswordForm">HỦY</button>
-                                <button type="submit" class="profile-heading rounded-none border-2 border-black bg-black px-5 py-3 text-[11px] font-extrabold tracking-wider text-white hover:bg-white hover:text-black focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black">KIỂM TRA MẬT KHẨU</button>
+                                <button type="button" class="rounded-lg border border-[#D8DED2] bg-white px-5 py-2.5 text-xs font-semibold text-[#383E43] transition hover:bg-[#EEF1EA]" @onclick="ClosePasswordForm">HỦY</button>
+                                <button type="submit" class="rounded-lg bg-[#5F6F52] px-5 py-2.5 text-xs font-semibold text-white transition hover:bg-[#4E5D44] shadow-sm">KIỂM TRA MẬT KHẨU</button>
                             </div>
                         </EditForm>
                     }
