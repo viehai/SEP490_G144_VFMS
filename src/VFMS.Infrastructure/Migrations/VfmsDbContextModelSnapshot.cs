@@ -334,6 +334,9 @@ namespace VFMS.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("CheckedOutByUserId")
+                        .HasColumnType("nvarchar(128)");
+
                     b.Property<string>("CheckinMethod")
                         .IsRequired()
                         .HasMaxLength(30)
@@ -374,6 +377,8 @@ namespace VFMS.Infrastructure.Migrations
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CheckedOutByUserId");
 
                     b.HasIndex("HandledByUserId");
 
@@ -3420,6 +3425,11 @@ namespace VFMS.Infrastructure.Migrations
 
             modelBuilder.Entity("VFMS.Domain.Entities.CheckIn", b =>
                 {
+                    b.HasOne("VFMS.Domain.Entities.ApplicationUser", "CheckedOutByUser")
+                        .WithMany()
+                        .HasForeignKey("CheckedOutByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("VFMS.Domain.Entities.ApplicationUser", "HandledByUser")
                         .WithMany()
                         .HasForeignKey("HandledByUserId")
@@ -3435,6 +3445,8 @@ namespace VFMS.Infrastructure.Migrations
                         .HasForeignKey("MemberUserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("CheckedOutByUser");
 
                     b.Navigation("HandledByUser");
 

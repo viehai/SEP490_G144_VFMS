@@ -21,6 +21,7 @@ public interface ICheckInRepository : IAuditedRepository
     Task<IReadOnlyList<MemberMembership>> GetMembershipsAsync(string userId, CancellationToken cancellationToken = default);
     /// <summary>The member's open check-in (tracked), if any.</summary>
     Task<CheckIn?> GetOpenCheckInAsync(string userId, CancellationToken cancellationToken = default);
+    Task<CheckIn?> GetCheckInAsync(int id, CancellationToken cancellationToken = default);
     Task<DateTime?> GetLastCheckInTimeAsync(string userId, CancellationToken cancellationToken = default);
     /// <summary>The member's Scheduled PT sessions on a gym-local date, with their purchase (tracked).</summary>
     Task<IReadOnlyList<PTSession>> GetScheduledPtSessionsAsync(string userId, DateOnly date, CancellationToken cancellationToken = default);
@@ -47,6 +48,8 @@ public interface ICheckInService
     Task<Result<CheckInResultResponse>> ManualCheckInAsync(string memberUserId, string staffUserId, CancellationToken cancellationToken = default);
     /// <summary>UC-45 Self Check-Out.</summary>
     Task<Result<CheckOutResultResponse>> KioskCheckOutAsync(KioskScanRequest request, CancellationToken cancellationToken = default);
+    /// <summary>UC-47 Manual Check-Out of one open visit.</summary>
+    Task<Result<CheckOutResultResponse>> ManualCheckOutAsync(int checkInId, string staffUserId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Encrypts face templates at rest (SRS 2.3: only encrypted embeddings are stored).</summary>

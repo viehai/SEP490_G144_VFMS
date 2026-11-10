@@ -42,6 +42,9 @@ public sealed class CheckInRepository : AuditedRepositoryBase, ICheckInRepositor
     public Task<CheckIn?> GetOpenCheckInAsync(string userId, CancellationToken cancellationToken = default) =>
         Context.CheckIns.FirstOrDefaultAsync(c => c.MemberUserId == userId && c.Status == CheckInStatus.Active, cancellationToken);
 
+    public Task<CheckIn?> GetCheckInAsync(int id, CancellationToken cancellationToken = default) =>
+        Context.CheckIns.FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
+
     public async Task<DateTime?> GetLastCheckInTimeAsync(string userId, CancellationToken cancellationToken = default) =>
         await Context.CheckIns.Where(c => c.MemberUserId == userId)
             .OrderByDescending(c => c.CheckinTime).Select(c => (DateTime?)c.CheckinTime).FirstOrDefaultAsync(cancellationToken);

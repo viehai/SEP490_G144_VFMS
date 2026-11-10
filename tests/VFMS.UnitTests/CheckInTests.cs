@@ -264,6 +264,23 @@ public sealed class CheckInTests
     }
 
     [Fact]
+    public async Task ManualCheckOutRecordsStaffAndRefusesClosedVisit()   // UC-47, GBR-91
+    {
+        var (repo, service, _) = Kiosk();
+        var open = new CheckIn { Id = 5, MemberUserId = "m1", CheckinTime = Now.AddMinutes(-30), Status = CheckInStatus.Active, HandledByUserId = "staff-in" };
+        repo.Active.Add(open);
+
+        var result = await service.ManualCheckOutAsync(5, "staff-out");
+        var again = await service.ManualCheckOutAsync(5, "staff-out");
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal((CheckInStatus.CheckedOut, CheckInMethod.ManualStaff), (open.Status, open.CheckoutMethod!.Value));
+        Assert.Equal(("staff-in", "staff-out"), (open.HandledByUserId, open.CheckedOutByUserId));
+        Assert.Equal(404, again.StatusCode);
+        Assert.Equal(404, (await service.ManualCheckOutAsync(99, "staff-out")).StatusCode);
+    }
+
+    [Fact]
     public void KioskScanNeedsExactlyOneOfFaceOrQr()
     {
         var validator = new KioskScanRequestValidator();
@@ -315,6 +332,8 @@ public sealed class CheckInTests
             Task.FromResult<ApplicationUser?>(new ApplicationUser { UserId = userId, FullName = "Member " + userId });
         public Task<IReadOnlyList<MemberMembership>> GetMembershipsAsync(string userId, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<MemberMembership>>(Memberships.Where(m => m.MemberUserId == userId).ToList());
+        public Task<CheckIn?> GetCheckInAsync(int id, CancellationToken cancellationToken = default) =>
+            Task.FromResult(Active.FirstOrDefault(c => c.Id == id));
         public Task<CheckIn?> GetOpenCheckInAsync(string userId, CancellationToken cancellationToken = default) =>
             Task.FromResult(Active.FirstOrDefault(c => c.MemberUserId == userId && c.Status == CheckInStatus.Active));
         public Task<DateTime?> GetLastCheckInTimeAsync(string userId, CancellationToken cancellationToken = default) =>

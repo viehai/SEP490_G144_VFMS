@@ -109,4 +109,11 @@ public sealed class CheckInsController : ControllerBase
         User.GetUserId() is { } staffId
             ? this.ToActionResult(await _checkIns.ManualCheckInAsync(request.MemberUserId, staffId, cancellationToken))
             : Unauthorized();
+
+    /// <summary>UC-47 Manual Check-Out from Active Check-ins, recorded with the staff member's ID.</summary>
+    [HttpPost("{id:int}/check-out")]
+    public async Task<IActionResult> ManualCheckOut(int id, CancellationToken cancellationToken) =>
+        User.GetUserId() is { } staffId
+            ? this.ToActionResult(await _checkIns.ManualCheckOutAsync(id, staffId, cancellationToken))
+            : Unauthorized();
 }

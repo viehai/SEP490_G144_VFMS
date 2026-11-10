@@ -18,11 +18,14 @@ public class CheckIn : BaseEntity
     public CheckInMethod? CheckoutMethod { get; set; }
     /// <summary>Populated when Staff performs manual check-in/check-out (UC-55, UC-56).</summary>
     public string? HandledByUserId { get; set; }
+    /// <summary>Staff who closed the visit at the front desk (UC-47); null for kiosk or automatic check-out.</summary>
+    public string? CheckedOutByUserId { get; set; }
     public CheckInStatus Status { get; set; } = CheckInStatus.Active;
 
     // ── Navigation Properties ──────────────────────────────────
     public ApplicationUser Member { get; set; } = null!;
     public MemberMembership? MemberMembership { get; set; }
     public ApplicationUser? HandledByUser { get; set; }
+    public ApplicationUser? CheckedOutByUser { get; set; }
 }
 

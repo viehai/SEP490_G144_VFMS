@@ -790,6 +790,11 @@ public class VfmsDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(e => e.HandledByUserId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.CheckedOutByUser)
+                .WithMany()
+                .HasForeignKey(e => e.CheckedOutByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         // ── FaceData ──────────────────────────────────────────────

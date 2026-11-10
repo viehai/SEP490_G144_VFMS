@@ -145,15 +145,26 @@ public sealed class CheckInService : ICheckInService
         var open = await _repository.GetOpenCheckInAsync(userId, cancellationToken);
         return open is null   // GBR-91: the member goes to the front desk (UC-47)
             ? Result<CheckOutResultResponse>.Failure(GymAccessMessages.Denied, GymAccessMessages.DeniedCode, 403)
-            : await CheckOutAsync(open, method, cancellationToken);
+            : await CheckOutAsync(open, method, null, cancellationToken);
+    }
+
+    /// <summary>UC-47: Staff close an open visit from Active Check-ins, recorded as Manual with their ID.</summary>
+    public async Task<Result<CheckOutResultResponse>> ManualCheckOutAsync(int checkInId, string staffUserId, CancellationToken cancellationToken = default)
+    {
+        var open = await _repository.GetCheckInAsync(checkInId, cancellationToken);
+        return open is not { Status: CheckInStatus.Active }   // GBR-91
+            ? Result<CheckOutResultResponse>.Failure(GymAccessMessages.Denied, "NO_OPEN_CHECKIN", 404)
+            : await CheckOutAsync(open, CheckInMethod.ManualStaff, staffUserId, cancellationToken);
     }
 
     /// <summary>Closes an open visit and saves (GBR-91). Occupancy is the count of open visits, so it drops here.</summary>
-    internal async Task<Result<CheckOutResultResponse>> CheckOutAsync(CheckIn open, CheckInMethod method, CancellationToken cancellationToken)
+    private async Task<Result<CheckOutResultResponse>> CheckOutAsync(
+        CheckIn open, CheckInMethod method, string? staffUserId, CancellationToken cancellationToken)
     {
         var now = _clock.GetUtcNow().UtcDateTime;
         open.CheckoutTime = now;
         open.CheckoutMethod = method;
+        open.CheckedOutByUserId = staffUserId;
         open.Status = CheckInStatus.CheckedOut;
         await _repository.SaveChangesAsync(cancellationToken);
         var name = (await _repository.GetUserAsync(open.MemberUserId, cancellationToken))?.FullName ?? string.Empty;
