@@ -19,11 +19,15 @@ public class OrderItem : BaseEntity
     public string PackageNameSnapshot { get; set; } = string.Empty;
     /// <summary>Requested activation start date (null = immediate).</summary>
     public DateOnly? ActivationStartDate { get; set; }
+    /// <summary>Purchased component terms, persisted so later catalog edits cannot alter fulfillment.</summary>
+    public string? ComponentTermsSnapshot { get; set; }
+    public int? RenewedFromMembershipId { get; set; }
 
     // ── Navigation Properties ──────────────────────────────────
     public Order Order { get; set; } = null!;
     public Package Package { get; set; } = null!;
     public ApplicationUser Beneficiary { get; set; } = null!;
+    public MemberMembership? RenewedFromMembership { get; set; }
     public ICollection<MemberMembership> MemberMemberships { get; set; } = [];
 }
 

@@ -2,14 +2,16 @@
 
 ## 1. Purpose
 
-This document defines architecture, component, workflow, and styling conventions for the **`VFMS.Client`** Blazor WebAssembly + Tailwind CSS project inside the `SEP490_G144_VFMS` Clean Architecture solution. The frontend handles presentation, client-side usability validation, and role-specific navigation; all authoritative business rules, payment confirmations, and persistence reside in `VFMS.API` and `VFMS.Application`.
+This document defines architecture, component, workflow, and styling conventions for the **`VFMS.Client`** Blazor WebAssembly + Tailwind CSS project inside the `SEP490_G144_VFMS` Clean Architecture solution. The frontend handles presentation, client-side validation, and role-specific navigation. The backend owns business rules, payment confirmation, and persistence.
+
+Report 3 governs functional and non-functional requirements. Use Case Diagrams (UCDs) describe actor and use-case associations. Report 4 and the ERD document architecture and entity design. The technology stack and UI design in this guide are project conventions. Use the current source code to confirm implementation status. [Report 3 SRS](https://drive.google.com/file/d/1ikvvPj3Q224wwM_5xqCjP680q0noxfZP/view), [Use Case Diagrams](https://drive.google.com/file/d/1UHzNJp126lZMapU8gWvM-cAEkYpmhZ2z/view), [Report 4 SDS](https://drive.google.com/file/d/1ITngkoOxluYMKFVV-Zt4n0e37CfFHTHf/view).
 
 ## 2. Responsibilities and Architectural Boundaries
 
 - `VFMS.Client` is built with **Blazor WebAssembly on .NET 8 (`net8.0`)**, using **Tailwind CSS** and component-specific CSS where appropriate.
 - Reference **only `VFMS.Contracts`** for shared Request/Response DTOs, FluentValidation validators, and standardized system message constants (`MSG-01` to `MSG-43`).
 - Never reference `VFMS.Domain`, `VFMS.Application`, or `VFMS.Infrastructure`.
-- Communicate with the backend exclusively through typed `HttpClient` services calling `VFMS.API` REST endpoints.
+- Use typed `HttpClient` services for `VFMS.API` REST calls.
 - Client-side validation and role-based UI hiding (`<AuthorizeView Roles="...">`) improve UX, but server validation and authorization are always authoritative.
 
 ## 3. Project Organization (`VFMS.Client`)
@@ -21,7 +23,8 @@ This document defines architecture, component, workflow, and styling conventions
 - `Pages/Auth/Login.razor` (`/auth/login`) and `Pages/Auth/Register.razor` (`/auth/register`) use `Layout/AuthLayout.razor` and `wwwroot/css/auth.css`. Both forms use shared validators from `VFMS.Contracts`; registration does not sign the user in automatically. Logout is a direct action through `Components/Auth/LogoutButton.razor`, without a separate page.
 - `wwwroot/index.html` hosts the startup screen and loads Tailwind through its CDN. The startup styles are in `wwwroot/css/splash.css`. There is currently no project-level `tailwind.config.js`.
 - Logo and equipment images used by Home are in `wwwroot/brand/`, `wwwroot/images/`, and `wwwroot/equipments/`.
-- Home currently contains illustrative class, equipment, pricing, and facility-map data. These values and the map layout are not live API data or verified operational information. Replace them with API-backed data when the relevant features are implemented.
+- **Home hero image convention:** use the local file `wwwroot/images/hero-bg.png`, referenced from Razor as `/images/hero-bg.png`. Do not apply `grayscale`, `contrast-*`, or `brightness-*` utility filters to this image. Render it with `object-cover` and preserve its natural warm gym lighting. If text readability needs support, use a separate CSS/Tailwind warm-ivory gradient overlay rather than permanently editing the image.
+- Signed-in Customers and Members see the active Gym membership plan catalog from `api/membership-plans` on Home. The remaining sample pricing, class, equipment, and facility-map data are illustrative. Use API-backed data for live operations.
 
 ### Running the authentication screens locally
 
@@ -30,16 +33,18 @@ This document defines architecture, component, workflow, and styling conventions
 - Login accepts email or phone number. Unchecked "Remember me" stores the token session in session storage; checked stores it in local storage. Passwords are never persisted. `AuthSession` restores the session and rotates an expired access token through `api/auth/refresh` before returning authenticated state. Server-side authorization remains authoritative.
 - Register sends `RegisterRequest` to `api/auth/register`, then shows a success screen linking to Login. Validation errors appear beside the relevant fields; API/network failures remain on the form so the user can retry. API-backed password reset and change screens are outside this implementation's current scope; the profile preview below includes only a local password-form demo.
 - Logout is available from authenticated public navigation. Clicking the button posts the current refresh token to `api/auth/logout` with a Bearer access token, refreshing access first if needed. Clear the in-memory session, session storage, and local storage, publish anonymous UI state, then return to Home. No confirmation or completion screen is shown. An API/network failure still ends the local session and returns Home; local cleanup alone does not guarantee server-side revocation.
+- **Authentication compliance gaps.** The API currently activates self-registered accounts immediately, while `UC-01` requires email verification before activation. The login flow checks existing account locks, while the failed-attempt lockout required by `GBR-27` is still pending. Logout currently revokes the submitted refresh token. Immediate access-token blacklisting under `GBR-28` is still pending.
 - Run authentication client tests with `dotnet test tests/VFMS.ClientTests/VFMS.ClientTests.csproj`. These tests use fake HTTP/storage and do not create database accounts; verify the full registration/login flow separately against a configured API and database.
 
 ### Dashboard and profile UI previews
 
-- `Pages/Admin/AdminDashboard.razor` (`/admin/dashboard`) and `Pages/Manager/ManagerDashboard.razor` (`/manager/dashboard`) use `ManagerAdminLayout`. Admin uses black/red (`#FF3E3E`); Manager uses slate/indigo (`#0F172A`, `#6366F1`).
-- `Pages/Staff/StaffDashboard.razor` (`/staff/dashboard`) and `Pages/PT/PTDashboard.razor` (`/pt/dashboard`) use `StaffPTLayout` with black/white styling. Each dashboard contains a page header, three stat cards, quick actions, and a matching data panel.
-- `Pages/UserProfile.razor` (`/profile`) uses `PublicLayout`, sharing Home's top navigation and footer rather than a dashboard sidebar. Clicking the signed-in greeting opens Profile; a compact "Hồ sơ" link remains visible on smaller screens. The navigation has a dark background on white public pages and retains Home's transparent hero and floating scroll behavior. Profile styles live in `wwwroot/css/profile.css`.
+- `Pages/Admin/AdminDashboard.razor` (`/admin/dashboard`) and `Pages/Manager/ManagerDashboard.razor` (`/manager/dashboard`) use `ManagerAdminLayout`. The existing black/red and slate/indigo preview colors are **legacy styling to be replaced** by the unified Sage Green / Warm Ivory design system in Section 6.
+- `Pages/Staff/StaffDashboard.razor` (`/staff/dashboard`) and `Pages/PT/PTDashboard.razor` (`/pt/dashboard`) use `StaffPTLayout`. The existing black/white preview styling is also **legacy styling to be replaced**. Each dashboard may retain its page header, stat cards, quick actions, and data panel structure while adopting the shared tokens and components.
+- `Pages/UserProfile.razor` (`/profile`) uses `PublicLayout`, sharing Home's top navigation and footer rather than a dashboard sidebar. Clicking the signed-in greeting opens Profile; a compact "Hồ sơ" link remains visible on smaller screens. Profile styles live in `wwwroot/css/profile.css`. Restyle the public navigation, profile controls, and footer with the shared Sage Green / Warm Ivory palette; avoid pitch-black page chrome.
 - Profile edits and the password form currently validate local mock data only. No profile or password API request is sent. Birthdate is a UI preview field and is not yet part of the existing profile DTO.
-- The two dashboard layouts reuse `Components/Workspace/WorkspaceShell.razor` and `wwwroot/css/workspace.css`. All dashboard/profile cards, inputs, and buttons use square corners (`rounded-none`), borders, and no shadows. Montserrat is used for headings/statistics and Inter for body text/forms.
+- The two dashboard layouts reuse `Components/Workspace/WorkspaceShell.razor` and `wwwroot/css/workspace.css`. Keep Montserrat for headings/statistics and Inter for body text/forms, but replace the old `rounded-none`-everywhere convention with the restrained 8–12px radius rules in Section 6.
 - These routes deliberately expose **mock UI previews** with visible mock-data labels. Dashboards include a screen selector; quick actions change local preview panels without performing operational actions or granting roles. Before connecting real data, enforce the permission matrix with authenticated route handling and role-specific API authorization, and remove the preview selector. Do not infer permissions from the selected preview.
+- The Manager dashboard links to the live UC-11 page at `/manager/membership-plans`. The page and its management API both enforce the `Manager` role, and the backend audits plan changes. Checkout and membership freeze policy editing remain planned workflows.
 
 ### Planned organization
 
@@ -52,9 +57,9 @@ VFMS.Client/
 │   ├── Auth/                       # Login, Register, VerifyOtp, ResetPassword
 │   ├── Customer/                   # CustomerDashboard, PackageCatalog, Checkout, Transactions, Supplements, AiWorkout, FaceSetup
 │   ├── Member/                     # MemberDashboard, MyMemberships, FreezeRequests, PTSchedule, PTProgress, MyYogaBookings, MyLocker, EquipmentReport, GymReview
-│   ├── PT/                         # TrainerProfile, AvailabilityConfig, AssignedMembers, PTFreezeReview, AssignedYogaClasses, YogaAttendance
-│   ├── Staff/                      # WalkInAccount, ManualCheckInOut, ActiveCheckIns, LockerRegistry, LockerTermination, OverdueLockers, EquipmentIssues, PurchaseProposals, CompetitionRoster, SupplementOrders
-│   ├── Manager/                    # MembershipPlans, FreezePolicies, FreezeApprovals, Promotions, TrainerScreening, PTPackages, YogaStudiosAndClasses, EquipmentAndRepairs, ProposalApprovals, SupplementCatalog, Announcements, FeedbackManagement, BusinessReports, GeneralPolicies
+│   ├── PT/                         # TrainerProfile, AvailabilityConfig, AssignedMembers, AssignedYogaClasses, YogaAttendance
+│   ├── Staff/                      # WalkInAccount, ManualCheckInOut, ActiveCheckIns, LockerRegistry, LockerTermination, OverdueLockers, EquipmentIssues, PurchaseProposals, CompetitionRoster, SupplementOrders, YogaAttendance
+│   ├── Manager/                    # MembershipPlans, FreezePolicies, FreezeApprovals, PTFreezeReview, Promotions, TrainerScreening, PTPackages, YogaStudiosAndClasses, EquipmentAndRepairs, ProposalApprovals, SupplementCatalog, Announcements, FeedbackManagement, BusinessReports, GeneralPolicies
 │   ├── Admin/                      # StaffAccountsAndRoles, AccountLockManagement, BannedWords, SystemAuditLogs
 │   └── Kiosk/                      # Entrance/Exit Turnstile Web Kiosk (FaceID Camera & Dynamic QR Scanner)
 ├── Layout/                         # Role-segregated layouts
@@ -74,15 +79,17 @@ VFMS.Client/
 
 ## 4. Authentication, JWT Handling & Role UX
 
-- **JWT Bearer Transport (`GBR-28`):** Attach the 30-minute JWT Access Token via a custom `AuthorizationMessageHandler` on all authenticated API calls, and automatically refresh using the Refresh Token before redirecting to `/auth/login` with `MSG-11` on expiration.
-- **Strict Alignment with the 7 Use Case Diagrams & Permission Matrix:**
-  - `Guest`: Can access `Register Account`, `Submit Trainer Application`, `View Personal Trainers`, `View Yoga Schedule`, `View Competitions & Leaderboard`, and `View Gym Details & Facilities`.
+- **JWT Bearer Transport.** `GBR-28` limits access token validity to 30 minutes. Use `AuthSession` to obtain and refresh bearer tokens for authenticated API calls. Use `MSG-11` when the session cannot be restored and the user must sign in again.
+- **Role-based navigation and the use case diagrams**
+  - The UCD links `Guest` to `Register Account`, password reset, `Submit Trainer Application`, `View Personal Trainers`, `View Yoga Schedule`, competition information, and `View Gym Details & Facilities`.
   - `Customer`: Inherits `Guest` (except `Register Account`). Can access `Purchase Membership Packages`, `Apply Voucher`, `View Transaction History`, `Export Invoice`, `Purchase/Track/Cancel/View Supplements`, `Generate/Manage Personalized Workout Plan`, `Manage Face Recognition Profile`, and `View Notifications / Gym Announcements`.
   - `Member`: Inherits `Customer`. Unlocks `View Membership Details`, `Renew Membership`, `Manage & Submit Membership Freeze Request`, `View PT Schedule Options`, `Purchase PT Package`, `View PT Package Progress`, `Manage PT Freeze Request`, `Book/Cancel/View Yoga Bookings`, `Check In / Check Out`, `Report Equipment Issue`, `Manage Competition Registration / History`, `View My Locker Rental`, and `Review Gym & Services`.
-  - `PT`: Accesses trainer profile, availability, assigned members/progress, schedule-change proposals, assigned Yoga classes, attendance and own notifications. PT may view and advise on assigned freeze requests; approval/rejection belongs to Manager only.
-  - `Staff`: Accesses `Create Customer Account` (locked to `Customer` role per `GBR-30`), `Check In/Out Member`, `View Active Check-ins`, `Handle Equipment Issues`, `Manage Purchase Proposals`, `Manage Competition Participants & Results`, `Manage Supplement Orders`, `Manage Locker Registry & Contracts`, `Terminate Locker & Settle Deposit`, `Handle Overdue Lockers & Maintenance`, and `View Notifications / Gym Announcements`.
-  - `Manager`: Accesses all operational configuration, approval, product/schedule management, announcements, and `View Business Reports` screens per UCD.
-  - `Admin`: Accesses `Manage Staff Accounts`, `Assign Roles`, `Lock/Unlock Account`, `Manage Banned Words`, `View System Audit Logs`, own notifications and announcement management alongside Manager.
+  - `PT` can access `Manage Trainer Profile`, `Configure PT Availability Schedule`, `View Assigned Members`, `View PT Package Progress`, and `View Assigned Yoga Classes`. A PT acting as Yoga Instructor may take attendance.
+  - `Staff` can access `Create Customer Account` (locked to `Customer` role per `GBR-30`), `Check In/Out Member`, `View Active Check-ins`, `Handle Equipment Issues`, `Manage Purchase Proposals`, `Manage Competition Participants & Results`, `Manage Supplement Orders`, `Manage Locker Registry & Contracts`, `Terminate Locker & Settle Deposit`, `Handle Overdue Lockers & Maintenance`, and `View Notifications / Gym Announcements`. `GBR-86` also permits Staff to submit Yoga attendance.
+  - `Manager` can access operational configuration, approvals including `Process PT Freeze Requests` (`UC-34`), product/schedule management, and `View Business Reports` screens per the UCD.
+  - `Admin`: Accesses `Manage Staff Accounts`, `Assign Roles`, `Lock/Unlock Account`, `Manage Banned Words`, `View System Audit Logs`, and `View Notifications / Gym Announcements`.
+- **Guest access requires SRS/UCD reconciliation.** The Report 3 Security NFR lists login, registration, password reset, and public Gym and Competition information as sign-in exceptions. Reconcile its scope with the UCD's Guest links for trainer applications, trainer browsing, and Yoga schedule before configuring public routes.
+- **Gym Announcement authorization requires SRS/UCD reconciliation.** `GBR-22` permits Manager and Admin to create and publish announcements. The detailed use case (§II.6.2) lists both as primary actors but gives a Manager-only precondition, and the §I.4.4 matrix denies Admin. The diagrams link `Manage Gym Announcements` (`UC-42`) directly to Manager. The standalone diagram also models Admin as a specialization of Manager. Resolve the discrepancy before changing route or API permissions.
 
 ## 5. UI Handling for Updated VFMS Workflows
 
@@ -90,133 +97,449 @@ VFMS.Client/
 - Render single-service and combo packages from `Package` and `PackageComponent` (`GYM`, `YOGA`, `PT`), clearly displaying duration, session count, access hours, and freeze allowances.
 - Allow adding multiple packages into a single `Order` cart, selecting activation start dates (immediate or deferred up to 30 days per `GBR-35`), and specifying `BeneficiaryUserId` (buying for self or gifting per `GBR-36`).
 - On the Checkout screen, support applying a single voucher code (`GBR-45`). Display the subtotal, minimum spend requirement (`MinimumSpend`), percentage cap (`MaxDiscountAmount` per `GBR-46`), and calculated `DiscountAmount` returned by the API.
-- Display the dynamic VietQR code (`API-04`) with a live **15-minute countdown timer** (`GBR-48`, `JOB-01`) and poll/listen for SePay webhook confirmation (`API-03`) to transition the screen to Payment Success (`MSG-23`) and enable PDF Invoice download (`Export Invoice`).
+- Display the dynamic VietQR code (`API-04`) with a live **15-minute countdown timer** (`GBR-48`, `JOB-01`). In the planned checkout flow, SePay sends its webhook (`API-03`) to `VFMS.API`, which verifies the payment and persists the result. The frontend can poll a backend payment-status endpoint or receive server-pushed status updates. Show Payment Success (`MSG-23`) and enable PDF Invoice download (`Export Invoice`) only after the backend confirms payment.
 
 ### 5.2 Membership Freeze, PT Scheduling & PT Freeze
 - Display remaining freeze quota, min/max days (`GBR-40`, `GBR-41`), and advance notice rules (`GBR-42`). Disable freeze actions for weekly Yoga packages (`GBR-85`).
-- For PT booking (`UC-27`, `UC-29`), check that the user holds an active gym membership (`GBR-10`, `MSG-31`). Render available PT schedule options and temporary freeze-window availability notices (`GBR-17`).
-- Provide approval/rejection controls only for Manager. Assigned PT sees request details and can advise. Preview replacement dates and the exact frozen-day extension; never show a future approved request as already Frozen.
-- Purchase selects trainer, package, start date and fixed recurring days/time. Preview all generated appointments; a two-week view does not limit booking to 14 days. Display a 15-minute hold deadline from the server and a separate late-payment reconciliation state.
-- Show Used/Reserved/Available/Remaining credits distinctly from appointment counts. One credit is 60 minutes; a double appointment uses two. Explain cancellation penalties and request explicit member confirmation for trainer-proposed changes.
-- Public trainer cards link to View My PT Schedule or Explore Packages, not rolling Book Session. Full ProfileUpdate applications show pending approval while the approved profile stays public. The 30-day cooldown is Recruitment-only; onboarding uses setup links. Follow the module 3 simplification decision below.
+- For PT booking (`UC-27`, `UC-29`), display the backend's eligibility result for an active gym membership covering the training period (`GBR-10`, `MSG-31`). Render available PT schedule options and temporary freeze-window availability notices (`GBR-17`).
+- Provide the `UC-34` review, approval, and rejection workflow for `Manager` according to the standalone UCD. Keep PT navigation for assigned-member and scheduling workflows. Report 3 §4.4 grants both roles full access to PT freeze review, and its embedded PT diagram (§I.4.3.7) also links PT to this action. The detailed flow (§II.4.10) lists Manager as primary, PT as secondary, and sets a Manager-only precondition. Resolve the discrepancy before granting PT review access.
+- **PT scheduling granularity requires SRS clarification.** The master list describes day-based availability in `UC-27` and `UC-32`, while `GBR-06` through `GBR-09` use time slots. Render backend availability and keep collision checks on the server.
+- Membership plan and membership policy changes must be recorded by the backend in the System Audit Log (`GBR-65`). Present the result returned by the API.
 
 ### 5.3 Yoga Timetable, Waitlist, No-Show Penalty & Attendance
 - Display weekly Yoga sessions (`View Yoga Schedule`) with studio name, floor, instructor, difficulty, and live free-seat counter.
 - When `Confirmed` bookings reach `MaxParticipants`, change the primary CTA from `"Book Class"` to `"Join Waitlist (Free)"` (`GBR-80`, `GBR-82`).
-- When cancelling a booking `< 2 hours` before start time, display a confirmation modal with `MSG-34` warning that late cancellation counts as a no-show (`GBR-83`) and that 3 no-shows within 30 days suspend Yoga booking for 7 days (`GBR-84`).
-- Provide the `Take Yoga Attendance` roster screen for `PT` (Instructor) with a 30-minute submission countdown (`GBR-86`).
+- When cancelling a booking `< 2 hours` before start time, use a confirmation dialog to explain that late cancellation counts as a no-show (`GBR-83`) and that 3 no-shows within 30 days suspend Yoga booking for 7 days (`GBR-84`). The `MSG-34` context labels late cancellation as denied, while the rule and message text describe a penalty. Preserve the penalty behavior pending clarification.
+- Provide the `Take Yoga Attendance` roster for the assigned Yoga Instructor (`PT`) and for `Staff` (`UC-51`). `GBR-86` requires submission within 30 minutes after the session starts. Display each booked member's `Attended` or `NoShow` state. The session takes place even if nobody attends (`GBR-87`).
+- **Attendance permission and timing discrepancies.** Report 3 §4.4 grants roster submission to PT and excludes Staff, consistent with its embedded diagrams. The detailed use case (§II.7.9) and `GBR-86` allow Instructor or Staff. The detailed use case saves late submissions and flags them for Manager, while `GBR-86` specifies the 30-minute window. Reconcile late handling before enforcing a cutoff in the UI. The current PT dashboard contains an attendance preview. Roster submission remains a planned workflow.
+- **SRS cross-reference discrepancy.** The rule table points `GBR-86` and `GBR-87` to `UC-67`, while the master list names `UC-51` as `Take Yoga Attendance`.
 
 ### 5.4 Locker Rental, Kiosk Biometrics & AI Workout Plan
-- **Locker Rental:** Show the actual contract deposit (default 100,000 VND), Reserved/PendingHandover after online payment, 24-hour collection deadline, and Active/Occupied only after Staff confirms key handover. Include Available, Overdue and Maintenance states. Explain renewal dates, itemized overdue/key charges, refund requested versus paid, and additional amounts due. Forced clearance records both witnesses and inventory; safe inspection precedes availability.
-- **Biometrics & Kiosk (`UC-52` to `UC-57`):** Require unchecked-by-default biometric consent before opening the camera. Show check-in, eligibility and anti-passback feedback. PT check-in records attendance only; do not display automatic session completion or consumed credits. Align MSG-38 wording before reusing it.
-
-- **AI Workout Plan (`GBR-93` to `GBR-95`):** Require health-survey consent, show a non-blocking loading state, label standard fallback plans, and allow exercise completion toggling.
-
-### 5.4.1 Notifications and announcements (Report 3 section 6)
-- All authenticated roles, including PT, access their own Notification Center. Archive read/unpinned records after 90 days; do not hide retained unread/pinned records merely because they are older. Handle inaccessible deep-link destinations without exposing content.
-- Manager/Admin manage Draft, Scheduled, Published, Expired and Archived announcements with target audience, publish/expiry times (maximum 60 days), sanitized rich text and optional media. A maximum of 3 active pins applies; scheduled overflow publishes unpinned and informs the author. Edits do not automatically rebroadcast.
-- Guest sees Public only; signed-in users see Public and their role audiences. Backend enforces the same rules for lists and detail views. UI hiding alone is insufficient.
+- **Locker Rental.** Members view active locker details, 100,000 VND deposit status, and 7-day overdue grace warnings (`View My Locker Rental`). Staff manages the interactive locker grid (`Available`, `Occupied`, `Overdue`, `Maintenance`), key handover, deposit settlement, and forced clearance with Manager. Show `MSG-40` when the locker is returned and the deposit is refunded.
+- **Biometrics & Kiosk (`UC-52` to `UC-57`).** Require explicit PDPL biometric consent before opening the camera, using an unchecked-by-default consent checkbox on Face ID registration. The biometric workflow must discard raw camera images immediately after extraction and persist only encrypted facial feature embeddings. Provide a user-facing action that requests immediate backend deletion of the facial template. `JOB-07` separately deletes the template automatically 90 days after the user's last membership expires. On the Kiosk screen, display `MSG-35` on successful Face ID check-in, `MSG-36` on inactive membership or face mismatch, `MSG-37` on 15-minute anti-passback violation, and `MSG-38` when a PT session is auto-completed.
+- **Face ID eligibility requires SRS clarification.** The detailed `UC-52` flow (§II.8.1) names Customer and Member as actors and requires an active or pending membership. Confirm eligibility for Customers without such a membership before configuring access to enrollment.
+- **AI Workout Plan (`UC-58`, `UC-59`):** Require PDPL Health Survey consent, show a non-blocking loading state while Gemini (`API-02`) generates the weekly routine, notify the user if a fallback standard plan was used (`GBR-95`), and allow daily exercise completion toggling.
 
 ### 5.5 Equipment, Procurement, Supplements, Competitions & Moderation
 - **Equipment & Procurement:** Member submits issue reports (`UC-71`); Staff triages issues (`Resolve`, `Escalate`, `Mark as Safe`) and builds multi-item purchase proposals with dynamic total budget calculation (`GBR-62`); Manager manages repairs, equipment lifecycle, and proposal approvals (`GBR-68`).
 - **Supplement Store:** Display `Available` products without stock counts (`GBR-69`, `GBR-70`). Support `GymPickup` (pay at counter) and `HomeDelivery` (COD) (`GBR-58`). Show `"Cancel Order"` button only while status is `Pending` (`GBR-60`).
+- **Supplement stock requires SRS clarification.** `GBR-69` specifies a catalog without stock-quantity tracking, while `MSG-41` describes insufficient stock. Keep the catalog-only model pending clarification.
+- **Supplement visibility implementation gap.** The current store API also returns products marked `OutOfStock`. `GBR-70` limits Customer and Member visibility to `Available` products.
 - **Reviews & Banned Words:** Highlight offending words inline if a gym review or trainer bio triggers the `BannedWordList` filter (`GBR-66`, `GBR-05`).
 
 ---
 
-## 6. Design System & UI Vibe (Nike Brutal Minimalism / Gymshark)
+## 6. Design System & UI Vibe (Sage Athletic Minimalism / Warm Ivory Fitness)
 
-### A. Color Palette & Layouts
-- **User-Facing (Guest / Customer / Member):**
-  - **App Background (`--bg-main`):** `#FFFFFF` (Pure white).
-  - **Section / Container Background (`--bg-card`):** `#F7F7F7` (Light grey for section separation).
-  - **Borders & Dividers (`--border-card`):** `#CFCFCF` (Clean, subtle solid lines).
-  - **Typography Colors:** Primary text `#252525` (Deep dark). Muted/secondary text `#545454` or `#7D7D7D`.
-  - **Brand Accent / CTAs (`--color-accent`):** `#0A0A0A` (Pitch black blocks with inverted white text).
-  - **Layout:** A fixed public header, a high-contrast dark hero, white content sections, and a dark footer with generous padding. The Home page uses a moving service-label strip and a white interactive facility map.
-- **Admin Back-Office:**
-  - **Sidebar Background:** `#0A0A0A` (Pitch black).
-  - **Accent Color:** `#FF3E3E` (Vivid Red for authority and system alerts).
-- **Manager / Owner Back-Office:**
-  - **Sidebar Background:** `#0F172A` (Deep Slate / Navy).
-  - **Accent Color:** `#6366F1` (Indigo for revenue, reports, and business metrics).
+The VFMS visual direction is a **bright, athletic, premium fitness product** using muted Sage Green, Warm Ivory, natural gym photography, restrained geometry, and enterprise-grade information hierarchy. The product must feel intentionally designed rather than like a generic AI-generated dashboard.
 
-### B. Typography
-- Headings (`h1`–`h6`, nav links, banners, primary CTAs): `'Montserrat', sans-serif`, usually bold (`700`–`800`) and uppercase. Weight `900` is allowed for major Home headlines and hero text. Use letter spacing appropriate to the size; `0.05em` is a starting point, not a requirement for every heading.
-- Body copy, tables, inputs, validation messages: `'Inter', sans-serif`, `font-weight: 400`–`500`, normal case for maximum readability.
+### A. Global Color Tokens
 
-### C. Component Styling, Geometry & Status Badges (`StatusBadge.razor`)
-- **Geometry:** Use square corners (`rounded-none`) for buttons, cards, inputs, and the facility map. The floating public navigation bar may use rounded corners when scrolled, as in `PublicLayout.razor`.
-- **Shadows:** The floating navigation bar may use a soft shadow. Equipment and pricing cards and selected pricing tabs may use a solid black offset shadow for interaction feedback, matching Home. Avoid adding shadows to unrelated components by default.
-- **Buttons (`GymButton`):** Rectangular, heavy padding (`py-4 px-8`), uppercase, bold font. Hover states invert or darken sharply (e.g., `#0A0A0A` to `#000000`).
-- **Cards:** Equipment and pricing cards may use a strong black border and a black offset shadow on hover. Featured class cards emphasize large, sharp images, subtle hover zoom, and left-aligned text; their image proportions may be responsive.
-- **Status Colors (always paired with text/icon, never color alone):**
-  - *Active / Approved / Confirmed / Completed / Paid / Available:* Emerald Green (`#10B981`)
-  - *Pending / Processing / Frozen / Scheduled / Waitlisted:* Amber Orange (`#F59E0B`)
-  - *Rejected / Expired / NoShow / Overdue / Locked / Escalated:* Warning Red (`#EF4444`)
-  - *Cancelled / Inactive / Archived / Retired:* Neutral Grey (`#4B5563`)
+Use the same core brand tokens across Guest, Customer, Member, PT, Staff, Manager, Admin, Auth, and Kiosk experiences. Role differentiation should come from navigation labels, icons, permissions, data, and page context — **not from completely different brand palettes**.
 
-### D. Public Home interactions
-- **Header:** Reuse `PublicLayout.razor` for public browsing pages. Its header starts transparent and becomes a floating dark navigation bar on scroll; ensure navigation remains usable at smaller viewport sizes. Authentication screens use `AuthLayout.razor`, with a dark brand panel and white form area that stacks on small screens.
-- **Startup screen:** Display the Victor Fitness splash before Blazor starts, then fade it out when initialization completes. Show a readable error state if startup fails; do not invent progress percentages or enforce a fixed delay.
-- **Facility map:** Keep the map within Home on a white background with black/grey lines. Hover uses a light grey fill; the selected area uses a black fill with white labels. Allow keyboard selection and show the selected area's details below the map. The layout and equipment markers are illustrative until backed by verified facility data.
-- **Motion and responsiveness:** Adapt layouts to phone and desktop, maintain visible keyboard focus and readable contrast, and respect `prefers-reduced-motion` for animations. The moving service-label strip is decorative; do not use motion alone to convey information.
+- **Primary Sage (`--color-primary`):** `#5F6F52`
+- **Primary Hover / Dark Sage (`--color-primary-hover`):** `#4E5D44`
+- **Primary Soft (`--color-primary-soft`):** `#E8EDE3`
+- **Warm Ivory App Background (`--bg-main`):** `#F7F4EC`
+- **White Surface (`--bg-surface`):** `#FFFFFF`
+- **Muted Section Background (`--bg-muted`):** `#EEF1EA`
+- **Primary Text (`--text-primary`):** `#383E43`
+- **Secondary Text (`--text-secondary`):** `#69706A`
+- **Subtle Text (`--text-muted`):** `#8A9089`
+- **Borders / Dividers (`--border-card`):** `#D8DED2`
+- **Dark Olive Surface (`--surface-dark`):** `#3F493A` — use sparingly for footer, high-emphasis banners, or compact contrast areas; never as the dominant app background.
+- **Focus Ring:** use `#5F6F52` with sufficient visible contrast.
+
+Do not reintroduce black/red, black/white, navy/indigo, purple/blue neon, or role-specific brand themes as the default visual system. Red remains reserved for destructive actions and error states.
+
+### B. Layout Direction by Product Area
+
+#### Public / Guest / Customer / Member
+- Use Warm Ivory or white as the dominant canvas.
+- Use full-width, high-quality **realistic gym photography** with natural lighting.
+- Avoid dark full-screen hero sections.
+- Use Sage Green only for important emphasis: primary CTA, active navigation, key numbers, selected states, icons, and small decorative rules.
+- Keep sections spacious with clear content hierarchy instead of placing every block inside a card.
+
+#### PT / Staff / Manager / Admin Back-Office
+- Use a **light enterprise dashboard** for every role.
+- Default sidebar: `#FFFFFF` or `#F7F4EC`, with a `#E8EDE3` active item and `#5F6F52` icon/accent.
+- Main content background: `#F7F4EC`.
+- Data surfaces and forms: `#FFFFFF`.
+- Use thin borders instead of heavy shadows.
+- Do not give Admin a black/red theme or Manager a navy/indigo theme. Destructive Admin actions may use red only at the action/status level.
+- Keep management screens practical: page title + contextual description + toolbar + filters + data table/list + pagination + drawer/modal/form when appropriate.
+
+#### Auth
+- Keep Login/Register bright and consistent with the public brand.
+- Prefer a Warm Ivory / Sage branded illustration or photography area plus a white form surface.
+- Do not use a large pitch-black brand panel.
+
+#### Kiosk
+- Kiosk may use stronger contrast for distance readability, but it must still use Sage / Ivory / White as the primary identity.
+- Success, warning, and error states may use their semantic colors prominently.
+
+### C. Typography
+
+- **Headings, nav links, banners, major statistics, primary CTAs:** `'Montserrat', sans-serif`.
+  - Weight: `700`–`800`; `900` only for major hero headlines where it remains readable.
+  - Uppercase is acceptable for short hero headlines, navigation, labels, and primary CTAs.
+  - Avoid uppercase for paragraphs, tables, long form labels, and dense admin content.
+- **Body copy, tables, forms, validation messages:** `'Inter', sans-serif`, `400`–`500`.
+- Use typography and spacing to establish hierarchy instead of relying on excessive borders, cards, gradients, or oversized decorative elements.
+
+### D. Geometry, Shadows & Components
+
+- **Radius:**
+  - Buttons / inputs / selects: `8px`
+  - Cards / panels / modals / drawers: `10px`–`12px`
+  - Pills / status badges: full pill radius only where semantically appropriate
+- Do not use extreme `20px+` rounding throughout the product.
+- Do not use `rounded-none` globally.
+- Use subtle border-first surfaces. If a shadow is needed, keep it soft and low elevation.
+- Avoid black offset shadows, glassmorphism, glow, neon, and excessive gradients.
+- Use line icons with consistent stroke weight.
+
+#### Buttons
+- Primary: Sage `#5F6F52`, white text; hover `#4E5D44`.
+- Secondary: white or transparent surface, Sage border/text.
+- Tertiary: text/icon button with restrained hover background.
+- Destructive: semantic red; never use red as a general brand accent.
+- Keep labels concise and action-oriented.
+
+#### Cards
+- Use cards only when grouping content adds meaning.
+- Prefer white surfaces with `#D8DED2` borders.
+- Avoid filling dashboard pages with repetitive KPI cards that do not aid decisions.
+- Important metrics may use a subtle Sage icon, label, or number accent without tinting the whole card green.
+
+#### Tables
+- White surface, thin separators, clear column labels, comfortable row height.
+- Use a subtle `#EEF1EA` header or hover state.
+- Keep actions compact and predictable.
+- On smaller screens, switch to structured stacked rows/cards only when a table would become unusable.
+
+### E. Status Colors (`StatusBadge.razor`)
+
+Status color is semantic and must always be paired with text and/or icon:
+
+- **Active / Approved / Confirmed / Completed / Paid / Available:** `#16A34A`
+- **Pending / Processing / Frozen / Scheduled / Waitlisted:** `#D97706`
+- **Rejected / Expired / NoShow / Overdue / Locked / Escalated:** `#DC2626`
+- **Cancelled / Inactive / Archived / Retired:** `#6B7280`
+
+These colors do not replace the Sage brand palette; they are used only for state communication.
+
+### F. Home Hero & Public Landing Page
+
+The Home hero is the primary visual reference for the new brand direction.
+
+- Hero image file: **`wwwroot/images/hero-bg.png`**
+- Razor source: **`/images/hero-bg.png`**
+- Render with `w-full h-full object-cover`.
+- Do **not** apply `grayscale`, `contrast-*`, `brightness-*`, heavy dark overlays, or filters that turn the image black.
+- The hero may use the image full-bleed across the available hero area.
+- Keep the athlete / equipment composition naturally visible.
+- Place hero copy on top of the image only when readability is sufficient.
+- If extra readability is required, use a **separate overlay layer** such as a warm-ivory gradient from the left, e.g. strong ivory at the far left fading to transparent around 55–60% width. Do not bake this gradient into the image asset.
+- Keep the header transparent or lightly tinted at the top of the hero; on scroll, transition to a light Warm Ivory / white floating navigation surface with Sage active states. Do not switch to a pitch-black floating bar.
+- Primary hero CTA uses Sage Green; secondary CTA uses a transparent/white surface with Sage border.
+- Keep the page visually athletic through photography, typography, strong cropping, spacing, and content — not through black backgrounds.
+
+### G. Public Home Interactions
+
+- **Header:** Reuse `PublicLayout.razor`. Top-of-page navigation may overlay the hero, but text/icons must remain readable. On scroll, use a light floating bar with subtle border/shadow and Sage active/hover states.
+- **Startup screen:** Keep the Victor Fitness splash, but style it with Warm Ivory / White / Sage instead of full black. Fade out when Blazor is ready. Show a readable error state if startup fails; do not invent progress percentages or enforce a fixed delay.
+- **Facility map:** Keep the map within Home. Use white or Warm Ivory background, muted grey/Sage lines, a soft Sage hover fill, and a deeper Sage selected state with white text. Maintain keyboard accessibility and selected-area details.
+- **Motion and responsiveness:** Adapt layouts to phone and desktop, maintain visible keyboard focus and readable contrast, and respect `prefers-reduced-motion`. Decorative movement must never be required to understand content.
+
+### H. Anti-"AI Generated" Rules
+
+Avoid these patterns across the entire system:
+- dark full-page backgrounds by default;
+- purple/blue gradients;
+- neon glow;
+- glassmorphism;
+- excessive gradient buttons;
+- every section wrapped in a rounded card;
+- giant empty KPI tiles;
+- excessive `rounded-2xl` / `rounded-3xl`;
+- generic dashboard layouts repeated unchanged for every role;
+- fake analytics or decorative charts without business value;
+- overuse of icons where text is clearer;
+- arbitrary animations;
+- inconsistent colors between roles.
+
+Prefer:
+- natural gym photography;
+- strong but restrained editorial composition;
+- consistent spacing;
+- real data tables and task-oriented forms;
+- role-specific workflows within one shared brand system;
+- clear page hierarchy and realistic content;
+- small, purposeful Sage accents.
 
 ---
 
 ## 7. AI Agent Prompt (For UI Code Generation)
 
-*When using an AI assistant (Cursor, GitHub Copilot, Claude, ChatGPT, Gemini) to generate Blazor UI components, always provide this section as context to ensure the output strictly matches the project's architecture and design system.*
+*When using an AI assistant (Cursor, GitHub Copilot, Claude, ChatGPT, Gemini, Codex) to redesign or generate Blazor UI, provide the prompt below together with this guideline file.*
 
 **[BEGIN PROMPT FOR AI AGENT]**
 
-Bạn là một Chuyên gia Blazor WebAssembly Frontend Developer (.NET 8 + Tailwind CSS) và UI/UX Designer. Khi viết mã Razor Components (`.razor`), Scoped CSS (`.razor.css`), Layouts, hoặc bất kỳ thành phần giao diện Blazor nào cho dự án **VFMS (`VFMS.Client`)**, bạn PHẢI tuân thủ tuyệt đối kiến trúc Clean Architecture (chỉ dùng DTO/Validator từ `VFMS.Contracts`) và Hệ thống Thiết kế **"Nike Brutal Minimalism / Gymshark"** với các quy tắc NGHIÊM NGẶT dưới đây:
+Bạn là Senior Blazor WebAssembly Frontend Developer (.NET 8 + Tailwind CSS) đồng thời là Senior UI/UX Product Designer.
 
-**1. PHONG CÁCH THIẾT KẾ CỐT LÕI (BRUTAL MINIMALISM)**
-- **YÊU CẦU TỐI THƯỢNG:** Sạch sẽ, tương phản cao, góc cạnh.
-- **Hình khối (Geometry):** Nút bấm, card, input và sơ đồ dùng góc vuông (`rounded-none`). Navbar công khai dạng nổi được phép bo góc khi cuộn theo `PublicLayout.razor`.
-- **Hiệu ứng (Shadows):** Navbar nổi được phép có bóng mềm; card thiết bị, gói tập và tab gói được chọn được phép có bóng khối đen như Home. Không thêm bóng tùy tiện cho các thành phần khác.
-- **Tương tác (Hover):** Nút chuyển màu mượt; card lớp học có thể zoom ảnh nhẹ, card thiết bị/gói tập có thể dùng viền và bóng khối khi hover. Hỗ trợ bàn phím và giảm chuyển động theo cài đặt người dùng.
+Nhiệm vụ của bạn là **redesign toàn bộ giao diện `VFMS.Client` theo một design system thống nhất**, nhưng TUYỆT ĐỐI không làm thay đổi business logic, API contract, authorization, validation, routing hoặc các workflow hiện có.
 
-**2. TYPOGRAPHY (KIỂU CHỮ)**
-- **Tiêu đề (Headings h1-h6, NavLink, Primary CTA):**
-  + **Font:** Dùng font sans-serif `'Montserrat'`.
-  + **Font-weight:** Thông thường `700` hoặc `800`; cho phép `900` với tiêu đề lớn và banner.
-  + **Transform:** Tiêu đề, điều hướng và CTA thường viết hoa (`text-transform: uppercase`).
-  + **Letter-spacing:** Điều chỉnh theo kích thước và độ dễ đọc; `0.05em` là giá trị tham khảo.
-- **Nội dung & Form (Body text, Input, `<ValidationMessage>`, Table):**
-  + **Font:** `'Inter'`.
-  + **Font-weight:** `400`, `500`.
-  + Tuyệt đối không uppercase ở phần nội dung dài để giữ độ dễ đọc.
+### 1. RÀNG BUỘC KIẾN TRÚC — KHÔNG ĐƯỢC PHÁ VỠ
 
-**3. QUY TẮC MÀU SẮC & LAYOUTS (Tailwind Config / CSS Variables)**
-- **Giao diện Người dùng (Customer/Guest/Member):** Nền trắng `#FFFFFF`, phân vùng nền xám nhạt `#F7F7F7`. Chữ đen tuyền `#252525` và chữ phụ `#7D7D7D`. Đường kẻ divider `#CFCFCF`. Nút bấm CTA màu đen `#0A0A0A` chữ trắng.
-- **Giao diện Admin:** Dùng Layout có Sidebar nền Đen `#0A0A0A`, text trắng, màu accent Đỏ rực `#FF3E3E`.
-- **Giao diện Owner/Manager:** Dùng Layout có Sidebar nền Xanh Slate `#0F172A`, text trắng, màu accent Chàm Indigo `#6366F1`.
-- **Trang Home:** Hero tối, các khu vực nội dung và sơ đồ nền trắng; sơ đồ dùng nét đen/xám và khu vực đang chọn có nền đen, chữ trắng. Splash screen hiển thị khi Blazor khởi động và ẩn khi ứng dụng sẵn sàng.
-- **Dữ liệu minh họa:** Nội dung tĩnh và sơ đồ hiện có trên Home chỉ là minh họa, không mặc định là dữ liệu thời gian thực; dùng API cho dữ liệu nghiệp vụ thực tế.
+- Dự án là Blazor WebAssembly .NET 8.
+- Chỉ reference `VFMS.Contracts` cho DTO, validator và system message dùng chung.
+- Không reference trực tiếp `VFMS.Domain`, `VFMS.Application`, `VFMS.Infrastructure`.
+- Giữ nguyên các typed `HttpClient` service và REST API hiện có.
+- Giữ nguyên `<AuthorizeView Roles="...">`, route authorization và role-based navigation đang có.
+- Backend vẫn là source of truth cho authorization, business rules, payment confirmation và persistence.
+- Không tự ý tạo API giả, field giả, quyền giả hoặc business rule mới.
+- Không thay đổi luồng nghiệp vụ chỉ để phù hợp giao diện.
+- Các trang mock/preview phải tiếp tục được ghi rõ là mock cho đến khi được nối API thật.
 
-**4. QUY CHUẨN MÀU SẮC TRẠNG THÁI (STATUS BADGES)**
-- **Active / Approved / Completed / Available:** Xanh lá (`#10B981`)
-- **Pending / Processing / Frozen / Waitlisted:** Cam (`#F59E0B`)
-- **Rejected / NoShow / Overdue / Locked:** Đỏ (`#EF4444`)
-- **Cancelled / Inactive / Archived:** Xám trung tính (`#4B5563`)
+### 2. DESIGN DIRECTION MỚI — SAGE ATHLETIC MINIMALISM
 
-**5. YÊU CẦU KỸ THUẬT BLAZOR**
-1. **Cấu trúc Component:** Phân tách rõ Directive (`@page`, `@inject`, `@using VFMS.Contracts...`), phần HTML UI, và khối `@code { }`.
-2. **Quản lý Trạng thái UI:** Xử lý đủ 4 trạng thái: `Loading`, `Empty` (hiển thị `MSG-01`), `Error` (hiển thị `MSG-xx`), và `Success`. Thêm `disabled` khi gửi form.
-3. **Nghiệp vụ Mới Nhất:** Hỗ trợ Giỏ hàng Combo (GYM, PT, YOGA), Check-out thanh toán VietQR động kèm đếm ngược 15 phút, và bám sát ma trận phân quyền `<AuthorizeView Roles="...">` (7 roles).
+Loại bỏ toàn bộ phong cách dark/black-heavy hiện tại.
+
+Toàn bộ Guest, Customer, Member, PT, Staff, Manager và Admin phải dùng chung một brand system:
+
+- Primary Sage: `#5F6F52`
+- Primary Hover: `#4E5D44`
+- Soft Sage: `#E8EDE3`
+- Warm Ivory Background: `#F7F4EC`
+- White Surface: `#FFFFFF`
+- Muted Section: `#EEF1EA`
+- Primary Text: `#383E43`
+- Secondary Text: `#69706A`
+- Border: `#D8DED2`
+
+Không tạo theme đen/đỏ riêng cho Admin.
+Không tạo theme navy/indigo riêng cho Manager.
+Không tạo theme đen/trắng riêng cho Staff/PT.
+
+Khác biệt giữa các role phải đến từ navigation, permission, workflow, icon và dữ liệu — không phải đổi toàn bộ màu thương hiệu.
+
+### 3. HERO HOME — BẮT BUỘC DÙNG ẢNH LOCAL
+
+Home hero phải dùng:
+
+`wwwroot/images/hero-bg.png`
+
+và trong Razor:
+
+`/images/hero-bg.png`
+
+Yêu cầu:
+- `object-cover`
+- full-width / full hero image
+- giữ màu ảnh tự nhiên
+- KHÔNG dùng `grayscale`
+- KHÔNG dùng `contrast-*`
+- KHÔNG dùng `brightness-*`
+- KHÔNG phủ overlay đen nặng
+
+Nếu chữ khó đọc, tạo một layer gradient riêng:
+- Warm Ivory `#F7F4EC` đậm ở bên trái
+- fade mượt sang transparent khoảng 55–60% chiều rộng
+- không chỉnh gradient trực tiếp vào file ảnh
+
+Hero phải sáng, premium, athletic và realistic.
+Không được quay lại kiểu hero đen toàn màn hình.
+
+### 4. PUBLIC WEBSITE
+
+Redesign:
+- `PublicLayout`
+- Home
+- public navigation
+- footer
+- membership section
+- class section
+- equipment/facility sections
+- facility map
+- Profile
+- Login/Register layouts
+
+Hướng thiết kế:
+- nhiều khoảng trắng;
+- ảnh gym thật là visual chủ đạo;
+- Sage chỉ dùng để nhấn;
+- CTA chính màu Sage;
+- CTA phụ viền Sage;
+- section nền Warm Ivory / White luân phiên nhẹ;
+- không nhét tất cả content vào card;
+- không dùng gradient/neon/glassmorphism.
+
+Header:
+- trên hero có thể transparent;
+- khi scroll chuyển thành floating light header màu white/ivory;
+- active nav dùng Soft Sage + Sage text;
+- không dùng floating navbar màu đen.
+
+### 5. DASHBOARD CHO TẤT CẢ ROLE
+
+Redesign `WorkspaceShell`, `ManagerAdminLayout`, `StaffPTLayout` và các dashboard theo light enterprise UI.
+
+Mặc định:
+- App background `#F7F4EC`
+- Sidebar white hoặc Warm Ivory
+- Active sidebar item `#E8EDE3`
+- Active icon/text `#5F6F52`
+- Main cards / tables / forms white
+- Border `#D8DED2`
+- Text `#383E43`
+
+Dashboard phải task-oriented:
+- page header;
+- mô tả ngắn;
+- action chính;
+- KPI chỉ khi thực sự hữu ích;
+- data table/list;
+- filters/search;
+- pagination;
+- empty/loading/error/success states.
+
+Không tạo hàng loạt card chỉ để lấp khoảng trống.
+Không thêm chart nếu workflow không cần.
+Không dùng màu role-specific làm brand theme.
+
+### 6. COMPONENT SYSTEM
+
+Dùng component reusable và nhất quán.
+
+Radius:
+- Button/input/select: `8px`
+- Card/panel/modal/drawer: `10px–12px`
+- Status badge: pill khi phù hợp
+
+Không dùng `rounded-none` toàn hệ thống.
+Không dùng `rounded-2xl/3xl` tràn lan.
+
+Shadow:
+- ưu tiên border;
+- shadow chỉ rất nhẹ khi cần elevation;
+- không dùng black offset shadow;
+- không glow.
+
+Buttons:
+- Primary: `#5F6F52`, text white
+- Hover: `#4E5D44`
+- Secondary: white/transparent + Sage border
+- Destructive: red semantic only
+
+Tables:
+- white;
+- header/hover `#EEF1EA`;
+- divider mỏng;
+- action compact;
+- responsive hợp lý.
+
+Forms:
+- label rõ;
+- input white;
+- border `#D8DED2`;
+- focus Sage;
+- validation message ngay cạnh field;
+- disabled/loading state rõ.
+
+### 7. TYPOGRAPHY
+
+Headings / nav / major CTA:
+- Montserrat
+- 700–800
+- 900 chỉ cho hero headline nếu cần
+
+Body / form / table:
+- Inter
+- 400–500
+
+Không uppercase đoạn văn dài.
+Không dùng typography quá to chỉ để tạo cảm giác “modern AI landing page”.
+
+### 8. STATUS COLORS
+
+Giữ semantic colors:
+- Success / Active / Approved / Paid: `#16A34A`
+- Pending / Processing / Frozen / Waitlisted: `#D97706`
+- Error / Rejected / Locked / Overdue: `#DC2626`
+- Inactive / Cancelled / Archived: `#6B7280`
+
+Luôn đi kèm text/icon; không dựa vào màu duy nhất.
+
+### 9. GIỮ NGUYÊN WORKFLOW VÀ TRẠNG THÁI UI
+
+Mọi trang async phải xử lý:
+- Loading
+- Empty (`MSG-01` nếu phù hợp)
+- Error (`MSG-xx` đúng context)
+- Success
+
+Khi submit:
+- disable action;
+- tránh double-submit;
+- hiển thị feedback rõ.
+
+Giữ nguyên các workflow hiện có và planned workflow trong guideline:
+- authentication;
+- membership plans;
+- cart GYM/PT/YOGA;
+- VietQR checkout;
+- membership freeze;
+- PT scheduling;
+- Yoga booking/waitlist/attendance;
+- locker;
+- FaceID/Kiosk;
+- AI workout;
+- equipment;
+- procurement;
+- supplements;
+- competitions;
+- moderation.
+
+Không tự suy diễn implementation đã tồn tại nếu guideline nói đó mới là planned workflow.
+
+### 10. ANTI-AI UI CHECKLIST
+
+Trước khi hoàn thành bất kỳ page nào, tự kiểm tra và loại bỏ:
+- nền đen phủ toàn page;
+- purple/blue gradient;
+- neon;
+- glow;
+- glassmorphism;
+- gradient button không cần thiết;
+- card bo tròn quá lớn;
+- card ở mọi section;
+- chart trang trí;
+- icon thừa;
+- spacing quá đều theo kiểu template;
+- cùng một dashboard layout copy-paste cho mọi role;
+- fake data không được đánh dấu mock;
+- màu sắc không thuộc design tokens.
+
+Mục tiêu cuối cùng:
+**VFMS phải nhìn như một sản phẩm quản lý phòng gym thật: sáng, mạnh mẽ, premium, thực dụng, đồng bộ, dễ đọc và có chủ đích — không giống giao diện được AI generate hàng loạt.**
+
+### 11. CÁCH THỰC HIỆN
+
+Khi sửa code:
+1. Đọc component/layout hiện tại trước khi thay.
+2. Giữ logic, event handler, binding, API call, validation và authorization.
+3. Ưu tiên tạo/reuse design tokens và shared components trước.
+4. Sau đó restyle theo thứ tự:
+   - `PublicLayout` + Home hero
+   - Auth
+   - WorkspaceShell + role layouts
+   - shared components
+   - dashboards
+   - CRUD/management screens
+   - profile/public supporting pages
+5. Không xoá chức năng đang hoạt động chỉ vì chưa phù hợp visual.
+6. Sau mỗi nhóm thay đổi, đảm bảo project vẫn build được.
 
 **[END PROMPT FOR AI AGENT]**
-
-
-### Module 3 simplification decision of 7 November 2026
-
-- Reuse `TrainerApplication` with `ApplicationType` = `Recruitment` or `ProfileUpdate`. Each accepted submission/resubmission is a new row; retain prior attempts. Do not add `TrainerDocument`, `TrainerCredentialChange`, `TrainerRecruitmentRestriction`, `TrainerSetupToken` or `TrainerEmail` tables.
-- Apply the existing 30-day email/CCCD cooldown to `Recruitment` only. `ProfileUpdate` allows one pending application per PT, including concurrent requests. This is an explicit implementation decision; confirmation in the policy document remains outstanding.
-- PT submits the same full DTO to `POST /api/trainers/applications` with `ApplicationType: ProfileUpdate`. Keep published `TrainerProfile` unchanged until approval. Manager uses `POST /api/trainers/applications/{id}/review`, `Action: Approve` or `Reject` for updates; `Interview`/`Hire` belong to recruitment (which also supports rejection). Remove the separate credential-change endpoints.
-- ProfileUpdate email must match the current account email, and Citizen ID must match the original hired application. Matching the original application email is not required: a verified existing account linked by phone may legitimately have a different email.
-- Recruitment restriction management updates existing application rows matching the exact email AND Citizen ID pair, with a mandatory Manager reason. No exact pair match returns 404. Historical rows sharing only email or Citizen ID do not prevent management of the matching pair. Submission/hiring restriction checks remain email OR Citizen ID. Unblocking does not waive the Recruitment cooldown or unlock an account.
-- Certificate metadata JSON on application/profile is canonical. Legacy URL fields remain for compatibility. New uploads go only to private disk at `TrainerFiles:Root` (`TrainerFiles__Root` environment variable), default `AppContext.BaseDirectory/App_Data/trainer-files`. Preserve old binary content in `LegacyContentBase64` JSON fallback during migration.
-- Use `/api/trainers/applications/{id}/documents/{fileId}` for private application files, `/api/trainers/{profileId}/documents/{fileId}` for public approved certificates, and `/api/trainers/{profileId}/avatar`. Route handlers enforce ownership/publication access; never expose raw disk paths. Document `Id` is a string and `DownloadUrl` is supplied; profile `AvatarUrl` replaces `AvatarFileId`.
-- Nullable `PasswordSetupTokenHash` and `PasswordSetupExpiresAt` belong to `ApplicationUser`. Login/logout contracts remain unchanged. `EmailQueueJson` on each application holds encrypted email body and retry information. Existing `AuditLog` stores action/record IDs and before/after status only, with no PII content or secrets.

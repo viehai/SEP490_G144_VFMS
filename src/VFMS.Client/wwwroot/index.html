@@ -36,7 +36,7 @@
     <div id="vfms-splash" class="vfms-splash" role="status" aria-live="polite">
         <div class="splash-content">
             <div class="splash-logo-wrapper">
-                <img class="splash-logo" src="images/victor-fitness.png" alt="VICTOR FITNESS" />
+                <img class="splash-logo" src="images/victor-fitness-dark.png" alt="VICTOR FITNESS" />
                 <div class="splash-shine" aria-hidden="true"></div>
             </div>
             <div class="splash-loader" aria-hidden="true">
@@ -55,11 +55,25 @@
             theme: {
                 extend: {
                     colors: {
-                        'vfms-bg': '#FFFFFF', 'vfms-card': '#F7F7F7', 'vfms-border': '#CFCFCF',
-                        'vfms-text': '#252525', 'vfms-muted': '#7D7D7D', 'vfms-accent': '#0A0A0A',
-                        'vfms-green': '#10B981', 'vfms-amber': '#F59E0B', 'vfms-red': '#EF4444',
+                        /* Sage Athletic Minimalism design tokens */
+                        'vfms-primary':       '#5F6F52',
+                        'vfms-primary-hover': '#4E5D44',
+                        'vfms-primary-soft':  '#E8EDE3',
+                        'vfms-bg':            '#F7F4EC',
+                        'vfms-surface':       '#FFFFFF',
+                        'vfms-muted':         '#EEF1EA',
+                        'vfms-text':          '#383E43',
+                        'vfms-text-secondary':'#69706A',
+                        'vfms-text-subtle':   '#8A9089',
+                        'vfms-border':        '#D8DED2',
+                        'vfms-dark-olive':    '#3F493A',
+                        /* Semantic status */
+                        'vfms-success': '#16A34A',
+                        'vfms-warning': '#D97706',
+                        'vfms-error':   '#DC2626',
+                        'vfms-neutral': '#6B7280',
                     },
-                    fontFamily: { heading: ['Montserrat', 'sans-serif'], sans: ['Inter', 'sans-serif'] }
+                    fontFamily: { heading: ['Montserrat', 'sans-serif'], body: ['Inter', 'sans-serif'], sans: ['Inter', 'sans-serif'] }
                 }
             }
         };

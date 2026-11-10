@@ -59,6 +59,8 @@ builder.Services.AddRateLimiter(options =>
             QueueLimit = 0
         }));
 });
+builder.Services.AddMembershipPlanModule();
+builder.Services.AddMembershipPurchaseModule(builder.Configuration);
 
 var mapsterConfig = new TypeAdapterConfig();
 mapsterConfig.Scan(typeof(UserAdministrationMapping).Assembly);
