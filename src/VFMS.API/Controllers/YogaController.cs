@@ -202,3 +202,35 @@ public sealed class YogaBookingsController : ControllerBase
             ? this.ToActionResult(await _service.CancelAsync(userId, id, request ?? new CancelYogaBookingRequest(), cancellationToken))
             : Unauthorized();
 }
+
+/// <summary>UC-42 Take Yoga Attendance: the session's instructor or any Staff.</summary>
+[ApiController]
+[Route("api/yoga/sessions/{sessionId:int}/attendance")]
+[Authorize(Roles = YogaClassService.InstructorRole + ",Staff")]
+[Produces("application/json")]
+public sealed class YogaAttendanceController : ControllerBase
+{
+    private readonly IYogaAttendanceService _service;
+
+    public YogaAttendanceController(IYogaAttendanceService service) => _service = service;
+
+    [HttpGet]
+    public async Task<IActionResult> GetRoster(int sessionId, CancellationToken cancellationToken) =>
+        User.GetUserId() is { } userId
+            ? this.ToActionResult(await _service.GetRosterAsync(sessionId, userId, User.IsInRole("Staff"), cancellationToken))
+            : Unauthorized();
+
+    /// <summary>A member's QR code scanned at the session marks them Attended (GBR-88).</summary>
+    [HttpPost("qr")]
+    public async Task<IActionResult> ScanQr(int sessionId, YogaAttendanceQrRequest request, CancellationToken cancellationToken) =>
+        User.GetUserId() is { } userId
+            ? this.ToActionResult(await _service.ScanQrAsync(sessionId, userId, User.IsInRole("Staff"), request, cancellationToken))
+            : Unauthorized();
+
+    /// <summary>Submit Roster: saves the marks and closes the session for editing.</summary>
+    [HttpPost]
+    public async Task<IActionResult> Submit(int sessionId, SubmitYogaAttendanceRequest request, CancellationToken cancellationToken) =>
+        User.GetUserId() is { } userId
+            ? this.ToActionResult(await _service.SubmitAsync(sessionId, userId, User.IsInRole("Staff"), request, cancellationToken))
+            : Unauthorized();
+}

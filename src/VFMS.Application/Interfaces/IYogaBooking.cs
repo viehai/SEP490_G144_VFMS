@@ -17,6 +17,10 @@ public interface IYogaBookingRepository : IAuditedRepository
     /// <summary>Waiting members of a class in queue order (tracked).</summary>
     Task<IReadOnlyList<YogaWaitlist>> GetWaitlistAsync(int classId, CancellationToken cancellationToken = default);
     Task<YogaBooking?> GetBookingAsync(int bookingId, CancellationToken cancellationToken = default);
+    /// <summary>Session with its class, the class's bookings (member) and the session's attendances, tracked.</summary>
+    Task<YogaClassSchedule?> GetSessionAsync(int sessionId, CancellationToken cancellationToken = default);
+    /// <summary>Exclusive lock on one session's attendance until the current transaction ends.</summary>
+    Task LockSessionAsync(int sessionId, CancellationToken cancellationToken = default);
     /// <summary>All the member's bookings with class, sessions (studio) and attendances; no tracking.</summary>
     Task<IReadOnlyList<YogaBooking>> GetMemberBookingsAsync(string userId, CancellationToken cancellationToken = default);
     /// <summary>The member's Waiting entries with session and class; no tracking.</summary>
@@ -33,4 +37,15 @@ public interface IYogaBookingService
     /// <summary>UC-39 Cancel Yoga Booking.</summary>
     Task<Result<YogaBookingResponse>> CancelAsync(
         string memberUserId, int bookingId, CancelYogaBookingRequest request, CancellationToken cancellationToken = default);
+}
+
+/// <summary>UC-42 Take Yoga Attendance (session instructor or Staff).</summary>
+public interface IYogaAttendanceService
+{
+    Task<Result<YogaAttendanceRosterResponse>> GetRosterAsync(
+        int sessionId, string userId, bool isStaff, CancellationToken cancellationToken = default);
+    Task<Result<YogaAttendanceRosterResponse>> ScanQrAsync(
+        int sessionId, string userId, bool isStaff, YogaAttendanceQrRequest request, CancellationToken cancellationToken = default);
+    Task<Result<YogaAttendanceRosterResponse>> SubmitAsync(
+        int sessionId, string userId, bool isStaff, SubmitYogaAttendanceRequest request, CancellationToken cancellationToken = default);
 }

@@ -231,6 +231,61 @@ public sealed class YogaBookingTests
         Assert.Empty((await service.GetMyBookingsAsync("m2")).Data!.Upcoming);
     }
 
+    // ── UC-42 attendance ─────────────────────────────────────────
+
+    [Fact]
+    public async Task InstructorTakesAttendanceQrCountsOnlyForBookedMembersAndLateSubmitIsFlagged()   // GBR-86, GBR-87, GBR-88
+    {
+        var (repo, _, yogaClass) = Setup();
+        yogaClass.InstructorUserId = "yi";
+        yogaClass.Schedules.Single().YogaClass = yogaClass;   // session 11, in 3 days
+        var session = new YogaClassSchedule
+        {
+            Id = 20, YogaClass = yogaClass, YogaClassId = 1, ScheduledDate = Today, StartTime = new(9, 0), EndTime = new(10, 0)
+        };   // started 60 minutes ago
+        yogaClass.Schedules.Add(session);
+        YogaBooking Book(int id, string member, DateTime bookedAt, DateTime? cancelledAt = null) => new()
+        {
+            Id = id, YogaClassId = 1, MemberUserId = member, MatNumber = id, BookedAt = bookedAt, CancelledAt = cancelledAt,
+            BookingStatus = cancelledAt is null ? YogaBookingStatus.Confirmed : YogaBookingStatus.Cancelled,
+            Member = new ApplicationUser { UserId = member, FullName = member }
+        };
+        yogaClass.Bookings.Add(Book(1, "m1", Now.AddDays(-5)));
+        yogaClass.Bookings.Add(Book(2, "m2", Now.AddDays(-5)));
+        yogaClass.Bookings.Add(Book(3, "m3", Now));                                  // enrolled after the session started
+        yogaClass.Bookings.Add(Book(4, "m4", Now.AddDays(-5), Now.AddHours(-3)));   // cancelled before it
+        var service = new YogaAttendanceService(repo, new QrFake { ["t-m2"] = "m2", ["t-m3"] = "m3" }, new FixedClock(NowOffset));
+
+        Assert.Equal(404, (await service.GetRosterAsync(20, "another-instructor", false)).StatusCode);
+        Assert.Equal(["m1", "m2"], (await service.GetRosterAsync(20, "yi", false)).Data!.Roster.Select(r => r.MemberUserId));
+
+        var notBooked = await service.ScanQrAsync(20, "yi", false, new YogaAttendanceQrRequest("t-m3"));
+        Assert.Equal((403, "ACCESS_DENIED"), (notBooked.StatusCode, notBooked.ErrorCode));   // MSG-36
+        var scanned = await service.ScanQrAsync(20, "yi", false, new YogaAttendanceQrRequest("t-m2"));
+        Assert.Equal(new string?[] { null, "Attended" }, scanned.Data!.Roster.Select(r => r.Mark));
+
+        Assert.Equal("ROSTER_INCOMPLETE", (await service.SubmitAsync(20, "yi", false, new SubmitYogaAttendanceRequest([]))).ErrorCode);
+        Assert.Equal("NOT_ON_ROSTER", (await service.SubmitAsync(20, "yi", false,
+            new SubmitYogaAttendanceRequest([new(1, false), new(3, true)]))).ErrorCode);
+        var submitted = await service.SubmitAsync(20, "staff", true, new SubmitYogaAttendanceRequest([new(1, false)]));
+
+        Assert.True(submitted.IsSuccess, submitted.ErrorMessage);
+        Assert.True(submitted.Data!.SubmittedLate);   // 60 minutes after start
+        Assert.Equal(new string?[] { "No-show", "Attended" }, submitted.Data.Roster.Select(r => r.Mark));
+        Assert.All(session.Attendances, a => Assert.Equal("yi", a.InstructorUserId));   // the session's instructor, not the Staff user
+        Assert.Equal(YogaBookingStatus.Confirmed, yogaClass.Bookings.First().BookingStatus);
+        Assert.Equal("ATTENDANCE_CLOSED", (await service.ScanQrAsync(20, "yi", false, new YogaAttendanceQrRequest("t-m2"))).ErrorCode);
+        Assert.Equal("SESSION_NOT_STARTED", (await service.SubmitAsync(11, "yi", false, new SubmitYogaAttendanceRequest([]))).ErrorCode);
+    }
+
+    private sealed class QrFake : Dictionary<string, string>, IMemberQrService
+    {
+        public Task<VFMS.Contracts.Common.Result<VFMS.Contracts.CheckIn.MemberQrResponse>> IssueAsync(
+            string userId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<string?> RedeemAsync(string token, CancellationToken cancellationToken = default) =>
+            Task.FromResult(TryGetValue(token, out var user) ? user : null);
+    }
+
     private sealed class FixedClock(DateTimeOffset now) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => now;
@@ -265,6 +320,9 @@ public sealed class YogaBookingTests
             Task.FromResult<IReadOnlyList<DateTime>>(NoShows.Where(t => t >= sinceUtc).ToList());
         public List<YogaAttendance> Attendances { get; } = [];
         public List<Notification> Notifications { get; } = [];
+        public Task<YogaClassSchedule?> GetSessionAsync(int sessionId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(Class?.Schedules.FirstOrDefault(s => s.Id == sessionId));
+        public Task LockSessionAsync(int sessionId, CancellationToken cancellationToken = default) { LockCount++; return Task.CompletedTask; }
         public Task<IReadOnlyList<YogaBooking>> GetMemberBookingsAsync(string userId, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<YogaBooking>>(Class!.Bookings.Where(b => b.MemberUserId == userId).ToList());
         public Task<IReadOnlyList<YogaWaitlist>> GetMemberWaitlistAsync(string userId, CancellationToken cancellationToken = default) =>

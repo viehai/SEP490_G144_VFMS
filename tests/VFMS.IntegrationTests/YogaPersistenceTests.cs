@@ -98,6 +98,48 @@ public sealed class YogaPersistenceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task InstructorTakesAttendanceByQrAndRosterThenSessionCloses()   // SCRUM-110
+    {
+        await using var db = new SqliteTestContext(_options);
+        var gym = await db.Gyms.FirstAsync();
+        foreach (var id in new[] { "a1", "a2" })
+            db.AddRange(new ApplicationUser { UserId = id, Gym = gym, Email = id + "@example.com", FullName = id, PasswordHash = "x", AccountStatus = AccountStatus.Active },
+                TestSeed.Membership(id, ComponentType.YOGA));
+        await db.SaveChangesAsync();
+        var classId = await CreatePublishedClassAsync(db, max: 2);
+        var bookings = new YogaBookingService(new YogaBookingRepository(db), TimeProvider.System);
+        var noShow = (await bookings.BookAsync("a1", new YogaBookingRequest(classId))).Data!.BookingId!.Value;
+        Assert.True((await bookings.BookAsync("a2", new YogaBookingRequest(classId))).IsSuccess);
+        var session = await db.YogaClassSchedules.AsNoTracking().SingleAsync();
+        var start = new DateTimeOffset(session.ScheduledDate.ToDateTime(session.StartTime), TimeSpan.FromHours(7));
+        var checkIns = new CheckInRepository(db);
+        var token = (await new MemberQrService(checkIns, TimeProvider.System).IssueAsync("a2")).Data!.Token;
+        var attendance = new YogaAttendanceService(
+            new YogaBookingRepository(db), new MemberQrService(checkIns, TimeProvider.System), new At(start.AddMinutes(40)));
+
+        Assert.Equal(404, (await attendance.GetRosterAsync(session.Id, "someone-else", false)).StatusCode);
+        var scan = await attendance.ScanQrAsync(session.Id, "yi-1", false, new YogaAttendanceQrRequest(token));
+        Assert.True(scan.IsSuccess, scan.ErrorMessage);
+        var submit = await attendance.SubmitAsync(session.Id, "yi-1", false,
+            new SubmitYogaAttendanceRequest([new YogaAttendanceMark(noShow, false)]));
+        Assert.True(submit.IsSuccess, submit.ErrorMessage);
+
+        var rows = await db.YogaAttendances.AsNoTracking().OrderBy(a => a.MemberUserId).ToListAsync();
+        Assert.Equal([("a1", YogaAttendanceStatus.NoShow), ("a2", YogaAttendanceStatus.Present)],
+            rows.Select(r => (r.MemberUserId, r.AttendanceStatus)));
+        Assert.False(await db.QRCodes.AnyAsync(q => q.IsActive));   // the scanned code is used up
+        var listed = (await new YogaClassService(new YogaRepository(db), TimeProvider.System).GetClassSessionsAsync(classId)).Data!.Single();
+        Assert.True(listed.AttendanceSubmittedLate);   // the Manager sees the late roster (GBR-86)
+        Assert.Equal("ATTENDANCE_CLOSED", (await attendance.SubmitAsync(session.Id, "yi-1", false,
+            new SubmitYogaAttendanceRequest([new YogaAttendanceMark(noShow, true)]))).ErrorCode);
+    }
+
+    private sealed class At(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
+    }
+
+    [Fact]
     public async Task ManagerCanCreateAndPublishClassForInstructorWithoutTrainerProfile()   // SCRUM-103/104
     {
         await using var db = new SqliteTestContext(_options);

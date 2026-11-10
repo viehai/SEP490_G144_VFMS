@@ -3184,6 +3184,9 @@ namespace VFMS.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<DateTime?>("AttendanceSubmittedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime?>("CancelledAt")
                         .HasColumnType("datetime2");
 

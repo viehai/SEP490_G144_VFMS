@@ -91,3 +91,18 @@ public sealed class YogaBookingRequestValidator : AbstractValidator<YogaBookingR
         RuleFor(x => x.MatNumber).InclusiveBetween(1, 500).When(x => x.MatNumber is not null);
     }
 }
+
+public sealed class SubmitYogaAttendanceRequestValidator : AbstractValidator<SubmitYogaAttendanceRequest>
+{
+    public SubmitYogaAttendanceRequestValidator()
+    {
+        RuleFor(x => x.Marks).NotNull()
+            .Must(m => m.Select(x => x.BookingId).Distinct().Count() == m.Count).WithMessage("Each booking can be marked only once.");
+        RuleForEach(x => x.Marks).ChildRules(m => m.RuleFor(x => x.BookingId).GreaterThan(0));
+    }
+}
+
+public sealed class YogaAttendanceQrRequestValidator : AbstractValidator<YogaAttendanceQrRequest>
+{
+    public YogaAttendanceQrRequestValidator() => RuleFor(x => x.QrToken).NotEmpty().MaximumLength(128);
+}

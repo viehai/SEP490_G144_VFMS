@@ -84,7 +84,10 @@ public sealed record YogaSessionResponse(
     string ClassStatus,
     int MaxParticipants,
     int ConfirmedBookings,
-    int FreeSeats
+    int FreeSeats,
+    DateTime? AttendanceSubmittedAt = null,
+    /// <summary>GBR-86: the roster was submitted more than 30 minutes after the session started.</summary>
+    bool AttendanceSubmittedLate = false
 );
 
 /// <summary>Filter for timetable views. Dates are gym-local; defaults to the current week.</summary>
@@ -132,3 +135,20 @@ public sealed record MyYogaWaitlistResponse(int YogaClassId, string ClassName, i
 
 public sealed record MyYogaBookingsResponse(
     IReadOnlyList<MyYogaBookingResponse> Upcoming, IReadOnlyList<MyYogaPastSessionResponse> Past, IReadOnlyList<MyYogaWaitlistResponse> Waitlist);
+
+// ── Attendance (UC-42 Take Yoga Attendance) ──
+
+/// <summary>Mark is Attended, No-show or null (not marked yet).</summary>
+public sealed record YogaAttendanceEntry(int BookingId, string MemberUserId, string MemberName, int? MatNumber, string? Mark);
+
+public sealed record YogaAttendanceRosterResponse(
+    int SessionId, string ClassName, DateOnly Date, TimeOnly StartTime, DateTime? SubmittedAt, bool SubmittedLate,
+    IReadOnlyList<YogaAttendanceEntry> Roster, string? Message = null);
+
+public sealed record YogaAttendanceMark(int BookingId, bool Attended);
+
+/// <summary>Submit Roster: every booked member must be marked here or earlier by QR scan (GBR-87).</summary>
+public sealed record SubmitYogaAttendanceRequest(IReadOnlyList<YogaAttendanceMark> Marks);
+
+/// <summary>A member's QR code scanned at the session (GBR-88).</summary>
+public sealed record YogaAttendanceQrRequest(string QrToken);

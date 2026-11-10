@@ -21,6 +21,8 @@ public class YogaClassSchedule : BaseEntity
     /// <summary>References the original schedule if this is a reschedule (GBR-77).</summary>
     public int? RescheduledFromId { get; set; }
     public DateTime? CancelledAt { get; set; }
+    /// <summary>When the attendance roster was submitted; the session is then closed for editing (UC-42, GBR-86).</summary>
+    public DateTime? AttendanceSubmittedAt { get; set; }
 
     // ── Navigation Properties ──────────────────────────────────
     public YogaClass YogaClass { get; set; } = null!;
