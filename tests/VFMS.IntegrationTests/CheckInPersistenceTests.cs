@@ -66,6 +66,24 @@ public sealed class CheckInPersistenceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task VisitOpenLongerThanSixHoursIsAutoClosedByTheNextCheckIn()   // JOB-04 shortcut vs the one-open-visit index
+    {
+        await using var db = new SqliteTestContext(_options);
+        db.CheckIns.Add(new CheckIn
+        {
+            MemberUserId = "m1", CheckinTime = DateTime.UtcNow.AddHours(-7), CheckinMethod = CheckInMethod.QRCode, Status = CheckInStatus.Active
+        });
+        await db.SaveChangesAsync();
+        var (service, _) = Services(db);
+
+        var result = await service.ManualCheckInAsync("m1", "staff");
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+        var visits = await db.CheckIns.AsNoTracking().OrderBy(c => c.Id).Select(c => c.Status).ToListAsync();
+        Assert.Equal([CheckInStatus.AutoClosed, CheckInStatus.Active], visits);
+    }
+
+    [Fact]
     public async Task FrontDeskFindsMemberByOrderNumberAndChecksInManually()   // SCRUM-46
     {
         await using var db = new SqliteTestContext(_options);
