@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using VFMS.Application.Interfaces;
 using VFMS.Contracts.CheckIn;
@@ -32,7 +33,7 @@ internal static class GymAccessMessages
     public const string PassbackCode = "ANTI_PASSBACK";
 
     public static string Welcome(string name, DateOnly validThrough) =>
-        $"Welcome back, {name}! Access granted. Valid through {validThrough:dd/MM/yyyy}.";   // MSG-35
+        string.Create(CultureInfo.InvariantCulture, $"Welcome back, {name}! Access granted. Valid through {validThrough:dd/MM/yyyy}.");   // MSG-35
 
     public static string Passback(int minutes) =>
         $"Access denied: Entry recorded recently. Anti-passback cooldown active for {minutes} minutes.";   // MSG-37

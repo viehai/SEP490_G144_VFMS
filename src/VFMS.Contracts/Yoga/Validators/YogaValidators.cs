@@ -82,3 +82,12 @@ public sealed class YogaSessionRequestValidator : AbstractValidator<YogaSessionR
             .WithMessage("A session must last between 45 and 90 minutes.");
     }
 }
+
+public sealed class YogaBookingRequestValidator : AbstractValidator<YogaBookingRequest>
+{
+    public YogaBookingRequestValidator()
+    {
+        RuleFor(x => x.YogaClassId).GreaterThan(0);
+        RuleFor(x => x.MatNumber).InclusiveBetween(1, 500).When(x => x.MatNumber is not null);
+    }
+}

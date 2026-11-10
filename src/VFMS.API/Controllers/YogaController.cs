@@ -165,3 +165,26 @@ public sealed class YogaInstructorController : ControllerBase
             ? this.ToActionResult(await _service.GetAssignedSessionsAsync(userId, query with { InstructorUserId = null }, cancellationToken))
             : Unauthorized();
 }
+
+/// <summary>UC-38 Book Yoga Class &amp; Reserve Mat (Member).</summary>
+[ApiController]
+[Route("api/yoga/bookings")]
+[Authorize(Roles = "Member")]
+[Produces("application/json")]
+public sealed class YogaBookingsController : ControllerBase
+{
+    private readonly IYogaBookingService _service;
+
+    public YogaBookingsController(IYogaBookingService service) => _service = service;
+
+    /// <summary>Studio floorplan: which mats are free.</summary>
+    [HttpGet("classes/{classId:int}/mats")]
+    public async Task<IActionResult> GetMats(int classId, CancellationToken cancellationToken) =>
+        this.ToActionResult(await _service.GetMatMapAsync(classId, cancellationToken));
+
+    [HttpPost]
+    public async Task<IActionResult> Book([FromBody] YogaBookingRequest request, CancellationToken cancellationToken) =>
+        User.GetUserId() is { } userId
+            ? this.ToActionResult(await _service.BookAsync(userId, request, cancellationToken))
+            : Unauthorized();
+}

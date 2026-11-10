@@ -1,0 +1,26 @@
+using VFMS.Contracts.Common;
+using VFMS.Contracts.Yoga;
+using VFMS.Domain.Entities;
+
+namespace VFMS.Application.Interfaces;
+
+public interface IYogaBookingRepository : IAuditedRepository
+{
+    /// <summary>Class with sessions (studio) and bookings loaded, tracked.</summary>
+    Task<YogaClass?> GetClassAsync(int classId, CancellationToken cancellationToken = default);
+    /// <summary>Exclusive lock on one class's seats until the current transaction ends (last seat, mats, duplicates).</summary>
+    Task LockClassAsync(int classId, CancellationToken cancellationToken = default);
+    /// <summary>The member's memberships with their package component (no tracking).</summary>
+    Task<IReadOnlyList<MemberMembership>> GetMembershipsAsync(string userId, CancellationToken cancellationToken = default);
+    /// <summary>When the member's no-shows (incl. late cancellations) were recorded, since the given time (GBR-84).</summary>
+    Task<IReadOnlyList<DateTime>> GetNoShowTimesAsync(string userId, DateTime sinceUtc, CancellationToken cancellationToken = default);
+    /// <summary>Waiting members of a class in queue order (tracked).</summary>
+    Task<IReadOnlyList<YogaWaitlist>> GetWaitlistAsync(int classId, CancellationToken cancellationToken = default);
+}
+
+/// <summary>UC-38 Book Yoga Class &amp; Reserve Mat.</summary>
+public interface IYogaBookingService
+{
+    Task<Result<YogaMatMapResponse>> GetMatMapAsync(int classId, CancellationToken cancellationToken = default);
+    Task<Result<YogaBookingResponse>> BookAsync(string memberUserId, YogaBookingRequest request, CancellationToken cancellationToken = default);
+}

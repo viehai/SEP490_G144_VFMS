@@ -103,3 +103,15 @@ public sealed record YogaInstructorResponse(string UserId, string FullName);
 public sealed record YogaRosterEntry(int BookingId, string MemberUserId, string MemberName, int? MatNumber, string BookingStatus);
 
 public sealed record YogaAssignedSessionResponse(YogaSessionResponse Session, IReadOnlyList<YogaRosterEntry> Roster);
+
+// ── Member bookings (UC-38 Book, UC-39 Cancel, UC-40 My Bookings) ──
+
+/// <summary>Book a class (booking is per class, ERD). MatNumber 1..MaxParticipants; null takes the lowest free mat.</summary>
+public sealed record YogaBookingRequest(int YogaClassId, int? MatNumber = null);
+
+/// <summary>Status is Confirmed, or Waitlisted when the class was full (GBR-80).</summary>
+public sealed record YogaBookingResponse(
+    int? BookingId, int YogaClassId, string ClassName, string Status, int? MatNumber, int? WaitlistPosition, string Message);
+
+/// <summary>Studio floorplan for picking a mat: mats 1..MatCount, TakenMats already reserved.</summary>
+public sealed record YogaMatMapResponse(int YogaClassId, int MatCount, IReadOnlyList<int> TakenMats);
