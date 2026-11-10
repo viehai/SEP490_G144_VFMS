@@ -1,0 +1,230 @@
+@page "/competitions"
+@inject CompetitionApiClient Api
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Cuộc thi | Victor Fitness</PageTitle>
+
+<div class="workspace-page space-y-8 font-['Inter',sans-serif] text-[#252525]">
+    <header class="flex flex-col justify-between gap-5 border-b-2 border-black pb-7 md:flex-row md:items-end">
+        <div>
+            <p class="workspace-heading mb-3 text-[10px] font-bold tracking-[.18em] text-[#71717A]">VFMS / MODULE 06 / COMPETITIONS</p>
+            <h1 class="workspace-heading text-3xl font-extrabold uppercase tracking-tight sm:text-4xl">Cuộc thi<span class="text-[#6366F1]">.</span></h1>
+            <p class="mt-3 max-w-2xl text-sm leading-6 text-[#545454]">UC-56 Xem cuộc thi · UC-57 Đăng ký thi · UC-58 Lịch sử tham gia.</p>
+        </div>
+        <button type="button" @onclick="ReloadAsync" class="workspace-heading inline-flex w-fit items-center gap-2 border border-black bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider rounded-none">Làm mới ↻</button>
+    </header>
+
+    @if (_error is not null)
+    {
+        <div class="border-2 border-[#EF4444] bg-red-50 p-4 text-sm text-red-800" role="alert">@_error</div>
+    }
+
+    <section class="grid gap-3 lg:grid-cols-3" aria-label="Bộ lọc">
+        <div class="border-2 border-black bg-white p-5 rounded-none">
+            <label for="comp-search" class="workspace-heading mb-2 block text-[10px] font-bold uppercase tracking-wider">TÌM KIẾM</label>
+            <input id="comp-search" class="w-full border border-[#CFCFCF] px-3 py-2 text-sm" @bind="_search" @bind:event="oninput" placeholder="Tên cuộc thi" />
+        </div>
+        <div class="border-2 border-black bg-white p-5 rounded-none">
+            <label for="comp-status" class="workspace-heading mb-2 block text-[10px] font-bold uppercase tracking-wider">TRẠNG THÁI</label>
+            <select id="comp-status" class="w-full border border-[#CFCFCF] px-3 py-2 text-sm" @bind="_status">
+                <option value="">Tất cả</option>
+                <option value="Draft">Draft</option>
+                <option value="Published">Published</option>
+                <option value="Ongoing">Ongoing</option>
+                <option value="Completed">Completed</option>
+                <option value="Cancelled">Cancelled</option>
+            </select>
+        </div>
+        <div class="flex items-end">
+            <button type="button" @onclick="ApplyFilterAsync" class="workspace-heading w-full border-2 border-black bg-black px-4 py-3 text-xs font-bold uppercase tracking-wider text-white transition-colors hover:bg-[#6366F1] rounded-none">Áp dụng bộ lọc ↗</button>
+        </div>
+    </section>
+
+    <section class="overflow-hidden border-2 border-black bg-white rounded-none" aria-labelledby="comp-list-title" aria-live="polite">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b-2 border-black px-5 py-5 sm:px-6">
+            <h2 id="comp-list-title" class="workspace-heading text-sm font-extrabold uppercase tracking-wider">Danh sách cuộc thi</h2>
+            <span class="text-xs text-[#71717A]">@_total mục</span>
+        </div>
+        @if (_loading)
+        {
+            <p class="px-6 py-10 text-center text-sm text-[#71717A]">Đang tải dữ liệu...</p>
+        }
+        else if (_items.Count == 0)
+        {
+            <p class="px-6 py-10 text-center text-sm text-[#71717A]">Chưa có cuộc thi nào.</p>
+        }
+        else
+        {
+            <div class="overflow-x-auto">
+                <table class="workspace-table w-full min-w-[900px] text-left text-sm">
+                    <caption class="sr-only">Danh sách cuộc thi</caption>
+                    <thead class="workspace-heading bg-[#F7F7F7] text-[10px] uppercase tracking-wider">
+                        <tr><th class="px-6 py-4">Cuộc thi</th><th class="px-6 py-4">Đăng ký</th><th class="px-6 py-4">Thi</th><th class="px-6 py-4">Số người</th><th class="px-6 py-4">Trạng thái</th><th class="px-6 py-4">Thao tác</th></tr>
+                    </thead>
+                    <tbody class="divide-y divide-[#CFCFCF]">
+                        @foreach (var item in _items)
+                        {
+                            <tr class="hover:bg-[#F7F7F7]">
+                                <th scope="row" class="px-6 py-5">
+                                    <span class="block font-semibold">@item.Name</span>
+                                    @if (!string.IsNullOrWhiteSpace(item.Description))
+                                    {
+                                        <span class="mt-1 block max-w-md text-xs text-[#71717A]">@item.Description</span>
+                                    }
+                                </th>
+                                <td class="px-6 py-5 text-xs text-[#545454]">@FormatRange(item.RegistrationStart, item.RegistrationEnd)</td>
+                                <td class="px-6 py-5 text-xs text-[#545454]">@FormatRange(item.StartDate, item.EndDate)</td>
+                                <td class="workspace-heading px-6 py-5 text-xs font-bold">@item.ParticipantCount@(item.MaxParticipants is { } max ? $" / {max}" : "")</td>
+                                <td class="px-6 py-5"><span class="@StatusClass(item.Status)">@item.Status</span></td>
+                                <td class="px-6 py-5">
+                                    <div class="flex flex-wrap gap-2">
+                                        <button type="button" @onclick='() => OpenDetailAsync(item.Id)' class="workspace-heading border border-black px-2 py-1 text-[10px] font-bold uppercase rounded-none">Chi tiết</button>
+                                        @if (CanRegister(item))
+                                        {
+                                            <button type="button" @onclick='() => RegisterAsync(item.Id)' class="workspace-heading border border-[#6366F1] bg-[#6366F1] px-2 py-1 text-[10px] font-bold uppercase text-white rounded-none">Đăng ký</button>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+
+    @if (_isMember)
+    {
+        <section class="overflow-hidden border-2 border-black bg-white rounded-none" aria-labelledby="comp-history-title">
+            <div class="flex flex-wrap items-center justify-between gap-3 border-b-2 border-black px-5 py-5 sm:px-6">
+                <h2 id="comp-history-title" class="workspace-heading text-sm font-extrabold uppercase tracking-wider">Lịch sử tham gia của tôi (UC-58)</h2>
+                <button type="button" @onclick="ReloadHistoryAsync" class="text-xs text-[#6366F1]">Làm mới ↻</button>
+            </div>
+            @if (_history.Count == 0)
+            {
+                <p class="px-6 py-8 text-center text-sm text-[#71717A]">Bạn chưa đăng ký cuộc thi nào.</p>
+            }
+            else
+            {
+                <div class="overflow-x-auto">
+                    <table class="workspace-table w-full min-w-[700px] text-left text-sm">
+                        <thead class="workspace-heading bg-[#F7F7F7] text-[10px] uppercase tracking-wider">
+                            <tr><th class="px-6 py-4">Cuộc thi</th><th class="px-6 py-4">Ngày đăng ký</th><th class="px-6 py-4">Điểm</th><th class="px-6 py-4">Hạng</th><th class="px-6 py-4">Trạng thái</th></tr>
+                        </thead>
+                        <tbody class="divide-y divide-[#CFCFCF]">
+                            @foreach (var row in _history)
+                            {
+                                <tr class="hover:bg-[#F7F7F7]">
+                                    <th scope="row" class="px-6 py-5 font-medium">@row.CompetitionName</th>
+                                    <td class="px-6 py-5 text-xs text-[#545454]">@row.RegisteredAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                                    <td class="workspace-heading px-6 py-5 text-xs font-bold">@(row.Score?.ToString("0.##") ?? "-")</td>
+                                    <td class="workspace-heading px-6 py-5 text-xs font-bold">@(row.Rank?.ToString() ?? "-")</td>
+                                    <td class="px-6 py-5"><span class="@StatusClass(row.Status)">@row.Status</span></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+    }
+</div>
+
+@code {
+    private IReadOnlyCollection<CompetitionResponse> _items = [];
+    private IReadOnlyCollection<CompetitionParticipantResponse> _history = [];
+    private string _search = string.Empty;
+    private string _status = string.Empty;
+    private int _total;
+    private bool _loading = true;
+    private bool _isMember;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _isMember = await IsMemberAsync();
+        await Task.WhenAll(LoadAsync(), ReloadHistoryAsync());
+        _loading = false;
+    }
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        await LoadAsync();
+        _loading = false;
+    }
+
+    private async Task ApplyFilterAsync()
+    {
+        _loading = true;
+        await LoadAsync();
+        _loading = false;
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            var page = await Api.GetCompetitionsAsync(new CompetitionListRequest(_status, _search, 1, 50));
+            _items = page.Items;
+            _total = page.TotalCount;
+            _error = null;
+        }
+        catch (CompetitionApiException error) { _error = error.Message; }
+        catch (Exception error) { _error = error.Message; }
+    }
+
+    private async Task ReloadHistoryAsync()
+    {
+        // UC-58 is a Member-only view; other roles would get a 403 from the API.
+        if (!_isMember)
+        {
+            _history = [];
+            return;
+        }
+        try
+        {
+            var page = await Api.GetMyHistoryAsync(new CompetitionParticipantListRequest(PageSize: 50));
+            _history = page.Items;
+        }
+        catch (Exception) { _history = []; }
+    }
+
+    private async Task<bool> IsMemberAsync()
+    {
+        var state = await AuthStateProvider.GetAuthenticationStateAsync();
+        return state.User.IsInRole("Member");
+    }
+
+    private async Task RegisterAsync(int id)
+    {
+        try
+        {
+            await Api.RegisterAsync(id);
+            await Task.WhenAll(LoadAsync(), ReloadHistoryAsync());
+            _error = null;
+        }
+        catch (CompetitionApiException error) { _error = error.Message; }
+    }
+
+    private Task OpenDetailAsync(int id) => Task.CompletedTask;
+
+    private bool CanRegister(CompetitionResponse item) =>
+        _isMember
+        && item.Status == "Published"
+        && DateTime.UtcNow >= item.RegistrationStart
+        && DateTime.UtcNow <= item.RegistrationEnd;
+
+    private static string FormatRange(DateTime start, DateTime end) =>
+        $"{start.ToLocalTime():dd/MM/yyyy} - {end.ToLocalTime():dd/MM/yyyy}";
+
+    private static string StatusClass(string status) => status switch
+    {
+        "Published" => "inline-block border border-[#10B981] bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase text-[#047857] rounded-none",
+        "Ongoing" => "inline-block border border-[#6366F1] bg-indigo-50 px-2 py-1 text-[10px] font-bold uppercase text-[#4338CA] rounded-none",
+        "Completed" => "inline-block border border-[#CFCFCF] bg-[#F7F7F7] px-2 py-1 text-[10px] font-bold uppercase text-[#545454] rounded-none",
+        "Cancelled" => "inline-block border border-[#EF4444] bg-red-50 px-2 py-1 text-[10px] font-bold uppercase text-[#B91C1C] rounded-none",
+        _ => "inline-block border border-[#F59E0B] bg-amber-50 px-2 py-1 text-[10px] font-bold uppercase text-[#92400E] rounded-none"
+    };
+}

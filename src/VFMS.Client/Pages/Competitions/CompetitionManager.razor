@@ -1,0 +1,379 @@
+@page "/manager/competitions"
+@layout ManagerAdminLayout
+@inject CompetitionApiClient Api
+
+<PageTitle>Quản lý cuộc thi | Victor Fitness</PageTitle>
+
+<div class="workspace-page space-y-8 font-['Inter',sans-serif] text-[#252525]">
+    <header class="flex flex-col justify-between gap-5 border-b-2 border-black pb-7 md:flex-row md:items-end">
+        <div>
+            <p class="workspace-heading mb-3 text-[10px] font-bold tracking-[.18em] text-[#71717A]">VFMS / MODULE 06 / MANAGER</p>
+            <h1 class="workspace-heading text-3xl font-extrabold uppercase tracking-tight sm:text-4xl">Quản lý cuộc thi<span class="text-[#6366F1]">.</span></h1>
+            <p class="mt-3 max-w-2xl text-sm leading-6 text-[#545454]">UC-59 Quản lý cuộc thi · UC-60 Quản lý người tham gia · UC-61 Ghi kết quả · UC-62 Duyệt và xác nhận kết quả.</p>
+        </div>
+        <div class="flex flex-wrap gap-3">
+            <button type="button" @onclick="ReloadAsync" class="workspace-heading border border-black bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider rounded-none">Làm mới ↻</button>
+            <button type="button" @onclick="() => _showCreate = !_showCreate" class="workspace-heading border-2 border-black bg-black px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-white rounded-none">+ Tạo cuộc thi</button>
+        </div>
+    </header>
+
+    @if (_error is not null)
+    {
+        <div class="border-2 border-[#EF4444] bg-red-50 p-4 text-sm text-red-800" role="alert">@_error</div>
+    }
+
+    @if (_showCreate)
+    {
+        <section class="border-2 border-black bg-white p-6 rounded-none" aria-labelledby="create-title">
+            <h2 id="create-title" class="workspace-heading mb-5 text-sm font-extrabold uppercase tracking-wider">Tạo cuộc thi mới</h2>
+            <div class="grid gap-4 md:grid-cols-2">
+                <div class="md:col-span-2">
+                    <label for="c-name" class="workspace-heading mb-2 block text-[10px] font-bold uppercase tracking-wider">TÊN CUỘC THI *</label>
+                    <input id="c-name" class="w-full border border-[#CFCFCF] px-3 py-2 text-sm" @bind="_formName" />
+                </div>
+                <div class="md:col-span-2">
+                    <label for="c-desc" class="workspace-heading mb-2 block text-[10px] font-bold uppercase tracking-wider">MÔ TẢ</label>
+                    <textarea id="c-desc" rows="2" class="w-full border border-[#CFCFCF] px-3 py-2 text-sm" @bind="_formDescription"></textarea>
+                </div>
+                <div>
+                    <label for="c-reg-start" class="workspace-heading mb-2 block text-[10px] font-bold uppercase tracking-wider">BẮT ĐẦU ĐĂNG KÝ (UTC) *</label>
+                    <input id="c-reg-start" type="datetime-local" class="w-full border border-[#CFCFCF] px-3 py-2 text-sm" @bind="_formRegistrationStart" />
+                </div>
+                <div>
+                    <label for="c-reg-end" class="workspace-heading mb-2 block text-[10px] font-bold uppercase tracking-wider">KẾT THÚC ĐĂNG KÝ (UTC) *</label>
+                    <input id="c-reg-end" type="datetime-local" class="w-full border border-[#CFCFCF] px-3 py-2 text-sm" @bind="_formRegistrationEnd" />
+                </div>
+                <div>
+                    <label for="c-start" class="workspace-heading mb-2 block text-[10px] font-bold uppercase tracking-wider">BẮT ĐẦU THI (UTC) *</label>
+                    <input id="c-start" type="datetime-local" class="w-full border border-[#CFCFCF] px-3 py-2 text-sm" @bind="_formStart" />
+                </div>
+                <div>
+                    <label for="c-end" class="workspace-heading mb-2 block text-[10px] font-bold uppercase tracking-wider">KẾT THÚC THI (UTC) *</label>
+                    <input id="c-end" type="datetime-local" class="w-full border border-[#CFCFCF] px-3 py-2 text-sm" @bind="_formEnd" />
+                </div>
+                <div>
+                    <label for="c-max" class="workspace-heading mb-2 block text-[10px] font-bold uppercase tracking-wider">TỐI ĐA NGƯỜI THAM GIA</label>
+                    <input id="c-max" type="number" min="1" class="w-full border border-[#CFCFCF] px-3 py-2 text-sm" @bind="_formMaxParticipants" />
+                </div>
+            </div>
+            <div class="mt-6 flex flex-wrap gap-3">
+                <button type="button" @onclick="CreateAsync" disabled="@_busy" class="workspace-heading border-2 border-black bg-black px-5 py-3 text-xs font-bold uppercase tracking-wider text-white disabled:opacity-50 rounded-none">Tạo cuộc thi ↗</button>
+                <button type="button" @onclick="() => _showCreate = false" class="workspace-heading border border-black bg-white px-5 py-3 text-xs font-bold uppercase tracking-wider rounded-none">Hủy</button>
+            </div>
+        </section>
+    }
+
+    <section class="overflow-hidden border-2 border-black bg-white rounded-none" aria-labelledby="mgr-list-title" aria-live="polite">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b-2 border-black px-5 py-5 sm:px-6">
+            <h2 id="mgr-list-title" class="workspace-heading text-sm font-extrabold uppercase tracking-wider">Tất cả cuộc thi</h2>
+            <span class="text-xs text-[#71717A]">@_total mục</span>
+        </div>
+        @if (_items.Count == 0)
+        {
+            <p class="px-6 py-10 text-center text-sm text-[#71717A]">Chưa có cuộc thi nào. Bấm "+ Tạo cuộc thi" để bắt đầu.</p>
+        }
+        else
+        {
+            <div class="overflow-x-auto">
+                <table class="workspace-table w-full min-w-[900px] text-left text-sm">
+                    <thead class="workspace-heading bg-[#F7F7F7] text-[10px] uppercase tracking-wider">
+                        <tr><th class="px-6 py-4">Cuộc thi</th><th class="px-6 py-4">Thi</th><th class="px-6 py-4">Người</th><th class="px-6 py-4">Trạng thái</th><th class="px-6 py-4">Thao tác</th></tr>
+                    </thead>
+                    <tbody class="divide-y divide-[#CFCFCF]">
+                        @foreach (var item in _items)
+                        {
+                            <tr class="hover:bg-[#F7F7F7]">
+                                <th scope="row" class="px-6 py-5 font-semibold">@item.Name</th>
+                                <td class="px-6 py-5 text-xs text-[#545454]">@item.StartDate.ToLocalTime().ToString("dd/MM/yyyy") - @item.EndDate.ToLocalTime().ToString("dd/MM/yyyy")</td>
+                                <td class="workspace-heading px-6 py-5 text-xs font-bold">@item.ParticipantCount@(item.MaxParticipants is { } max ? $" / {max}" : "")</td>
+                                <td class="px-6 py-5"><span class="@StatusClass(item.Status)">@item.Status</span></td>
+                                <td class="px-6 py-5">
+                                    <div class="flex flex-wrap gap-2">
+                                        @if (item.Status == "Draft")
+                                        {
+                                            <button type="button" @onclick='() => PublishAsync(item.Id)' class="workspace-heading border border-[#10B981] bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase text-[#047857] rounded-none">Phát hành</button>
+                                        }
+                                        @if (item.Status is "Draft" or "Published")
+                                        {
+                                            <button type="button" @onclick='() => CancelAsync(item.Id)' class="workspace-heading border border-[#EF4444] bg-red-50 px-2 py-1 text-[10px] font-bold uppercase text-[#B91C1C] rounded-none">Hủy</button>
+                                        }
+                                        <button type="button" @onclick='() => OpenParticipantsAsync(item.Id)' class="workspace-heading border border-black px-2 py-1 text-[10px] font-bold uppercase rounded-none">Người tham gia</button>
+                                        <button type="button" @onclick='() => OpenResultsAsync(item.Id)' class="workspace-heading border border-[#6366F1] bg-[#6366F1] px-2 py-1 text-[10px] font-bold uppercase text-white rounded-none">Kết quả</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+
+    @if (_selectedCompetitionId is { } competitionId)
+    {
+        <section class="overflow-hidden border-2 border-black bg-white rounded-none" aria-labelledby="participants-title">
+            <div class="flex flex-wrap items-center justify-between gap-3 border-b-2 border-black px-5 py-5 sm:px-6">
+                <h2 id="participants-title" class="workspace-heading text-sm font-extrabold uppercase tracking-wider">Người tham gia · @_selectedCompetitionName</h2>
+                <button type="button" @onclick="CloseDetailsAsync" class="text-xs text-[#71717A]">Đóng ✕</button>
+            </div>
+            @if (_participants.Count == 0)
+            {
+                <p class="px-6 py-8 text-center text-sm text-[#71717A]">Chưa có người tham gia.</p>
+            }
+            else
+            {
+                <div class="overflow-x-auto">
+                    <table class="workspace-table w-full min-w-[800px] text-left text-sm">
+                        <thead class="workspace-heading bg-[#F7F7F7] text-[10px] uppercase tracking-wider">
+                            <tr><th class="px-6 py-4">Hội viên</th><th class="px-6 py-4">Đăng ký</th><th class="px-6 py-4">Điểm</th><th class="px-6 py-4">Hạng</th><th class="px-6 py-4">Trạng thái</th><th class="px-6 py-4">Thao tác</th></tr>
+                        </thead>
+                        <tbody class="divide-y divide-[#CFCFCF]">
+                            @foreach (var row in _participants)
+                            {
+                                <tr class="hover:bg-[#F7F7F7]">
+                                    <th scope="row" class="px-6 py-5">
+                                        <span class="block font-medium">@row.MemberName</span>
+                                        <span class="mt-1 block text-xs text-[#71717A]">@row.MemberEmail</span>
+                                    </th>
+                                    <td class="px-6 py-5 text-xs text-[#545454]">@row.RegisteredAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                                    <td class="workspace-heading px-6 py-5 text-xs font-bold">@(row.Score?.ToString("0.##") ?? "-")</td>
+                                    <td class="workspace-heading px-6 py-5 text-xs font-bold">@(row.Rank?.ToString() ?? "-")</td>
+                                    <td class="px-6 py-5"><span class="@StatusClass(row.Status)">@row.Status</span></td>
+                                    <td class="px-6 py-5">
+                                        <div class="flex flex-wrap gap-2">
+                                            @if (row.Status == "Disqualified")
+                                            {
+                                                <button type="button" @onclick='() => ReinstateAsync(row.Id)' class="workspace-heading border border-[#10B981] bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase text-[#047857] rounded-none">Khôi phục</button>
+                                            }
+                                            else if (row.Status != "Completed")
+                                            {
+                                                <button type="button" @onclick='() => DisqualifyAsync(row.Id)' class="workspace-heading border border-[#EF4444] bg-red-50 px-2 py-1 text-[10px] font-bold uppercase text-[#B91C1C] rounded-none">Loại</button>
+                                            }
+                                            @if (row.Status != "Completed" && row.Status != "Disqualified")
+                                            {
+                                                <button type="button" @onclick='() => RecordResultAsync(row.Id, row.Rank)' class="workspace-heading border border-black px-2 py-1 text-[10px] font-bold uppercase rounded-none">Ghi điểm</button>
+                                            }
+                                            @if (row.Status == "Completed")
+                                            {
+                                                <button type="button" @onclick='() => ConfirmResultAsync(row.Id, row.Rank)' class="workspace-heading border border-[#6366F1] bg-[#6366F1] px-2 py-1 text-[10px] font-bold uppercase text-white rounded-none">Duyệt</button>
+                                            }
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+
+        <section class="overflow-hidden border-2 border-black bg-white rounded-none" aria-labelledby="leaderboard-title">
+            <div class="flex flex-wrap items-center justify-between gap-3 border-b-2 border-black px-5 py-5 sm:px-6">
+                <h2 id="leaderboard-title" class="workspace-heading text-sm font-extrabold uppercase tracking-wider">Bảng xếp hạng</h2>
+                <button type="button" @onclick='() => ConfirmAllAsync(competitionId)' class="workspace-heading border border-black bg-white px-3 py-2 text-[10px] font-bold uppercase rounded-none">Duyệt tất cả ↗</button>
+            </div>
+            @if (_leaderboard.Count == 0)
+            {
+                <p class="px-6 py-8 text-center text-sm text-[#71717A]">Chưa có kết quả.</p>
+            }
+            else
+            {
+                <div class="overflow-x-auto">
+                    <table class="workspace-table w-full min-w-[700px] text-left text-sm">
+                        <thead class="workspace-heading bg-[#F7F7F7] text-[10px] uppercase tracking-wider">
+                            <tr><th class="px-6 py-4">Hạng</th><th class="px-6 py-4">Hội viên</th><th class="px-6 py-4">Điểm</th><th class="px-6 py-4">Trạng thái</th><th class="px-6 py-4">Phần thưởng</th></tr>
+                        </thead>
+                        <tbody class="divide-y divide-[#CFCFCF]">
+                            @foreach (var row in _leaderboard)
+                            {
+                                <tr class="hover:bg-[#F7F7F7]">
+                                    <th scope="row" class="workspace-heading px-6 py-5 text-lg font-extrabold text-[#6366F1]">@row.Rank</th>
+                                    <td class="px-6 py-5 font-medium">@row.MemberName</td>
+                                    <td class="workspace-heading px-6 py-5 text-xs font-bold">@(row.Score?.ToString("0.##") ?? "-")</td>
+                                    <td class="px-6 py-5"><span class="@StatusClass(row.Status)">@row.Status</span></td>
+                                    <td class="px-6 py-5 text-xs">
+                                        @if (!string.IsNullOrWhiteSpace(row.PrizeName))
+                                        {
+                                            <span class="block font-semibold">@row.PrizeName</span>
+                                            @if (!string.IsNullOrWhiteSpace(row.VoucherCode))
+                                            {
+                                                <span class="workspace-heading mt-1 block text-[10px] font-bold text-[#6366F1]">@row.VoucherCode</span>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <span class="text-[#71717A]">-</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+    }
+</div>
+
+@code {
+    private IReadOnlyCollection<CompetitionResponse> _items = [];
+    private IReadOnlyCollection<CompetitionParticipantResponse> _participants = [];
+    private IReadOnlyCollection<CompetitionLeaderboardEntry> _leaderboard = [];
+    private int _total;
+    private int? _selectedCompetitionId;
+    private string _selectedCompetitionName = string.Empty;
+    private bool _showCreate;
+    private bool _busy;
+    private string? _error;
+
+    private string _formName = string.Empty;
+    private string _formDescription = string.Empty;
+    private DateTime _formRegistrationStart = DateTime.UtcNow;
+    private DateTime _formRegistrationEnd = DateTime.UtcNow.AddDays(7);
+    private DateTime _formStart = DateTime.UtcNow.AddDays(8);
+    private DateTime _formEnd = DateTime.UtcNow.AddDays(9);
+    private int? _formMaxParticipants;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            var page = await Api.GetCompetitionsAsync(new CompetitionListRequest(PageSize: 50));
+            _items = page.Items;
+            _total = page.TotalCount;
+            _error = null;
+        }
+        catch (Exception error) { _error = error.Message; }
+    }
+
+    private async Task ReloadAsync()
+    {
+        await LoadAsync();
+        if (_selectedCompetitionId is { } id) await OpenDetailsAsync(id);
+    }
+
+    private async Task CreateAsync()
+    {
+        if (_busy) return;
+        _busy = true;
+        try
+        {
+            var request = new CompetitionRequest(_formName.Trim(),
+                DateTime.SpecifyKind(_formRegistrationStart, DateTimeKind.Utc),
+                DateTime.SpecifyKind(_formRegistrationEnd, DateTimeKind.Utc),
+                DateTime.SpecifyKind(_formStart, DateTimeKind.Utc),
+                DateTime.SpecifyKind(_formEnd, DateTimeKind.Utc),
+                Description: string.IsNullOrWhiteSpace(_formDescription) ? null : _formDescription.Trim(),
+                MaxParticipants: _formMaxParticipants);
+            await Api.CreateAsync(request);
+            _showCreate = false;
+            _formName = string.Empty;
+            _formDescription = string.Empty;
+            _formMaxParticipants = null;
+            await LoadAsync();
+            _error = null;
+        }
+        catch (Exception error) { _error = error.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task PublishAsync(int id)
+    {
+        try { await Api.PublishAsync(id); await LoadAsync(); _error = null; }
+        catch (Exception error) { _error = error.Message; }
+    }
+
+    private async Task CancelAsync(int id)
+    {
+        try { await Api.CancelAsync(id); await LoadAsync(); _error = null; }
+        catch (Exception error) { _error = error.Message; }
+    }
+
+    private Task OpenParticipantsAsync(int id) => OpenDetailsAsync(id);
+
+    private Task OpenResultsAsync(int id) => OpenDetailsAsync(id);
+
+    private async Task OpenDetailsAsync(int id)
+    {
+        _selectedCompetitionId = id;
+        _selectedCompetitionName = _items.FirstOrDefault(i => i.Id == id)?.Name ?? string.Empty;
+        try
+        {
+            var participants = await Api.GetParticipantsAsync(new CompetitionParticipantListRequest(CompetitionId: id, PageSize: 100));
+            _participants = participants.Items;
+            _leaderboard = await Api.GetLeaderboardAsync(id);
+            _error = null;
+        }
+        catch (Exception error) { _error = error.Message; }
+    }
+
+    private Task CloseDetailsAsync()
+    {
+        _selectedCompetitionId = null;
+        _participants = [];
+        _leaderboard = [];
+        return Task.CompletedTask;
+    }
+
+    private async Task DisqualifyAsync(int joinId)
+    {
+        try { await Api.DisqualifyAsync(joinId); await RefreshSelectedAsync(); _error = null; }
+        catch (Exception error) { _error = error.Message; }
+    }
+
+    private async Task ReinstateAsync(int joinId)
+    {
+        try { await Api.ReinstateAsync(joinId); await RefreshSelectedAsync(); _error = null; }
+        catch (Exception error) { _error = error.Message; }
+    }
+
+    private async Task RecordResultAsync(int joinId, int? rank)
+    {
+        try
+        {
+            await Api.RecordResultAsync(joinId, new RecordCompetitionResultRequest(null, rank, "Ghi nhận tại sân"));
+            await RefreshSelectedAsync();
+            _error = null;
+        }
+        catch (Exception error) { _error = error.Message; }
+    }
+
+    private async Task ConfirmResultAsync(int joinId, int? rank)
+    {
+        try
+        {
+            await Api.ConfirmResultAsync(new ConfirmCompetitionResultRequest(joinId, null, rank, null, true));
+            await RefreshSelectedAsync();
+            _error = null;
+        }
+        catch (Exception error) { _error = error.Message; }
+    }
+
+    private async Task ConfirmAllAsync(int competitionId)
+    {
+        try
+        {
+            var count = await Api.ConfirmAllResultsAsync(competitionId);
+            _error = $"Đã xác nhận {count} kết quả.";
+            await RefreshSelectedAsync();
+        }
+        catch (Exception error) { _error = error.Message; }
+    }
+
+    private async Task RefreshSelectedAsync()
+    {
+        if (_selectedCompetitionId is { } id) await OpenDetailsAsync(id);
+    }
+
+    private static string StatusClass(string status) => status switch
+    {
+        "Published" => "inline-block border border-[#10B981] bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase text-[#047857] rounded-none",
+        "Ongoing" => "inline-block border border-[#6366F1] bg-indigo-50 px-2 py-1 text-[10px] font-bold uppercase text-[#4338CA] rounded-none",
+        "Completed" => "inline-block border border-[#CFCFCF] bg-[#F7F7F7] px-2 py-1 text-[10px] font-bold uppercase text-[#545454] rounded-none",
+        "Cancelled" => "inline-block border border-[#EF4444] bg-red-50 px-2 py-1 text-[10px] font-bold uppercase text-[#B91C1C] rounded-none",
+        "Disqualified" => "inline-block border border-[#EF4444] bg-red-50 px-2 py-1 text-[10px] font-bold uppercase text-[#B91C1C] rounded-none",
+        _ => "inline-block border border-[#F59E0B] bg-amber-50 px-2 py-1 text-[10px] font-bold uppercase text-[#92400E] rounded-none"
+    };
+}
