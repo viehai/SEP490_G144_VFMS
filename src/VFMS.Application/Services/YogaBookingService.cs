@@ -113,6 +113,49 @@ public sealed class YogaBookingService : IYogaBookingService
             booking.Id, yogaClass.Id, yogaClass.ClassName, "Confirmed", mat, null, "Yoga booking created successfully."), 201);   // MSG-04
     }
 
+    public async Task<Result<MyYogaBookingsResponse>> GetMyBookingsAsync(string memberUserId, CancellationToken cancellationToken = default)
+    {
+        var now = _clock.GetUtcNow().UtcDateTime;
+        var bookings = await _repository.GetMemberBookingsAsync(memberUserId, cancellationToken);
+
+        var upcoming = bookings
+            .Where(b => b.BookingStatus == YogaBookingStatus.Confirmed)
+            .Select(b => (Booking: b, Next: NextSession(b.YogaClass, now)))
+            .Where(x => x.Next is not null)
+            .OrderBy(x => x.Next!.ScheduledDate).ThenBy(x => x.Next!.StartTime)
+            .Select(x => new MyYogaBookingResponse(x.Booking.Id, x.Booking.YogaClassId, x.Booking.YogaClass.ClassName,
+                x.Next!.ScheduledDate, x.Next.StartTime, x.Next.EndTime, x.Next.YogaStudio.StudioName, x.Booking.MatNumber, "Confirmed"))
+            .ToList();
+
+        // Past tab: sessions that started while the member held the booking.
+        var past = bookings
+            .SelectMany(b => b.YogaClass.Schedules
+                .Where(s => s.ScheduleStatus != YogaScheduleStatus.Cancelled)
+                .Select(s => (Booking: b, Session: s, Start: YogaTime.ToUtc(s.ScheduledDate, s.StartTime)))
+                .Where(x => x.Start <= now && x.Start >= x.Booking.BookedAt &&
+                            (x.Booking.CancelledAt is null || x.Start <= x.Booking.CancelledAt ||
+                             x.Booking.Attendances.Any(a => a.YogaClassScheduleId == x.Session.Id))))
+            .OrderByDescending(x => x.Start)
+            .Select(x => new MyYogaPastSessionResponse(x.Session.Id, x.Booking.YogaClass.ClassName, x.Session.ScheduledDate,
+                x.Session.StartTime, x.Session.YogaStudio.StudioName,
+                ResultOf(x.Booking.Attendances.FirstOrDefault(a => a.YogaClassScheduleId == x.Session.Id))))
+            .ToList();
+
+        var waitlist = (await _repository.GetMemberWaitlistAsync(memberUserId, cancellationToken))
+            .Select(w => new MyYogaWaitlistResponse(w.YogaClassSchedule.YogaClassId, w.YogaClassSchedule.YogaClass.ClassName,
+                w.Position, w.NotifiedAt is not null))
+            .ToList();
+        // An empty result is still 200; the screen shows MSG-01 "No matching records found."
+        return Result<MyYogaBookingsResponse>.Success(new MyYogaBookingsResponse(upcoming, past, waitlist));
+    }
+
+    private static string ResultOf(YogaAttendance? attendance) => attendance?.AttendanceStatus switch
+    {
+        YogaAttendanceStatus.Present => "Attended",
+        YogaAttendanceStatus.NoShow or YogaAttendanceStatus.Absent => "No-show",
+        _ => "Not recorded"
+    };
+
     public async Task<Result<YogaBookingResponse>> CancelAsync(
         string memberUserId, int bookingId, CancelYogaBookingRequest request, CancellationToken cancellationToken = default)
     {

@@ -177,6 +177,13 @@ public sealed class YogaBookingsController : ControllerBase
 
     public YogaBookingsController(IYogaBookingService service) => _service = service;
 
+    /// <summary>UC-40 View My Yoga Bookings: upcoming, past sessions with attendance, waitlist.</summary>
+    [HttpGet("mine")]
+    public async Task<IActionResult> GetMine(CancellationToken cancellationToken) =>
+        User.GetUserId() is { } userId
+            ? this.ToActionResult(await _service.GetMyBookingsAsync(userId, cancellationToken))
+            : Unauthorized();
+
     /// <summary>Studio floorplan: which mats are free.</summary>
     [HttpGet("classes/{classId:int}/mats")]
     public async Task<IActionResult> GetMats(int classId, CancellationToken cancellationToken) =>

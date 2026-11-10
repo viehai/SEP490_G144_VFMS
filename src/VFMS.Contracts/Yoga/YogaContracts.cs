@@ -118,3 +118,17 @@ public sealed record YogaMatMapResponse(int YogaClassId, int MatCount, IReadOnly
 
 /// <summary>ConfirmLateCancellation: the member accepted MSG-34 (cancelling within 2 hours counts as a no-show).</summary>
 public sealed record CancelYogaBookingRequest(bool ConfirmLateCancellation = false);
+
+/// <summary>UC-40: a booked class with its next session (date and times are gym-local).</summary>
+public sealed record MyYogaBookingResponse(
+    int BookingId, int YogaClassId, string ClassName, DateOnly NextDate, TimeOnly StartTime, TimeOnly EndTime,
+    string StudioName, int? MatNumber, string Status);
+
+/// <summary>UC-40 Past tab: one attended-or-missed session. Result is Attended, No-show or Not recorded.</summary>
+public sealed record MyYogaPastSessionResponse(
+    int SessionId, string ClassName, DateOnly Date, TimeOnly StartTime, string StudioName, string Result);
+
+public sealed record MyYogaWaitlistResponse(int YogaClassId, string ClassName, int Position, bool SeatOffered);
+
+public sealed record MyYogaBookingsResponse(
+    IReadOnlyList<MyYogaBookingResponse> Upcoming, IReadOnlyList<MyYogaPastSessionResponse> Past, IReadOnlyList<MyYogaWaitlistResponse> Waitlist);

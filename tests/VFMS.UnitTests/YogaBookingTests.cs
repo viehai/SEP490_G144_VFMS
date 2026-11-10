@@ -197,6 +197,40 @@ public sealed class YogaBookingTests
         Assert.Equal(404, (await service.CancelAsync("m2", 5, new CancelYogaBookingRequest())).StatusCode);
     }
 
+    // ── UC-40 my bookings ────────────────────────────────────────
+
+    [Fact]
+    public async Task MyBookingsShowNextSessionPastAttendanceAndWaitlist()
+    {
+        var (repo, service, yogaClass) = Setup();
+        var studio = new YogaStudio { StudioName = "Lotus" };
+        yogaClass.Schedules.Clear();
+        YogaClassSchedule Session(int id, int days, YogaScheduleStatus status = YogaScheduleStatus.Scheduled) => new()
+        {
+            Id = id, YogaClass = yogaClass, YogaClassId = 1, YogaStudio = studio, ScheduledDate = Today.AddDays(days),
+            StartTime = new(9, 0), EndTime = new(10, 0), ScheduleStatus = status
+        };
+        foreach (var s in new[] { Session(1, -8), Session(2, -1), Session(3, -2, YogaScheduleStatus.Cancelled), Session(4, 6), Session(5, 3) })
+            yogaClass.Schedules.Add(s);
+        var booking = new YogaBooking
+        {
+            Id = 7, YogaClass = yogaClass, YogaClassId = 1, MemberUserId = "m1", MatNumber = 3, BookedAt = Now.AddDays(-10),
+            BookingStatus = YogaBookingStatus.Confirmed
+        };
+        booking.Attendances.Add(new YogaAttendance { YogaClassScheduleId = 1, AttendanceStatus = YogaAttendanceStatus.Present });
+        yogaClass.Bookings.Add(booking);
+        repo.Waitlist.Add(new YogaWaitlist { MemberUserId = "m1", Position = 2, NotifiedAt = Now,
+            YogaClassSchedule = new YogaClassSchedule { YogaClassId = 9, YogaClass = new YogaClass { ClassName = "Evening Yin" } } });
+
+        var mine = (await service.GetMyBookingsAsync("m1")).Data!;
+
+        var next = Assert.Single(mine.Upcoming);
+        Assert.Equal((Today.AddDays(3), "Lotus", 3), (next.NextDate, next.StudioName, next.MatNumber!.Value));
+        Assert.Equal([(2, "Not recorded"), (1, "Attended")], mine.Past.Select(p => (p.SessionId, p.Result)));   // newest first, cancelled session skipped
+        Assert.Equal(("Evening Yin", 2, true), (mine.Waitlist.Single().ClassName, mine.Waitlist.Single().Position, mine.Waitlist.Single().SeatOffered));
+        Assert.Empty((await service.GetMyBookingsAsync("m2")).Data!.Upcoming);
+    }
+
     private sealed class FixedClock(DateTimeOffset now) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => now;
@@ -231,6 +265,10 @@ public sealed class YogaBookingTests
             Task.FromResult<IReadOnlyList<DateTime>>(NoShows.Where(t => t >= sinceUtc).ToList());
         public List<YogaAttendance> Attendances { get; } = [];
         public List<Notification> Notifications { get; } = [];
+        public Task<IReadOnlyList<YogaBooking>> GetMemberBookingsAsync(string userId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<YogaBooking>>(Class!.Bookings.Where(b => b.MemberUserId == userId).ToList());
+        public Task<IReadOnlyList<YogaWaitlist>> GetMemberWaitlistAsync(string userId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<YogaWaitlist>>(Waitlist.Where(w => w.MemberUserId == userId && w.WaitlistStatus == YogaWaitlistStatus.Waiting).ToList());
         public Task<YogaBooking?> GetBookingAsync(int bookingId, CancellationToken cancellationToken = default) =>
             Task.FromResult(Class?.Bookings.FirstOrDefault(b => b.Id == bookingId));
         public Task<IReadOnlyList<YogaWaitlist>> GetWaitlistAsync(int classId, CancellationToken cancellationToken = default) =>

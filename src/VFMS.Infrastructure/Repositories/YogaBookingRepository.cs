@@ -37,4 +37,18 @@ public sealed class YogaBookingRepository : AuditedRepositoryBase, IYogaBookingR
 
     public Task<YogaBooking?> GetBookingAsync(int bookingId, CancellationToken cancellationToken = default) =>
         Context.YogaBookings.FirstOrDefaultAsync(b => b.Id == bookingId, cancellationToken);
+
+    public async Task<IReadOnlyList<YogaBooking>> GetMemberBookingsAsync(string userId, CancellationToken cancellationToken = default) =>
+        await Context.YogaBookings.AsNoTracking()
+            .Include(b => b.YogaClass).ThenInclude(c => c.Schedules).ThenInclude(s => s.YogaStudio)
+            .Include(b => b.Attendances)
+            .Where(b => b.MemberUserId == userId)
+            .AsSplitQuery()
+            .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<YogaWaitlist>> GetMemberWaitlistAsync(string userId, CancellationToken cancellationToken = default) =>
+        await Context.YogaWaitlists.AsNoTracking()
+            .Include(w => w.YogaClassSchedule).ThenInclude(s => s.YogaClass)
+            .Where(w => w.MemberUserId == userId && w.WaitlistStatus == YogaWaitlistStatus.Waiting)
+            .ToListAsync(cancellationToken);
 }
