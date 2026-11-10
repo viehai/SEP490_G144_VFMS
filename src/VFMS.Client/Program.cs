@@ -23,5 +23,12 @@ builder.Services.AddScoped(sp =>
 });
 builder.Services.AddScoped<AuthSession>();
 builder.Services.AddScoped<AuthenticationStateProvider>(sp => sp.GetRequiredService<AuthSession>());
+builder.Services.AddScoped(sp => new CompetitionApiClient(
+    new HttpClient
+    {
+        BaseAddress = new Uri((builder.Configuration["ApiBaseUrl"] ?? builder.HostEnvironment.BaseAddress).TrimEnd('/') + "/"),
+        Timeout = TimeSpan.FromSeconds(30)
+    },
+    sp.GetRequiredService<AuthSession>()));
 
 await builder.Build().RunAsync();

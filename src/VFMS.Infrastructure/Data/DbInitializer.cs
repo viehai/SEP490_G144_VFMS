@@ -79,6 +79,45 @@ public static class DbInitializer
                 await context.SaveChangesAsync();
                 logger.LogInformation("Default Admin account seeded.");
             }
+
+            // 4. Seed demo accounts for each role so the app can be explored out of the box.
+            var demoAccounts = new (string Email, string FullName, string Role, string Password)[]
+            {
+                ("manager@vfms.vn", "Quản lý viên", "Manager", "Manager@123"),
+                ("staff@vfms.vn", "Nhân viên", "Staff", "Staff@123"),
+                ("member@vfms.vn", "Hội viên", "Member", "Member@123"),
+                ("customer@vfms.vn", "Khách", "Customer", "Customer@123")
+            };
+
+            foreach (var account in demoAccounts)
+            {
+                if (await context.ApplicationUsers.AnyAsync(u => u.Email == account.Email))
+                {
+                    continue;
+                }
+
+                var role = await context.ApplicationRoles.FirstAsync(r => r.RoleName == account.Role);
+                var user = new ApplicationUser
+                {
+                    UserId = Guid.NewGuid().ToString(),
+                    GymId = defaultGym.Id,
+                    FullName = account.FullName,
+                    Email = account.Email,
+                    PhoneNumber = "0000000000",
+                    PasswordHash = BCrypt.Net.BCrypt.HashPassword(account.Password),
+                    AccountStatus = AccountStatus.Active
+                };
+                context.ApplicationUsers.Add(user);
+                await context.SaveChangesAsync();
+
+                context.ApplicationUserRoles.Add(new ApplicationUserRole
+                {
+                    UserId = user.UserId,
+                    RoleId = role.Id
+                });
+                await context.SaveChangesAsync();
+                logger.LogInformation("Demo {Role} account '{Email}' seeded.", account.Role, account.Email);
+            }
         }
         catch (Exception ex)
         {
