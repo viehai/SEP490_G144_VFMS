@@ -71,8 +71,10 @@ public sealed class TrainerSearchValidator : AbstractValidator<TrainerSearch>
 {
     public TrainerSearchValidator()
     {
-        RuleFor(x => x.Page).InclusiveBetween(1, 10000); RuleFor(x => x.PageSize).InclusiveBetween(1, 100);
-        RuleFor(x => x.Search).MaximumLength(200); RuleFor(x => x.Specialty).MaximumLength(200);
+        RuleFor(x => x.Page).InclusiveBetween(1, 10000);
+        RuleFor(x => x.PageSize).InclusiveBetween(1, 100);
+        RuleFor(x => x.Search).MaximumLength(200);
+        RuleFor(x => x.Specialty).MaximumLength(200);
         RuleFor(x => x.Gender).Must(x => x == null || x is "Male" or "Female" or "Other");
         RuleFor(x => x.MinimumRating).InclusiveBetween(0, 5);
     }
@@ -82,7 +84,8 @@ public sealed class TrainerApplicationFilterValidator : AbstractValidator<Traine
     public TrainerApplicationFilterValidator()
     {
         RuleFor(x => x.ApplicationType).Must(x => x == null || x is "Recruitment" or "ProfileUpdate");
-        RuleFor(x => x.Page).InclusiveBetween(1, 10000); RuleFor(x => x.PageSize).InclusiveBetween(1, 100);
+        RuleFor(x => x.Page).InclusiveBetween(1, 10000);
+        RuleFor(x => x.PageSize).InclusiveBetween(1, 100);
         RuleFor(x => x.Specialty).MaximumLength(200);
         RuleFor(x => x.Status).Must(x => x == null || x is "Pending" or "Interviewing" or "Hired" or "Rejected" or "UnderReview" or "Approved" or "Blacklisted");
         RuleFor(x => x).Must(x => x.From == null || x.To == null || x.From <= x.To);

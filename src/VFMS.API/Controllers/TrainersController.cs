@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using VFMS.API.Extensions;
 using VFMS.Application.Services;
+using VFMS.Contracts.Common;
 using VFMS.Contracts.Trainers;
 
 namespace VFMS.API.Controllers;
@@ -41,10 +42,13 @@ public sealed class TrainersController(TrainerService service) : ControllerBase
     public async Task<IActionResult> Document(int id, string fileId, CancellationToken ct) => Download(await service.Document(id, fileId, User.GetUserId(), ct));
     [HttpGet("{id:int}/avatar"), AllowAnonymous]
     public async Task<IActionResult> Avatar(int id, CancellationToken ct) => Download(await service.Avatar(id, User.GetUserId(), ct));
-    private IActionResult Download(VFMS.Contracts.Common.Result<TrainerFileResponse> result)
+    private IActionResult Download(Result<TrainerFileResponse> result)
     {
-        if (!result.IsSuccess) return this.ToActionResult(result);
-        Response.Headers["X-Content-Type-Options"] = "nosniff"; Response.Headers.CacheControl = "private, no-store";
+        if (!result.IsSuccess)
+            return this.ToActionResult(result);
+
+        Response.Headers["X-Content-Type-Options"] = "nosniff";
+        Response.Headers.CacheControl = "private, no-store";
         return File(result.Data!.Content, result.Data.ContentType, result.Data.FileName);
     }
 }

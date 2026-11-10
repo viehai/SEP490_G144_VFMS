@@ -1,14 +1,14 @@
 using System.Data;
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using VFMS.Application.Interfaces;
 using VFMS.Contracts.Common;
+using VFMS.Contracts.Trainers;
 using VFMS.Domain.Common;
 using VFMS.Domain.Entities;
 using VFMS.Infrastructure.Data;
-using VFMS.Contracts.Trainers;
-using Microsoft.Extensions.Configuration;
 
 namespace VFMS.Infrastructure.Repositories;
 
@@ -53,16 +53,50 @@ public sealed class TrainerStore(VfmsDbContext db, IDataProtectionProvider prote
         {
             await db.Database.ExecuteSqlRawAsync("DECLARE @r int; EXEC @r = sys.sp_getapplock @Resource=N'VFMS.TrainerRecruitment', @LockMode='Exclusive', @LockOwner='Transaction', @LockTimeout=10000; IF @r < 0 THROW 51000, 'Recruitment busy', 1;", ct);
             var result = await action();
-            if (result.IsSuccess) { await db.SaveChangesAsync(ct); await transaction.CommitAsync(ct); pendingFiles.Clear(); }
-            else { await transaction.RollbackAsync(ct); db.ChangeTracker.Clear(); }
+            if (result.IsSuccess)
+            {
+                await db.SaveChangesAsync(ct);
+                await transaction.CommitAsync(ct);
+                pendingFiles.Clear();
+            }
+            else
+            {
+                await transaction.RollbackAsync(ct);
+                db.ChangeTracker.Clear();
+            }
             return result;
         }
-        catch (SqlException ex) when (ex.Number is 51000 or 1205) { await transaction.RollbackAsync(ct); db.ChangeTracker.Clear(); return Result<T>.Failure("Recruitment is busy; retry shortly.", "TRAINER_CONFLICT", 409); }
-        catch (DbUpdateConcurrencyException) { await transaction.RollbackAsync(ct); db.ChangeTracker.Clear(); return Result<T>.Failure("Record changed; refresh and retry.", "TRAINER_CONFLICT", 409); }
-        catch (DbUpdateException) { await transaction.RollbackAsync(ct); db.ChangeTracker.Clear(); return Result<T>.Failure("Unable to save because of a data conflict.", "TRAINER_CONFLICT", 409); }
+        catch (SqlException ex) when (ex.Number is 51000 or 1205)
+        {
+            await transaction.RollbackAsync(ct);
+            db.ChangeTracker.Clear();
+            return Result<T>.Failure("Recruitment is busy; retry shortly.", "TRAINER_CONFLICT", 409);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            await transaction.RollbackAsync(ct);
+            db.ChangeTracker.Clear();
+            return Result<T>.Failure("Record changed; refresh and retry.", "TRAINER_CONFLICT", 409);
+        }
+        catch (DbUpdateException)
+        {
+            await transaction.RollbackAsync(ct);
+            db.ChangeTracker.Clear();
+            return Result<T>.Failure("Unable to save because of a data conflict.", "TRAINER_CONFLICT", 409);
+        }
         finally
         {
-            foreach (var path in pendingFiles) { try { System.IO.File.Delete(path); } catch (IOException) { /* Orphan can be cleaned during storage maintenance. */ } }
+            foreach (var path in pendingFiles)
+            {
+                try
+                {
+                    File.Delete(path);
+                }
+                catch (IOException)
+                {
+                    // Orphaned files can be removed during storage maintenance.
+                }
+            }
             pendingFiles.Clear();
         }
     }

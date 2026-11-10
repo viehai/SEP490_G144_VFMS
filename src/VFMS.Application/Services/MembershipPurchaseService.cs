@@ -10,7 +10,8 @@ using VFMS.Domain.Enums;
 namespace VFMS.Application.Services;
 
 public sealed partial class MembershipPurchaseService(
-    IMembershipPurchaseRepository repository, IMembershipPaymentGateway gateway, TimeProvider clock)
+    IMembershipPurchaseRepository repository, IMembershipPaymentGateway gateway, TimeProvider clock,
+    IPTPaymentFulfillment? ptPayment = null)
     : IMembershipPurchaseService
 {
     private static readonly TimeSpan OnlineWindow = TimeSpan.FromMinutes(15);
@@ -57,14 +58,14 @@ public sealed partial class MembershipPurchaseService(
             return await SavePendingOrderAsync(order, ct);
         }, ct);
 
-    private static Order NewOrder(string purchaserId, DateOnly today, OrderChannel channel) => new()
+    public static Order NewOrder(string purchaserId, DateOnly today, OrderChannel channel) => new()
     {
         PurchaserUserId = purchaserId,
         OrderNumber = $"ORD-{today.ToString("yyyyMMdd", CultureInfo.InvariantCulture)}-{Guid.NewGuid().ToString("N")[..12].ToUpperInvariant()}",
         Channel = channel
     };
 
-    private static OrderItem NewOrderItem(Package plan, string beneficiaryId, DateOnly? startDate) => new()
+    public static OrderItem NewOrderItem(Package plan, string beneficiaryId, DateOnly? startDate) => new()
     {
         PackageId = plan.Id,
         BeneficiaryUserId = beneficiaryId,
@@ -133,6 +134,10 @@ public sealed partial class MembershipPurchaseService(
 
             if (order.OrderStatus == OrderStatus.Paid && payment.GatewayTransactionReference == transfer.TransactionId)
                 return Result<SepayWebhookResponse>.Success(new(true));
+
+            var ptResult = ptPayment is null ? null : await ptPayment.TryFulfillAsync(order, transfer, ct);
+            if (ptResult is not null)
+                return ptResult;
 
             // A timely transfer can be delivered after JOB-01 has expired the QR.
             var awaitingSettlement = (order.OrderStatus, payment.PaymentStatus) is
@@ -260,6 +265,13 @@ public sealed partial class MembershipPurchaseService(
         }
         await PromoteAsync(beneficiaries.Where(user => active.Contains(user.UserId)), ct);
 
+        RecordPaidOrder(order, amount, transferredAt, gatewayReference, now);
+        await repository.SaveChangesAsync(ct);
+    }
+
+    public static void RecordPaidOrder(Order order, decimal amount, DateTimeOffset transferredAt,
+        string? gatewayReference, DateTimeOffset now)
+    {
         var payment = order.PaymentTransaction!;
         payment.PaymentStatus = PaymentStatus.Paid;
         payment.AmountReceived = amount;
@@ -267,12 +279,11 @@ public sealed partial class MembershipPurchaseService(
         payment.PaidAt = transferredAt.UtcDateTime;
         payment.Invoice = new Invoice
         {
-            InvoiceNumber = FormattableString.Invariant($"INV-{today:yyyyMMdd}-{order.Id:D4}"),
+            InvoiceNumber = FormattableString.Invariant($"INV-{LocalDate(now):yyyyMMdd}-{order.Id:D4}"),
             IssuedAt = now.UtcDateTime
         };
         order.OrderStatus = OrderStatus.Paid;
         order.CompletedAt = now.UtcDateTime;
-        await repository.SaveChangesAsync(ct);
     }
 
     private async Task PromoteAsync(IEnumerable<ApplicationUser> users, CancellationToken ct)

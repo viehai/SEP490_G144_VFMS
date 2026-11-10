@@ -450,6 +450,8 @@ public class VfmsDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.SlotStatus).HasConversion<string>().HasMaxLength(20);
+            entity.HasIndex(e => new { e.PTUserId, e.DayOfWeek, e.StartTime })
+                .IsUnique().HasFilter("[DayOfWeek] IS NOT NULL AND [IsDeleted] = 0");
 
             entity.HasOne(e => e.PTUser)
                 .WithMany(u => u.PTAvailabilities)
@@ -462,6 +464,12 @@ public class VfmsDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.PurchasePrice).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(20)
+                .HasDefaultValue(VFMS.Domain.Enums.PTPurchaseStatus.Active);
+            entity.Property(e => e.PackageNameSnapshot).HasMaxLength(256);
+            entity.HasIndex(e => e.OrderId).IsUnique();
+            entity.HasOne(e => e.Order).WithMany().HasForeignKey(e => e.OrderId)
+                .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasOne(e => e.MemberMembership)
                 .WithMany()
@@ -484,6 +492,10 @@ public class VfmsDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.SessionStatus).HasConversion<string>().HasMaxLength(20);
+            entity.Property(e => e.CreditUnits).HasDefaultValue(1);
+            entity.Property(e => e.ProposedAdjustmentType).HasConversion<string>().HasMaxLength(20);
+            entity.HasIndex(e => new { e.PTUserId, e.SessionDate, e.StartTime });
+            entity.HasIndex(e => new { e.MemberUserId, e.SessionDate, e.StartTime });
 
             entity.HasOne(e => e.PTPurchase)
                 .WithMany(p => p.Sessions)
@@ -1119,6 +1131,9 @@ public class VfmsDbContext : DbContext
         modelBuilder.Entity<TrainerReview>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.PTPurchaseId).IsUnique();
+            entity.HasOne(e => e.PTPurchase).WithMany().HasForeignKey(e => e.PTPurchaseId)
+                .OnDelete(DeleteBehavior.Restrict);
             entity.Property(e => e.ReviewStatus).HasConversion<string>().HasMaxLength(30);
 
             entity.HasOne(e => e.TrainerUser)

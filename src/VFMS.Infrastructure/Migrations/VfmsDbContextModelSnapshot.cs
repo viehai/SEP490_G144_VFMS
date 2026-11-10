@@ -1583,11 +1583,14 @@ namespace VFMS.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<DateOnly>("AvailableDate")
+                    b.Property<DateOnly?>("AvailableDate")
                         .HasColumnType("date");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<int?>("DayOfWeek")
+                        .HasColumnType("int");
 
                     b.Property<TimeOnly>("EndTime")
                         .HasColumnType("time");
@@ -1615,9 +1618,11 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("PTUserId");
-
                     b.HasIndex("TrainerProfileId");
+
+                    b.HasIndex("PTUserId", "DayOfWeek", "StartTime")
+                        .IsUnique()
+                        .HasFilter("[DayOfWeek] IS NOT NULL AND [IsDeleted] = 0");
 
                     b.ToTable("PTAvailabilities");
                 });
@@ -1642,8 +1647,17 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
+                    b.Property<int?>("MaxDaysSnapshot")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("MinimumDaysSnapshot")
+                        .HasColumnType("int");
+
                     b.Property<int>("PTPurchaseId")
                         .HasColumnType("int");
+
+                    b.Property<string>("Reason")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("RequestStatus")
                         .IsRequired()
@@ -1668,6 +1682,9 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.Property<string>("ReviewedByUserId")
                         .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("SupportingDocumentUrl")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
@@ -1697,6 +1714,15 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<DateOnly>("EndDate")
                         .HasColumnType("date");
 
+                    b.Property<int>("FreezeMaxTotalDaysSnapshot")
+                        .HasColumnType("int");
+
+                    b.Property<int>("FreezeMinimumDaysSnapshot")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("HoldExpiresAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<bool>("IsCompleted")
                         .HasColumnType("bit");
 
@@ -1710,9 +1736,16 @@ namespace VFMS.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(128)");
 
+                    b.Property<int?>("OrderId")
+                        .HasColumnType("int");
+
                     b.Property<string>("PTUserId")
                         .IsRequired()
                         .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("PackageNameSnapshot")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
 
                     b.Property<DateOnly>("PurchaseDate")
                         .HasColumnType("date");
@@ -1720,13 +1753,29 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<decimal>("PurchasePrice")
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<DateTime?>("ReceiptEmailRetryAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("ReceiptEmailSentAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<int>("RemainingSessions")
                         .HasColumnType("int");
 
                     b.Property<DateOnly>("StartDate")
                         .HasColumnType("date");
 
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("Active");
+
                     b.Property<int>("TotalSessions")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("TrainerLevelSnapshot")
                         .HasColumnType("int");
 
                     b.Property<int?>("TrainerProfileId")
@@ -1735,11 +1784,18 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("WeeklyPatternJson")
+                        .HasColumnType("nvarchar(max)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("MemberMembershipId");
 
                     b.HasIndex("MemberUserId");
+
+                    b.HasIndex("OrderId")
+                        .IsUnique()
+                        .HasFilter("[OrderId] IS NOT NULL");
 
                     b.HasIndex("PTUserId");
 
@@ -1762,8 +1818,16 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<int>("CreditUnits")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1);
+
                     b.Property<TimeOnly>("EndTime")
                         .HasColumnType("time");
+
+                    b.Property<bool>("IsCreditForfeited")
+                        .HasColumnType("bit");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
@@ -1775,7 +1839,10 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<string>("Note")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<int>("PTAvailabilityId")
+                    b.Property<DateTime?>("NoteUpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("PTAvailabilityId")
                         .HasColumnType("int");
 
                     b.Property<int>("PTPurchaseId")
@@ -1784,6 +1851,31 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<string>("PTUserId")
                         .IsRequired()
                         .HasColumnType("nvarchar(128)");
+
+                    b.Property<DateTime?>("ProposalEmailRetryAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("ProposalEmailSentAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("ProposalExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ProposedAdjustmentType")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateOnly?>("ProposedDate")
+                        .HasColumnType("date");
+
+                    b.Property<TimeOnly?>("ProposedEndTime")
+                        .HasColumnType("time");
+
+                    b.Property<TimeOnly?>("ProposedStartTime")
+                        .HasColumnType("time");
+
+                    b.Property<int?>("ReplacementForSessionId")
+                        .HasColumnType("int");
 
                     b.Property<DateOnly>("SessionDate")
                         .HasColumnType("date");
@@ -1801,13 +1893,13 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("MemberUserId");
-
                     b.HasIndex("PTAvailabilityId");
 
                     b.HasIndex("PTPurchaseId");
 
-                    b.HasIndex("PTUserId");
+                    b.HasIndex("MemberUserId", "SessionDate", "StartTime");
+
+                    b.HasIndex("PTUserId", "SessionDate", "StartTime");
 
                     b.ToTable("PTSessions");
                 });
@@ -1867,6 +1959,9 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<bool>("AllowFreeze")
                         .HasColumnType("bit");
 
+                    b.Property<int?>("ApplicableTrainerLevel")
+                        .HasColumnType("int");
+
                     b.Property<string>("ComponentType")
                         .IsRequired()
                         .HasMaxLength(10)
@@ -1888,6 +1983,12 @@ namespace VFMS.Infrastructure.Migrations
                         .HasColumnType("int");
 
                     b.Property<int?>("MaxFreezeDaysPerRequest")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("PTFreezeMaxTotalDays")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("PTFreezeMinimumDays")
                         .HasColumnType("int");
 
                     b.Property<int>("PackageId")
@@ -2790,6 +2891,9 @@ namespace VFMS.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(128)");
 
+                    b.Property<int?>("PTPurchaseId")
+                        .HasColumnType("int");
+
                     b.Property<int>("Rating")
                         .HasColumnType("int");
 
@@ -2817,6 +2921,10 @@ namespace VFMS.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("MemberUserId");
+
+                    b.HasIndex("PTPurchaseId")
+                        .IsUnique()
+                        .HasFilter("[PTPurchaseId] IS NOT NULL");
 
                     b.HasIndex("ReviewedByUserId");
 
@@ -3857,6 +3965,11 @@ namespace VFMS.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("VFMS.Domain.Entities.Order", "Order")
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("VFMS.Domain.Entities.ApplicationUser", "PTUser")
                         .WithMany("PTPurchasesAsPT")
                         .HasForeignKey("PTUserId")
@@ -3870,6 +3983,8 @@ namespace VFMS.Infrastructure.Migrations
                     b.Navigation("Member");
 
                     b.Navigation("MemberMembership");
+
+                    b.Navigation("Order");
 
                     b.Navigation("PTUser");
                 });
@@ -3885,8 +4000,7 @@ namespace VFMS.Infrastructure.Migrations
                     b.HasOne("VFMS.Domain.Entities.PTAvailability", "PTAvailability")
                         .WithMany("PTSessions")
                         .HasForeignKey("PTAvailabilityId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("VFMS.Domain.Entities.PTPurchase", "PTPurchase")
                         .WithMany("Sessions")
@@ -4139,6 +4253,11 @@ namespace VFMS.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("VFMS.Domain.Entities.PTPurchase", "PTPurchase")
+                        .WithMany()
+                        .HasForeignKey("PTPurchaseId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("VFMS.Domain.Entities.ApplicationUser", "ReviewedByUser")
                         .WithMany()
                         .HasForeignKey("ReviewedByUserId")
@@ -4155,6 +4274,8 @@ namespace VFMS.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("MemberUser");
+
+                    b.Navigation("PTPurchase");
 
                     b.Navigation("ReviewedByUser");
 

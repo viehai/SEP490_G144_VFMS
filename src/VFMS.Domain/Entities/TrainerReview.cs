@@ -10,6 +10,8 @@ namespace VFMS.Domain.Entities;
 /// </summary>
 public class TrainerReview : BaseEntity
 {
+    public int? PTPurchaseId { get; set; }
+    public PTPurchase? PTPurchase { get; set; }
     public string TrainerUserId { get; set; } = string.Empty;
     public string MemberUserId { get; set; } = string.Empty;
     public int Rating { get; set; }   // 1-5

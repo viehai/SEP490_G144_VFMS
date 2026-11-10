@@ -10,7 +10,7 @@ namespace VFMS.Domain.Entities;
 public class PTSession : BaseEntity
 {
     public int PTPurchaseId { get; set; }
-    public int PTAvailabilityId { get; set; }
+    public int? PTAvailabilityId { get; set; }
     public string MemberUserId { get; set; } = string.Empty;
     public string PTUserId { get; set; } = string.Empty;
     public DateOnly SessionDate { get; set; }
@@ -19,10 +19,21 @@ public class PTSession : BaseEntity
     public PTSessionStatus SessionStatus { get; set; } = PTSessionStatus.Scheduled;
     public string? Note { get; set; }
     public DateTime? CancelledAt { get; set; }
+    public int CreditUnits { get; set; } = 1;
+    public bool IsCreditForfeited { get; set; }
+    public DateOnly? ProposedDate { get; set; }
+    public TimeOnly? ProposedStartTime { get; set; }
+    public TimeOnly? ProposedEndTime { get; set; }
+    public PTAdjustmentType? ProposedAdjustmentType { get; set; }
+    public DateTime? ProposalExpiresAt { get; set; }
+    public DateTime? ProposalEmailSentAt { get; set; }
+    public DateTime? ProposalEmailRetryAt { get; set; }
+    public DateTime? NoteUpdatedAt { get; set; }
+    public int? ReplacementForSessionId { get; set; }
 
     // ── Navigation Properties ──────────────────────────────────
     public PTPurchase PTPurchase { get; set; } = null!;
-    public PTAvailability PTAvailability { get; set; } = null!;
+    public PTAvailability? PTAvailability { get; set; }
     public ApplicationUser Member { get; set; } = null!;
     public ApplicationUser PTUser { get; set; } = null!;
 }

@@ -61,6 +61,7 @@ builder.Services.AddRateLimiter(options =>
 });
 builder.Services.AddMembershipPlanModule();
 builder.Services.AddMembershipPurchaseModule(builder.Configuration);
+builder.Services.AddPersonalTrainingModule();
 
 var mapsterConfig = new TypeAdapterConfig();
 mapsterConfig.Scan(typeof(UserAdministrationMapping).Assembly);

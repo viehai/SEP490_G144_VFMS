@@ -60,6 +60,12 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
         builder.Configuration["MembershipPayments:AccountName"] = "Test VFMS";
         builder.Configuration["MembershipPayments:WebhookSecret"] = Secret;
         builder.Services.AddMembershipPurchaseModule(builder.Configuration);
+        builder.Services.AddSystemAdministrationModule();
+        builder.Services.AddSingleton<MapsterMapper.IMapper>(new MapsterMapper.Mapper());
+        builder.Services.AddPersonalTrainingModule();
+        var ptWorker = builder.Services.Single(service => service.ImplementationType ==
+            typeof(VFMS.Infrastructure.PersonalTraining.PersonalTrainingWorker));
+        builder.Services.Remove(ptWorker);
         var worker = builder.Services.Single(service =>
             service.ServiceType == typeof(IHostedService) && service.ImplementationType == typeof(MembershipCommerceWorker));
         builder.Services.Remove(worker);
@@ -400,16 +406,20 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
 
     private async Task<HttpResponseMessage> NotifyAsync(
         MembershipPurchaseResponse purchase, long id, decimal? amount = null, bool tamper = false,
-        string account = BankAccount, string direction = "in", DateTimeOffset? at = null, string? authorization = null)
+        string account = BankAccount, string direction = "in", DateTimeOffset? at = null, string? authorization = null) =>
+        await NotifyTransferAsync(purchase.VietQr!.TransferContent, amount ?? purchase.AmountDue, id,
+            at ?? purchase.CreatedAt.AddSeconds(1), tamper, account, direction, authorization);
+
+    private async Task<HttpResponseMessage> NotifyTransferAsync(string code, decimal amount, long id, DateTimeOffset at,
+        bool tamper = false, string account = BankAccount, string direction = "in", string? authorization = null)
     {
         using var client = Client();
-        var date = (at ?? purchase.CreatedAt.AddSeconds(1)).ToOffset(TimeSpan.FromHours(7));
-        var code = purchase.VietQr!.TransferContent;
+        var date = at.ToOffset(TimeSpan.FromHours(7));
         var body = JsonSerializer.Serialize(new
         {
             id, transactionDate = date.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture),
             accountNumber = account, content = $"BANK {code} PAYMENT", transferType = direction,
-            transferAmount = amount ?? purchase.AmountDue
+            transferAmount = amount
         });
         var timestamp = _clock.Now.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture);
         var signature = HMACSHA256.HashData(Encoding.UTF8.GetBytes(Secret), Encoding.UTF8.GetBytes($"{timestamp}.{body}"));

@@ -1,4 +1,5 @@
 using VFMS.Domain.Common;
+using VFMS.Domain.Enums;
 
 namespace VFMS.Domain.Entities;
 
@@ -8,6 +9,17 @@ namespace VFMS.Domain.Entities;
 /// </summary>
 public class PTPurchase : BaseEntity
 {
+    public int? OrderId { get; set; }
+    public Order? Order { get; set; }
+    public PTPurchaseStatus Status { get; set; } = PTPurchaseStatus.Active;
+    public string? PackageNameSnapshot { get; set; }
+    public TrainerLevel? TrainerLevelSnapshot { get; set; }
+    public int FreezeMinimumDaysSnapshot { get; set; }
+    public int FreezeMaxTotalDaysSnapshot { get; set; }
+    public string? WeeklyPatternJson { get; set; }
+    public DateTime? HoldExpiresAt { get; set; }
+    public DateTime? ReceiptEmailSentAt { get; set; }
+    public DateTime? ReceiptEmailRetryAt { get; set; }
     public int MemberMembershipId { get; set; }
     public string MemberUserId { get; set; } = string.Empty;
     public string PTUserId { get; set; } = string.Empty;

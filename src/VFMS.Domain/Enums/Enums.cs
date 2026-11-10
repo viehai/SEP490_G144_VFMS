@@ -156,7 +156,25 @@ public enum PTSessionStatus
     Scheduled,
     Completed,
     Cancelled,
-    NoShow
+    NoShow,
+    CheckoutHold,
+    ReschedulePending,
+    PendingFreeze
+}
+
+public enum PTPurchaseStatus
+{
+    Active,
+    PendingPayment,
+    Completed,
+    Expired,
+    Frozen
+}
+
+public enum PTAdjustmentType
+{
+    Reschedule,
+    DoubleSession
 }
 
 public enum SlotStatus
