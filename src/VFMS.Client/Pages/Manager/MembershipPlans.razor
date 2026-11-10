@@ -13,61 +13,61 @@
 <PageTitle>Quản lý gói hội viên | Victor Fitness</PageTitle>
 
 <div class="workspace-page space-y-6">
-    <header class="flex flex-wrap items-end justify-between gap-4 border-b-2 border-black pb-6">
+    <header class="flex flex-wrap items-end justify-between gap-4 border-b border-[#D8DED2] pb-6">
         <div>
-            <p class="workspace-heading mb-3 text-[10px] tracking-[.18em] text-[#71717A]">VFMS / MEMBERSHIPS</p>
-            <h1 class="workspace-heading text-3xl tracking-tight sm:text-4xl">Quản lý gói hội viên<span class="text-[#6366F1]">.</span></h1>
-            <p class="mt-3 text-sm text-[#545454]">Quản lý thông tin gói tập, trạng thái mở bán và số lượt đăng ký đang hoạt động.</p>
+            <p class="mb-2 text-xs font-bold tracking-wider text-[#5F6F52]">VFMS / MEMBERSHIPS</p>
+            <h1 class="text-3xl font-extrabold tracking-tight text-[#383E43] sm:text-4xl">Quản lý gói hội viên<span class="text-[#5F6F52]">.</span></h1>
+            <p class="mt-2 text-sm text-[#69706A]">Quản lý thông tin gói tập, trạng thái mở bán và số lượt đăng ký đang hoạt động.</p>
         </div>
         <button type="button" class="@PrimaryButton" disabled="@ListDisabled" @onclick="OpenCreate">Thêm gói mới</button>
     </header>
 
     @if (_notice is not null)
     {
-        <p role="status" class="border p-4 text-sm @(_noticeIsWarning ? "border-amber-500 bg-amber-50 text-amber-900" : "border-emerald-600 bg-emerald-50 text-emerald-900")">@_notice</p>
+        <p role="status" class="rounded-xl border p-4 text-sm @(_noticeIsWarning ? "border-amber-300 bg-amber-50 text-amber-900" : "border-emerald-300 bg-emerald-50 text-emerald-900")">@_notice</p>
     }
     @if (_actionError is not null)
     {
-        <p role="alert" class="border border-red-600 bg-red-50 p-4 text-sm text-red-900">@_actionError</p>
+        <p role="alert" class="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">@_actionError</p>
     }
 
     @if (_form is { } form)
     {
-        <section class="border-2 border-black bg-white p-5 sm:p-6" aria-labelledby="membership-plan-editor">
-            <h2 id="membership-plan-editor" class="workspace-heading text-base" tabindex="-1" @ref="_panelHeading">@(_selected is null ? "Thêm gói hội viên" : "Chỉnh sửa gói hội viên")</h2>
+        <section class="rounded-xl border border-[#D8DED2] bg-white p-5 sm:p-6 shadow-sm" aria-labelledby="membership-plan-editor">
+            <h2 id="membership-plan-editor" class="text-base font-bold text-[#383E43] border-b border-[#D8DED2] pb-3" tabindex="-1" @ref="_panelHeading">@(_selected is null ? "Thêm gói hội viên" : "Chỉnh sửa gói hội viên")</h2>
             <EditForm @key="form" Model="form" OnValidSubmit="SaveAsync" class="mt-4" novalidate>
                 <ContractValidation TRequest="MembershipPlanRequest" Validator="_validator" CreateRequest="CreateRequest" @ref="_validation" />
                 <ValidationSummary />
                 <fieldset disabled="@_working" class="mt-4 grid gap-4 sm:grid-cols-2">
-                    <label class="text-sm font-semibold" for="plan-name">
+                    <label class="text-sm font-semibold text-[#383E43]" for="plan-name">
                         Tên gói
                         <InputText id="plan-name" class="@Field" @bind-Value="form.Name" maxlength="256" required />
                     </label>
-                    <label class="text-sm font-semibold" for="plan-status">
+                    <label class="text-sm font-semibold text-[#383E43]" for="plan-status">
                         Trạng thái
                         <InputSelect id="plan-status" class="@Field" @bind-Value="form.Status">
                             <option value="@Active">Đang mở bán</option>
                             <option value="@Inactive">Ngừng bán</option>
                         </InputSelect>
                     </label>
-                    <label class="text-sm font-semibold" for="plan-duration">
+                    <label class="text-sm font-semibold text-[#383E43]" for="plan-duration">
                         Thời hạn (ngày)
                         <InputNumber id="plan-duration" class="@Field" @bind-Value="form.DurationInDays" min="1" step="1" required ParsingErrorMessage="Thời hạn phải là số ngày nguyên."
                                      aria-describedby="@(_selected is { DurationInMonths: > 0, DurationInDays: not null } ? "plan-duration-hint" : null)" />
                         @if (_selected is { DurationInMonths: > 0, DurationInDays: not null } legacy)
                         {
-                            <span id="plan-duration-hint" class="mt-1 block text-xs font-normal text-[#545454]">Số ngày được quy đổi từ @legacy.DurationInMonths tháng. Hệ thống giữ kỳ hạn theo tháng nếu bạn giữ nguyên số ngày này.</span>
+                            <span id="plan-duration-hint" class="mt-1 block text-xs font-normal text-[#69706A]">Số ngày được quy đổi từ @legacy.DurationInMonths tháng. Hệ thống giữ kỳ hạn theo tháng nếu bạn giữ nguyên số ngày này.</span>
                         }
                     </label>
-                    <label class="text-sm font-semibold" for="plan-price">
+                    <label class="text-sm font-semibold text-[#383E43]" for="plan-price">
                         Giá (₫)
                         <InputNumber id="plan-price" class="@Field" @bind-Value="form.Price" min="0" step="0.01" required ParsingErrorMessage="Giá phải là một số hợp lệ." />
                     </label>
-                    <label class="text-sm font-semibold sm:col-span-2" for="plan-description">
+                    <label class="text-sm font-semibold text-[#383E43] sm:col-span-2" for="plan-description">
                         Mô tả
                         <InputTextArea id="plan-description" class="@Field" @bind-Value="form.Description" rows="3" maxlength="4000" />
                     </label>
-                    <div class="flex flex-wrap gap-3 sm:col-span-2">
+                    <div class="flex flex-wrap gap-3 sm:col-span-2 pt-2">
                         <button type="submit" class="@PrimaryButton">@(_working ? "Đang lưu..." : "Lưu gói hội viên")</button>
                         <button type="button" class="@Button" @onclick="ClosePanel">Hủy</button>
                     </div>
@@ -77,32 +77,32 @@
     }
     else if (_selected is { } plan)
     {
-        <section class="border-2 border-black bg-white p-5 sm:p-6" aria-labelledby="membership-plan-details">
-            <h2 id="membership-plan-details" class="workspace-heading break-words text-base" tabindex="-1" @ref="_panelHeading">@plan.Name</h2>
+        <section class="rounded-xl border border-[#D8DED2] bg-white p-5 sm:p-6 shadow-sm" aria-labelledby="membership-plan-details">
+            <h2 id="membership-plan-details" class="break-words text-base font-bold text-[#383E43] border-b border-[#D8DED2] pb-3" tabindex="-1" @ref="_panelHeading">@plan.Name</h2>
             <dl class="mt-4 grid gap-4 text-sm sm:grid-cols-2">
-                <div><dt class="font-semibold">Thời hạn</dt><dd>@Duration(plan)</dd></div>
-                <div><dt class="font-semibold">Giá</dt><dd>@Money(plan.Price)</dd></div>
-                <div><dt class="font-semibold">Trạng thái</dt><dd>@StatusLabel(plan.Status)</dd></div>
-                <div><dt class="font-semibold">Lượt đăng ký đang hoạt động</dt><dd>@plan.SubscriberCount</dd></div>
-                <div class="sm:col-span-2"><dt class="font-semibold">Mô tả</dt><dd class="whitespace-pre-wrap break-words">@(plan.Description ?? "—")</dd></div>
+                <div><dt class="font-semibold text-[#69706A]">Thời hạn</dt><dd class="font-bold text-[#383E43]">@Duration(plan)</dd></div>
+                <div><dt class="font-semibold text-[#69706A]">Giá</dt><dd class="font-bold text-[#5F6F52]">@Money(plan.Price)</dd></div>
+                <div><dt class="font-semibold text-[#69706A]">Trạng thái</dt><dd class="font-semibold text-[#383E43]">@StatusLabel(plan.Status)</dd></div>
+                <div><dt class="font-semibold text-[#69706A]">Lượt đăng ký đang hoạt động</dt><dd class="font-bold text-[#383E43]">@plan.SubscriberCount</dd></div>
+                <div class="sm:col-span-2"><dt class="font-semibold text-[#69706A]">Mô tả</dt><dd class="whitespace-pre-wrap break-words text-[#383E43]">@(plan.Description ?? "—")</dd></div>
             </dl>
-            <div class="mt-5 flex flex-wrap gap-3">
+            <div class="mt-5 flex flex-wrap gap-3 pt-2">
                 <button type="button" class="@PrimaryButton" @onclick="OpenEdit">Chỉnh sửa</button>
                 <button type="button" class="@Button" @onclick="ClosePanel">Đóng chi tiết</button>
             </div>
         </section>
     }
 
-    <section class="border-2 border-black bg-white" aria-labelledby="membership-plan-list" aria-busy="@(_loading || _working)">
-        <div class="border-b border-black p-5">
-            <h2 id="membership-plan-list" class="workspace-heading mb-3 text-sm">Danh mục gói hội viên</h2>
+    <section class="rounded-xl border border-[#D8DED2] bg-white shadow-sm overflow-hidden" aria-labelledby="membership-plan-list" aria-busy="@(_loading || _working)">
+        <div class="border-b border-[#D8DED2] p-5 bg-[#EEF1EA]/40">
+            <h2 id="membership-plan-list" class="mb-3 text-sm font-bold text-[#383E43]">Danh mục gói hội viên</h2>
             <form @onsubmit="ApplyFiltersAsync" @onsubmit:preventDefault>
                 <fieldset disabled="@ListDisabled" class="flex flex-wrap items-end gap-3">
-                    <label class="w-full text-sm font-semibold sm:w-64" for="plan-search">
+                    <label class="w-full text-xs font-semibold text-[#383E43] sm:w-64" for="plan-search">
                         Tìm theo tên
                         <input id="plan-search" type="search" @bind="_searchInput" class="@Field" maxlength="256" />
                     </label>
-                    <label class="text-sm font-semibold" for="plan-filter-status">
+                    <label class="text-xs font-semibold text-[#383E43]" for="plan-filter-status">
                         Trạng thái
                         <select id="plan-filter-status" @bind="_statusInput" class="@Field">
                             <option value="">Tất cả</option>
@@ -117,7 +117,10 @@
 
         @if (_loading)
         {
-            <p role="status" class="p-5 text-sm">Đang tải danh sách gói hội viên...</p>
+            <div class="flex items-center gap-3 p-6 text-sm text-[#69706A]" role="status">
+                <svg class="h-5 w-5 animate-spin text-[#5F6F52]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
+                Đang tải danh sách gói hội viên...
+            </div>
         }
         else if (_listError is not null)
         {
@@ -139,14 +142,14 @@
                             <tr @key="row.Id">
                                 <th scope="row" class="max-w-56 break-words">@row.Name</th>
                                 <td>@Duration(row)</td>
-                                <td class="whitespace-nowrap">@Money(row.Price)</td>
+                                <td class="whitespace-nowrap font-semibold text-[#5F6F52]">@Money(row.Price)</td>
                                 <td>@row.SubscriberCount</td>
-                                <td><span class="inline-block whitespace-nowrap border px-2 py-1 text-[10px] font-bold uppercase @(IsActive(row.Status) ? "border-emerald-600 bg-emerald-50 text-emerald-800" : "border-zinc-500 bg-zinc-100 text-zinc-800")">@StatusLabel(row.Status)</span></td>
+                                <td><span class="inline-block whitespace-nowrap rounded-md border px-2.5 py-1 text-[11px] font-semibold @(IsActive(row.Status) ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-[#D8DED2] bg-[#EEF1EA] text-[#69706A]")">@StatusLabel(row.Status)</span></td>
                                 <td>
                                     <div class="flex flex-wrap gap-2">
                                         <button type="button" class="@Button" disabled="@ListDisabled" aria-label="Xem hoặc sửa @row.Name" @onclick="() => OpenDetailsAsync(row.Id)">Xem / Sửa</button>
                                         <button type="button" class="@Button" disabled="@ListDisabled" @onclick="() => ChangeStatusAsync(row)">@(IsActive(row.Status) ? "Ngừng bán" : "Mở bán")</button>
-                                        <button type="button" class="@Button text-red-800" disabled="@ListDisabled" aria-label="Xóa @row.Name" @onclick="() => DeleteAsync(row)">Xóa</button>
+                                        <button type="button" class="@Button text-red-700 hover:bg-red-50" disabled="@ListDisabled" aria-label="Xóa @row.Name" @onclick="() => DeleteAsync(row)">Xóa</button>
                                     </div>
                                 </td>
                             </tr>
@@ -154,7 +157,7 @@
                     </tbody>
                 </table>
             </div>
-            <nav aria-label="Phân trang gói hội viên" class="flex flex-wrap items-center justify-between gap-3 border-t border-black p-4 text-sm">
+            <nav aria-label="Phân trang gói hội viên" class="flex flex-wrap items-center justify-between gap-3 border-t border-[#D8DED2] p-4 text-xs font-medium text-[#69706A]">
                 <p>Trang @list.Page / @PageCount(list) · @list.TotalCount gói</p>
                 <div class="flex gap-2">
                     <button type="button" class="@Button" disabled="@(ListDisabled || list.Page <= 1)" @onclick="() => ChangePageAsync(list.Page - 1)">Trang trước</button>
@@ -164,7 +167,7 @@
         }
         else
         {
-            <p role="status" class="p-5 text-sm text-[#545454]">Không tìm thấy gói hội viên phù hợp.</p>
+            <p role="status" class="p-6 text-sm text-[#69706A]">Không tìm thấy gói hội viên phù hợp.</p>
         }
     </section>
 </div>
@@ -172,9 +175,9 @@
 @code {
     private const string Active = MembershipPlanStatuses.Active;
     private const string Inactive = MembershipPlanStatuses.Inactive;
-    private const string Field = "mt-1 block w-full border border-[#71717A] bg-white px-3 py-2 text-sm font-normal";
-    private const string Button = "border border-black bg-white px-3 py-2 text-xs font-bold hover:bg-[#F7F7F7]";
-    private const string PrimaryButton = "border border-black bg-[#4338CA] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#3730A3]";
+    private const string Field = "mt-1 block w-full rounded-lg border border-[#D8DED2] bg-white px-3 py-2 text-sm font-normal text-[#383E43] focus:border-[#5F6F52] focus:ring-2 focus:ring-[#5F6F52]/20 outline-none";
+    private const string Button = "rounded-lg border border-[#D8DED2] bg-white px-3 py-1.5 text-xs font-semibold text-[#383E43] hover:bg-[#EEF1EA] transition";
+    private const string PrimaryButton = "rounded-lg bg-[#5F6F52] px-4 py-2 text-sm font-semibold text-white hover:bg-[#4E5D44] transition shadow-sm";
     private static readonly NumberFormatInfo CurrencyFormat = new() { NumberGroupSeparator = ".", NumberDecimalSeparator = "," };
 
     private readonly CancellationTokenSource _lifetime = new();

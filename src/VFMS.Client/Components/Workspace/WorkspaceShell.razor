@@ -1,30 +1,30 @@
 @inject NavigationManager Navigation
 
-<div class="workspace-shell workspace-shell--@Variant rounded-none">
-    <aside class="workspace-sidebar @SidebarTone rounded-none" aria-label="Điều hướng không gian làm việc">
-        <a href="/" class="workspace-logo rounded-none"><img src="/brand/logo-remove.png" alt="Victor Fitness - Trang chủ" /></a>
+<div class="workspace-shell workspace-shell--@Variant">
+    <aside class="workspace-sidebar" aria-label="Điều hướng không gian làm việc">
+        <a href="/" class="workspace-logo"><img src="/brand/logo-remove.png" alt="Victor Fitness - Trang chủ" class="brightness-0" /></a>
         <div class="workspace-sidebar-label">V-FITNESS MANAGEMENT</div>
-        <div class="workspace-role rounded-none"><span aria-hidden="true">@RoleMark</span><div><strong>@RoleName</strong><small>KHÔNG GIAN LÀM VIỆC</small></div></div>
+        <div class="workspace-role"><span aria-hidden="true">@RoleMark</span><div><strong>@RoleName</strong><small>KHÔNG GIAN LÀM VIỆC</small></div></div>
         <p class="workspace-sidebar-label workspace-sidebar-label--menu">ĐIỀU HƯỚNG</p>
         <nav class="workspace-nav">
-            <NavLink href="@DashboardRoute" Match="NavLinkMatch.All" class="workspace-nav-link rounded-none" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">01</span> Tổng quan <span aria-hidden="true">↗</span></NavLink>
-            <a href="@(DashboardRoute + "#quick-actions")" class="workspace-nav-link rounded-none"><span aria-hidden="true">02</span> Truy cập nhanh <span aria-hidden="true">↗</span></a>
-            <NavLink href="/profile" Match="NavLinkMatch.All" class="workspace-nav-link rounded-none" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">03</span> Hồ sơ cá nhân <span aria-hidden="true">↗</span></NavLink>
-            <a href="/" class="workspace-nav-link rounded-none"><span aria-hidden="true">04</span> Trang chủ <span aria-hidden="true">↗</span></a>
+            <NavLink href="@DashboardRoute" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">01</span> Tổng quan <span aria-hidden="true">↗</span></NavLink>
+            <a href="@(DashboardRoute + "#quick-actions")" class="workspace-nav-link"><span aria-hidden="true">02</span> Truy cập nhanh <span aria-hidden="true">↗</span></a>
+            <NavLink href="/profile" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">03</span> Hồ sơ cá nhân <span aria-hidden="true">↗</span></NavLink>
+            <a href="/" class="workspace-nav-link"><span aria-hidden="true">04</span> Trang chủ <span aria-hidden="true">↗</span></a>
             @if (Variant == "manager")
             {
                 <AuthorizeView Roles="Manager">
-                    <NavLink href="/manager/membership-plans" Match="NavLinkMatch.All" class="workspace-nav-link rounded-none" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">05</span> Gói hội viên <span aria-hidden="true">↗</span></NavLink>
-                    <NavLink href="/manager/general-policies" Match="NavLinkMatch.All" class="workspace-nav-link rounded-none" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">06</span> Chính sách chung <span aria-hidden="true">↗</span></NavLink>
-                    <NavLink href="/manager/business-reports" Match="NavLinkMatch.All" class="workspace-nav-link rounded-none" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">07</span> Báo cáo kinh doanh <span aria-hidden="true">↗</span></NavLink>
+                    <NavLink href="/manager/membership-plans" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">05</span> Gói hội viên <span aria-hidden="true">↗</span></NavLink>
+                    <NavLink href="/manager/general-policies" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">06</span> Chính sách chung <span aria-hidden="true">↗</span></NavLink>
+                    <NavLink href="/manager/business-reports" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">07</span> Báo cáo kinh doanh <span aria-hidden="true">↗</span></NavLink>
                 </AuthorizeView>
             }
             @if (Variant == "admin")
             {
                 <AuthorizeView Roles="Admin">
-                    <NavLink href="/admin/business-reports" Match="NavLinkMatch.All" class="workspace-nav-link rounded-none" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">05</span> Báo cáo kinh doanh <span aria-hidden="true">↗</span></NavLink>
-                    <NavLink href="/admin/banned-words" Match="NavLinkMatch.All" class="workspace-nav-link rounded-none" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">06</span> Từ khóa cấm <span aria-hidden="true">↗</span></NavLink>
-                    <NavLink href="/admin/audit-logs" Match="NavLinkMatch.All" class="workspace-nav-link rounded-none" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">07</span> Nhật ký hệ thống <span aria-hidden="true">↗</span></NavLink>
+                    <NavLink href="/admin/business-reports" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">05</span> Báo cáo kinh doanh <span aria-hidden="true">↗</span></NavLink>
+                    <NavLink href="/admin/banned-words" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">06</span> Từ khóa cấm <span aria-hidden="true">↗</span></NavLink>
+                    <NavLink href="/admin/audit-logs" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">07</span> Nhật ký hệ thống <span aria-hidden="true">↗</span></NavLink>
                 </AuthorizeView>
             }
         </nav>
@@ -34,13 +34,13 @@
         </div>
     </aside>
     <div class="workspace-content">
-        <header class="workspace-topbar rounded-none">
+        <header class="workspace-topbar">
             <div class="workspace-breadcrumb"><a href="/">VFMS</a><span aria-hidden="true">/</span><strong>@RoleName</strong></div>
             @if (IsPreview)
             {
                 <div class="workspace-preview-picker">
                     <label for="workspace-preview">XEM GIAO DIỆN</label>
-                    <select id="workspace-preview" value="@CurrentRoute" @onchange="ChangePreview" class="rounded-none">
+                    <select id="workspace-preview" value="@CurrentRoute" @onchange="ChangePreview" class="rounded-lg">
                         <option value="/admin/dashboard">Admin</option>
                         <option value="/manager/dashboard">Manager</option>
                         <option value="/staff/dashboard">Staff</option>
@@ -51,7 +51,7 @@
             }
             else
             {
-                <AuthorizeView><LogoutButton Class="border border-black bg-white px-3 py-2 text-xs font-bold" /></AuthorizeView>
+                <AuthorizeView><LogoutButton Class="border border-[#D8DED2] bg-white hover:bg-[#EEF1EA] text-[#383E43] px-3.5 py-2 text-xs font-bold rounded-lg transition-colors" /></AuthorizeView>
             }
         </header>
         @if (IsPreview)
@@ -67,7 +67,6 @@
     [Parameter] public string Variant { get; set; } = "staff";
     [Parameter] public bool IsPreview { get; set; } = true;
     [Parameter] public RenderFragment? ChildContent { get; set; }
-    private string SidebarTone => Variant == "manager" ? "bg-[#0F172A]" : "bg-[#0A0A0A]";
     private string RoleName => Variant switch { "admin" => "ADMIN", "manager" => "MANAGER", "pt" => "PERSONAL TRAINER", _ => "STAFF" };
     private string RoleMark => Variant switch { "admin" => "AD", "manager" => "MG", "pt" => "PT", _ => "ST" };
     private string DashboardRoute => Variant switch { "admin" => "/admin/dashboard", "manager" => "/manager/dashboard", "pt" => "/pt/dashboard", _ => "/staff/dashboard" };
