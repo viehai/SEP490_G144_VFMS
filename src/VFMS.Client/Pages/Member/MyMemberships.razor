@@ -1,0 +1,183 @@
+@page "/my-memberships"
+@layout PublicLayout
+@using Microsoft.AspNetCore.Authorization
+@using System.Globalization
+@using VFMS.Contracts.Memberships
+@attribute [Authorize(Roles = "Member")]
+@inject MembershipPlanApiClient Plans
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<PageTitle>Gói của tôi | Victor Fitness</PageTitle>
+
+<section class="mx-auto max-w-4xl space-y-6 px-5 pb-16 pt-28" aria-labelledby="my-memberships-title">
+    <header class="space-y-2 border-b border-[#D8DED2] pb-5">
+        <h1 id="my-memberships-title" class="font-['Montserrat',sans-serif] text-3xl font-black text-[#383E43]">Gói của tôi</h1>
+        <p class="text-sm text-[#69706A]">Kiểm tra ngày hết hạn và gia hạn gói hội viên bằng VietQR.</p>
+    </header>
+
+    @if (_loading)
+    {
+        <div class="flex items-center gap-3 py-8 text-sm text-[#69706A]" role="status">
+            <svg class="h-5 w-5 animate-spin text-[#5F6F52]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
+            Đang tải gói hội viên...
+        </div>
+    }
+    else if (_loadError is not null)
+    {
+        <div class="rounded-xl border border-red-200 bg-red-50 p-4">
+            <p role="alert" class="text-sm text-red-800">@_loadError</p>
+            <button type="button" class="mt-3 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-800 hover:bg-red-50 transition" @onclick="LoadAsync">Thử lại</button>
+        </div>
+    }
+    else if (_options.Count == 0)
+    {
+        <div class="rounded-xl border border-[#D8DED2] bg-white p-8 text-center text-sm text-[#69706A] shadow-sm">
+            <p role="status">Bạn chưa có gói hội viên để gia hạn.</p>
+        </div>
+    }
+    else
+    {
+        <ul class="space-y-4">
+            @foreach (var option in _options)
+            {
+                <li @key="option.MembershipId" class="space-y-4 rounded-xl border border-[#D8DED2] bg-white p-6 shadow-sm">
+                    <div class="flex flex-wrap items-baseline justify-between gap-2 border-b border-[#D8DED2] pb-4">
+                        <h2 class="font-['Montserrat',sans-serif] text-xl font-bold text-[#383E43]">@option.PlanName</h2>
+                        <span class="rounded-md border border-[#D8DED2] bg-[#EEF1EA] px-2.5 py-1 text-xs font-semibold text-[#5F6F52]">@StatusLabel(option.Status)</span>
+                    </div>
+                    <dl class="grid gap-3 text-sm sm:grid-cols-3">
+                        <div>
+                            <dt class="text-xs font-semibold text-[#69706A]">Ngày hết hạn</dt>
+                            <dd class="mt-1 text-sm font-bold text-[#383E43]"><time datetime="@IsoDate(option.EndDate)">@DisplayDate(option.EndDate)</time></dd>
+                        </div>
+                        @if (option.RenewalStartDate is { } start)
+                        {
+                            <div>
+                                <dt class="text-xs font-semibold text-[#69706A]">Ngày bắt đầu sau gia hạn</dt>
+                                <dd class="mt-1 text-sm font-bold text-[#383E43]"><time datetime="@IsoDate(start)">@DisplayDate(start)</time></dd>
+                            </div>
+                        }
+                        @if (option.Price is { } price)
+                        {
+                            <div>
+                                <dt class="text-xs font-semibold text-[#69706A]">Giá gia hạn</dt>
+                                <dd class="mt-1 text-sm font-bold text-[#5F6F52]">@(price.ToString("#,0", VietnameseCulture)) ₫</dd>
+                            </div>
+                        }
+                    </dl>
+                    @if (option.Message is { } message)
+                    {
+                        <p class="text-sm text-[#69706A] rounded-lg bg-[#EEF1EA]/60 p-3">@message</p>
+                    }
+                    @if (_renewalErrorMembershipId == option.MembershipId)
+                    {
+                        <p role="alert" class="text-sm text-red-800 rounded-lg bg-red-50 border border-red-200 p-3">@_renewalError</p>
+                    }
+                    <div class="pt-2">
+                        <button type="button"
+                                class="rounded-lg bg-[#5F6F52] hover:bg-[#4E5D44] px-6 py-2.5 text-sm font-semibold text-white transition shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-50"
+                                disabled="@(!option.Eligible || _submittingMembershipId.HasValue)"
+                                @onclick="() => RenewAsync(option)">
+                            @(_submittingMembershipId == option.MembershipId ? "Đang tạo đơn..." : "Gia hạn gói")
+                        </button>
+                    </div>
+                </li>
+            }
+        </ul>
+    }
+    <div>
+        <a href="/#pricing-memberships" class="inline-flex items-center gap-1.5 text-sm font-bold text-[#5F6F52] hover:underline">
+            <span>←</span> Xem danh sách tất cả các gói tập
+        </a>
+    </div>
+</section>
+
+@code {
+    private static readonly CultureInfo VietnameseCulture = CultureInfo.GetCultureInfo("vi-VN");
+    private readonly CancellationTokenSource _lifetime = new();
+    private IReadOnlyList<MembershipRenewalOption> _options = [];
+    private bool _loading;
+    private string? _loadError;
+    private int? _submittingMembershipId;
+    private string? _renewalError;
+    private int? _renewalErrorMembershipId;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        if (_loading)
+            return;
+        var ct = _lifetime.Token;
+        _loading = true;
+        _loadError = null;
+        try
+        {
+            _options = await Plans.ListRenewalsAsync(ct);
+        }
+        catch (AuthApiException ex)
+        {
+            _loadError = ex.Message;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // The user left the page.
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task RenewAsync(MembershipRenewalOption option)
+    {
+        if (!option.Eligible || _submittingMembershipId.HasValue)
+            return;
+        var ct = _lifetime.Token;
+        _submittingMembershipId = option.MembershipId;
+        _renewalError = null;
+        _renewalErrorMembershipId = null;
+        try
+        {
+            var purchase = await Plans.RenewAsync(new(option.MembershipId), ct);
+            if (!ct.IsCancellationRequested)
+                Navigation.NavigateTo($"/membership-purchases/{Uri.EscapeDataString(purchase.OrderNumber)}?renewal=true");
+        }
+        catch (AuthApiException ex)
+        {
+            _renewalErrorMembershipId = option.MembershipId;
+            _renewalError = ex.ErrorCode == "PAYMENT_UNAVAILABLE"
+                ? "VietQR hiện chưa khả dụng. Vui lòng thử lại sau."
+                : ex.Message;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // The user left the page.
+        }
+        finally
+        {
+            _submittingMembershipId = null;
+        }
+    }
+
+    private static string IsoDate(DateOnly date) => date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    private static string DisplayDate(DateOnly date) => date.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
+
+    private static string StatusLabel(string status) => status switch
+    {
+        "Active" => "Đang hoạt động",
+        "Expired" => "Đã hết hạn",
+        "Scheduled" => "Chờ kích hoạt",
+        "Frozen" => "Đang bảo lưu",
+        "Suspended" => "Đang tạm ngưng",
+        "Cancelled" => "Đã hủy",
+        _ => status
+    };
+
+    public void Dispose()
+    {
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+    }
+}

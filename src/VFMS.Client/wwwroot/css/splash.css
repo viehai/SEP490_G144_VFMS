@@ -1,4 +1,4 @@
-/* VFMS premium splash screen: black and metallic silver. */
+/* VFMS premium splash screen: Warm Ivory and Sage Green. */
 .vfms-splash {
     position: fixed;
     inset: 0;
@@ -6,7 +6,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #09090b;
+    background: #F7F4EC;
     overflow: hidden;
     opacity: 1;
     visibility: visible;
@@ -36,18 +36,17 @@
     width: 100%;
     height: auto;
     object-fit: contain;
-    filter: drop-shadow(0 0 18px rgba(255, 255, 255, 0.08));
 }
 
 .splash-shine {
     position: absolute;
     inset: 0;
     pointer-events: none;
-    background: linear-gradient(110deg, transparent 25%, rgba(255, 255, 255, 0.05) 38%, rgba(255, 255, 255, 0.75) 50%, rgba(255, 255, 255, 0.05) 62%, transparent 75%);
+    background: linear-gradient(110deg, transparent 25%, rgba(255, 255, 255, 0.1) 38%, rgba(255, 255, 255, 0.6) 50%, rgba(255, 255, 255, 0.1) 62%, transparent 75%);
     background-size: 300% 100%;
     background-position: 150% 0;
-    -webkit-mask-image: url('../images/victor-fitness.png');
-    mask-image: url('../images/victor-fitness.png');
+    -webkit-mask-image: url('../images/victor-fitness-dark.png');
+    mask-image: url('../images/victor-fitness-dark.png');
     -webkit-mask-size: 100% 100%;
     mask-size: 100% 100%;
     -webkit-mask-repeat: no-repeat;
@@ -58,10 +57,10 @@
 .splash-loader {
     position: relative;
     width: 175px;
-    height: 2px;
-    margin-top: 10px;
+    height: 3px;
+    margin-top: 14px;
     overflow: hidden;
-    background: #27272a;
+    background: #D8DED2;
     border-radius: 999px;
     opacity: 0;
     animation: fadeIn 0.7s ease 0.6s forwards;
@@ -73,7 +72,7 @@
     left: 0;
     width: 40%;
     height: 100%;
-    background: linear-gradient(90deg, #71717a, #fafafa, #71717a);
+    background: linear-gradient(90deg, #5F6F52, #889C79, #5F6F52);
     border-radius: inherit;
     animation: loadingSlide 1.5s ease-in-out infinite;
 }
@@ -82,9 +81,9 @@
     margin-top: 19px;
     font-family: Inter, Arial, sans-serif;
     font-size: 12px;
-    font-weight: 400;
-    letter-spacing: 0.06em;
-    color: #a1a1aa;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    color: #69706A;
     opacity: 0;
     animation: fadeIn 0.7s ease 0.85s forwards;
 }
@@ -92,11 +91,11 @@
 .splash-footer {
     position: absolute;
     bottom: 32px;
-    font-family: Inter, Arial, sans-serif;
+    font-family: 'Montserrat', Inter, Arial, sans-serif;
     font-size: 10px;
-    font-weight: 500;
+    font-weight: 700;
     letter-spacing: 0.22em;
-    color: #52525b;
+    color: #8A9089;
     opacity: 0;
     animation: fadeIn 1s ease 1s forwards;
 }
@@ -106,7 +105,6 @@
     to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-/* Move the light across the fixed logo mask, keeping the shine on the logo. */
 @keyframes metallicSweep {
     0% { background-position: 150% 0; }
     65%, 100% { background-position: -50% 0; }
@@ -132,7 +130,7 @@
     animation: none;
     left: 0;
     width: 100%;
-    background: #ef4444;
+    background: #DC2626;
 }
 
 @media (max-width: 600px) {

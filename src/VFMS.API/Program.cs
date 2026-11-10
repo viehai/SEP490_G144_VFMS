@@ -45,6 +45,8 @@ builder.Services.AddSupplementModule();
 builder.Services.AddYogaModule();
 builder.Services.AddWorkoutModule(builder.Configuration);
 builder.Services.AddCheckInModule(builder.Configuration, builder.Environment);
+builder.Services.AddMembershipPlanModule();
+builder.Services.AddMembershipPurchaseModule(builder.Configuration);
 
 var mapsterConfig = new TypeAdapterConfig();
 mapsterConfig.Scan(typeof(UserAdministrationMapping).Assembly);

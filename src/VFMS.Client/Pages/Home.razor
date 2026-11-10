@@ -1,5 +1,6 @@
 @page "/"
 @layout PublicLayout
+@using VFMS.Client.Components.Memberships
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 
@@ -17,36 +18,11 @@
         font-family: 'Inter', sans-serif;
     }
 
-    /* Đảm bảo tuyệt đối không bo góc theo quy chuẩn Brutal Minimalism */
-    .brutal-btn, .brutal-badge {
-        border-radius: 0px !important;
-    }
-
-    /* Brutal Pricing Card: Dịch chuyển lên 8px và đổ bóng đen đặc 8px 8px khi hover */
-    .brutal-pricing-card {
-        border-radius: 0px !important;
-        transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-    .brutal-pricing-card:hover {
-        transform: translateY(-8px) !important;
-        box-shadow: 8px 8px 0px 0px #000000 !important;
-    }
-
-    /* Brutal Equipment Card: Nảy lên -8px và đổ bóng khối đặc 6px khi hover */
-    .brutal-equipment-card {
-        border-radius: 0px !important;
-        transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-    .brutal-equipment-card:hover {
-        transform: translateY(-8px) !important;
-        box-shadow: 6px 6px 0px 0px #000000 !important;
-    }
-
     /* Scroll Reveal Staggered Slide Up cho Thiết Bị */
     .equipment-reveal {
         opacity: 0;
-        transform: translateY(35px);
-        transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1), transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+        transform: translateY(20px);
+        transition: opacity 0.4s ease-out, transform 0.4s ease-out;
         will-change: opacity, transform;
     }
     .equipment-reveal.revealed {
@@ -63,18 +39,18 @@
     .animate-marquee {
         display: flex;
         width: max-content;
-        animation: marquee 28s linear infinite;
+        animation: marquee 32s linear infinite;
     }
 
     .animate-marquee:hover {
         animation-play-state: paused;
     }
 
-    /* Scroll Reveal Animation: Trượt chậm từ phải sang trái (Cinematic Slow Slide) */
+    /* Scroll Reveal Animation: Trượt nhẹ sang trái */
     .slide-reveal-right {
         opacity: 0;
-        transform: translateX(90px);
-        transition: opacity 1.4s cubic-bezier(0.16, 1, 0.3, 1), transform 1.4s cubic-bezier(0.16, 1, 0.3, 1);
+        transform: translateX(30px);
+        transition: opacity 0.8s ease-out, transform 0.8s ease-out;
         will-change: opacity, transform;
     }
 
@@ -84,71 +60,74 @@
     }
 </style>
 
-<div class="w-full max-w-full overflow-x-hidden bg-[#FFFFFF] text-[#252525] font-body selection:bg-[#0A0A0A] selection:text-white">
+<div class="w-full max-w-full overflow-x-hidden bg-[#F7F4EC] text-[#383E43] font-body selection:bg-[#5F6F52] selection:text-white">
 
     <!-- ========================================================================= -->
-    <!-- 1. HERO SECTION (Chiếm toàn màn hình, Slogan mạnh mẽ, CTA hình chữ nhật)   -->
+    <!-- 1. HERO SECTION — Sage Athletic Minimalism, ảnh màu tự nhiên             -->
     <!-- ========================================================================= -->
-    <section class="relative w-full h-screen min-h-[700px] flex items-center justify-center overflow-hidden bg-[#0A0A0A] text-white">
+    <section class="relative w-full h-screen min-h-[700px] flex items-center overflow-hidden bg-[#F7F4EC]">
         
-        <!-- Background Image with High Contrast Athletic Filter & Dark Overlay -->
+        <!-- Background Image: màu tự nhiên, không filter grayscale/contrast/brightness -->
         <div class="absolute inset-0 z-0">
-            <img src="https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&w=2000&q=85"
-                 alt="VFMS Elite Training Facility"
-                 class="w-full h-full object-cover object-center grayscale contrast-125 brightness-75 scale-100" />
-            <!-- Brutal High-Contrast Dark Gradient Overlay -->
-            <div class="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-black/30"></div>
+            <img src="/images/hero-bg.png"
+                 alt="Victor Fitness Elite Training Facility"
+                 class="w-full h-full object-cover object-center" />
+            <!-- Warm Ivory gradient overlay từ trái sang — giúp text dễ đọc, không che ảnh -->
+            <div class="absolute inset-0"
+                 style="background: linear-gradient(90deg, rgba(247,244,236,0.98) 0%, rgba(247,244,236,0.90) 32%, rgba(247,244,236,0.55) 48%, rgba(247,244,236,0) 62%);">
+            </div>
         </div>
 
-        <!-- Hero Content Box -->
-        <div class="relative z-10 max-w-6xl mx-auto px-6 sm:px-8 text-center flex flex-col items-center justify-center mt-8">
+        <!-- Hero Content: căn trái, tràn full chiều cao -->
+        <div class="relative z-10 w-full max-w-6xl mx-auto px-6 sm:px-8 lg:px-12 flex flex-col justify-center">
             
-            <!-- Category / Tagline -->
-            <div class="inline-block border border-white/40 px-3 py-1 mb-6 brutal-badge">
-                <span class="font-heading text-xs font-bold tracking-widest text-white/90">
+            <!-- Eyebrow label -->
+            <div class="inline-flex items-center gap-2 mb-6">
+                <span class="w-5 h-px bg-[#5F6F52]"></span>
+                <span class="font-heading text-xs font-bold tracking-widest text-[#5F6F52] uppercase">
                     V-FITNESS MANAGEMENT SYSTEM
                 </span>
             </div>
 
-            <!-- Main Slogan: Montserrat, Bold, Uppercase, Tracking-wide -->
-            <h1 class="font-heading text-4xl sm:text-6xl md:text-7xl lg:text-8xl font-black uppercase text-white leading-tight tracking-tight mb-6 max-w-5xl">
-                KỶ LUẬT TẠO NÊN <br class="hidden sm:inline" />
-                <span class="text-white underline decoration-2 underline-offset-8">BẢN LĨNH THÉP</span>
+            <!-- Main Headline -->
+            <h1 class="font-heading font-black uppercase leading-tight tracking-tight mb-6 max-w-2xl">
+                <span class="block text-4xl sm:text-6xl md:text-7xl lg:text-[5.5rem] text-[#383E43]">KỶ LUẬT TẠO NÊN</span>
+                <span class="block text-4xl sm:text-6xl md:text-7xl lg:text-[5.5rem] text-[#5F6F52]">BẢN LĨNH THÉP</span>
             </h1>
 
-            <!-- Subtext: Inter, Thin/Regular, High Readability -->
-            <p class="font-body text-base sm:text-lg md:text-xl text-neutral-300 font-light max-w-2xl mx-auto mb-10 leading-relaxed">
+            <!-- Subtext -->
+            <p class="font-body text-base sm:text-lg text-[#69706A] font-normal max-w-xl mb-10 leading-relaxed">
                 Hệ thống tập luyện và huấn luyện thể hình chuẩn hiệu suất cao. Không thỏa hiệp, không đường tắt — chỉ có sự kỷ luật, khoa học và kết quả đột phá.
             </p>
 
-            <!-- Call To Action (CTA) Buttons -->
-            <div class="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto">
-                <!-- Primary CTA: Solid Black/Inverted White with sharp borders -->
+            <!-- CTA Buttons -->
+            <div class="flex flex-col sm:flex-row items-start gap-3 w-full sm:w-auto">
+                <!-- Primary CTA: Sage Green -->
                 <button @onclick="ScrollToFeaturedClasses"
-                        class="brutal-btn w-full sm:w-auto bg-white text-[#0A0A0A] hover:bg-[#0A0A0A] hover:text-white border-2 border-white px-10 py-4 font-heading font-extrabold text-sm tracking-wider uppercase transition-colors duration-200 cursor-pointer">
+                        class="w-full sm:w-auto bg-[#5F6F52] hover:bg-[#4E5D44] text-white px-10 py-4 font-heading font-extrabold text-sm tracking-wider uppercase transition-colors duration-200 cursor-pointer rounded-lg">
                     KHÁM PHÁ CÁC LỚP HỌC
                 </button>
 
-                <!-- Secondary CTA: Outlined Brutalist Button -->
+                <!-- Secondary CTA: white/transparent, Sage border -->
                 <a href="/auth/register"
-                   class="brutal-btn w-full sm:w-auto bg-transparent text-white hover:bg-white hover:text-black border-2 border-white/80 px-10 py-4 font-heading font-extrabold text-sm tracking-wider uppercase transition-colors duration-200 text-center inline-block">
-                    ĐĂNG KÝ HỘI VIÊN NGAY
+                   class="w-full sm:w-auto bg-white hover:bg-[#E8EDE3] text-[#383E43] border border-[#5F6F52] px-10 py-4 font-heading font-extrabold text-sm tracking-wider uppercase transition-colors duration-200 text-center inline-block rounded-lg">
+                    ĐĂNG KÝ HỘI VIÊN
                 </a>
             </div>
 
-            <!-- Stats Bar (Brutal Minimalist metrics) -->
-            <div class="grid grid-cols-3 gap-6 sm:gap-12 mt-16 pt-8 border-t border-white/20 w-full max-w-2xl">
+            <!-- Stats Bar -->
+            <div class="flex flex-wrap gap-8 sm:gap-12 mt-14 pt-8 border-t border-[#D8DED2] max-w-xl">
                 <div>
-                    <div class="font-heading text-2xl sm:text-3xl font-extrabold text-white">100%</div>
-                    <div class="font-body text-xs text-neutral-400 uppercase tracking-wider mt-1">Chuẩn Thiết Bị Olympic</div>
+                    <div class="font-heading text-2xl sm:text-3xl font-extrabold text-[#5F6F52]">100%</div>
+                    <div class="font-body text-xs text-[#69706A] uppercase tracking-wider mt-1">Chuẩn Thiết Bị Olympic</div>
                 </div>
                 <div>
-                    <div class="font-heading text-2xl sm:text-3xl font-extrabold text-white">24/7</div>
-                    <div class="font-body text-xs text-neutral-400 uppercase tracking-wider mt-1">Check-in FaceID &amp; QR</div>
+                    <div class="font-heading text-2xl sm:text-3xl font-extrabold text-[#5F6F52]">24/7</div>
+                    <div class="font-body text-xs text-[#69706A] uppercase tracking-wider mt-1">Check-in FaceID &amp; QR</div>
                 </div>
                 <div>
-                    <div class="font-heading text-2xl sm:text-3xl font-extrabold text-white">50+</div>
-                    <div class="font-body text-xs text-neutral-400 uppercase tracking-wider mt-1">HLV Chuyên Nghiệp</div>
+                    <div class="font-heading text-2xl sm:text-3xl font-extrabold text-[#5F6F52]">50+</div>
+                    <div class="font-body text-xs text-[#69706A] uppercase tracking-wider mt-1">HLV Chuyên Nghiệp</div>
                 </div>
             </div>
 
@@ -156,59 +135,57 @@
 
         <!-- Scroll Down Indicator -->
         <div class="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-10 flex flex-col items-center">
-            <span class="font-heading text-[10px] tracking-widest text-neutral-400 uppercase mb-2">CUỘN XUỐNG</span>
-            <div class="w-px h-8 bg-neutral-500 animate-pulse"></div>
+            <span class="font-heading text-[10px] tracking-widest text-[#8A9089] uppercase mb-2">CUỘN XUỐNG</span>
+            <div class="w-px h-8 bg-[#5F6F52]/50 animate-pulse"></div>
         </div>
 
     </section>
 
     <!-- ========================================================================= -->
-    <!-- 2. FEATURED CLASSES SECTION (Nền trắng, ảnh khổ lớn theo ảnh tham chiếu)  -->
+    <!-- 2. FEATURED CLASSES SECTION — Sage Athletic Minimalism                   -->
     <!-- ========================================================================= -->
-    <section id="featured-classes" class="w-full bg-[#FFFFFF] text-[#252525] pt-16 sm:pt-20 pb-28 border-b border-[#CFCFCF]">
+    <section id="featured-classes" class="w-full bg-[#F7F4EC] text-[#383E43] pt-16 sm:pt-20 pb-28 border-b border-[#D8DED2]">
         
-        <!-- ===================================================================== -->
-        <!-- A. INFINITE MARQUEE (Dải chữ chạy ngang liên tục)                     -->
-        <!-- ===================================================================== -->
-        <div class="w-full max-w-full overflow-hidden bg-[#0A0A0A] py-3 md:py-4 border-y-2 border-black cursor-default select-none relative">
+        <!-- Infinite Marquee: Sage accent on ivory -->
+        <div class="w-full max-w-full overflow-hidden bg-[#5F6F52] py-3 md:py-4 cursor-default select-none relative">
             <div class="animate-marquee whitespace-nowrap flex">
                 <!-- Group 1 -->
                 <div class="flex items-center gap-6 sm:gap-10 font-heading text-base sm:text-xl md:text-2xl font-black uppercase tracking-widest text-white pr-6 sm:pr-10 flex-shrink-0">
-                    <span class="hover:text-neutral-400 transition-colors">GYM &amp; STRENGTH</span>
-                    <span class="text-neutral-600 font-normal">—</span>
-                    <span class="hover:text-neutral-400 transition-colors">YOGA STUDIO</span>
-                    <span class="text-neutral-600 font-normal">—</span>
-                    <span class="hover:text-neutral-400 transition-colors">PERSONAL TRAINER</span>
-                    <span class="text-neutral-600 font-normal">—</span>
-                    <span class="hover:text-neutral-400 transition-colors">HIIT</span>
-                    <span class="text-neutral-600 font-normal">—</span>
-                    <span class="hover:text-neutral-400 transition-colors">GYM &amp; STRENGTH</span>
-                    <span class="text-neutral-600 font-normal">—</span>
-                    <span class="hover:text-neutral-400 transition-colors">YOGA STUDIO</span>
-                    <span class="text-neutral-600 font-normal">—</span>
-                    <span class="hover:text-neutral-400 transition-colors">PERSONAL TRAINER</span>
-                    <span class="text-neutral-600 font-normal">—</span>
-                    <span class="hover:text-neutral-400 transition-colors">HIIT</span>
-                    <span class="text-neutral-600 font-normal">—</span>
+                    <span>GYM &amp; STRENGTH</span>
+                    <span class="text-white/40 font-normal">—</span>
+                    <span>YOGA STUDIO</span>
+                    <span class="text-white/40 font-normal">—</span>
+                    <span>PERSONAL TRAINER</span>
+                    <span class="text-white/40 font-normal">—</span>
+                    <span>HIIT</span>
+                    <span class="text-white/40 font-normal">—</span>
+                    <span>GYM &amp; STRENGTH</span>
+                    <span class="text-white/40 font-normal">—</span>
+                    <span>YOGA STUDIO</span>
+                    <span class="text-white/40 font-normal">—</span>
+                    <span>PERSONAL TRAINER</span>
+                    <span class="text-white/40 font-normal">—</span>
+                    <span>HIIT</span>
+                    <span class="text-white/40 font-normal">—</span>
                 </div>
-                <!-- Group 2 -->
+                <!-- Group 2 (duplicate for seamless loop) -->
                 <div class="flex items-center gap-6 sm:gap-10 font-heading text-base sm:text-xl md:text-2xl font-black uppercase tracking-widest text-white pr-6 sm:pr-10 flex-shrink-0" aria-hidden="true">
-                    <span class="hover:text-neutral-400 transition-colors">GYM &amp; STRENGTH</span>
-                    <span class="text-neutral-600 font-normal">—</span>
-                    <span class="hover:text-neutral-400 transition-colors">YOGA STUDIO</span>
-                    <span class="text-neutral-600 font-normal">—</span>
-                    <span class="hover:text-neutral-400 transition-colors">PERSONAL TRAINER</span>
-                    <span class="text-neutral-600 font-normal">—</span>
-                    <span class="hover:text-neutral-400 transition-colors">HIIT</span>
-                    <span class="text-neutral-600 font-normal">—</span>
-                    <span class="hover:text-neutral-400 transition-colors">GYM &amp; STRENGTH</span>
-                    <span class="text-neutral-600 font-normal">—</span>
-                    <span class="hover:text-neutral-400 transition-colors">YOGA STUDIO</span>
-                    <span class="text-neutral-600 font-normal">—</span>
-                    <span class="hover:text-neutral-400 transition-colors">PERSONAL TRAINER</span>
-                    <span class="text-neutral-600 font-normal">—</span>
-                    <span class="hover:text-neutral-400 transition-colors">HIIT</span>
-                    <span class="text-neutral-600 font-normal">—</span>
+                    <span>GYM &amp; STRENGTH</span>
+                    <span class="text-white/40 font-normal">—</span>
+                    <span>YOGA STUDIO</span>
+                    <span class="text-white/40 font-normal">—</span>
+                    <span>PERSONAL TRAINER</span>
+                    <span class="text-white/40 font-normal">—</span>
+                    <span>HIIT</span>
+                    <span class="text-white/40 font-normal">—</span>
+                    <span>GYM &amp; STRENGTH</span>
+                    <span class="text-white/40 font-normal">—</span>
+                    <span>YOGA STUDIO</span>
+                    <span class="text-white/40 font-normal">—</span>
+                    <span>PERSONAL TRAINER</span>
+                    <span class="text-white/40 font-normal">—</span>
+                    <span>HIIT</span>
+                    <span class="text-white/40 font-normal">—</span>
                 </div>
             </div>
         </div>
@@ -226,49 +203,47 @@
             </div>
         </div>
 
-        <!-- ========================================================================= -->
-        <!-- 1.5. KHÁM PHÁ THIẾT BỊ PHÒNG TẬP (EXPLORE EQUIPMENT)                      -->
-        <!-- ========================================================================= -->
+        <!-- Equipment Showcase -->
         <section id="explore-equipment" class="w-full max-w-[1650px] mx-auto px-4 sm:px-6 lg:px-8 mb-24 relative">
-            <!-- Background Watermark STRENGTH Khổng Lồ Mờ Ảo Tinh Tế -->
-            <div class="absolute top-0 sm:top-4 lg:top-8 right-0 sm:right-6 select-none pointer-events-none font-heading font-black text-6xl sm:text-8xl md:text-[9.5rem] lg:text-[13rem] text-neutral-100 uppercase tracking-tighter leading-none z-0 overflow-hidden">
+            <!-- Watermark -->
+            <div class="absolute top-0 sm:top-4 lg:top-8 right-0 sm:right-6 select-none pointer-events-none font-heading font-black text-6xl sm:text-8xl md:text-[9.5rem] lg:text-[13rem] text-[#E8EDE3] uppercase tracking-tighter leading-none z-0 overflow-hidden">
                 STRENGTH
             </div>
 
-            <!-- Section Header (Tiêu đề THIẾT BỊ PHÒNG TẬP cỡ lớn) -->
-            <div class="relative z-10 flex flex-col md:flex-row md:items-end justify-between mb-8 sm:mb-10 pb-6 border-b-2 border-black">
+            <!-- Section Header -->
+            <div class="relative z-10 flex flex-col md:flex-row md:items-end justify-between mb-8 sm:mb-10 pb-6 border-b border-[#D8DED2]">
                 <div>
                     <div class="flex items-center gap-2 mb-3">
-                        <span class="w-2.5 h-2.5 bg-black inline-block"></span>
-                        <span class="font-heading text-xs font-bold tracking-widest text-[#7D7D7D] uppercase">
+                        <span class="w-2.5 h-2.5 bg-[#5F6F52] inline-block rounded-full"></span>
+                        <span class="font-heading text-xs font-bold tracking-widest text-[#69706A] uppercase">
                             VFMS PRO EQUIPMENT
                         </span>
                     </div>
-                    <h2 class="font-heading text-4xl sm:text-5xl lg:text-7xl font-black uppercase text-black tracking-tighter leading-[0.95]">
+                    <h2 class="font-heading text-4xl sm:text-5xl lg:text-7xl font-black uppercase text-[#383E43] tracking-tighter leading-[0.95]">
                         THIẾT BỊ <br />
                         PHÒNG TẬP
                     </h2>
                 </div>
 
-                <p class="font-body text-xs sm:text-sm text-neutral-600 max-w-sm mt-4 md:mt-0 font-medium leading-relaxed text-left md:text-right">
+                <p class="font-body text-xs sm:text-sm text-[#69706A] max-w-sm mt-4 md:mt-0 font-medium leading-relaxed text-left md:text-right">
                     Nhập khẩu tiêu chuẩn Olympic quốc tế, tối ưu từng góc chuyển động giải phẫu cơ bắp và hỗ trợ tải trọng nặng an toàn tuyệt đối.
                 </p>
             </div>
 
-            <!-- Bộ Lọc Nhóm Cơ (Muscle Group Category Filter Buttons) -->
+            <!-- Category Filter Buttons -->
             <div class="relative z-10 flex flex-wrap items-center gap-2 sm:gap-3 mb-8 sm:mb-10">
                 @foreach (var cat in EquipmentCategories)
                 {
                     var isActive = SelectedEquipmentCategory == cat.Key;
                     <button type="button"
                             @onclick="() => SelectEquipmentCategory(cat.Key)"
-                            class="font-heading text-xs sm:text-sm font-black uppercase tracking-wider px-4 sm:px-6 py-2.5 sm:py-3 border-2 border-black rounded-none cursor-pointer transition-colors duration-150 @(isActive ? "bg-black text-white" : "bg-white text-black hover:bg-black hover:text-white")">
+                            class="font-heading text-xs sm:text-sm font-bold uppercase tracking-wider px-4 sm:px-6 py-2.5 sm:py-3 border rounded-lg cursor-pointer transition-colors duration-150 @(isActive ? "bg-[#5F6F52] text-white border-[#5F6F52]" : "bg-white text-[#383E43] border-[#D8DED2] hover:border-[#5F6F52] hover:text-[#5F6F52]")">
                         @cat.Label
                     </button>
                 }
             </div>
 
-            <!-- Lưới Thiết Bị (Giới hạn tối đa 8 item = 4 cột x 2 hàng, không bị thừa ô trống) -->
+            <!-- Equipment Grid -->
             <div class="relative z-10">
                 <div id="equipment-grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
                     @for (int i = 0; i < DisplayedEquipments.Count; i++)
@@ -276,20 +251,20 @@
                         var item = DisplayedEquipments[i];
                         var delay = (i % 4) * 120;
                         <div style="transition-delay: @(delay)ms;"
-                             class="equipment-reveal brutal-equipment-card relative aspect-square bg-[#FAFAFA] border-2 border-black overflow-hidden group select-none flex items-center justify-center p-6 sm:p-8 cursor-default">
+                             class="equipment-reveal relative aspect-square bg-white border border-[#D8DED2] overflow-hidden group select-none flex items-center justify-center p-6 sm:p-8 cursor-default rounded-xl hover:border-[#5F6F52] transition-colors">
                             
-                            <!-- Bức ảnh máy tập: Đen trắng mặc định, hover mất filter grayscale và nảy kích thước -->
+                            <!-- Equipment image: màu tự nhiên, nhẹ scale khi hover -->
                             <img src="@item.ImageUrl"
                                  alt="@item.Name"
                                  loading="lazy"
-                                 class="w-full h-full object-contain grayscale contrast-115 group-hover:grayscale-0 group-hover:scale-110 transition-all duration-300 ease-out pointer-events-none" />
+                                 class="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300 ease-out pointer-events-none" />
 
-                            <!-- Nhãn Tên Máy Tập: Nền đen đặc (tuyệt đối không dùng opacity), chữ trắng, trượt từ dưới lên -->
-                            <div class="absolute bottom-0 inset-x-0 bg-[#0A0A0A] text-white px-3.5 py-3 border-t-2 border-black translate-y-full group-hover:translate-y-0 transition-transform duration-200 ease-out z-20 pointer-events-none">
-                                <span class="font-heading text-[10px] sm:text-[11px] font-bold text-neutral-400 uppercase tracking-wider block">
+                            <!-- Label: Sage nền nhạt, trượt lên từ dưới -->
+                            <div class="absolute bottom-0 inset-x-0 bg-white/95 border-t border-[#D8DED2] px-3.5 py-3 translate-y-full group-hover:translate-y-0 transition-transform duration-200 ease-out z-20 pointer-events-none rounded-b-xl">
+                                <span class="font-heading text-[10px] sm:text-[11px] font-bold text-[#5F6F52] uppercase tracking-wider block">
                                     @item.MuscleGroup
                                 </span>
-                                <h4 class="font-heading font-black text-xs sm:text-sm uppercase tracking-tight text-white truncate">
+                                <h4 class="font-heading font-bold text-xs sm:text-sm uppercase tracking-tight text-[#383E43] truncate">
                                     @item.Name
                                 </h4>
                             </div>
@@ -298,83 +273,86 @@
                 </div>
             </div>
 
-            <!-- Nút Xem Tất Cả (View All Button Căn Giữa) -->
+            <!-- View All Button -->
             <div class="relative z-10 mt-12 sm:mt-16 flex justify-center">
                 <button type="button"
                         @onclick="ViewAllEquipments"
-                        class="font-heading font-black text-xs sm:text-sm uppercase tracking-widest px-8 sm:px-12 py-4 bg-white text-black border-2 border-black rounded-none inline-flex items-center gap-3 transition-all duration-200 hover:-translate-y-1 hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] active:translate-y-0 active:shadow-none cursor-pointer">
+                        class="font-heading font-bold text-xs sm:text-sm uppercase tracking-widest px-8 sm:px-12 py-4 bg-[#5F6F52] hover:bg-[#4E5D44] text-white rounded-lg inline-flex items-center gap-3 transition-all duration-200 cursor-pointer">
                     <span>XEM TẤT CẢ THIẾT BỊ</span>
-                    <svg class="w-4 h-4 stroke-[3]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="square" stroke-linejoin="miter" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
                     </svg>
                 </button>
             </div>
         </section>
 
-        <!-- Section Container khổ lớn đạt chuẩn tỷ lệ ảnh tham chiếu -->
+        <!-- Section Container for Featured Classes -->
         <div class="w-full max-w-[1650px] mx-auto px-4 sm:px-6 lg:px-8">
             
-            <!-- ================================================================= -->
-            <!-- B. SECTION HEADER (Tiêu đề chữ đen xếp 2 tầng trên nền trắng)      -->
-            <!-- ================================================================= -->
-            <div class="flex flex-col md:flex-row md:items-end justify-between mb-12 pb-6 border-b border-[#CFCFCF]">
+            <!-- Section Header -->
+            <div class="flex flex-col md:flex-row md:items-end justify-between mb-12 pb-6 border-b border-[#D8DED2]">
                 <div>
                     <div class="flex items-center gap-2 mb-3">
-                        <span class="w-2.5 h-2.5 bg-[#0A0A0A] inline-block"></span>
-                        <span class="font-heading text-xs font-bold tracking-widest text-[#7D7D7D] uppercase">
+                        <span class="w-2.5 h-2.5 bg-[#5F6F52] inline-block rounded-full"></span>
+                        <span class="font-heading text-xs font-bold tracking-widest text-[#69706A] uppercase">
                             VFMS SIGNATURE CURRICULUM
                         </span>
                     </div>
-                    <h2 class="font-heading text-4xl sm:text-5xl lg:text-7xl font-black uppercase text-[#252525] tracking-tighter leading-[0.95]">
+                    <h2 class="font-heading text-4xl sm:text-5xl lg:text-7xl font-black uppercase text-[#383E43] tracking-tighter leading-[0.95]">
                         CÁC LỚP HỌC <br />
                         NỔI BẬT
                     </h2>
                 </div>
                 
-                <p class="font-body text-xs sm:text-sm text-[#7D7D7D] max-w-sm mt-4 md:mt-0 font-normal leading-relaxed text-left md:text-right">
+                <p class="font-body text-xs sm:text-sm text-[#69706A] max-w-sm mt-4 md:mt-0 font-normal leading-relaxed text-left md:text-right">
                     Được thiết kế dựa trên giáo trình thể lực cường độ cao, tối ưu hóa tăng cơ, đốt mỡ và tái tạo năng lượng thể chất toàn diện.
                 </p>
             </div>
 
-            <!-- ================================================================= -->
-            <!-- C. LƯỚI 4 BỨC ẢNH KHỔ LỚN (HOÀN TOÀN TRỐNG TRƠN, KHÔNG CHỮ, KHÔNG CLICK) -->
-            <!-- ================================================================= -->
+            <!-- Class Cards Grid: ảnh lớn, white surface, border nhẹ, radius 10px -->
             <div class="w-full overflow-hidden">
-                <div id="classes-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 md:gap-3">
+                <div id="classes-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
                     @for (int i = 0; i < FeaturedClasses.Count; i++)
                     {
                         var item = FeaturedClasses[i];
                         var delayStyle = $"transition-delay: {i * 250}ms;";
 
-                        <!-- Cột ảnh: Chiều cao chuẩn 68vh (min 520px), vuông vức, chỉ hiển thị ảnh, không click -->
                         <div style="@delayStyle"
-                             class="slide-reveal-right group relative w-full h-[68vh] min-h-[520px] max-h-[750px] overflow-hidden bg-neutral-900 border border-neutral-300 hover:border-black rounded-none select-none transition-all duration-300">
+                             class="slide-reveal-right group relative w-full h-[68vh] min-h-[520px] max-h-[750px] overflow-hidden bg-[#EEF1EA] border border-[#D8DED2] hover:border-[#5F6F52] rounded-xl select-none transition-all duration-300">
                             
-                            <!-- Bức ảnh chụp cận cảnh sắc nét, Grayscale tương phản cao, HOÀN TOÀN TRỐNG TRƠN -->
+                            <!-- Ảnh màu tự nhiên, nhẹ scale khi hover -->
                             <img src="@item.ImageUrl"
                                  alt="@item.Title"
-                                 class="w-full h-full object-cover object-center grayscale contrast-125 brightness-95 group-hover:grayscale-0 group-hover:scale-105 group-hover:brightness-105 transition-all duration-700 ease-out rounded-none pointer-events-none" />
+                                 class="w-full h-full object-cover object-center group-hover:scale-105 transition-all duration-700 ease-out pointer-events-none" />
 
-                            <!-- Viền sắc nét khi hover -->
-                            <div class="absolute inset-0 border-2 border-transparent group-hover:border-black transition-colors z-10 pointer-events-none"></div>
+                            <!-- Sage accent nhỏ ở góc trên -->
+                            <div class="absolute top-3 left-3 z-10">
+                                <span class="bg-[#5F6F52] text-white font-heading text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md">@item.Badge</span>
+                            </div>
 
+                            <!-- Info layer: xuất hiện khi hover -->
+                            <div class="absolute inset-x-0 bottom-0 bg-white/95 backdrop-blur-sm border-t border-[#D8DED2] p-4 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out pointer-events-none rounded-b-xl">
+                                <span class="text-[10px] font-bold text-[#5F6F52] uppercase tracking-widest block">@item.Category</span>
+                                <h4 class="font-heading font-bold text-sm text-[#383E43] mt-0.5 truncate">@item.TitleShort</h4>
+                                <p class="text-xs text-[#69706A] mt-1">@item.Duration · @item.Level</p>
+                            </div>
                         </div>
                     }
                 </div>
             </div>
 
-            <!-- Bottom Information Banner (Nền xám sáng, viền mỏng) -->
-            <div class="mt-16 p-8 bg-[#F7F7F7] border border-[#CFCFCF] flex flex-col md:flex-row items-center justify-between gap-6">
+            <!-- Bottom Information Banner -->
+            <div class="mt-16 p-8 bg-white border border-[#D8DED2] rounded-xl flex flex-col md:flex-row items-center justify-between gap-6">
                 <div>
-                    <h4 class="font-heading text-lg font-extrabold text-[#252525] uppercase tracking-wide">
+                    <h4 class="font-heading text-lg font-extrabold text-[#383E43] uppercase tracking-wide">
                         CHƯA CHỌN ĐƯỢC LỘ TRÌNH PHÙ HỢP?
                     </h4>
-                    <p class="font-body text-sm text-[#7D7D7D] mt-1">
+                    <p class="font-body text-sm text-[#69706A] mt-1">
                         Hãy để đội ngũ chuyên gia VFMS kiểm tra thể trạng và thiết kế giáo án tập luyện chuyên biệt cho bạn.
                     </p>
                 </div>
                 <a href="#featured-classes"
-                   class="brutal-btn bg-[#0A0A0A] text-white hover:bg-neutral-800 border border-black px-8 py-3.5 font-heading font-bold text-xs uppercase tracking-widest transition-colors duration-200 whitespace-nowrap rounded-none inline-block">
+                   class="bg-[#5F6F52] hover:bg-[#4E5D44] text-white px-8 py-3.5 font-heading font-bold text-xs uppercase tracking-widest transition-colors duration-200 whitespace-nowrap rounded-lg inline-block">
                     ĐẶT LỊCH TƯ VẤN MIỄN PHÍ
                 </a>
             </div>
@@ -384,341 +362,358 @@
     </section>
 
     <!-- ========================================================================= -->
-    <!-- 3. PRICING & MEMBERSHIPS SECTION (Gói Thẻ & Lịch Tập)                     -->
+    <!-- 3. PRICING & MEMBERSHIPS SECTION — Sage Athletic Minimalism               -->
     <!-- ========================================================================= -->
-    <section id="pricing-memberships" class="w-full bg-[#FFFFFF] text-[#252525] py-24 border-b border-[#CFCFCF]">
+    <section id="pricing-memberships" class="w-full bg-white text-[#383E43] py-24 border-b border-[#D8DED2]">
         <div class="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             
             <!-- Section Header -->
-            <div class="flex flex-col md:flex-row md:items-end justify-between mb-12 pb-6 border-b border-[#CFCFCF]">
+            <div class="flex flex-col md:flex-row md:items-end justify-between mb-12 pb-6 border-b border-[#D8DED2]">
                 <div>
                     <div class="flex items-center gap-2 mb-3">
-                        <span class="w-2.5 h-2.5 bg-[#0A0A0A] inline-block"></span>
-                        <span class="font-heading text-xs font-bold tracking-widest text-[#7D7D7D] uppercase">
+                        <span class="w-2.5 h-2.5 bg-[#5F6F52] inline-block rounded-full"></span>
+                        <span class="font-heading text-xs font-bold tracking-widest text-[#69706A] uppercase">
                             VFMS PRICING &amp; MEMBERSHIP TIERS
                         </span>
                     </div>
-                    <h2 class="font-heading text-4xl sm:text-5xl lg:text-6xl font-black uppercase text-[#252525] tracking-tight">
+                    <h2 class="font-heading text-4xl sm:text-5xl lg:text-6xl font-black uppercase text-[#383E43] tracking-tight">
                         GÓI THẺ &amp; LỊCH TẬP
                     </h2>
                 </div>
-                <p class="font-body text-xs sm:text-sm text-[#7D7D7D] max-w-md mt-4 md:mt-0 font-normal leading-relaxed">
+                <p class="font-body text-xs sm:text-sm text-[#69706A] max-w-md mt-4 md:mt-0 font-normal leading-relaxed">
                     Minh bạch tuyệt đối, tự động bảo lưu trực tuyến theo quy chế và công khai lịch biểu huấn luyện cố định.
                 </p>
             </div>
 
-            <!-- 3 Tabs Navigation Buttons -->
+            <!-- 3 Tabs Navigation -->
             <div class="flex flex-wrap gap-3 mb-12">
                 <button @onclick='() => ActivePricingTab = "GYM"'
-                        class="px-6 sm:px-8 py-3.5 font-heading font-black text-xs sm:text-sm uppercase tracking-wider border-2 border-black transition-all cursor-pointer rounded-none @(ActivePricingTab == "GYM" ? "bg-black text-white shadow-[4px_4px_0px_0px_#000000]" : "bg-white text-black hover:bg-neutral-100")">
+                        class="px-6 sm:px-8 py-3.5 font-heading font-bold text-xs sm:text-sm uppercase tracking-wider border transition-all cursor-pointer rounded-lg @(ActivePricingTab == "GYM" ? "bg-[#5F6F52] text-white border-[#5F6F52]" : "bg-white text-[#383E43] border-[#D8DED2] hover:border-[#5F6F52]")">
                     GYM MEMBERSHIP
                 </button>
                 <button @onclick='() => ActivePricingTab = "YOGA"'
-                        class="px-6 sm:px-8 py-3.5 font-heading font-black text-xs sm:text-sm uppercase tracking-wider border-2 border-black transition-all cursor-pointer rounded-none @(ActivePricingTab == "YOGA" ? "bg-black text-white shadow-[4px_4px_0px_0px_#000000]" : "bg-white text-black hover:bg-neutral-100")">
+                        class="px-6 sm:px-8 py-3.5 font-heading font-bold text-xs sm:text-sm uppercase tracking-wider border transition-all cursor-pointer rounded-lg @(ActivePricingTab == "YOGA" ? "bg-[#5F6F52] text-white border-[#5F6F52]" : "bg-white text-[#383E43] border-[#D8DED2] hover:border-[#5F6F52]")">
                     YOGA STUDIO
                 </button>
                 <button @onclick='() => ActivePricingTab = "PT"'
-                        class="px-6 sm:px-8 py-3.5 font-heading font-black text-xs sm:text-sm uppercase tracking-wider border-2 border-black transition-all cursor-pointer rounded-none @(ActivePricingTab == "PT" ? "bg-black text-white shadow-[4px_4px_0px_0px_#000000]" : "bg-white text-black hover:bg-neutral-100")">
+                        class="px-6 sm:px-8 py-3.5 font-heading font-bold text-xs sm:text-sm uppercase tracking-wider border transition-all cursor-pointer rounded-lg @(ActivePricingTab == "PT" ? "bg-[#5F6F52] text-white border-[#5F6F52]" : "bg-white text-[#383E43] border-[#D8DED2] hover:border-[#5F6F52]")">
                     PERSONAL TRAINER
                 </button>
             </div>
 
-            <!-- ================================================================= -->
-            <!-- TAB 1: GYM MEMBERSHIP (Gói Thời Gian: 3 Tháng, 6 Tháng, 1 Năm)    -->
-            <!-- ================================================================= -->
+            <!-- TAB 1: GYM MEMBERSHIP -->
             @if (ActivePricingTab == "GYM")
             {
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <AuthorizeView Roles="Customer,Member">
+                    <Authorized>
+                        <MembershipPlanCatalog />
+                    </Authorized>
+                    <NotAuthorized>
+                <p class="mb-5 font-body text-sm text-[#69706A]">
+                    Các gói dưới đây dùng để minh họa. Khách hàng và hội viên có thể
+                    <a class="font-bold underline text-[#5F6F52]" href="/auth/login">đăng nhập</a> để xem các gói hiện đang mở bán.
+                </p>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                     
                     <!-- THẺ 1: 3 THÁNG -->
-                    <div class="brutal-pricing-card bg-white border-2 border-black p-8 flex flex-col justify-between">
+                    <div class="bg-white border border-[#D8DED2] p-8 flex flex-col justify-between rounded-xl hover:border-[#5F6F52] transition-colors">
                         <div>
-                            <div class="pb-6 border-b-2 border-black">
-                                <span class="font-heading text-xs font-bold uppercase tracking-widest text-[#7D7D7D] block mb-1">GÓI CƠ BẢN</span>
-                                <h3 class="font-heading text-2xl font-black uppercase text-[#252525]">3 THÁNG</h3>
-                                <p class="font-body text-xs text-[#7D7D7D] mt-1">Xây dựng thói quen và rèn luyện thể lực nền tảng</p>
+                            <div class="pb-6 border-b border-[#D8DED2]">
+                                <span class="font-heading text-xs font-bold uppercase tracking-widest text-[#69706A] block mb-1">GÓI CƠ BẢN</span>
+                                <h3 class="font-heading text-2xl font-black uppercase text-[#383E43]">3 THÁNG</h3>
+                                <p class="font-body text-xs text-[#69706A] mt-1">Xây dựng thói quen và rèn luyện thể lực nền tảng</p>
                             </div>
 
-                            <div class="py-6 border-b border-[#E5E5E5]">
-                                <div class="font-heading text-3xl sm:text-4xl font-black text-[#0A0A0A]">
-                                    2.400.000 <span class="text-lg font-bold">₫</span>
+                            <div class="py-6 border-b border-[#EEF1EA]">
+                                <div class="font-heading text-3xl sm:text-4xl font-black text-[#383E43]">
+                                    2.400.000 <span class="text-lg font-bold text-[#5F6F52]">₫</span>
                                 </div>
-                                <span class="font-body text-xs text-[#7D7D7D]">Tương đương 800.000 ₫ / tháng</span>
+                                <span class="font-body text-xs text-[#69706A]">Tương đương 800.000 ₫ / tháng</span>
                             </div>
 
-                            <!-- Danh sách quyền lợi -->
-                            <ul class="py-6 space-y-3.5 font-body text-xs text-[#252525]">
+                            <ul class="py-6 space-y-3.5 font-body text-xs text-[#383E43]">
                                 <li class="flex items-start gap-2.5">
-                                    <span class="w-3.5 h-3.5 bg-black text-white flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-0.5">■</span>
+                                    <span class="w-4 h-4 bg-[#E8EDE3] rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                                        <span class="text-[#5F6F52] text-[9px] font-bold">✓</span>
+                                    </span>
                                     <span>Toàn quyền tập luyện khu vực Gym &amp; Tạ Olympic 24/7</span>
                                 </li>
                                 <li class="flex items-start gap-2.5">
-                                    <span class="w-3.5 h-3.5 bg-black text-white flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-0.5">■</span>
+                                    <span class="w-4 h-4 bg-[#E8EDE3] rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                                        <span class="text-[#5F6F52] text-[9px] font-bold">✓</span>
+                                    </span>
                                     <span>Tủ Locker điện tử &amp; Phòng tắm nóng lạnh tiêu chuẩn</span>
                                 </li>
                                 <li class="flex items-start gap-2.5">
-                                    <span class="w-3.5 h-3.5 bg-black text-white flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-0.5">■</span>
+                                    <span class="w-4 h-4 bg-[#E8EDE3] rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                                        <span class="text-[#5F6F52] text-[9px] font-bold">✓</span>
+                                    </span>
                                     <span>Đo chỉ số InBody 770 &amp; tư vấn dinh dưỡng định kỳ</span>
                                 </li>
                                 <li class="flex items-start gap-2.5">
-                                    <span class="w-3.5 h-3.5 bg-black text-white flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-0.5">■</span>
+                                    <span class="w-4 h-4 bg-[#E8EDE3] rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                                        <span class="text-[#5F6F52] text-[9px] font-bold">✓</span>
+                                    </span>
                                     <span><strong>Bảo lưu thẻ (Freeze):</strong> Tối đa 15 ngày</span>
                                 </li>
                             </ul>
                         </div>
 
                         <a href="/auth/register"
-                           class="w-full bg-[#0A0A0A] text-white hover:bg-neutral-800 border-2 border-black py-4 font-heading font-black text-xs uppercase tracking-wider text-center transition-colors block">
-                            ĐĂNG KÝ GÓI NÀY
+                           class="w-full bg-[#5F6F52] hover:bg-[#4E5D44] text-white py-4 font-heading font-bold text-xs uppercase tracking-wider text-center transition-colors block rounded-lg">
+                            TẠO TÀI KHOẢN
                         </a>
                     </div>
 
-                    <!-- THẺ 2: 6 THÁNG (PHỔ BIẾN NHẤT - HEADER ĐEN CHỮ TRẮNG, NÚT ACCENT) -->
-                    <div class="brutal-pricing-card bg-white border-2 border-black flex flex-col justify-between relative">
+                    <!-- THẺ 2: 6 THÁNG (PHỔ BIẾN NHẤT) -->
+                    <div class="bg-white border-2 border-[#5F6F52] flex flex-col justify-between relative rounded-xl shadow-sm">
                         <!-- Nhãn Phổ Biến Nhất -->
-                        <div class="absolute -top-3.5 right-6 bg-black text-white px-3 py-1 font-heading font-black text-[10px] uppercase tracking-widest border border-black z-10">
+                        <div class="absolute -top-3.5 right-6 bg-[#5F6F52] text-white px-3 py-1 font-heading font-bold text-[10px] uppercase tracking-widest rounded-full z-10">
                             PHỔ BIẾN NHẤT
                         </div>
 
                         <div>
-                            <!-- Header thẻ nền đen chữ trắng -->
-                            <div class="bg-black text-white p-8 border-b-2 border-black">
-                                <span class="font-heading text-xs font-bold uppercase tracking-widest text-neutral-400 block mb-1">GÓI ĐỘT PHÁ • TIẾT KIỆM 15%</span>
-                                <h3 class="font-heading text-2xl font-black uppercase text-white">6 THÁNG</h3>
-                                <p class="font-body text-xs text-neutral-300 mt-1">Đạt thể hình cơ nạc lý tưởng và bứt phá sức mạnh</p>
+                            <div class="bg-[#E8EDE3] p-8 border-b border-[#D8DED2] rounded-t-xl">
+                                <span class="font-heading text-xs font-bold uppercase tracking-widest text-[#5F6F52] block mb-1">GÓI ĐỘT PHÁ · TIẾT KIỆM 15%</span>
+                                <h3 class="font-heading text-2xl font-black uppercase text-[#383E43]">6 THÁNG</h3>
+                                <p class="font-body text-xs text-[#69706A] mt-1">Đạt thể hình cơ nạc lý tưởng và bứt phá sức mạnh</p>
                             </div>
 
                             <div class="p-8 pb-0">
-                                <div class="py-4 border-b border-[#E5E5E5]">
-                                    <div class="font-heading text-3xl sm:text-4xl font-black text-[#0A0A0A]">
-                                        4.200.000 <span class="text-lg font-bold">₫</span>
+                                <div class="py-4 border-b border-[#EEF1EA]">
+                                    <div class="font-heading text-3xl sm:text-4xl font-black text-[#383E43]">
+                                        4.200.000 <span class="text-lg font-bold text-[#5F6F52]">₫</span>
                                     </div>
-                                    <span class="font-body text-xs text-[#7D7D7D]">Tương đương 700.000 ₫ / tháng</span>
+                                    <span class="font-body text-xs text-[#69706A]">Tương đương 700.000 ₫ / tháng</span>
                                 </div>
 
-                                <!-- Danh sách quyền lợi -->
-                                <ul class="py-6 space-y-3.5 font-body text-xs text-[#252525]">
+                                <ul class="py-6 space-y-3.5 font-body text-xs text-[#383E43]">
                                     <li class="flex items-start gap-2.5">
-                                        <span class="w-3.5 h-3.5 bg-black text-white flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-0.5">■</span>
+                                        <span class="w-4 h-4 bg-[#E8EDE3] rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                                            <span class="text-[#5F6F52] text-[9px] font-bold">✓</span>
+                                        </span>
                                         <span><strong>Mọi quyền lợi của gói 3 Tháng</strong></span>
                                     </li>
                                     <li class="flex items-start gap-2.5">
-                                        <span class="w-3.5 h-3.5 bg-black text-white flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-0.5">■</span>
+                                        <span class="w-4 h-4 bg-[#E8EDE3] rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                                            <span class="text-[#5F6F52] text-[9px] font-bold">✓</span>
+                                        </span>
                                         <span>Tặng 02 buổi tập 1-1 với Huấn luyện viên chuyên môn</span>
                                     </li>
                                     <li class="flex items-start gap-2.5">
-                                        <span class="w-3.5 h-3.5 bg-black text-white flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-0.5">■</span>
+                                        <span class="w-4 h-4 bg-[#E8EDE3] rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                                            <span class="text-[#5F6F52] text-[9px] font-bold">✓</span>
+                                        </span>
                                         <span>Tặng bình Shaker &amp; Túi thể thao VFMS Athletic</span>
                                     </li>
                                     <li class="flex items-start gap-2.5">
-                                        <span class="w-3.5 h-3.5 bg-black text-white flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-0.5">■</span>
+                                        <span class="w-4 h-4 bg-[#E8EDE3] rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                                            <span class="text-[#5F6F52] text-[9px] font-bold">✓</span>
+                                        </span>
                                         <span><strong>Bảo lưu thẻ (Freeze):</strong> Tối đa 30 ngày (GBR-40)</span>
                                     </li>
                                 </ul>
                             </div>
                         </div>
 
-                        <!-- Nút CTA màu Accent (Đỏ rực phong cách Brutal) -->
                         <div class="p-8 pt-0">
                             <a href="/auth/register"
-                               class="w-full bg-[#EF4444] hover:bg-black text-white border-2 border-black py-4 font-heading font-black text-xs uppercase tracking-wider text-center transition-colors block">
-                                ĐĂNG KÝ GÓI PHỔ BIẾN
+                               class="w-full bg-[#5F6F52] hover:bg-[#4E5D44] text-white py-4 font-heading font-bold text-xs uppercase tracking-wider text-center transition-colors block rounded-lg">
+                                TẠO TÀI KHOẢN
                             </a>
                         </div>
                     </div>
 
-                    <!-- THẺ 3: 1 NĂM (12 THÁNG) -->
-                    <div class="brutal-pricing-card bg-white border-2 border-black p-8 flex flex-col justify-between">
+                    <!-- THẺ 3: 1 NĂM -->
+                    <div class="bg-white border border-[#D8DED2] p-8 flex flex-col justify-between rounded-xl hover:border-[#5F6F52] transition-colors">
                         <div>
-                            <div class="pb-6 border-b-2 border-black">
-                                <span class="font-heading text-xs font-bold uppercase tracking-widest text-[#7D7D7D] block mb-1">GÓI CAM KẾT • TIẾT KIỆM 25%</span>
-                                <h3 class="font-heading text-2xl font-black uppercase text-[#252525]">1 NĂM (12 THÁNG)</h3>
-                                <p class="font-body text-xs text-[#7D7D7D] mt-1">Lối sống kỷ luật thép, duy trì phong độ đỉnh cao</p>
+                            <div class="pb-6 border-b border-[#D8DED2]">
+                                <span class="font-heading text-xs font-bold uppercase tracking-widest text-[#69706A] block mb-1">GÓI CAM KẾT · TIẾT KIỆM 25%</span>
+                                <h3 class="font-heading text-2xl font-black uppercase text-[#383E43]">1 NĂM (12 THÁNG)</h3>
+                                <p class="font-body text-xs text-[#69706A] mt-1">Lối sống kỷ luật thép, duy trì phong độ đỉnh cao</p>
                             </div>
 
-                            <div class="py-6 border-b border-[#E5E5E5]">
-                                <div class="font-heading text-3xl sm:text-4xl font-black text-[#0A0A0A]">
-                                    7.200.000 <span class="text-lg font-bold">₫</span>
+                            <div class="py-6 border-b border-[#EEF1EA]">
+                                <div class="font-heading text-3xl sm:text-4xl font-black text-[#383E43]">
+                                    7.200.000 <span class="text-lg font-bold text-[#5F6F52]">₫</span>
                                 </div>
-                                <span class="font-body text-xs text-[#7D7D7D]">Tương đương 600.000 ₫ / tháng</span>
+                                <span class="font-body text-xs text-[#69706A]">Tương đương 600.000 ₫ / tháng</span>
                             </div>
 
-                            <!-- Danh sách quyền lợi -->
-                            <ul class="py-6 space-y-3.5 font-body text-xs text-[#252525]">
+                            <ul class="py-6 space-y-3.5 font-body text-xs text-[#383E43]">
                                 <li class="flex items-start gap-2.5">
-                                    <span class="w-3.5 h-3.5 bg-black text-white flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-0.5">■</span>
+                                    <span class="w-4 h-4 bg-[#E8EDE3] rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                                        <span class="text-[#5F6F52] text-[9px] font-bold">✓</span>
+                                    </span>
                                     <span><strong>Mọi quyền lợi của gói 6 Tháng</strong></span>
                                 </li>
                                 <li class="flex items-start gap-2.5">
-                                    <span class="w-3.5 h-3.5 bg-black text-white flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-0.5">■</span>
+                                    <span class="w-4 h-4 bg-[#E8EDE3] rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                                        <span class="text-[#5F6F52] text-[9px] font-bold">✓</span>
+                                    </span>
                                     <span>Sử dụng không giới hạn Xông hơi đá muối &amp; Bể sục lạnh</span>
                                 </li>
                                 <li class="flex items-start gap-2.5">
-                                    <span class="w-3.5 h-3.5 bg-black text-white flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-0.5">■</span>
+                                    <span class="w-4 h-4 bg-[#E8EDE3] rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                                        <span class="text-[#5F6F52] text-[9px] font-bold">✓</span>
+                                    </span>
                                     <span>Miễn phí mượn khăn tập cao cấp mỗi buổi tập</span>
                                 </li>
                                 <li class="flex items-start gap-2.5">
-                                    <span class="w-3.5 h-3.5 bg-black text-white flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-0.5">■</span>
+                                    <span class="w-4 h-4 bg-[#E8EDE3] rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                                        <span class="text-[#5F6F52] text-[9px] font-bold">✓</span>
+                                    </span>
                                     <span><strong>Bảo lưu thẻ (Freeze):</strong> Tối đa 60 ngày (GBR-41)</span>
                                 </li>
                             </ul>
                         </div>
 
                         <a href="/auth/register"
-                           class="w-full bg-[#0A0A0A] text-white hover:bg-neutral-800 border-2 border-black py-4 font-heading font-black text-xs uppercase tracking-wider text-center transition-colors block">
-                            ĐĂNG KÝ GÓI NÀY
+                           class="w-full bg-[#5F6F52] hover:bg-[#4E5D44] text-white py-4 font-heading font-bold text-xs uppercase tracking-wider text-center transition-colors block rounded-lg">
+                            TẠO TÀI KHOẢN
                         </a>
                     </div>
 
                 </div>
+                    </NotAuthorized>
+                </AuthorizeView>
             }
 
-            <!-- ================================================================= -->
-            <!-- TAB 2: YOGA STUDIO (Nền xám nhạt, Lịch khối vuông, Status Badge)  -->
-            <!-- ================================================================= -->
+            <!-- TAB 2: YOGA STUDIO -->
             @if (ActivePricingTab == "YOGA")
             {
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                     
                     <!-- YOGA 1: ASHTANGA FLOW -->
-                    <div class="brutal-pricing-card bg-[#F7F7F7] border-2 border-black p-8 flex flex-col justify-between">
+                    <div class="bg-white border border-[#D8DED2] p-8 flex flex-col justify-between rounded-xl hover:border-[#5F6F52] transition-colors">
                         <div>
-                            <div class="flex items-center justify-between pb-4 border-b-2 border-black">
+                            <div class="flex items-center justify-between pb-4 border-b border-[#D8DED2]">
                                 <div>
-                                    <span class="font-heading text-[10px] font-bold uppercase tracking-widest text-[#7D7D7D] block">YOGA STUDIO</span>
-                                    <h3 class="font-heading text-2xl font-black uppercase text-[#252525] mt-0.5">ASHTANGA FLOW</h3>
+                                    <span class="font-heading text-[10px] font-bold uppercase tracking-widest text-[#69706A] block">YOGA STUDIO</span>
+                                    <h3 class="font-heading text-2xl font-black uppercase text-[#383E43] mt-0.5">ASHTANGA FLOW</h3>
                                 </div>
-                                <span class="px-2.5 py-1 text-[10px] font-heading font-black uppercase bg-[#F59E0B] text-black border border-black">
+                                <span class="px-2.5 py-1 text-[10px] font-heading font-bold uppercase bg-[#D97706] text-white rounded-full">
                                     SẮP ĐẦY
                                 </span>
                             </div>
 
-                            <p class="font-body text-xs text-[#545454] mt-4 leading-relaxed">
+                            <p class="font-body text-xs text-[#69706A] mt-4 leading-relaxed">
                                 Chuỗi động tác nguyên bản rèn luyện sức bền, tăng cường độ dẻo dai của cột sống và thanh lọc năng lượng tiêu cực.
                             </p>
 
-                            <!-- Khối trực quan Lịch học T2 T4 T6 -->
-                            <div class="my-6 p-4 bg-white border border-[#CFCFCF]">
-                                <span class="font-heading text-[10px] font-black uppercase text-[#7D7D7D] tracking-wider block mb-2.5">
-                                    LỊCH HỌC CỐ ĐỊNH CỦA LỚP:
-                                </span>
+                            <div class="my-6 p-4 bg-[#F7F4EC] border border-[#D8DED2] rounded-lg">
+                                <span class="font-heading text-[10px] font-bold uppercase text-[#69706A] tracking-wider block mb-2.5">LỊCH HỌC CỐ ĐỊNH:</span>
                                 <div class="flex items-center gap-2 mb-2">
-                                    <span class="w-8 h-8 bg-black text-white font-heading font-bold text-xs flex items-center justify-center">T2</span>
-                                    <span class="w-8 h-8 bg-black text-white font-heading font-bold text-xs flex items-center justify-center">T4</span>
-                                    <span class="w-8 h-8 bg-black text-white font-heading font-bold text-xs flex items-center justify-center">T6</span>
-                                    <span class="font-heading font-bold text-xs text-[#0A0A0A] ml-2">06:30 - 07:45</span>
+                                    <span class="w-8 h-8 bg-[#5F6F52] text-white font-heading font-bold text-xs flex items-center justify-center rounded-md">T2</span>
+                                    <span class="w-8 h-8 bg-[#5F6F52] text-white font-heading font-bold text-xs flex items-center justify-center rounded-md">T4</span>
+                                    <span class="w-8 h-8 bg-[#5F6F52] text-white font-heading font-bold text-xs flex items-center justify-center rounded-md">T6</span>
+                                    <span class="font-heading font-bold text-xs text-[#383E43] ml-2">06:30 - 07:45</span>
                                 </div>
-                                <div class="text-[11px] text-[#7D7D7D] font-body flex items-center justify-between pt-2 border-t border-[#F0F0F0]">
+                                <div class="text-[11px] text-[#69706A] font-body flex items-center justify-between pt-2 border-t border-[#D8DED2]">
                                     <span>Studio 1 (Tầng 3)</span>
-                                    <span>Cường độ: <strong class="text-black">Nâng cao</strong></span>
+                                    <span>Cường độ: <strong class="text-[#383E43]">Nâng cao</strong></span>
                                 </div>
                             </div>
 
                             <div class="mb-6">
-                                <span class="font-body text-xs text-[#7D7D7D] block">Học phí niêm yết:</span>
-                                <div class="font-heading text-2xl font-black text-[#0A0A0A]">
-                                    1.450.000 ₫ <span class="text-xs font-normal text-[#7D7D7D]">/ tháng (12 buổi)</span>
+                                <span class="font-body text-xs text-[#69706A] block">Học phí niêm yết:</span>
+                                <div class="font-heading text-2xl font-black text-[#383E43]">
+                                    1.450.000 ₫ <span class="text-xs font-normal text-[#69706A]">/ tháng (12 buổi)</span>
                                 </div>
                             </div>
                         </div>
 
                         <a href="/auth/register"
-                           class="w-full bg-[#0A0A0A] text-white hover:bg-neutral-800 border-2 border-black py-4 font-heading font-black text-xs uppercase tracking-wider text-center transition-colors block">
+                           class="w-full bg-[#5F6F52] hover:bg-[#4E5D44] text-white py-4 font-heading font-bold text-xs uppercase tracking-wider text-center transition-colors block rounded-lg">
                             ĐĂNG KÝ LỚP
                         </a>
                     </div>
 
                     <!-- YOGA 2: VINYASA DYNAMIC -->
-                    <div class="brutal-pricing-card bg-[#F7F7F7] border-2 border-black p-8 flex flex-col justify-between">
+                    <div class="bg-white border border-[#D8DED2] p-8 flex flex-col justify-between rounded-xl hover:border-[#5F6F52] transition-colors">
                         <div>
-                            <div class="flex items-center justify-between pb-4 border-b-2 border-black">
+                            <div class="flex items-center justify-between pb-4 border-b border-[#D8DED2]">
                                 <div>
-                                    <span class="font-heading text-[10px] font-bold uppercase tracking-widest text-[#7D7D7D] block">YOGA STUDIO</span>
-                                    <h3 class="font-heading text-2xl font-black uppercase text-[#252525] mt-0.5">VINYASA DYNAMIC</h3>
+                                    <span class="font-heading text-[10px] font-bold uppercase tracking-widest text-[#69706A] block">YOGA STUDIO</span>
+                                    <h3 class="font-heading text-2xl font-black uppercase text-[#383E43] mt-0.5">VINYASA DYNAMIC</h3>
                                 </div>
-                                <span class="px-2.5 py-1 text-[10px] font-heading font-black uppercase bg-[#10B981] text-white border border-black">
+                                <span class="px-2.5 py-1 text-[10px] font-heading font-bold uppercase bg-[#16A34A] text-white rounded-full">
                                     CÒN CHỖ
                                 </span>
                             </div>
 
-                            <p class="font-body text-xs text-[#545454] mt-4 leading-relaxed">
+                            <p class="font-body text-xs text-[#69706A] mt-4 leading-relaxed">
                                 Nhịp điệu chuyển động linh hoạt đồng bộ cùng hơi thở sâu, giải tỏa căng cứng cơ bắp và phục hồi sự dẻo dai toàn thân.
                             </p>
 
-                            <!-- Khối trực quan Lịch học T3 T5 T7 -->
-                            <div class="my-6 p-4 bg-white border border-[#CFCFCF]">
-                                <span class="font-heading text-[10px] font-black uppercase text-[#7D7D7D] tracking-wider block mb-2.5">
-                                    LỊCH HỌC CỐ ĐỊNH CỦA LỚP:
-                                </span>
+                            <div class="my-6 p-4 bg-[#F7F4EC] border border-[#D8DED2] rounded-lg">
+                                <span class="font-heading text-[10px] font-bold uppercase text-[#69706A] tracking-wider block mb-2.5">LỊCH HỌC CỐ ĐỊNH:</span>
                                 <div class="flex items-center gap-2 mb-2">
-                                    <span class="w-8 h-8 bg-black text-white font-heading font-bold text-xs flex items-center justify-center">T3</span>
-                                    <span class="w-8 h-8 bg-black text-white font-heading font-bold text-xs flex items-center justify-center">T5</span>
-                                    <span class="w-8 h-8 bg-black text-white font-heading font-bold text-xs flex items-center justify-center">T7</span>
-                                    <span class="font-heading font-bold text-xs text-[#0A0A0A] ml-2">18:30 - 19:45</span>
+                                    <span class="w-8 h-8 bg-[#5F6F52] text-white font-heading font-bold text-xs flex items-center justify-center rounded-md">T3</span>
+                                    <span class="w-8 h-8 bg-[#5F6F52] text-white font-heading font-bold text-xs flex items-center justify-center rounded-md">T5</span>
+                                    <span class="w-8 h-8 bg-[#5F6F52] text-white font-heading font-bold text-xs flex items-center justify-center rounded-md">T7</span>
+                                    <span class="font-heading font-bold text-xs text-[#383E43] ml-2">18:30 - 19:45</span>
                                 </div>
-                                <div class="text-[11px] text-[#7D7D7D] font-body flex items-center justify-between pt-2 border-t border-[#F0F0F0]">
+                                <div class="text-[11px] text-[#69706A] font-body flex items-center justify-between pt-2 border-t border-[#D8DED2]">
                                     <span>Studio 2 (Tầng 3)</span>
-                                    <span>Cường độ: <strong class="text-black">Trung bình</strong></span>
+                                    <span>Cường độ: <strong class="text-[#383E43]">Trung bình</strong></span>
                                 </div>
                             </div>
 
                             <div class="mb-6">
-                                <span class="font-body text-xs text-[#7D7D7D] block">Học phí niêm yết:</span>
-                                <div class="font-heading text-2xl font-black text-[#0A0A0A]">
-                                    1.350.000 ₫ <span class="text-xs font-normal text-[#7D7D7D]">/ tháng (12 buổi)</span>
+                                <span class="font-body text-xs text-[#69706A] block">Học phí niêm yết:</span>
+                                <div class="font-heading text-2xl font-black text-[#383E43]">
+                                    1.350.000 ₫ <span class="text-xs font-normal text-[#69706A]">/ tháng (12 buổi)</span>
                                 </div>
                             </div>
                         </div>
 
                         <a href="/auth/register"
-                           class="w-full bg-[#0A0A0A] text-white hover:bg-neutral-800 border-2 border-black py-4 font-heading font-black text-xs uppercase tracking-wider text-center transition-colors block">
+                           class="w-full bg-[#5F6F52] hover:bg-[#4E5D44] text-white py-4 font-heading font-bold text-xs uppercase tracking-wider text-center transition-colors block rounded-lg">
                             ĐĂNG KÝ LỚP
                         </a>
                     </div>
 
                     <!-- YOGA 3: ZEN WEEKEND -->
-                    <div class="brutal-pricing-card bg-[#F7F7F7] border-2 border-black p-8 flex flex-col justify-between">
+                    <div class="bg-white border border-[#D8DED2] p-8 flex flex-col justify-between rounded-xl hover:border-[#5F6F52] transition-colors">
                         <div>
-                            <div class="flex items-center justify-between pb-4 border-b-2 border-black">
+                            <div class="flex items-center justify-between pb-4 border-b border-[#D8DED2]">
                                 <div>
-                                    <span class="font-heading text-[10px] font-bold uppercase tracking-widest text-[#7D7D7D] block">YOGA STUDIO</span>
-                                    <h3 class="font-heading text-2xl font-black uppercase text-[#252525] mt-0.5">ZEN WEEKEND</h3>
+                                    <span class="font-heading text-[10px] font-bold uppercase tracking-widest text-[#69706A] block">YOGA STUDIO</span>
+                                    <h3 class="font-heading text-2xl font-black uppercase text-[#383E43] mt-0.5">ZEN WEEKEND</h3>
                                 </div>
-                                <span class="px-2.5 py-1 text-[10px] font-heading font-black uppercase bg-[#10B981] text-white border border-black">
+                                <span class="px-2.5 py-1 text-[10px] font-heading font-bold uppercase bg-[#16A34A] text-white rounded-full">
                                     CÒN CHỖ
                                 </span>
                             </div>
 
-                            <p class="font-body text-xs text-[#545454] mt-4 leading-relaxed">
+                            <p class="font-body text-xs text-[#69706A] mt-4 leading-relaxed">
                                 Không gian tĩnh tại kết hợp chuông xoay Tây Tạng giúp thả lỏng hệ thần kinh, tái tạo nguồn năng lượng sống mỗi dịp cuối tuần.
                             </p>
 
-                            <!-- Khối trực quan Lịch học T7 CN -->
-                            <div class="my-6 p-4 bg-white border border-[#CFCFCF]">
-                                <span class="font-heading text-[10px] font-black uppercase text-[#7D7D7D] tracking-wider block mb-2.5">
-                                    LỊCH HỌC CỐ ĐỊNH CỦA LỚP:
-                                </span>
+                            <div class="my-6 p-4 bg-[#F7F4EC] border border-[#D8DED2] rounded-lg">
+                                <span class="font-heading text-[10px] font-bold uppercase text-[#69706A] tracking-wider block mb-2.5">LỊCH HỌC CỐ ĐỊNH:</span>
                                 <div class="flex items-center gap-2 mb-2">
-                                    <span class="w-8 h-8 bg-black text-white font-heading font-bold text-xs flex items-center justify-center">T7</span>
-                                    <span class="w-8 h-8 bg-black text-white font-heading font-bold text-xs flex items-center justify-center">CN</span>
-                                    <span class="font-heading font-bold text-xs text-[#0A0A0A] ml-2">08:00 - 09:30</span>
+                                    <span class="w-8 h-8 bg-[#5F6F52] text-white font-heading font-bold text-xs flex items-center justify-center rounded-md">T7</span>
+                                    <span class="w-8 h-8 bg-[#5F6F52] text-white font-heading font-bold text-xs flex items-center justify-center rounded-md">CN</span>
+                                    <span class="font-heading font-bold text-xs text-[#383E43] ml-2">08:00 - 09:30</span>
                                 </div>
-                                <div class="text-[11px] text-[#7D7D7D] font-body flex items-center justify-between pt-2 border-t border-[#F0F0F0]">
+                                <div class="text-[11px] text-[#69706A] font-body flex items-center justify-between pt-2 border-t border-[#D8DED2]">
                                     <span>Studio VIP (Tầng 4)</span>
-                                    <span>Cường độ: <strong class="text-black">Nhẹ nhàng</strong></span>
+                                    <span>Cường độ: <strong class="text-[#383E43]">Nhẹ nhàng</strong></span>
                                 </div>
                             </div>
 
                             <div class="mb-6">
-                                <span class="font-body text-xs text-[#7D7D7D] block">Học phí niêm yết:</span>
-                                <div class="font-heading text-2xl font-black text-[#0A0A0A]">
-                                    1.100.000 ₫ <span class="text-xs font-normal text-[#7D7D7D]">/ tháng (8 buổi)</span>
+                                <span class="font-body text-xs text-[#69706A] block">Học phí niêm yết:</span>
+                                <div class="font-heading text-2xl font-black text-[#383E43]">
+                                    1.100.000 ₫ <span class="text-xs font-normal text-[#69706A]">/ tháng (8 buổi)</span>
                                 </div>
                             </div>
                         </div>
 
                         <a href="/auth/register"
-                           class="w-full bg-[#0A0A0A] text-white hover:bg-neutral-800 border-2 border-black py-4 font-heading font-black text-xs uppercase tracking-wider text-center transition-colors block">
+                           class="w-full bg-[#5F6F52] hover:bg-[#4E5D44] text-white py-4 font-heading font-bold text-xs uppercase tracking-wider text-center transition-colors block rounded-lg">
                             ĐĂNG KÝ LỚP
                         </a>
                     </div>
@@ -726,49 +721,42 @@
                 </div>
             }
 
-            <!-- ================================================================= -->
-            <!-- TAB 3: PERSONAL TRAINER (Bố cục chia đôi, Lịch cố định PT)         -->
-            <!-- ================================================================= -->
+            <!-- TAB 3: PERSONAL TRAINER -->
             @if (ActivePricingTab == "PT")
             {
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                     
                     <!-- PT 1: ALEXANDER TRẦN -->
-                    <div class="brutal-pricing-card bg-white border-2 border-black flex flex-col justify-between overflow-hidden">
+                    <div class="bg-white border border-[#D8DED2] flex flex-col justify-between overflow-hidden rounded-xl hover:border-[#5F6F52] transition-colors">
                         <div>
-                            <!-- Nửa trên: Ảnh HLV đen trắng aspect-square -->
-                            <div class="w-full aspect-[4/3] overflow-hidden bg-neutral-900 border-b-2 border-black">
+                            <div class="w-full aspect-[4/3] overflow-hidden bg-[#EEF1EA]">
                                 <img src="https://images.unsplash.com/photo-1567013127542-490d757e51fc?auto=format&fit=crop&w=800&h=600&q=80"
                                      alt="Alexander Trần"
-                                     class="w-full h-full object-cover object-top grayscale contrast-125" />
+                                     class="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500" />
                             </div>
 
-                            <!-- Nửa dưới: Thông tin chuyên môn & Lịch cố định -->
                             <div class="p-6">
-                                <span class="font-heading text-[10px] font-bold uppercase tracking-widest text-[#7D7D7D] block">MASTER TRAINER</span>
-                                <h3 class="font-heading text-xl font-black uppercase text-[#252525] mt-0.5">ALEXANDER TRẦN</h3>
-                                <p class="font-body text-xs text-[#545454] mt-1 font-medium">Chuyên môn: Hypertrophy &amp; Sức mạnh Powerlifting</p>
-                                <div class="text-[11px] text-[#7D7D7D] font-body mt-0.5">Chứng chỉ: IFBB Pro Athlete • NASM-CPT</div>
+                                <span class="font-heading text-[10px] font-bold uppercase tracking-widest text-[#5F6F52] block">MASTER TRAINER</span>
+                                <h3 class="font-heading text-xl font-black uppercase text-[#383E43] mt-0.5">ALEXANDER TRẦN</h3>
+                                <p class="font-body text-xs text-[#69706A] mt-1 font-medium">Chuyên môn: Hypertrophy &amp; Sức mạnh Powerlifting</p>
+                                <div class="text-[11px] text-[#69706A] font-body mt-0.5">Chứng chỉ: IFBB Pro Athlete • NASM-CPT</div>
 
-                                <!-- KHU VỰC LỊCH TẬP CỐ ĐỊNH CỦA PT -->
-                                <div class="my-5 p-3.5 bg-[#F7F7F7] border border-[#CFCFCF] space-y-2">
-                                    <span class="font-heading text-[10px] font-black uppercase text-[#252525] tracking-wider block">
-                                        LỊCH TẬP CỐ ĐỊNH CỦA PT:
-                                    </span>
+                                <div class="my-5 p-3.5 bg-[#F7F4EC] border border-[#D8DED2] space-y-2 rounded-lg">
+                                    <span class="font-heading text-[10px] font-bold uppercase text-[#383E43] tracking-wider block">LỊCH TẬP CỐ ĐỊNH:</span>
                                     <div class="flex items-center gap-2">
-                                        <span class="px-2 py-0.5 bg-black text-white font-heading text-[10px] font-bold uppercase">CA SÁNG</span>
-                                        <span class="font-heading text-xs font-bold text-[#252525]">08:30 - 09:30 (T2-T4-T6)</span>
+                                        <span class="px-2 py-0.5 bg-[#5F6F52] text-white font-heading text-[10px] font-bold uppercase rounded">CA SÁNG</span>
+                                        <span class="font-heading text-xs font-bold text-[#383E43]">08:30 - 09:30 (T2-T4-T6)</span>
                                     </div>
                                     <div class="flex items-center gap-2">
-                                        <span class="px-2 py-0.5 bg-white text-black font-heading text-[10px] font-bold uppercase border border-black">CA TỐI</span>
-                                        <span class="font-heading text-xs font-bold text-[#252525]">18:00 - 19:00 (T2-T4-T6)</span>
+                                        <span class="px-2 py-0.5 bg-white text-[#5F6F52] font-heading text-[10px] font-bold uppercase border border-[#5F6F52] rounded">CA TỐI</span>
+                                        <span class="font-heading text-xs font-bold text-[#383E43]">18:00 - 19:00 (T2-T4-T6)</span>
                                     </div>
                                 </div>
 
                                 <div class="mb-2">
-                                    <span class="font-body text-xs text-[#7D7D7D] block">Chi phí huấn luyện 1-1:</span>
-                                    <div class="font-heading text-xl font-black text-[#0A0A0A]">
-                                        9.600.000 ₫ <span class="text-xs font-normal text-[#7D7D7D]">/ Gói 24 buổi</span>
+                                    <span class="font-body text-xs text-[#69706A] block">Chi phí huấn luyện 1-1:</span>
+                                    <div class="font-heading text-xl font-black text-[#383E43]">
+                                        9.600.000 ₫ <span class="text-xs font-normal text-[#69706A]">/ Gói 24 buổi</span>
                                     </div>
                                 </div>
                             </div>
@@ -776,48 +764,43 @@
 
                         <div class="p-6 pt-0">
                             <a href="/auth/register"
-                               class="w-full bg-[#0A0A0A] text-white hover:bg-neutral-800 border-2 border-black py-4 font-heading font-black text-xs uppercase tracking-wider text-center transition-colors block">
+                               class="w-full bg-[#5F6F52] hover:bg-[#4E5D44] text-white py-4 font-heading font-bold text-xs uppercase tracking-wider text-center transition-colors block rounded-lg">
                                 ĐĂNG KÝ PT NÀY
                             </a>
                         </div>
                     </div>
 
                     <!-- PT 2: MARCUS VŨ -->
-                    <div class="brutal-pricing-card bg-white border-2 border-black flex flex-col justify-between overflow-hidden">
+                    <div class="bg-white border border-[#D8DED2] flex flex-col justify-between overflow-hidden rounded-xl hover:border-[#5F6F52] transition-colors">
                         <div>
-                            <!-- Nửa trên: Ảnh HLV đen trắng aspect-square -->
-                            <div class="w-full aspect-[4/3] overflow-hidden bg-neutral-900 border-b-2 border-black">
+                            <div class="w-full aspect-[4/3] overflow-hidden bg-[#EEF1EA]">
                                 <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&h=600&q=80"
                                      alt="Marcus Vũ"
-                                     class="w-full h-full object-cover object-top grayscale contrast-125" />
+                                     class="w-full h-full object-cover object-top" />
                             </div>
 
-                            <!-- Nửa dưới: Thông tin chuyên môn & Lịch cố định -->
                             <div class="p-6">
-                                <span class="font-heading text-[10px] font-bold uppercase tracking-widest text-[#7D7D7D] block">SENIOR COACH</span>
-                                <h3 class="font-heading text-xl font-black uppercase text-[#252525] mt-0.5">MARCUS VŨ</h3>
-                                <p class="font-body text-xs text-[#545454] mt-1 font-medium">Chuyên môn: Giảm mỡ cấp tốc &amp; Tái cấu trúc cơ thể</p>
-                                <div class="text-[11px] text-[#7D7D7D] font-body mt-0.5">Chứng chỉ: CSCS Coach • Precision Nutrition</div>
+                                <span class="font-heading text-[10px] font-bold uppercase tracking-widest text-[#5F6F52] block">SENIOR COACH</span>
+                                <h3 class="font-heading text-xl font-black uppercase text-[#383E43] mt-0.5">MARCUS VŨ</h3>
+                                <p class="font-body text-xs text-[#69706A] mt-1 font-medium">Chuyên môn: Giảm mỡ cấp tốc &amp; Tái cấu trúc cơ thể</p>
+                                <div class="text-[11px] text-[#69706A] font-body mt-0.5">Chứng chỉ: CSCS Coach • Precision Nutrition</div>
 
-                                <!-- KHU VỰC LỊCH TẬP CỐ ĐỊNH CỦA PT -->
-                                <div class="my-5 p-3.5 bg-[#F7F7F7] border border-[#CFCFCF] space-y-2">
-                                    <span class="font-heading text-[10px] font-black uppercase text-[#252525] tracking-wider block">
-                                        LỊCH TẬP CỐ ĐỊNH CỦA PT:
-                                    </span>
+                                <div class="my-5 p-3.5 bg-[#F7F4EC] border border-[#D8DED2] space-y-2 rounded-lg">
+                                    <span class="font-heading text-[10px] font-bold uppercase text-[#383E43] tracking-wider block">LỊCH TẬP CỐ ĐỊNH:</span>
                                     <div class="flex items-center gap-2">
-                                        <span class="px-2 py-0.5 bg-black text-white font-heading text-[10px] font-bold uppercase">CA SÁNG</span>
-                                        <span class="font-heading text-xs font-bold text-[#252525]">09:30 - 10:30 (T3-T5-T7)</span>
+                                        <span class="px-2 py-0.5 bg-[#5F6F52] text-white font-heading text-[10px] font-bold uppercase rounded">CA SÁNG</span>
+                                        <span class="font-heading text-xs font-bold text-[#383E43]">09:30 - 10:30 (T3-T5-T7)</span>
                                     </div>
                                     <div class="flex items-center gap-2">
-                                        <span class="px-2 py-0.5 bg-white text-black font-heading text-[10px] font-bold uppercase border border-black">CA CHIỀU</span>
-                                        <span class="font-heading text-xs font-bold text-[#252525]">15:30 - 16:30 (T3-T5-T7)</span>
+                                        <span class="px-2 py-0.5 bg-white text-[#5F6F52] font-heading text-[10px] font-bold uppercase border border-[#5F6F52] rounded">CA CHIỀU</span>
+                                        <span class="font-heading text-xs font-bold text-[#383E43]">15:30 - 16:30 (T3-T5-T7)</span>
                                     </div>
                                 </div>
 
                                 <div class="mb-2">
-                                    <span class="font-body text-xs text-[#7D7D7D] block">Chi phí huấn luyện 1-1:</span>
-                                    <div class="font-heading text-xl font-black text-[#0A0A0A]">
-                                        13.800.000 ₫ <span class="text-xs font-normal text-[#7D7D7D]">/ Gói 36 buổi</span>
+                                    <span class="font-body text-xs text-[#69706A] block">Chi phí huấn luyện 1-1:</span>
+                                    <div class="font-heading text-xl font-black text-[#383E43]">
+                                        13.800.000 ₫ <span class="text-xs font-normal text-[#69706A]">/ Gói 36 buổi</span>
                                     </div>
                                 </div>
                             </div>
@@ -825,48 +808,43 @@
 
                         <div class="p-6 pt-0">
                             <a href="/auth/register"
-                               class="w-full bg-[#0A0A0A] text-white hover:bg-neutral-800 border-2 border-black py-4 font-heading font-black text-xs uppercase tracking-wider text-center transition-colors block">
+                               class="w-full bg-[#5F6F52] hover:bg-[#4E5D44] text-white py-4 font-heading font-bold text-xs uppercase tracking-wider text-center transition-colors block rounded-lg">
                                 ĐĂNG KÝ PT NÀY
                             </a>
                         </div>
                     </div>
 
                     <!-- PT 3: MAI PHƯƠNG -->
-                    <div class="brutal-pricing-card bg-white border-2 border-black flex flex-col justify-between overflow-hidden">
+                    <div class="bg-white border border-[#D8DED2] flex flex-col justify-between overflow-hidden rounded-xl hover:border-[#5F6F52] transition-colors">
                         <div>
-                            <!-- Nửa trên: Ảnh HLV đen trắng aspect-square -->
-                            <div class="w-full aspect-[4/3] overflow-hidden bg-neutral-900 border-b-2 border-black">
+                            <div class="w-full aspect-[4/3] overflow-hidden bg-[#EEF1EA]">
                                 <img src="https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&w=800&h=600&q=80"
                                      alt="Mai Phương"
-                                     class="w-full h-full object-cover object-top grayscale contrast-125" />
+                                     class="w-full h-full object-cover object-top" />
                             </div>
 
-                            <!-- Nửa dưới: Thông tin chuyên môn & Lịch cố định -->
                             <div class="p-6">
-                                <span class="font-heading text-[10px] font-bold uppercase tracking-widest text-[#7D7D7D] block">FITNESS COACH</span>
-                                <h3 class="font-heading text-xl font-black uppercase text-[#252525] mt-0.5">MAI PHƯƠNG</h3>
-                                <p class="font-body text-xs text-[#545454] mt-1 font-medium">Chuyên môn: Sức bền chuyển động &amp; Chỉnh tư thế</p>
-                                <div class="text-[11px] text-[#7D7D7D] font-body mt-0.5">Chứng chỉ: ACE-CPT • Functional Movement (FMS)</div>
+                                <span class="font-heading text-[10px] font-bold uppercase tracking-widest text-[#5F6F52] block">FITNESS COACH</span>
+                                <h3 class="font-heading text-xl font-black uppercase text-[#383E43] mt-0.5">MAI PHƯƠNG</h3>
+                                <p class="font-body text-xs text-[#69706A] mt-1 font-medium">Chuyên môn: Sức bền chuyển động &amp; Chỉnh tư thế</p>
+                                <div class="text-[11px] text-[#69706A] font-body mt-0.5">Chứng chỉ: ACE-CPT • Functional Movement (FMS)</div>
 
-                                <!-- KHU VỰC LỊCH TẬP CỐ ĐỊNH CỦA PT -->
-                                <div class="my-5 p-3.5 bg-[#F7F7F7] border border-[#CFCFCF] space-y-2">
-                                    <span class="font-heading text-[10px] font-black uppercase text-[#252525] tracking-wider block">
-                                        LỊCH TẬP CỐ ĐỊNH CỦA PT:
-                                    </span>
+                                <div class="my-5 p-3.5 bg-[#F7F4EC] border border-[#D8DED2] space-y-2 rounded-lg">
+                                    <span class="font-heading text-[10px] font-bold uppercase text-[#383E43] tracking-wider block">LỊCH TẬP CỐ ĐỊNH:</span>
                                     <div class="flex items-center gap-2">
-                                        <span class="px-2 py-0.5 bg-black text-white font-heading text-[10px] font-bold uppercase">CA TRƯA</span>
-                                        <span class="font-heading text-xs font-bold text-[#252525]">11:30 - 12:30 (T2-T4-T6)</span>
+                                        <span class="px-2 py-0.5 bg-[#5F6F52] text-white font-heading text-[10px] font-bold uppercase rounded">CA TRƯA</span>
+                                        <span class="font-heading text-xs font-bold text-[#383E43]">11:30 - 12:30 (T2-T4-T6)</span>
                                     </div>
                                     <div class="flex items-center gap-2">
-                                        <span class="px-2 py-0.5 bg-white text-black font-heading text-[10px] font-bold uppercase border border-black">CA TỐI</span>
-                                        <span class="font-heading text-xs font-bold text-[#252525]">19:30 - 20:30 (T3-T5-T7)</span>
+                                        <span class="px-2 py-0.5 bg-white text-[#5F6F52] font-heading text-[10px] font-bold uppercase border border-[#5F6F52] rounded">CA TỐI</span>
+                                        <span class="font-heading text-xs font-bold text-[#383E43]">19:30 - 20:30 (T3-T5-T7)</span>
                                     </div>
                                 </div>
 
                                 <div class="mb-2">
-                                    <span class="font-body text-xs text-[#7D7D7D] block">Chi phí huấn luyện 1-1:</span>
-                                    <div class="font-heading text-xl font-black text-[#0A0A0A]">
-                                        9.200.000 ₫ <span class="text-xs font-normal text-[#7D7D7D]">/ Gói 24 buổi</span>
+                                    <span class="font-body text-xs text-[#69706A] block">Chi phí huấn luyện 1-1:</span>
+                                    <div class="font-heading text-xl font-black text-[#383E43]">
+                                        9.200.000 ₫ <span class="text-xs font-normal text-[#69706A]">/ Gói 24 buổi</span>
                                     </div>
                                 </div>
                             </div>
@@ -874,7 +852,7 @@
 
                         <div class="p-6 pt-0">
                             <a href="/auth/register"
-                               class="w-full bg-[#0A0A0A] text-white hover:bg-neutral-800 border-2 border-black py-4 font-heading font-black text-xs uppercase tracking-wider text-center transition-colors block">
+                               class="w-full bg-[#5F6F52] hover:bg-[#4E5D44] text-white py-4 font-heading font-bold text-xs uppercase tracking-wider text-center transition-colors block rounded-lg">
                                 ĐĂNG KÝ PT NÀY
                             </a>
                         </div>

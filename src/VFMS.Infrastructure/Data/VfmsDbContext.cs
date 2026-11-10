@@ -273,6 +273,11 @@ public class VfmsDbContext : DbContext
                 .WithMany(u => u.BeneficiaryOrderItems)
                 .HasForeignKey(e => e.BeneficiaryUserId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.RenewedFromMembership)
+                .WithMany()
+                .HasForeignKey(e => e.RenewedFromMembershipId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         // ── PaymentTransaction ────────────────────────────────────
@@ -280,6 +285,9 @@ public class VfmsDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.GatewayName).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.GatewayTransactionReference).HasMaxLength(100);
+            entity.HasIndex(e => e.GatewayTransactionReference).IsUnique()
+                .HasFilter("[GatewayName] = 'SePay' AND [GatewayTransactionReference] IS NOT NULL");
             entity.Property(e => e.AmountDue).HasColumnType("decimal(18,2)");
             entity.Property(e => e.AmountReceived).HasColumnType("decimal(18,2)");
             entity.Property(e => e.PaymentStatus).HasConversion<string>().HasMaxLength(50);
