@@ -13,12 +13,14 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="8.0.2" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.9.0" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\VFMS.Application\VFMS.Application.csproj" />
     <ProjectReference Include="..\VFMS.Infrastructure\VFMS.Infrastructure.csproj" />
+    <ProjectReference Include="..\VFMS.Infrastructure.MySql\VFMS.Infrastructure.MySql.csproj" />
     <ProjectReference Include="..\VFMS.Contracts\VFMS.Contracts.csproj" />
   </ItemGroup>
 

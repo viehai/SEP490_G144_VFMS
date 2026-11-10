@@ -10,7 +10,7 @@ namespace VFMS.Infrastructure.Data;
 /// </summary>
 public class VfmsDbContext : DbContext
 {
-    public VfmsDbContext(DbContextOptions<VfmsDbContext> options) : base(options) { }
+    public VfmsDbContext(DbContextOptions options) : base(options) { }
 
     // ─────────────────────────────────────────────────────────────
     //  Identity & Role

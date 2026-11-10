@@ -6,6 +6,7 @@
     <Project Path="src/VFMS.Contracts/VFMS.Contracts.csproj" />
     <Project Path="src/VFMS.Domain/VFMS.Domain.csproj" />
     <Project Path="src/VFMS.Infrastructure/VFMS.Infrastructure.csproj" />
+    <Project Path="src/VFMS.Infrastructure.MySql/VFMS.Infrastructure.MySql.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/VFMS.ClientTests/VFMS.ClientTests.csproj" />
