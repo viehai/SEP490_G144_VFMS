@@ -11,6 +11,33 @@ public interface ICheckInRepository : IAuditedRepository
     /// <summary>Open check-ins with member and staff loaded.</summary>
     Task<IReadOnlyList<CheckIn>> GetActiveCheckInsAsync(CancellationToken cancellationToken = default);
     Task<int> CountCheckInsSinceAsync(DateTime utcFrom, CancellationToken cancellationToken = default);
+
+    /// <summary>All registered face templates with their users (tracked, so LastUsedAt can be set).</summary>
+    Task<IReadOnlyList<FaceData>> GetActiveFaceDataAsync(CancellationToken cancellationToken = default);
+    /// <summary>Active QR codes: of one user, or the one with this token (tracked).</summary>
+    Task<IReadOnlyList<QRCode>> GetActiveQrCodesAsync(string? userId, string? token, CancellationToken cancellationToken = default);
+    Task<ApplicationUser?> GetUserAsync(string userId, CancellationToken cancellationToken = default);
+    /// <summary>The member's memberships with their package component (no tracking).</summary>
+    Task<IReadOnlyList<MemberMembership>> GetMembershipsAsync(string userId, CancellationToken cancellationToken = default);
+    /// <summary>The member's open check-in (tracked), if any.</summary>
+    Task<CheckIn?> GetOpenCheckInAsync(string userId, CancellationToken cancellationToken = default);
+    Task<DateTime?> GetLastCheckInTimeAsync(string userId, CancellationToken cancellationToken = default);
+    /// <summary>The member's Scheduled PT sessions on a gym-local date, with their purchase (tracked).</summary>
+    Task<IReadOnlyList<PTSession>> GetScheduledPtSessionsAsync(string userId, DateOnly date, CancellationToken cancellationToken = default);
+}
+
+/// <summary>Issues and redeems the member's short-lived QR token (kiosk UC-44/45, yoga attendance UC-42).</summary>
+public interface IMemberQrService
+{
+    Task<Result<MemberQrResponse>> IssueAsync(string userId, CancellationToken cancellationToken = default);
+    /// <summary>The member who owns this unexpired token; the token is used up.</summary>
+    Task<string?> RedeemAsync(string token, CancellationToken cancellationToken = default);
+}
+
+/// <summary>UC-44 Self Check-In and UC-46 Manual Check-In.</summary>
+public interface ICheckInService
+{
+    Task<Result<CheckInResultResponse>> KioskCheckInAsync(KioskScanRequest request, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Encrypts face templates at rest (SRS 2.3: only encrypted embeddings are stored).</summary>

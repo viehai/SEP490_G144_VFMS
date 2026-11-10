@@ -37,6 +37,42 @@ public sealed class FaceProfileController : ControllerBase
     private string? ClientIp => HttpContext.Connection.RemoteIpAddress?.ToString();
 }
 
+/// <summary>The member's short-lived QR code for the kiosk and yoga attendance.</summary>
+[ApiController]
+[Route("api/my-qr")]
+[Authorize(Roles = "Customer,Member")]
+[Produces("application/json")]
+public sealed class MemberQrController : ControllerBase
+{
+    private readonly IMemberQrService _service;
+
+    public MemberQrController(IMemberQrService service) => _service = service;
+
+    [HttpPost]
+    public async Task<IActionResult> Issue(CancellationToken cancellationToken) =>
+        User.GetUserId() is { } userId ? this.ToActionResult(await _service.IssueAsync(userId, cancellationToken)) : Unauthorized();
+}
+
+/// <summary>
+/// UC-44/UC-45 entrance and exit kiosk. The kiosk browser runs signed in as a Staff account: an anonymous
+/// face-match endpoint would let anyone probe biometrics or check other people in.
+/// </summary>
+[ApiController]
+[Route("api/kiosk")]
+[Authorize(Roles = "Staff,Manager")]
+[Produces("application/json")]
+public sealed class KioskController : ControllerBase
+{
+    private readonly ICheckInService _service;
+
+    public KioskController(ICheckInService service) => _service = service;
+
+    [HttpPost("check-in")]
+    [RequestSizeLimit(16 * 1024)]
+    public async Task<IActionResult> CheckIn([FromBody] KioskScanRequest request, CancellationToken cancellationToken) =>
+        this.ToActionResult(await _service.KioskCheckInAsync(request, cancellationToken));
+}
+
 /// <summary>UC-48/UC-57 View Active Check-ins (Staff, Manager).</summary>
 [ApiController]
 [Route("api/check-ins")]

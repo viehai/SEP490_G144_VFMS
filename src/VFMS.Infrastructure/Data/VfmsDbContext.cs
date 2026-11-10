@@ -773,6 +773,8 @@ public class VfmsDbContext : DbContext
             entity.Property(e => e.CheckinMethod).HasConversion<string>().HasMaxLength(30);
             entity.Property(e => e.CheckoutMethod).HasConversion<string>().HasMaxLength(30);
             entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(20);
+            // One open visit per member: stops two kiosk scans at once from opening two visits.
+            entity.HasIndex(e => e.MemberUserId).IsUnique().HasFilter("[Status] = 'Active'");
 
             entity.HasOne(e => e.Member)
                 .WithMany(u => u.CheckIns)

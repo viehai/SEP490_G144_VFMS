@@ -379,7 +379,9 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.HasIndex("MemberMembershipId");
 
-                    b.HasIndex("MemberUserId");
+                    b.HasIndex("MemberUserId")
+                        .IsUnique()
+                        .HasFilter("[Status] = 'Active'");
 
                     b.ToTable("CheckIns");
                 });

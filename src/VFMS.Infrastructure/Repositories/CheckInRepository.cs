@@ -23,4 +23,31 @@ public sealed class CheckInRepository : AuditedRepositoryBase, ICheckInRepositor
 
     public Task<int> CountCheckInsSinceAsync(DateTime utcFrom, CancellationToken cancellationToken = default) =>
         Context.CheckIns.CountAsync(c => c.CheckinTime >= utcFrom, cancellationToken);
+
+    public async Task<IReadOnlyList<FaceData>> GetActiveFaceDataAsync(CancellationToken cancellationToken = default) =>
+        await Context.FaceData.Where(f => f.IsActive && f.FaceNetEmbedding.Length > 0).ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<QRCode>> GetActiveQrCodesAsync(string? userId, string? token, CancellationToken cancellationToken = default) =>
+        await Context.QRCodes
+            .Where(q => q.IsActive && (userId == null || q.UserId == userId) && (token == null || q.QRToken == token))
+            .ToListAsync(cancellationToken);
+
+    public Task<ApplicationUser?> GetUserAsync(string userId, CancellationToken cancellationToken = default) =>
+        Context.ApplicationUsers.AsNoTracking().FirstOrDefaultAsync(u => u.UserId == userId, cancellationToken);
+
+    public async Task<IReadOnlyList<MemberMembership>> GetMembershipsAsync(string userId, CancellationToken cancellationToken = default) =>
+        await Context.MemberMemberships.AsNoTracking().Include(m => m.PackageComponent)
+            .Where(m => m.MemberUserId == userId).ToListAsync(cancellationToken);
+
+    public Task<CheckIn?> GetOpenCheckInAsync(string userId, CancellationToken cancellationToken = default) =>
+        Context.CheckIns.FirstOrDefaultAsync(c => c.MemberUserId == userId && c.Status == CheckInStatus.Active, cancellationToken);
+
+    public async Task<DateTime?> GetLastCheckInTimeAsync(string userId, CancellationToken cancellationToken = default) =>
+        await Context.CheckIns.Where(c => c.MemberUserId == userId)
+            .OrderByDescending(c => c.CheckinTime).Select(c => (DateTime?)c.CheckinTime).FirstOrDefaultAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<PTSession>> GetScheduledPtSessionsAsync(string userId, DateOnly date, CancellationToken cancellationToken = default) =>
+        await Context.PTSessions.Include(s => s.PTPurchase)
+            .Where(s => s.MemberUserId == userId && s.SessionDate == date && s.SessionStatus == PTSessionStatus.Scheduled)
+            .ToListAsync(cancellationToken);
 }

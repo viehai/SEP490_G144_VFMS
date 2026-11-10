@@ -10,6 +10,19 @@ public sealed record RegisterFaceRequest(IReadOnlyList<float> Descriptor, bool C
 
 public sealed record FaceProfileResponse(bool IsRegistered, DateTime? RegisteredAt, DateTime? LastUsedAt, DateTime? ConsentGrantedAt);
 
+// ── Kiosk check-in / check-out (UC-44, UC-45) ───────────────────
+
+/// <summary>A kiosk scan: either the 128-number face descriptor computed in the kiosk browser, or a member's QR token.</summary>
+public sealed record KioskScanRequest(IReadOnlyList<float>? Descriptor, string? QrToken);
+
+/// <summary>MSG-35 data. CompletedPtSessionId is set when the entry auto-completed a PT session (GBR-92, MSG-38).</summary>
+public sealed record CheckInResultResponse(
+    int CheckInId, string MemberUserId, string MemberName, DateOnly ValidThrough, DateTime CheckinTime,
+    string Message, int? CompletedPtSessionId);
+
+/// <summary>Short-lived single-use token the member shows as a QR code at the kiosk or yoga studio.</summary>
+public sealed record MemberQrResponse(string Token, DateTime ExpiresAt);
+
 // ── Active check-ins (UC-48 / UC-57) ────────────────────────────
 
 public sealed record ActiveCheckInResponse(
