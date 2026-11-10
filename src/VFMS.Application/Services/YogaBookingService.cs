@@ -190,7 +190,10 @@ public sealed class YogaBookingService : IYogaBookingService
 
         booking.BookingStatus = YogaBookingStatus.Cancelled;
         booking.CancelledAt = now;
-        if (late)   // a late cancellation counts as a no-show of that session (GBR-83, GBR-84)
+        // A late cancellation counts as a no-show of that session (GBR-83, GBR-84), unless attendance (e.g. a QR scan,
+        // UC-42) already marked this booking; the session lock keeps that check and the attendance writes in order.
+        await _repository.LockSessionAsync(next.Id, cancellationToken);
+        if (late && !(await _repository.GetSessionAsync(next.Id, cancellationToken))!.Attendances.Any(a => a.YogaBookingId == booking.Id))
             _repository.Add(new YogaAttendance
             {
                 YogaClassScheduleId = next.Id,

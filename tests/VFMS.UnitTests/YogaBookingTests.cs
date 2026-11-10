@@ -180,6 +180,18 @@ public sealed class YogaBookingTests
     }
 
     [Fact]
+    public async Task LateCancelAfterAttendanceWasMarkedAddsNoSecondRow()   // UC-39 x UC-42
+    {
+        var (repo, service, yogaClass) = Booked(hoursToSession: 1);
+        yogaClass.Schedules.Single().Attendances.Add(new YogaAttendance { YogaBookingId = 5, AttendanceStatus = YogaAttendanceStatus.Present });
+
+        var result = await service.CancelAsync("m1", 5, new CancelYogaBookingRequest(ConfirmLateCancellation: true));
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(repo.Attendances);   // the Present mark stays the only row for that session
+    }
+
+    [Fact]
     public async Task ThirdLateCancellationTellsTheMemberAboutTheSuspension()   // SRS 7.6 step 3a
     {
         var (repo, service, _) = Booked(hoursToSession: 1);
