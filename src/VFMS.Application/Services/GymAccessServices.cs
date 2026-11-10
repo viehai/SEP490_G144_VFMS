@@ -111,6 +111,32 @@ public sealed class CheckInService : ICheckInService
         return await CheckInMemberAsync(userId, method, null, cancellationToken);
     }
 
+    public async Task<Result<IReadOnlyList<FrontDeskMemberResponse>>> SearchMembersAsync(string? search, CancellationToken cancellationToken = default)
+    {
+        var term = search?.Trim();
+        if (string.IsNullOrEmpty(term))
+            return Result<IReadOnlyList<FrontDeskMemberResponse>>.Success([]);
+        var today = YogaTime.Today(_clock);
+        var rows = await _repository.SearchMembersAsync(term, cancellationToken);
+        if (rows.Count == 0)
+            return Result<IReadOnlyList<FrontDeskMemberResponse>>.Failure("No matching records found.", "NOT_FOUND", 404);   // MSG-01
+        return Result<IReadOnlyList<FrontDeskMemberResponse>>.Success(rows.Select(r =>
+        {
+            var usable = MembershipRules.Usable(r.Memberships, today);
+            var latest = r.Memberships.MaxBy(m => m.EndDate);
+            var status = usable is not null ? "Active"
+                : latest is null ? "None"
+                : latest.MembershipStatus == MembershipStatus.Active && latest.EndDate < today ? "Expired"
+                : latest.MembershipStatus.ToString();
+            return new FrontDeskMemberResponse(r.User.UserId, r.User.FullName, r.User.PhoneNumber, status,
+                (usable ?? latest)?.EndDate, r.IsCheckedIn);
+        }).ToList());
+    }
+
+    /// <summary>UC-46: same entry rules as the kiosk, recorded as Manual with the staff member's ID; no PT auto-complete.</summary>
+    public Task<Result<CheckInResultResponse>> ManualCheckInAsync(string memberUserId, string staffUserId, CancellationToken cancellationToken = default) =>
+        CheckInMemberAsync(memberUserId, CheckInMethod.ManualStaff, staffUserId, cancellationToken);
+
     public async Task<Result<CheckOutResultResponse>> KioskCheckOutAsync(KioskScanRequest request, CancellationToken cancellationToken = default)
     {
         var (userId, method) = await IdentifyAsync(request, cancellationToken);

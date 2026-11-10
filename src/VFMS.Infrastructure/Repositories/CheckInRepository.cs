@@ -50,4 +50,22 @@ public sealed class CheckInRepository : AuditedRepositoryBase, ICheckInRepositor
         await Context.PTSessions.Include(s => s.PTPurchase)
             .Where(s => s.MemberUserId == userId && s.SessionDate == date && s.SessionStatus == PTSessionStatus.Scheduled)
             .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<(ApplicationUser User, IReadOnlyList<MemberMembership> Memberships, bool IsCheckedIn)>> SearchMembersAsync(
+        string term, CancellationToken cancellationToken = default)
+    {
+        var users = await Context.ApplicationUsers.AsNoTracking()
+            .Where(u => u.UserRoles.Any(r => r.Role.RoleName == "Member" || r.Role.RoleName == "Customer"))
+            .Where(u => u.FullName.Contains(term) || u.PhoneNumber.Contains(term) ||
+                        Context.MemberMemberships.Any(m => m.MemberUserId == u.UserId && m.OrderItem.Order.OrderNumber == term))
+            .OrderBy(u => u.FullName).Take(20)
+            .ToListAsync(cancellationToken);
+        var ids = users.Select(u => u.UserId).ToList();
+        var memberships = await Context.MemberMemberships.AsNoTracking().Include(m => m.PackageComponent)
+            .Where(m => ids.Contains(m.MemberUserId)).ToListAsync(cancellationToken);
+        var inside = await Context.CheckIns.Where(c => ids.Contains(c.MemberUserId) && c.Status == CheckInStatus.Active)
+            .Select(c => c.MemberUserId).ToListAsync(cancellationToken);
+        return users.Select(u => (u, (IReadOnlyList<MemberMembership>)memberships.Where(m => m.MemberUserId == u.UserId).ToList(),
+            inside.Contains(u.UserId))).ToList();
+    }
 }

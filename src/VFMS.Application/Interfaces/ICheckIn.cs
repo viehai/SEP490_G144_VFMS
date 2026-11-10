@@ -24,6 +24,10 @@ public interface ICheckInRepository : IAuditedRepository
     Task<DateTime?> GetLastCheckInTimeAsync(string userId, CancellationToken cancellationToken = default);
     /// <summary>The member's Scheduled PT sessions on a gym-local date, with their purchase (tracked).</summary>
     Task<IReadOnlyList<PTSession>> GetScheduledPtSessionsAsync(string userId, DateOnly date, CancellationToken cancellationToken = default);
+    /// <summary>Up to 20 users whose name or phone contains the term, or who hold a membership bought on that order number;
+    /// with their memberships (component loaded) and whether they have an open visit.</summary>
+    Task<IReadOnlyList<(ApplicationUser User, IReadOnlyList<MemberMembership> Memberships, bool IsCheckedIn)>> SearchMembersAsync(
+        string term, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Issues and redeems the member's short-lived QR token (kiosk UC-44/45, yoga attendance UC-42).</summary>
@@ -38,6 +42,9 @@ public interface IMemberQrService
 public interface ICheckInService
 {
     Task<Result<CheckInResultResponse>> KioskCheckInAsync(KioskScanRequest request, CancellationToken cancellationToken = default);
+    /// <summary>UC-46: members by name, phone or membership (order) number, with today's entry status.</summary>
+    Task<Result<IReadOnlyList<FrontDeskMemberResponse>>> SearchMembersAsync(string? search, CancellationToken cancellationToken = default);
+    Task<Result<CheckInResultResponse>> ManualCheckInAsync(string memberUserId, string staffUserId, CancellationToken cancellationToken = default);
     /// <summary>UC-45 Self Check-Out.</summary>
     Task<Result<CheckOutResultResponse>> KioskCheckOutAsync(KioskScanRequest request, CancellationToken cancellationToken = default);
 }

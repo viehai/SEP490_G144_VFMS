@@ -23,10 +23,11 @@ public sealed class CheckInPersistenceTests : IAsyncLifetime
         await using var db = new SqliteTestContext(_options);
         await db.Database.EnsureCreatedAsync();
         var gym = new Gym { GymName = "Check-in test gym" };
-        db.AddRange(gym,
-            new ApplicationUser { UserId = "m1", Gym = gym, Email = "m1@example.com", FullName = "An Member", PasswordHash = "x", AccountStatus = AccountStatus.Active },
-            new ApplicationUser { UserId = "staff", Gym = gym, Email = "s@example.com", FullName = "Staff", PasswordHash = "x", AccountStatus = AccountStatus.Active },
-            TestSeed.Membership("m1"));
+        var member = new ApplicationUser { UserId = "m1", Gym = gym, Email = "m1@example.com", FullName = "An Member", PhoneNumber = "0901234567", PasswordHash = "x", AccountStatus = AccountStatus.Active };
+        var staff = new ApplicationUser { UserId = "staff", Gym = gym, Email = "s@example.com", FullName = "Staff", PhoneNumber = "0907654321", PasswordHash = "x", AccountStatus = AccountStatus.Active };
+        db.AddRange(gym, member, staff, TestSeed.Membership("m1"),
+            new ApplicationUserRole { User = member, Role = new ApplicationRole { RoleName = "Member" } },
+            new ApplicationUserRole { User = staff, Role = new ApplicationRole { RoleName = "Staff" } });
         await db.SaveChangesAsync();
     }
 
@@ -62,6 +63,26 @@ public sealed class CheckInPersistenceTests : IAsyncLifetime
         var closed = await db.CheckIns.AsNoTracking().SingleAsync();
         Assert.Equal((CheckInStatus.CheckedOut, CheckInMethod.QRCode), (closed.Status, closed.CheckoutMethod!.Value));
         Assert.Equal("An Member", checkedOut.Data!.MemberName);
+    }
+
+    [Fact]
+    public async Task FrontDeskFindsMemberByOrderNumberAndChecksInManually()   // SCRUM-46
+    {
+        await using var db = new SqliteTestContext(_options);
+        var (service, _) = Services(db);
+        var orderNumber = await db.MemberMemberships.Select(m => m.OrderItem.Order.OrderNumber).SingleAsync();
+
+        var byOrder = await service.SearchMembersAsync(orderNumber);
+        var byPhone = await service.SearchMembersAsync("0901");
+        var staffNotListed = await service.SearchMembersAsync("Staff");
+        var result = await service.ManualCheckInAsync("m1", "staff");
+
+        Assert.Equal(("m1", "Active"), (byOrder.Data!.Single().MemberUserId, byOrder.Data!.Single().MembershipStatus));
+        Assert.Equal("m1", byPhone.Data!.Single().MemberUserId);
+        Assert.Equal(404, staffNotListed.StatusCode);
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+        var visit = await db.CheckIns.AsNoTracking().SingleAsync();
+        Assert.Equal((CheckInMethod.ManualStaff, "staff"), (visit.CheckinMethod, visit.HandledByUserId));
     }
 
     [Fact]

@@ -23,6 +23,14 @@ public sealed record CheckInResultResponse(
 public sealed record CheckOutResultResponse(
     int CheckInId, string MemberUserId, string MemberName, DateTime CheckinTime, DateTime CheckoutTime, int MinutesInside);
 
+// ── Front desk (UC-46, UC-47) ───────────────────────────────────
+
+/// <summary>A member found at the front desk. MembershipStatus is "Active" when they may enter today.</summary>
+public sealed record FrontDeskMemberResponse(
+    string MemberUserId, string FullName, string? PhoneNumber, string MembershipStatus, DateOnly? ValidThrough, bool IsCheckedIn);
+
+public sealed record ManualCheckInRequest(string MemberUserId);
+
 /// <summary>Short-lived single-use token the member shows as a QR code at the kiosk or yoga studio.</summary>
 public sealed record MemberQrResponse(string Token, DateTime ExpiresAt);
 

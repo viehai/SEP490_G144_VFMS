@@ -86,10 +86,27 @@ public sealed class KioskController : ControllerBase
 public sealed class CheckInsController : ControllerBase
 {
     private readonly IActiveCheckInService _service;
+    private readonly ICheckInService _checkIns;
 
-    public CheckInsController(IActiveCheckInService service) => _service = service;
+    public CheckInsController(IActiveCheckInService service, ICheckInService checkIns)
+    {
+        _service = service;
+        _checkIns = checkIns;
+    }
 
     [HttpGet("active")]
     public async Task<IActionResult> GetActive([FromQuery] string? search, CancellationToken cancellationToken) =>
         this.ToActionResult(await _service.GetActiveAsync(search, cancellationToken));
+
+    /// <summary>UC-46 Front Desk Check-in: find the member.</summary>
+    [HttpGet("members")]
+    public async Task<IActionResult> SearchMembers([FromQuery] string? search, CancellationToken cancellationToken) =>
+        this.ToActionResult(await _checkIns.SearchMembersAsync(search, cancellationToken));
+
+    /// <summary>UC-46 Manual Check-In, recorded with the staff member's ID.</summary>
+    [HttpPost("manual")]
+    public async Task<IActionResult> ManualCheckIn([FromBody] ManualCheckInRequest request, CancellationToken cancellationToken) =>
+        User.GetUserId() is { } staffId
+            ? this.ToActionResult(await _checkIns.ManualCheckInAsync(request.MemberUserId, staffId, cancellationToken))
+            : Unauthorized();
 }

@@ -225,6 +225,30 @@ public sealed class CheckInTests
     }
 
     [Fact]
+    public async Task FrontDeskSearchShowsEntryStatusAndManualCheckInRecordsStaff()   // UC-46
+    {
+        var (repo, service, _) = Kiosk();
+        repo.Memberships.Add(Membership("m-active"));
+        repo.Memberships.Add(Membership("m-expired", MembershipStatus.Active, -40, -1));
+        repo.Memberships.Add(Membership("m-frozen", MembershipStatus.Frozen));
+        repo.PtSessions.Add(new PTSession { MemberUserId = "m-active", SessionDate = Today, StartTime = new TimeOnly(10, 10), PTPurchase = new PTPurchase() });
+
+        var found = (await service.SearchMembersAsync("m-")).Data!.ToDictionary(r => r.MemberUserId);
+        Assert.Equal(("Active", "Expired", "Frozen"), (found["m-active"].MembershipStatus, found["m-expired"].MembershipStatus, found["m-frozen"].MembershipStatus));
+        Assert.Equal(404, (await service.SearchMembersAsync("nobody")).StatusCode);   // MSG-01
+
+        var ok = await service.ManualCheckInAsync("m-active", "staff-1");
+        var refused = await service.ManualCheckInAsync("m-frozen", "staff-1");
+
+        Assert.Equal(201, ok.StatusCode);
+        Assert.Null(ok.Data!.CompletedPtSessionId);   // GBR-92 is for self check-in only
+        var visit = repo.Active.Single(c => c.MemberUserId == "m-active");
+        Assert.Equal((CheckInMethod.ManualStaff, "staff-1"), (visit.CheckinMethod, visit.HandledByUserId));
+        Assert.Equal(403, refused.StatusCode);
+        Assert.True((await service.SearchMembersAsync("m-active")).Data!.Single().IsCheckedIn);
+    }
+
+    [Fact]
     public async Task KioskCheckOutClosesTheOpenVisitOrRefuses()   // UC-45, GBR-91
     {
         var (repo, service, qr) = Kiosk();
@@ -297,6 +321,14 @@ public sealed class CheckInTests
             Task.FromResult(Active.Where(c => c.MemberUserId == userId).Select(c => (DateTime?)c.CheckinTime).Max());
         public Task<IReadOnlyList<PTSession>> GetScheduledPtSessionsAsync(string userId, DateOnly date, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<PTSession>>(PtSessions.Where(p => p.MemberUserId == userId && p.SessionDate == date && p.SessionStatus == PTSessionStatus.Scheduled).ToList());
+        public Task<IReadOnlyList<(ApplicationUser User, IReadOnlyList<MemberMembership> Memberships, bool IsCheckedIn)>> SearchMembersAsync(
+            string term, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<(ApplicationUser, IReadOnlyList<MemberMembership>, bool)>>(Memberships
+                .Select(m => m.MemberUserId).Distinct().Where(id => id.Contains(term))
+                .Select(id => (new ApplicationUser { UserId = id, FullName = "Member " + id },
+                    (IReadOnlyList<MemberMembership>)Memberships.Where(m => m.MemberUserId == id).ToList(),
+                    Active.Any(c => c.MemberUserId == id && c.Status == CheckInStatus.Active)))
+                .ToList());
 
         public Task SaveChangesAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task ExecuteInTransactionAsync(Func<Task> work, CancellationToken cancellationToken = default) => work();

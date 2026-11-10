@@ -24,6 +24,11 @@ public sealed class RegisterFaceRequestValidator : AbstractValidator<RegisterFac
     }
 }
 
+public sealed class ManualCheckInRequestValidator : AbstractValidator<ManualCheckInRequest>
+{
+    public ManualCheckInRequestValidator() => RuleFor(x => x.MemberUserId).NotEmpty().MaximumLength(450);
+}
+
 public sealed class KioskScanRequestValidator : AbstractValidator<KioskScanRequest>
 {
     public KioskScanRequestValidator()
