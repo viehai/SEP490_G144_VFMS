@@ -111,6 +111,30 @@ public sealed class CheckInService : ICheckInService
         return await CheckInMemberAsync(userId, method, null, cancellationToken);
     }
 
+    public async Task<Result<CheckOutResultResponse>> KioskCheckOutAsync(KioskScanRequest request, CancellationToken cancellationToken = default)
+    {
+        var (userId, method) = await IdentifyAsync(request, cancellationToken);
+        if (userId is null)
+            return Result<CheckOutResultResponse>.Failure(GymAccessMessages.Denied, GymAccessMessages.DeniedCode, 403);
+        var open = await _repository.GetOpenCheckInAsync(userId, cancellationToken);
+        return open is null   // GBR-91: the member goes to the front desk (UC-47)
+            ? Result<CheckOutResultResponse>.Failure(GymAccessMessages.Denied, GymAccessMessages.DeniedCode, 403)
+            : await CheckOutAsync(open, method, cancellationToken);
+    }
+
+    /// <summary>Closes an open visit and saves (GBR-91). Occupancy is the count of open visits, so it drops here.</summary>
+    internal async Task<Result<CheckOutResultResponse>> CheckOutAsync(CheckIn open, CheckInMethod method, CancellationToken cancellationToken)
+    {
+        var now = _clock.GetUtcNow().UtcDateTime;
+        open.CheckoutTime = now;
+        open.CheckoutMethod = method;
+        open.Status = CheckInStatus.CheckedOut;
+        await _repository.SaveChangesAsync(cancellationToken);
+        var name = (await _repository.GetUserAsync(open.MemberUserId, cancellationToken))?.FullName ?? string.Empty;
+        return Result<CheckOutResultResponse>.Success(new CheckOutResultResponse(
+            open.Id, open.MemberUserId, name, open.CheckinTime, now, (int)(now - open.CheckinTime).TotalMinutes));
+    }
+
     /// <summary>The member behind a kiosk scan, or null (MSG-36). A matched face gets LastUsedAt; a QR token is used up.</summary>
     internal async Task<(string? UserId, CheckInMethod Method)> IdentifyAsync(KioskScanRequest request, CancellationToken cancellationToken)
     {

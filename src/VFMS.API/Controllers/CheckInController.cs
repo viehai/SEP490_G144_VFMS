@@ -71,6 +71,11 @@ public sealed class KioskController : ControllerBase
     [RequestSizeLimit(16 * 1024)]
     public async Task<IActionResult> CheckIn([FromBody] KioskScanRequest request, CancellationToken cancellationToken) =>
         this.ToActionResult(await _service.KioskCheckInAsync(request, cancellationToken));
+
+    [HttpPost("check-out")]
+    [RequestSizeLimit(16 * 1024)]
+    public async Task<IActionResult> CheckOut([FromBody] KioskScanRequest request, CancellationToken cancellationToken) =>
+        this.ToActionResult(await _service.KioskCheckOutAsync(request, cancellationToken));
 }
 
 /// <summary>UC-48/UC-57 View Active Check-ins (Staff, Manager).</summary>

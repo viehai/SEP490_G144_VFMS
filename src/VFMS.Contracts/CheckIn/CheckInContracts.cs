@@ -20,6 +20,9 @@ public sealed record CheckInResultResponse(
     int CheckInId, string MemberUserId, string MemberName, DateOnly ValidThrough, DateTime CheckinTime,
     string Message, int? CompletedPtSessionId);
 
+public sealed record CheckOutResultResponse(
+    int CheckInId, string MemberUserId, string MemberName, DateTime CheckinTime, DateTime CheckoutTime, int MinutesInside);
+
 /// <summary>Short-lived single-use token the member shows as a QR code at the kiosk or yoga studio.</summary>
 public sealed record MemberQrResponse(string Token, DateTime ExpiresAt);
 

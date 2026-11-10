@@ -225,6 +225,21 @@ public sealed class CheckInTests
     }
 
     [Fact]
+    public async Task KioskCheckOutClosesTheOpenVisitOrRefuses()   // UC-45, GBR-91
+    {
+        var (repo, service, qr) = Kiosk();
+        var open = new CheckIn { Id = 5, MemberUserId = "m1", CheckinTime = Now.AddMinutes(-90), Status = CheckInStatus.Active };
+        repo.Active.Add(open);
+
+        var result = await service.KioskCheckOutAsync(await QrScan(qr, "m1"));
+        var none = await service.KioskCheckOutAsync(await QrScan(qr, "m1"));
+
+        Assert.Equal(90, result.Data!.MinutesInside);
+        Assert.Equal((CheckInStatus.CheckedOut, Now, CheckInMethod.QRCode), (open.Status, open.CheckoutTime!.Value, open.CheckoutMethod!.Value));
+        Assert.Equal((403, "ACCESS_DENIED"), (none.StatusCode, none.ErrorCode));   // MSG-36: no open visit
+    }
+
+    [Fact]
     public void KioskScanNeedsExactlyOneOfFaceOrQr()
     {
         var validator = new KioskScanRequestValidator();

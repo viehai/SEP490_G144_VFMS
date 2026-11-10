@@ -38,6 +38,8 @@ public interface IMemberQrService
 public interface ICheckInService
 {
     Task<Result<CheckInResultResponse>> KioskCheckInAsync(KioskScanRequest request, CancellationToken cancellationToken = default);
+    /// <summary>UC-45 Self Check-Out.</summary>
+    Task<Result<CheckOutResultResponse>> KioskCheckOutAsync(KioskScanRequest request, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Encrypts face templates at rest (SRS 2.3: only encrypted embeddings are stored).</summary>

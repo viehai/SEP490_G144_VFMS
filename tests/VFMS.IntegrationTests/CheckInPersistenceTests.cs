@@ -56,6 +56,12 @@ public sealed class CheckInPersistenceTests : IAsyncLifetime
         Assert.NotNull(visit.MemberMembershipId);
         Assert.Equal(403, replay.StatusCode);              // the token was used up
         Assert.Equal("ANTI_PASSBACK", again.ErrorCode);
+
+        var checkedOut = await service.KioskCheckOutAsync(new KioskScanRequest(null, (await qr.IssueAsync("m1")).Data!.Token));   // SCRUM-45
+        Assert.True(checkedOut.IsSuccess, checkedOut.ErrorMessage);
+        var closed = await db.CheckIns.AsNoTracking().SingleAsync();
+        Assert.Equal((CheckInStatus.CheckedOut, CheckInMethod.QRCode), (closed.Status, closed.CheckoutMethod!.Value));
+        Assert.Equal("An Member", checkedOut.Data!.MemberName);
     }
 
     [Fact]
