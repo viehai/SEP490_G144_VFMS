@@ -134,6 +134,69 @@ public sealed class YogaBookingTests
         Assert.Equal(daysLeft is null ? (DateTime?)null : Now.AddDays(daysLeft.Value), until);
     }
 
+    // ── UC-39 cancel ─────────────────────────────────────────────
+
+    private static (Fake Repo, YogaBookingService Service, YogaClass Class) Booked(int hoursToSession)
+    {
+        var (repo, _, yogaClass) = Setup(max: 1, status: YogaClassStatus.Full);
+        var start = Now.AddHours(7 + hoursToSession);   // gym-local
+        yogaClass.Schedules.Single().ScheduledDate = DateOnly.FromDateTime(start);
+        yogaClass.Schedules.Single().StartTime = TimeOnly.FromDateTime(start);
+        yogaClass.InstructorUserId = "yi-1";
+        yogaClass.Bookings.Add(new YogaBooking { Id = 5, YogaClassId = 1, MemberUserId = "m1", MatNumber = 1, BookingStatus = YogaBookingStatus.Confirmed });
+        repo.Waitlist.Add(new YogaWaitlist { MemberUserId = "m2", Position = 1, YogaClassScheduleId = 11 });
+        return (repo, new YogaBookingService(repo, new FixedClock(NowOffset)), yogaClass);
+    }
+
+    [Fact]
+    public async Task CancellingEarlyFreesTheSeatWithoutPenaltyAndNotifiesTheWaitlist()   // GBR-82, GBR-83
+    {
+        var (repo, service, yogaClass) = Booked(hoursToSession: 3);
+
+        var result = await service.CancelAsync("m1", 5, new CancelYogaBookingRequest());
+
+        Assert.Equal(("Cancelled", "Yoga booking updated successfully."), (result.Data!.Status, result.Data.Message));
+        Assert.Equal(YogaBookingStatus.Cancelled, yogaClass.Bookings.Single().BookingStatus);
+        Assert.Equal(YogaClassStatus.Open, yogaClass.ClassStatus);
+        Assert.Empty(repo.Attendances);
+        Assert.Equal("m2", Assert.Single(repo.Notifications).RecipientUserId);
+        Assert.Equal(Now, repo.Waitlist.Single().NotifiedAt);
+        Assert.Equal(404, (await service.CancelAsync("m1", 5, new CancelYogaBookingRequest())).StatusCode);   // already cancelled
+    }
+
+    [Fact]
+    public async Task LateCancellationNeedsConfirmationAndCountsAsNoShow()   // GBR-83, MSG-34
+    {
+        var (repo, service, yogaClass) = Booked(hoursToSession: 1);
+
+        var asked = await service.CancelAsync("m1", 5, new CancelYogaBookingRequest());
+        Assert.Equal((409, "LATE_CANCELLATION_CONFIRM"), (asked.StatusCode, asked.ErrorCode));
+        Assert.Equal(YogaBookingStatus.Confirmed, yogaClass.Bookings.Single().BookingStatus);
+
+        var confirmed = await service.CancelAsync("m1", 5, new CancelYogaBookingRequest(ConfirmLateCancellation: true));
+        Assert.True(confirmed.IsSuccess);
+        var noShow = Assert.Single(repo.Attendances);
+        Assert.Equal((11, YogaAttendanceStatus.NoShow, "yi-1"), (noShow.YogaClassScheduleId, noShow.AttendanceStatus, noShow.InstructorUserId));
+    }
+
+    [Fact]
+    public async Task ThirdLateCancellationTellsTheMemberAboutTheSuspension()   // SRS 7.6 step 3a
+    {
+        var (repo, service, _) = Booked(hoursToSession: 1);
+        repo.NoShows.AddRange([Now.AddDays(-12), Now.AddDays(-4)]);
+
+        var result = await service.CancelAsync("m1", 5, new CancelYogaBookingRequest(ConfirmLateCancellation: true));
+
+        Assert.Contains("suspended until 14/11/2026 10:00", result.Data!.Message);
+    }
+
+    [Fact]
+    public async Task MemberCannotCancelSomeoneElsesBooking()
+    {
+        var (_, service, _) = Booked(hoursToSession: 3);
+        Assert.Equal(404, (await service.CancelAsync("m2", 5, new CancelYogaBookingRequest())).StatusCode);
+    }
+
     private sealed class FixedClock(DateTimeOffset now) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => now;
@@ -151,6 +214,8 @@ public sealed class YogaBookingTests
         {
             if (entity is YogaBooking booking) { booking.Id = Class!.Bookings.Count + 1; Class.Bookings.Add(booking); }
             if (entity is YogaWaitlist entry) Waitlist.Add(entry);
+            if (entity is YogaAttendance attendance) { Attendances.Add(attendance); NoShows.Add(attendance.RecordedAt); }
+            if (entity is Notification notification) Notifications.Add(notification);
         }
 
         public Task SaveChangesAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
@@ -164,6 +229,10 @@ public sealed class YogaBookingTests
             Task.FromResult<IReadOnlyList<MemberMembership>>(Memberships.Where(m => m.MemberUserId == userId).ToList());
         public Task<IReadOnlyList<DateTime>> GetNoShowTimesAsync(string userId, DateTime sinceUtc, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<DateTime>>(NoShows.Where(t => t >= sinceUtc).ToList());
+        public List<YogaAttendance> Attendances { get; } = [];
+        public List<Notification> Notifications { get; } = [];
+        public Task<YogaBooking?> GetBookingAsync(int bookingId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(Class?.Bookings.FirstOrDefault(b => b.Id == bookingId));
         public Task<IReadOnlyList<YogaWaitlist>> GetWaitlistAsync(int classId, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<YogaWaitlist>>(Waitlist.Where(w => w.WaitlistStatus == YogaWaitlistStatus.Waiting).OrderBy(w => w.Position).ToList());
     }

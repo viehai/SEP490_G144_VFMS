@@ -16,6 +16,7 @@ public sealed class YogaBookingService : IYogaBookingService
     public static readonly TimeSpan NoShowWindow = TimeSpan.FromDays(30);   // GBR-84
     public static readonly TimeSpan Suspension = TimeSpan.FromDays(7);
     public const int NoShowLimit = 3;
+    public static readonly TimeSpan LateCancellationCutoff = TimeSpan.FromHours(2);   // GBR-83
 
     private readonly IYogaBookingRepository _repository;
     private readonly TimeProvider _clock;
@@ -110,6 +111,74 @@ public sealed class YogaBookingService : IYogaBookingService
         await _repository.SaveChangesAsync(cancellationToken);
         return Result<YogaBookingResponse>.Success(new YogaBookingResponse(
             booking.Id, yogaClass.Id, yogaClass.ClassName, "Confirmed", mat, null, "Yoga booking created successfully."), 201);   // MSG-04
+    }
+
+    public async Task<Result<YogaBookingResponse>> CancelAsync(
+        string memberUserId, int bookingId, CancelYogaBookingRequest request, CancellationToken cancellationToken = default)
+    {
+        var booking = await _repository.GetBookingAsync(bookingId, cancellationToken);
+        if (booking is null || booking.MemberUserId != memberUserId || booking.BookingStatus != YogaBookingStatus.Confirmed)
+            return Result<YogaBookingResponse>.Failure("Yoga booking not found.", "YOGA_BOOKING_NOT_FOUND", 404);
+
+        Result<YogaBookingResponse> result = null!;
+        await _repository.ExecuteInTransactionAsync(async () =>
+        {
+            await _repository.LockClassAsync(booking.YogaClassId, cancellationToken);
+            result = await CancelLockedAsync(booking, request, cancellationToken);
+        }, cancellationToken);
+        return result;
+    }
+
+    private async Task<Result<YogaBookingResponse>> CancelLockedAsync(
+        YogaBooking booking, CancelYogaBookingRequest request, CancellationToken cancellationToken)
+    {
+        var now = _clock.GetUtcNow().UtcDateTime;
+        var yogaClass = (await _repository.GetClassAsync(booking.YogaClassId, cancellationToken))!;
+        var next = NextSession(yogaClass, now);
+        if (next is null)
+            return Result<YogaBookingResponse>.Failure("This class has no upcoming session to cancel.", "NO_UPCOMING_SESSION", 409);
+
+        // GBR-83: free up to 2 hours before the next session; later only after the member accepts MSG-34.
+        var late = YogaTime.ToUtc(next.ScheduledDate, next.StartTime) - now < LateCancellationCutoff;
+        if (late && !request.ConfirmLateCancellation)
+            return Result<YogaBookingResponse>.Failure(
+                "Class cancellations must be submitted at least 2 hours prior to start time. Late cancellation incurs a no-show penalty.",
+                "LATE_CANCELLATION_CONFIRM", 409);   // MSG-34
+
+        booking.BookingStatus = YogaBookingStatus.Cancelled;
+        booking.CancelledAt = now;
+        if (late)   // a late cancellation counts as a no-show of that session (GBR-83, GBR-84)
+            _repository.Add(new YogaAttendance
+            {
+                YogaClassScheduleId = next.Id,
+                YogaBookingId = booking.Id,
+                MemberUserId = booking.MemberUserId,
+                InstructorUserId = next.InstructorUserId ?? yogaClass.InstructorUserId,
+                AttendanceStatus = YogaAttendanceStatus.NoShow,
+                RecordedAt = now
+            });
+        if (yogaClass.ClassStatus == YogaClassStatus.Full)
+            yogaClass.ClassStatus = YogaClassStatus.Open;   // the seat is free again
+
+        // GBR-82: offer the seat to the first waiting member.
+        // shortcut: the seat is not held for them, anyone may book it first; hold it if members complain.
+        if ((await _repository.GetWaitlistAsync(yogaClass.Id, cancellationToken)).FirstOrDefault(w => w.NotifiedAt is null) is { } first)
+        {
+            first.NotifiedAt = now;
+            var notice = AuditedWriter.Notify(first.MemberUserId, null, "A yoga seat is free",
+                $"A seat opened in {yogaClass.ClassName}. Book it now to confirm your place.", nameof(YogaClass),
+                NotificationType.YogaBookingConfirmed);
+            notice.EntityId = yogaClass.Id;
+            _repository.Add(notice);
+        }
+        await _repository.SaveChangesAsync(cancellationToken);
+
+        var message = "Yoga booking updated successfully.";   // MSG-03
+        if (late && SuspendedUntil(await _repository.GetNoShowTimesAsync(booking.MemberUserId, now - NoShowWindow - Suspension, cancellationToken), now) is { } until)
+            message += string.Create(CultureInfo.InvariantCulture,
+                $" This is your third no-show within 30 days, so yoga booking is suspended until {until + YogaTime.GymOffset:dd/MM/yyyy HH:mm}.");
+        return Result<YogaBookingResponse>.Success(new YogaBookingResponse(
+            booking.Id, yogaClass.Id, yogaClass.ClassName, "Cancelled", booking.MatNumber, null, message));
     }
 
     /// <summary>

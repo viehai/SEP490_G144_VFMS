@@ -81,6 +81,15 @@ public sealed class YogaPersistenceTests : IAsyncLifetime
         Assert.Equal(YogaClassStatus.Full, (await db.YogaClasses.AsNoTracking().SingleAsync()).ClassStatus);
         Assert.Equal(2, await db.YogaBookings.CountAsync(b => b.BookingStatus == YogaBookingStatus.Confirmed));
         Assert.Equal("b3", (await db.YogaWaitlists.AsNoTracking().SingleAsync()).MemberUserId);
+
+        var cancelled = await service.CancelAsync("b1", first.Data!.BookingId!.Value, new CancelYogaBookingRequest());   // SCRUM-107
+        Assert.True(cancelled.IsSuccess, cancelled.ErrorMessage);
+        Assert.Equal(YogaClassStatus.Open, (await db.YogaClasses.AsNoTracking().SingleAsync()).ClassStatus);
+        Assert.NotNull((await db.YogaWaitlists.AsNoTracking().SingleAsync()).NotifiedAt);
+        Assert.Equal("b3", (await db.Notifications.AsNoTracking().SingleAsync()).RecipientUserId);
+        var seatTaken = await service.BookAsync("b3", new YogaBookingRequest(classId));
+        Assert.True(seatTaken.IsSuccess, seatTaken.ErrorMessage);
+        Assert.Equal(YogaWaitlistStatus.Promoted, (await db.YogaWaitlists.AsNoTracking().SingleAsync()).WaitlistStatus);
     }
 
     [Fact]

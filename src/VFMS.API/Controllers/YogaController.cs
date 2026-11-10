@@ -187,4 +187,11 @@ public sealed class YogaBookingsController : ControllerBase
         User.GetUserId() is { } userId
             ? this.ToActionResult(await _service.BookAsync(userId, request, cancellationToken))
             : Unauthorized();
+
+    /// <summary>UC-39 Cancel Yoga Booking. Within 2 hours the first call returns MSG-34; resend with ConfirmLateCancellation.</summary>
+    [HttpPost("{id:int}/cancel")]
+    public async Task<IActionResult> Cancel(int id, [FromBody] CancelYogaBookingRequest? request, CancellationToken cancellationToken) =>
+        User.GetUserId() is { } userId
+            ? this.ToActionResult(await _service.CancelAsync(userId, id, request ?? new CancelYogaBookingRequest(), cancellationToken))
+            : Unauthorized();
 }

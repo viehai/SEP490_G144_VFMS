@@ -115,3 +115,6 @@ public sealed record YogaBookingResponse(
 
 /// <summary>Studio floorplan for picking a mat: mats 1..MatCount, TakenMats already reserved.</summary>
 public sealed record YogaMatMapResponse(int YogaClassId, int MatCount, IReadOnlyList<int> TakenMats);
+
+/// <summary>ConfirmLateCancellation: the member accepted MSG-34 (cancelling within 2 hours counts as a no-show).</summary>
+public sealed record CancelYogaBookingRequest(bool ConfirmLateCancellation = false);

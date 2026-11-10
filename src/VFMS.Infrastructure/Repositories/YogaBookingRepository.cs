@@ -34,4 +34,7 @@ public sealed class YogaBookingRepository : AuditedRepositoryBase, IYogaBookingR
             .Where(w => w.YogaClassSchedule.YogaClassId == classId && w.WaitlistStatus == YogaWaitlistStatus.Waiting)
             .OrderBy(w => w.Position)
             .ToListAsync(cancellationToken);
+
+    public Task<YogaBooking?> GetBookingAsync(int bookingId, CancellationToken cancellationToken = default) =>
+        Context.YogaBookings.FirstOrDefaultAsync(b => b.Id == bookingId, cancellationToken);
 }

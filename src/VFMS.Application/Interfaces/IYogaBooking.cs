@@ -16,6 +16,7 @@ public interface IYogaBookingRepository : IAuditedRepository
     Task<IReadOnlyList<DateTime>> GetNoShowTimesAsync(string userId, DateTime sinceUtc, CancellationToken cancellationToken = default);
     /// <summary>Waiting members of a class in queue order (tracked).</summary>
     Task<IReadOnlyList<YogaWaitlist>> GetWaitlistAsync(int classId, CancellationToken cancellationToken = default);
+    Task<YogaBooking?> GetBookingAsync(int bookingId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>UC-38 Book Yoga Class &amp; Reserve Mat.</summary>
@@ -23,4 +24,7 @@ public interface IYogaBookingService
 {
     Task<Result<YogaMatMapResponse>> GetMatMapAsync(int classId, CancellationToken cancellationToken = default);
     Task<Result<YogaBookingResponse>> BookAsync(string memberUserId, YogaBookingRequest request, CancellationToken cancellationToken = default);
+    /// <summary>UC-39 Cancel Yoga Booking.</summary>
+    Task<Result<YogaBookingResponse>> CancelAsync(
+        string memberUserId, int bookingId, CancelYogaBookingRequest request, CancellationToken cancellationToken = default);
 }
