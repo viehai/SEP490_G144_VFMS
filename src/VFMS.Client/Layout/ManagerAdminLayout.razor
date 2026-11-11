@@ -8,7 +8,9 @@
     private static readonly string[] LivePages =
     [
         "manager/membership-plans", "manager/general-policies", "manager/business-reports",
-        "admin/business-reports", "admin/banned-words", "admin/audit-logs"
+        "admin/business-reports", "admin/banned-words", "admin/audit-logs",
+        "manager/equipment", "manager/equipment-issues", "manager/purchase-proposals",
+        "manager/supplement-products", "manager/supplement-orders"
     ];
 
     private bool IsPreview => !LivePages.Contains(Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].TrimEnd('/'),

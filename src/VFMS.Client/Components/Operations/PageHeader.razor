@@ -1,0 +1,15 @@
+<header class="flex flex-wrap items-end justify-between gap-4 border-b border-[#D8DED2] pb-6">
+    <div>
+        <p class="mb-2 text-xs font-bold tracking-wider text-[#5F6F52]">@Overline</p>
+        <h1 class="text-3xl font-extrabold tracking-tight text-[#383E43] sm:text-4xl">@Title<span class="text-[#5F6F52]">.</span></h1>
+        <p class="mt-2 text-sm text-[#69706A]">@Description</p>
+    </div>
+    @ChildContent
+</header>
+
+@code {
+    [Parameter] public string Overline { get; set; } = "";
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string Description { get; set; } = "";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}
