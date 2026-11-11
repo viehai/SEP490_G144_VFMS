@@ -44,6 +44,7 @@ builder.Services.AddEquipmentModule();
 builder.Services.AddSupplementModule();
 builder.Services.AddMembershipPlanModule();
 builder.Services.AddMembershipPurchaseModule(builder.Configuration);
+builder.Services.AddMembershipFreezePolicyModule();
 
 var mapsterConfig = new TypeAdapterConfig();
 mapsterConfig.Scan(typeof(UserAdministrationMapping).Assembly);

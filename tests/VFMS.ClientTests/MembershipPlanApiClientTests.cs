@@ -173,6 +173,70 @@ public sealed class MembershipPlanApiClientTests
         Assert.Equal("MEMBERSHIP_NOT_FOUND", error.ErrorCode);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task GetMembershipFreezePolicy_ReadsConfiguredAndInitialStates(bool configured)
+    {
+        var policy = configured ? new MembershipFreezePolicyConfiguration(7, 2, 20, 1, 14, null) : null;
+        MembershipFreezeTierQuotaResponse[] quotas = configured ? [new(6, MembershipFreezeTierUnits.Months, 30)] : [];
+        using var api = CreateClient(request =>
+        {
+            Assert.Equal(HttpMethod.Get, request.Method);
+            Assert.Equal("Bearer access-token", request.Headers.Authorization?.ToString());
+            Assert.Equal("/api/manager/membership-freeze-policy", request.RequestUri!.PathAndQuery);
+            return Task.FromResult(Json(new MembershipFreezePolicyResponse(policy, quotas)));
+        });
+
+        var result = await api.GetMembershipFreezePolicyAsync();
+
+        Assert.Equal(policy, result.Policy);
+        Assert.Equal(quotas, result.Quotas);
+    }
+
+    [Fact]
+    public async Task UpdateMembershipFreezePolicy_SendsGlobalRulesAndTierQuotas()
+    {
+        using var api = CreateClient(async request =>
+        {
+            Assert.Equal(HttpMethod.Put, request.Method);
+            Assert.Equal("Bearer access-token", request.Headers.Authorization?.ToString());
+            Assert.Equal("/api/manager/membership-freeze-policy", request.RequestUri!.PathAndQuery);
+            var body = await request.Content!.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal(2, body.GetProperty("minimumFreezeDays").GetInt32());
+            Assert.Equal(20, body.GetProperty("maximumFreezeDays").GetInt32());
+            Assert.Equal(0, body.GetProperty("minimumRequestDays").GetInt32());
+            Assert.Equal(14, body.GetProperty("eligibilityPaidDays").GetInt32());
+            var quota = Assert.Single(body.GetProperty("quotas").EnumerateArray());
+            Assert.Equal(6, quota.GetProperty("duration").GetInt32());
+            Assert.Equal("Months", quota.GetProperty("unit").GetString());
+            Assert.Equal(30, quota.GetProperty("maximumCumulativeFreezeDays").GetInt32());
+            return Json(new MembershipFreezePolicyResponse(
+                new(7, 2, 20, 0, 14, null), [new(6, MembershipFreezeTierUnits.Months, 30)]));
+        });
+
+        var result = await api.UpdateMembershipFreezePolicyAsync(new(2, 20, 0, 14, [new(6, MembershipFreezeTierUnits.Months, 30)]));
+
+        Assert.Equal(7, result.Policy?.PolicyId);
+        Assert.Equal(14, result.Policy?.EligibilityPaidDays);
+        Assert.Equal(30, Assert.Single(result.Quotas).MaximumCumulativeFreezeDays);
+    }
+
+    [Fact]
+    public async Task UpdateMembershipFreezePolicy_PreservesIndexedValidationErrors()
+    {
+        const string field = "Quotas[0].MaximumCumulativeFreezeDays";
+        const string message = "Hạn mức bảo lưu không được âm.";
+        using var api = CreateClient(_ => Task.FromResult(Json(
+            new { errors = new Dictionary<string, string[]> { [field] = [message] } }, HttpStatusCode.BadRequest)));
+
+        var error = await Assert.ThrowsAsync<AuthApiException>(() =>
+            api.UpdateMembershipFreezePolicyAsync(new(2, 20, 0, 14, [new(6, MembershipFreezeTierUnits.Months, -1)])));
+
+        Assert.Equal(HttpStatusCode.BadRequest, error.StatusCode);
+        Assert.Equal(message, Assert.Single(error.Errors[field]));
+    }
+
     [Fact]
     public async Task ListRenewals_UsesMemberSessionAndReadsServerEligibility()
     {

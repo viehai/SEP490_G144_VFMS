@@ -13,6 +13,7 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
     private const string PurchasesPath = "api/membership-purchases";
     private const string RenewalsPath = "api/membership-renewals";
     private const string MembershipsPath = "api/memberships";
+    private const string FreezePolicyPath = "api/manager/membership-freeze-policy";
 
     public Task<PagedResponse<MembershipPlanResponse>> ListAsync(MembershipPlanListRequest request, CancellationToken cancellationToken = default)
     {
@@ -39,6 +40,13 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
 
     public Task<MembershipPlanDeleteResponse> DeleteAsync(int id, CancellationToken cancellationToken = default) =>
         SendAsync<MembershipPlanDeleteResponse>(HttpMethod.Delete, $"{BasePath}/{id}", cancellationToken);
+
+    public Task<MembershipFreezePolicyResponse> GetMembershipFreezePolicyAsync(CancellationToken cancellationToken = default) =>
+        SendAsync<MembershipFreezePolicyResponse>(HttpMethod.Get, FreezePolicyPath, cancellationToken);
+
+    public Task<MembershipFreezePolicyResponse> UpdateMembershipFreezePolicyAsync(
+        MembershipFreezePolicyRequest request, CancellationToken cancellationToken = default) =>
+        SendAsync<MembershipFreezePolicyResponse>(HttpMethod.Put, FreezePolicyPath, cancellationToken, JsonContent.Create(request));
 
     public Task<PagedResponse<MembershipPlanCatalogItemResponse>> ListCatalogAsync(int page, CancellationToken cancellationToken = default) =>
         SendAsync<PagedResponse<MembershipPlanCatalogItemResponse>>(HttpMethod.Get,
