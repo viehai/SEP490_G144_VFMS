@@ -1,0 +1,144 @@
+@page "/my-freeze-requests"
+@layout PublicLayout
+@using Microsoft.AspNetCore.Authorization
+@using VFMS.Client.Components.Memberships
+@attribute [Authorize(Roles = "Member")]
+
+<PageTitle>Yêu cầu bảo lưu của tôi | Victor Fitness</PageTitle>
+
+<section class="mx-auto max-w-4xl space-y-6 px-5 pb-16 pt-28 font-body" aria-labelledby="freeze-requests-title">
+    <header class="space-y-2 border-b border-vfms-border pb-5">
+        <a href="/my-memberships" class="@TextLink"><span aria-hidden="true">←</span> Về Gói của tôi</a>
+        <h1 id="freeze-requests-title" class="font-heading text-3xl font-extrabold text-vfms-text">Yêu cầu bảo lưu của tôi</h1>
+        <p class="text-sm text-vfms-text-secondary">Theo dõi thời gian bảo lưu và tình trạng xử lý các yêu cầu của bạn.</p>
+    </header>
+
+    @if (_loading)
+    {
+        <p role="status" class="py-8 text-sm text-vfms-text-secondary">Đang tải yêu cầu bảo lưu...</p>
+    }
+    else if (_loadError is not null)
+    {
+        <div class="space-y-2 rounded-xl border border-red-200 bg-red-50 p-4">
+            <p role="alert" class="text-sm text-red-800">@_loadError</p>
+            <button type="button" class="@SecondaryButton" @onclick="LoadAsync">Thử lại</button>
+        </div>
+    }
+    else
+    {
+        @if (_notice is not null || _actionError is not null)
+        {
+            <p role="@(_actionError is null ? "status" : "alert")" tabindex="-1" @ref="_noticeElement"
+               class="rounded-lg border p-4 text-sm @(_actionError is null ? "border-green-200 bg-green-50 text-green-900" : "border-red-200 bg-red-50 text-red-900")">
+                @(_actionError ?? _notice)
+            </p>
+        }
+        <div class="flex flex-wrap items-center justify-between gap-2">
+            <a href="/my-memberships" class="@TextLink">Chọn gói để gửi yêu cầu bảo lưu</a>
+            <button type="button" class="@SecondaryButton" disabled="@ActionsDisabled" @onclick="LoadAsync">Cập nhật danh sách</button>
+        </div>
+        <p role="status" class="text-sm text-vfms-text-secondary">@(_working ? "Đang xử lý yêu cầu..." : "")</p>
+
+        @if (_requests.Count == 0)
+        {
+            <p role="status" class="rounded-xl border border-vfms-border bg-white p-6 text-sm text-vfms-text-secondary">Bạn chưa có yêu cầu bảo lưu nào.</p>
+        }
+        else
+        {
+            <ul class="list-none space-y-4 p-0">
+                @foreach (var request in _requests)
+                {
+                    <li @key="request.FreezeRequestId" class="space-y-4 rounded-xl border border-vfms-border bg-white p-5 sm:p-6">
+                        <div class="flex flex-wrap items-baseline justify-between gap-2 border-b border-vfms-border pb-4">
+                            <div class="min-w-0">
+                                <p class="text-xs font-semibold text-vfms-text-secondary">Yêu cầu #@request.FreezeRequestId</p>
+                                <h2 class="mt-1 break-words font-heading text-xl font-bold text-vfms-text">@request.PlanName</h2>
+                            </div>
+                            <MembershipFreezeStatusBadge Status="@request.Status" />
+                        </div>
+                        <dl class="grid gap-3 text-sm sm:grid-cols-3">
+                            <div>
+                                <dt class="text-xs font-semibold text-vfms-text-secondary">Thời gian bảo lưu đề nghị</dt>
+                                <dd class="mt-1 font-semibold text-vfms-text"><MembershipDate Date="@request.StartDate" /> đến <MembershipDate Date="@request.EndDate" /></dd>
+                            </div>
+                            <div>
+                                <dt class="text-xs font-semibold text-vfms-text-secondary">Số ngày đề nghị</dt>
+                                <dd class="mt-1 font-semibold text-vfms-text">@request.RequestedDays ngày</dd>
+                            </div>
+                            <div>
+                                <dt class="text-xs font-semibold text-vfms-text-secondary">Ngày gửi</dt>
+                                <dd class="mt-1 font-semibold text-vfms-text"><MembershipDate Date="@VietnamDate(request.SubmittedAt)" /></dd>
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(request.Reason))
+                            {
+                                <div class="sm:col-span-3">
+                                    <dt class="text-xs font-semibold text-vfms-text-secondary">Lý do</dt>
+                                    <dd class="mt-1 whitespace-pre-wrap break-words text-vfms-text">@request.Reason</dd>
+                                </div>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(request.ReviewNote))
+                            {
+                                <div class="sm:col-span-3">
+                                    <dt class="text-xs font-semibold text-vfms-text-secondary">Phản hồi từ quản lý</dt>
+                                    <dd class="mt-1 whitespace-pre-wrap break-words text-vfms-text">@request.ReviewNote</dd>
+                                </div>
+                            }
+                            @if (request.ReviewedAt is { } reviewedAt)
+                            {
+                                <div>
+                                    <dt class="text-xs font-semibold text-vfms-text-secondary">Ngày xử lý</dt>
+                                    <dd class="mt-1 text-vfms-text"><MembershipDate Date="@VietnamDate(reviewedAt)" /></dd>
+                                </div>
+                            }
+                        </dl>
+                        @if (request.EarlyUnfreezeRequestedAt is { } earlyRequestedAt)
+                        {
+                            <div class="space-y-2 border-t border-vfms-border pt-3 text-sm">
+                                <p class="font-semibold text-vfms-text">Yêu cầu kết thúc bảo lưu sớm</p>
+                                <p class="text-vfms-text-secondary">Gửi ngày <MembershipDate Date="@VietnamDate(earlyRequestedAt)" /></p>
+                                @if (request.EarlyUnfreezeStatus is { } earlyStatus)
+                                {
+                                    <MembershipFreezeStatusBadge Status="@earlyStatus" />
+                                }
+                            </div>
+                        }
+                        @if (request.AppliedPolicy?.Policy is { } applied)
+                        {
+                            <details class="border-t border-vfms-border pt-3 text-sm">
+                                <summary class="cursor-pointer font-semibold text-vfms-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary">Quy tắc áp dụng khi gửi</summary>
+                                <p class="mt-2 leading-6 text-vfms-text-secondary">Thời hạn mỗi yêu cầu từ @applied.MinimumFreezeDays đến @applied.MaximumFreezeDays ngày. Báo trước tối thiểu @applied.MinimumRequestDays ngày.</p>
+                            </details>
+                        }
+                        <div class="flex flex-wrap gap-3">
+                            <a href="/my-memberships/@request.MembershipId" class="@SecondaryButton inline-flex items-center">Xem gói hội viên</a>
+                            @if (request.CanEdit)
+                            {
+                                <button type="button" class="@SecondaryButton" disabled="@ActionsDisabled" @onclick="() => OpenEditAsync(request)">Chỉnh sửa</button>
+                            }
+                            @if (request.CanCancel)
+                            {
+                                <button type="button" class="@SecondaryButton" disabled="@ActionsDisabled" @onclick="() => CancelAsync(request)">Hủy yêu cầu</button>
+                            }
+                            @if (request.CanRequestEarlyUnfreeze)
+                            {
+                                <button type="button" class="@SecondaryButton" disabled="@ActionsDisabled" @onclick="() => RequestEarlyUnfreezeAsync(request)">Yêu cầu kết thúc bảo lưu sớm</button>
+                            }
+                        </div>
+                        @if (_editing?.FreezeRequestId == request.FreezeRequestId && _eligibility is { } eligibility)
+                        {
+                            <section class="space-y-4 border-t border-vfms-border pt-4" aria-labelledby="freeze-editor-title">
+                                <h3 id="freeze-editor-title" tabindex="-1" @ref="_editorHeading" class="font-heading text-lg font-bold text-vfms-text">Chỉnh sửa yêu cầu #@request.FreezeRequestId</h3>
+                                <MembershipFreezeRequestForm @key="request.FreezeRequestId" Eligibility="@eligibility" ExistingRequest="@request"
+                                                             Saved="RequestSaved" CancelEditing="CloseEditor" />
+                                @if (!eligibility.Eligible)
+                                {
+                                    <button type="button" class="@SecondaryButton" @onclick="CloseEditor">Đóng chỉnh sửa</button>
+                                }
+                            </section>
+                        }
+                    </li>
+                }
+            </ul>
+        }
+    }
+</section>

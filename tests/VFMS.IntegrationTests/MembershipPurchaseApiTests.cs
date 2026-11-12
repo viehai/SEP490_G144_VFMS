@@ -61,6 +61,7 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
         builder.Configuration["MembershipPayments:WebhookSecret"] = Secret;
         builder.Services.AddMembershipPurchaseModule(builder.Configuration);
         builder.Services.AddMembershipFreezePolicyModule();
+        builder.Services.AddMembershipFreezeRequestModule();
         var worker = builder.Services.Single(service =>
             service.ServiceType == typeof(IHostedService) && service.ImplementationType == typeof(MembershipCommerceWorker));
         builder.Services.Remove(worker);

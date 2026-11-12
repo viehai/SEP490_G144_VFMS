@@ -11,7 +11,7 @@ using Xunit;
 
 namespace VFMS.ClientTests;
 
-public sealed class MembershipPlanApiClientTests
+public sealed partial class MembershipPlanApiClientTests
 {
     [Fact]
     public async Task List_SendsBearerTokenAndEncodedFilters()
