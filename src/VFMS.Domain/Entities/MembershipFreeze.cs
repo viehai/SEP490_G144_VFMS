@@ -16,15 +16,23 @@ public class MembershipFreeze : BaseEntity
     public DateOnly RequestedEndDate { get; set; }
     public DateOnly? ActualStartDate { get; set; }
     public DateOnly? ActualEndDate { get; set; }
+    public string? Reason { get; set; }
+    public int? FreezePolicyId { get; set; }
+    /// <summary>UC-16 policy values captured on submission or a Member edit.</summary>
+    public string? AppliedPolicySnapshot { get; set; }
     public FreezeRequestStatus RequestStatus { get; set; } = FreezeRequestStatus.Pending;
     public string? ReviewNote { get; set; }
     public string? ReviewedByUserId { get; set; }
     public DateTime? ReviewedAt { get; set; }
     public DateTime? EarlyUnfreezeAt { get; set; }
+    /// <summary>Member submission for later UC-17 review, separate from execution.</summary>
+    public DateTime? EarlyUnfreezeRequestedAt { get; set; }
+    public FreezeRequestStatus? EarlyUnfreezeRequestStatus { get; set; }
 
     // ── Navigation Properties ──────────────────────────────────
     public MemberMembership MemberMembership { get; set; } = null!;
     public ApplicationUser RequestedByUser { get; set; } = null!;
     public ApplicationUser? ReviewedByUser { get; set; }
+    public FreezePolicy? FreezePolicy { get; set; }
 }
 

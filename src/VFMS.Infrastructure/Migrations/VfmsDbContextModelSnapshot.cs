@@ -1356,17 +1356,34 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<DateOnly?>("ActualStartDate")
                         .HasColumnType("date");
 
+                    b.Property<string>("AppliedPolicySnapshot")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
                     b.Property<DateTime?>("EarlyUnfreezeAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("EarlyUnfreezeRequestStatus")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime?>("EarlyUnfreezeRequestedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("FreezePolicyId")
+                        .HasColumnType("int");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
                     b.Property<int>("MemberMembershipId")
                         .HasColumnType("int");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
 
                     b.Property<string>("RequestStatus")
                         .IsRequired()
@@ -1396,6 +1413,8 @@ namespace VFMS.Infrastructure.Migrations
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("FreezePolicyId");
 
                     b.HasIndex("MemberMembershipId");
 
@@ -3656,6 +3675,11 @@ namespace VFMS.Infrastructure.Migrations
 
             modelBuilder.Entity("VFMS.Domain.Entities.MembershipFreeze", b =>
                 {
+                    b.HasOne("VFMS.Domain.Entities.FreezePolicy", "FreezePolicy")
+                        .WithMany()
+                        .HasForeignKey("FreezePolicyId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("VFMS.Domain.Entities.MemberMembership", "MemberMembership")
                         .WithMany("MembershipFreezes")
                         .HasForeignKey("MemberMembershipId")
@@ -3672,6 +3696,8 @@ namespace VFMS.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("ReviewedByUserId")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("FreezePolicy");
 
                     b.Navigation("MemberMembership");
 
