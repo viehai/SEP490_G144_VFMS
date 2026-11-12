@@ -22,6 +22,16 @@ internal static class MembershipRules
                         (type is null || m.PackageComponent.ComponentType == type))
             .OrderByDescending(m => m.EndDate)
             .FirstOrDefault();
+
+    /// <summary>Active, None, Expired, or the status of the latest membership (Frozen, Suspended, ...).</summary>
+    public static string Status(IReadOnlyCollection<MemberMembership> memberships, DateOnly today)
+    {
+        var latest = memberships.MaxBy(m => m.EndDate);
+        return Usable(memberships, today) is not null ? "Active"
+            : latest is null ? "None"
+            : latest.MembershipStatus == MembershipStatus.Active && latest.EndDate < today ? "Expired"
+            : latest.MembershipStatus.ToString();
+    }
 }
 
 /// <summary>Messages and codes shared by the kiosk and the front desk (SRS MSG-35..38).</summary>
@@ -30,6 +40,9 @@ internal static class GymAccessMessages
     public const string Denied =
         "Access denied: No active membership found or biometric verification failed. Please contact the front desk.";   // MSG-36
     public const string DeniedCode = "ACCESS_DENIED";
+
+    /// <summary>MSG-36 with the membership status, as UC "Check In" step 3 asks.</summary>
+    public static string DeniedWithStatus(string status) => $"{Denied} Membership status: {status}.";
     public const string PassbackCode = "ANTI_PASSBACK";
 
     public static string Welcome(string name, DateOnly validThrough) =>
@@ -124,13 +137,8 @@ public sealed class CheckInService : ICheckInService
         return Result<IReadOnlyList<FrontDeskMemberResponse>>.Success(rows.Select(r =>
         {
             var usable = MembershipRules.Usable(r.Memberships, today);
-            var latest = r.Memberships.MaxBy(m => m.EndDate);
-            var status = usable is not null ? "Active"
-                : latest is null ? "None"
-                : latest.MembershipStatus == MembershipStatus.Active && latest.EndDate < today ? "Expired"
-                : latest.MembershipStatus.ToString();
-            return new FrontDeskMemberResponse(r.User.UserId, r.User.FullName, r.User.PhoneNumber, status,
-                (usable ?? latest)?.EndDate, r.IsCheckedIn);
+            return new FrontDeskMemberResponse(r.User.UserId, r.User.FullName, r.User.PhoneNumber,
+                MembershipRules.Status(r.Memberships, today), (usable ?? r.Memberships.MaxBy(m => m.EndDate))?.EndDate, r.IsCheckedIn);
         }).ToList());
     }
 
@@ -202,8 +210,14 @@ public sealed class CheckInService : ICheckInService
         var localNow = YogaTime.LocalNow(_clock);
         var today = DateOnly.FromDateTime(localNow);
         var user = await _repository.GetUserAsync(userId, cancellationToken);
-        var membership = MembershipRules.Usable(await _repository.GetMembershipsAsync(userId, cancellationToken), today);
-        if (user is null || membership is null || !InAccessWindow(membership.PackageComponent, TimeOnly.FromDateTime(localNow)))
+        var memberships = await _repository.GetMembershipsAsync(userId, cancellationToken);
+        var membership = MembershipRules.Usable(memberships, today);
+        if (user is null)
+            return Result<CheckInResultResponse>.Failure(GymAccessMessages.Denied, GymAccessMessages.DeniedCode, 403);
+        if (membership is null)
+            return Result<CheckInResultResponse>.Failure(
+                GymAccessMessages.DeniedWithStatus(MembershipRules.Status(memberships, today)), GymAccessMessages.DeniedCode, 403);
+        if (!InAccessWindow(membership.PackageComponent, TimeOnly.FromDateTime(localNow)))
             return Result<CheckInResultResponse>.Failure(GymAccessMessages.Denied, GymAccessMessages.DeniedCode, 403);
 
         if (await _repository.GetLastCheckInTimeAsync(userId, cancellationToken) is { } last && now - last < AntiPassback)

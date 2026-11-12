@@ -83,7 +83,8 @@ public sealed class CheckInTests
         {
             Id = 2, MemberUserId = "m2", Member = new ApplicationUser { FullName = "Binh Tran", PhoneNumber = "0902" },
             CheckinTime = Clock.GetUtcNow().UtcDateTime.AddMinutes(-10), CheckinMethod = CheckInMethod.ManualStaff,
-            HandledByUser = new ApplicationUser { FullName = "Staff A" }, Status = CheckInStatus.Active
+            HandledByUser = new ApplicationUser { FullName = "Staff A" }, Status = CheckInStatus.Active,
+            MemberMembership = new MemberMembership { OrderItem = new OrderItem { Order = new Order { OrderNumber = "ORD-20261107-AB12" } } }
         });
         repo.TodayCount = 7;
         var service = new ActiveCheckInService(repo, Clock, peakThreshold: 2);
@@ -95,6 +96,8 @@ public sealed class CheckInTests
         Assert.Equal(7, all.CheckInsToday);
         Assert.Equal(45, all.Items[0].MinutesInside);
         Assert.Equal("Staff A", Assert.Single(filtered.Items).HandledByName);
+        var byNumber = (await service.GetActiveAsync("ord-20261107-ab12")).Data!;   // membership (order) number, UC "View Active Check-ins"
+        Assert.Equal(2, Assert.Single(byNumber.Items).CheckInId);
         Assert.Equal(2, filtered.CurrentOccupancy);
         Assert.True(all.IsPeak);   // 2 inside, threshold 2
         Assert.False((await new ActiveCheckInService(repo, Clock, peakThreshold: 3).GetActiveAsync(null)).Data!.IsPeak);
@@ -144,6 +147,21 @@ public sealed class CheckInTests
         Assert.Null(visit.HandledByUserId);
         Assert.Equal(Now, repo.Faces[0].LastUsedAt);
         Assert.Equal(403, stranger.StatusCode);
+    }
+
+    [Theory]
+    [InlineData(MembershipStatus.Frozen, "Frozen")]
+    [InlineData(MembershipStatus.Suspended, "Suspended")]
+    [InlineData(MembershipStatus.Active, "Expired")]
+    public async Task RefusedCheckInNamesTheMembershipStatus(MembershipStatus status, string shown)   // MSG-36 "with the status"
+    {
+        var (repo, service, qr) = Kiosk();
+        repo.Memberships.Add(Membership("m1", status, -40, status == MembershipStatus.Active ? -1 : 20));
+
+        var result = await service.KioskCheckInAsync(await QrScan(qr, "m1"));
+
+        Assert.Equal(403, result.StatusCode);
+        Assert.EndsWith($"Please contact the front desk. Membership status: {shown}.", result.ErrorMessage);
     }
 
     [Theory]

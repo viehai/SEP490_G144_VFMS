@@ -107,7 +107,8 @@ public sealed class ActiveCheckInService : IActiveCheckInService
         var items = active
             .Where(c => string.IsNullOrEmpty(term) ||
                         c.Member.FullName.Contains(term, StringComparison.OrdinalIgnoreCase) ||
-                        c.Member.PhoneNumber.Contains(term, StringComparison.OrdinalIgnoreCase))
+                        c.Member.PhoneNumber.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(c.MemberMembership?.OrderItem?.Order?.OrderNumber, term, StringComparison.OrdinalIgnoreCase))   // membership number
             .OrderBy(c => c.CheckinTime)
             .Select(c => new ActiveCheckInResponse(
                 c.Id, c.MemberUserId, c.Member.FullName, c.Member.PhoneNumber, c.Member.AvatarUrl, c.CheckinTime,

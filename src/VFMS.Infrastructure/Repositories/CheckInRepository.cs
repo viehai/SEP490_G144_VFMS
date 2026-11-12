@@ -18,6 +18,7 @@ public sealed class CheckInRepository : AuditedRepositoryBase, ICheckInRepositor
         await Context.CheckIns.AsNoTracking()
             .Include(c => c.Member)
             .Include(c => c.HandledByUser)
+            .Include(c => c.MemberMembership!).ThenInclude(m => m.OrderItem).ThenInclude(i => i.Order)
             .Where(c => c.Status == CheckInStatus.Active && c.CheckoutTime == null)
             .ToListAsync(cancellationToken);
 

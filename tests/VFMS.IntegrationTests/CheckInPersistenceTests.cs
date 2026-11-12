@@ -101,6 +101,9 @@ public sealed class CheckInPersistenceTests : IAsyncLifetime
         Assert.True(result.IsSuccess, result.ErrorMessage);
         var visit = await db.CheckIns.AsNoTracking().SingleAsync();
         Assert.Equal((CheckInMethod.ManualStaff, "staff"), (visit.CheckinMethod, visit.HandledByUserId));
+        var inside = await new ActiveCheckInService(new CheckInRepository(db), TimeProvider.System, peakThreshold: 100)
+            .GetActiveAsync(orderNumber.ToLowerInvariant());   // Active Check-ins by membership (order) number
+        Assert.Equal(visit.Id, Assert.Single(inside.Data!.Items).CheckInId);
 
         var checkedOut = await service.ManualCheckOutAsync(visit.Id, "staff");   // SCRUM-47
         Assert.True(checkedOut.IsSuccess, checkedOut.ErrorMessage);
