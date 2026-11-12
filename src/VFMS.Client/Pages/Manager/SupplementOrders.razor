@@ -1,0 +1,13 @@
+@page "/manager/supplement-orders"
+@layout ManagerAdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using VFMS.Client.Components.Operations
+@attribute [Authorize(Roles = "Manager")]
+
+<PageTitle>Đơn thực phẩm bổ sung | Victor Fitness</PageTitle>
+
+<div class="workspace-page space-y-6">
+    <PageHeader Overline="VFMS / SUPPLEMENT STORE" Title="Đơn thực phẩm bổ sung"
+                Description="Theo dõi và xử lý đơn nhận tại quầy hoặc giao tận nơi (COD)." />
+    <SupplementOrderBoard />
+</div>
