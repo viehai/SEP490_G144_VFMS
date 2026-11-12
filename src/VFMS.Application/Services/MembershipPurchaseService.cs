@@ -11,7 +11,7 @@ namespace VFMS.Application.Services;
 
 public sealed partial class MembershipPurchaseService(
     IMembershipPurchaseRepository repository, IMembershipPaymentGateway gateway, TimeProvider clock,
-    IPTPaymentFulfillment? ptPayment = null)
+    IPTPaymentFulfillment? ptPayment = null, ILockerPaymentFulfillment? lockerPayment = null)
     : IMembershipPurchaseService
 {
     private static readonly TimeSpan OnlineWindow = TimeSpan.FromMinutes(15);
@@ -101,7 +101,7 @@ public sealed partial class MembershipPurchaseService(
     public async Task<Result<MembershipPurchaseResponse>> GetAsync(string purchaserId, string orderNumber, CancellationToken ct)
     {
         var order = await repository.FindOrderAsync(orderNumber, purchaserId, forUpdate: false, ct);
-        if (order?.PaymentTransaction is not { } payment)
+        if (order?.PaymentTransaction is not { } payment || order.Items.Count == 0)
             return OrderNotFound<MembershipPurchaseResponse>();
 
         var status = order.OrderStatus;
@@ -135,6 +135,12 @@ public sealed partial class MembershipPurchaseService(
             if (order.OrderStatus == OrderStatus.Paid && payment.GatewayTransactionReference == transfer.TransactionId)
                 return Result<SepayWebhookResponse>.Success(new(true));
 
+            if (order.Items.Count == 0)
+            {
+                var lockerResult = lockerPayment is null ? null : await lockerPayment.TryFulfillAsync(order, transfer, ct);
+                return lockerResult ?? OrderNotFound<SepayWebhookResponse>();
+            }
+
             var ptResult = ptPayment is null ? null : await ptPayment.TryFulfillAsync(order, transfer, ct);
             if (ptResult is not null)
                 return ptResult;
@@ -167,7 +173,7 @@ public sealed partial class MembershipPurchaseService(
                 return Result<MembershipPurchaseResponse>.Failure("Cần quyền nhân viên lễ tân.", "CASH_CONFIRMATION_FORBIDDEN", 403);
 
             var order = await repository.FindOrderAsync(orderNumber, purchaserId: null, forUpdate: true, ct);
-            if (order?.PaymentTransaction is not { PaymentMethod: PaymentMethod.Cash } payment ||
+            if (order?.PaymentTransaction is not { PaymentMethod: PaymentMethod.Cash } payment || order.Items.Count == 0 ||
                 order.Purchaser.GymId != staff!.GymId)
                 return OrderNotFound<MembershipPurchaseResponse>();
 

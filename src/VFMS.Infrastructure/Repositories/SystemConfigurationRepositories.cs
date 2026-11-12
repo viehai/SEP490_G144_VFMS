@@ -88,6 +88,8 @@ public sealed class BusinessReportRepository : AuditedRepositoryBase, IBusinessR
         var totalLockers = await Context.Lockers.AsNoTracking().CountAsync(cancellationToken);
         var occupiedLockers = await Context.LockerRentalContracts.AsNoTracking()
             .Where(c => c.StartDate <= end && c.EndDate >= start && (c.CancelledAt == null || c.CancelledAt >= startUtc))
+            .Where(c => c.HandedOverAt != null || (c.ContractStatus != LockerContractStatus.PendingPayment &&
+                c.ContractStatus != LockerContractStatus.PendingHandover && c.ContractStatus != LockerContractStatus.Cancelled))
             .Select(c => c.LockerId)
             .Distinct()
             .CountAsync(cancellationToken);

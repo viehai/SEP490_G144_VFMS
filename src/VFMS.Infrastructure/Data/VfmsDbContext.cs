@@ -63,6 +63,7 @@ public class VfmsDbContext : DbContext
     public DbSet<LockerPricingPolicy> LockerPricingPolicies { get; set; }
     public DbSet<LockerRentalContract> LockerRentalContracts { get; set; }
     public DbSet<LockerIncidentLog> LockerIncidentLogs { get; set; }
+    public DbSet<LockerRentalPayment> LockerRentalPayments { get; set; }
 
     // ─────────────────────────────────────────────────────────────
     //  Yoga & Group Classes (Module 7)
@@ -706,6 +707,8 @@ public class VfmsDbContext : DbContext
         modelBuilder.Entity<LockerPricingPolicy>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.Property(e => e.OverdueDailyFee).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.KeyReplacementFee).HasColumnType("decimal(18,2)");
             entity.Property(e => e.RentalType).HasConversion<string>().HasMaxLength(20);
             entity.Property(e => e.RentalPrice).HasColumnType("decimal(18,2)");
             entity.Property(e => e.DepositAmount).HasColumnType("decimal(18,2)");
@@ -717,6 +720,14 @@ public class VfmsDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.ContractNumber).IsUnique();
+            entity.HasIndex(e => new { e.CustomerUserId, e.ContractStatus });
+            entity.HasIndex(e => new { e.LockerId, e.ContractStatus });
+            entity.Property(e => e.RentalTypeSnapshot).HasConversion<string>().HasMaxLength(20);
+            entity.Property(e => e.HandedOverByUserId).HasMaxLength(450);
+            entity.Property(e => e.SettledByUserId).HasMaxLength(450);
+            entity.Property(e => e.OverdueDailyFeeSnapshot).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.KeyReplacementFeeSnapshot).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.OutstandingAmount).HasColumnType("decimal(18,2)");
             entity.Property(e => e.ContractNumber).HasMaxLength(50).IsRequired();
             entity.Property(e => e.DepositAmount).HasColumnType("decimal(18,2)");
             entity.Property(e => e.RentalPrice).HasColumnType("decimal(18,2)");
@@ -743,6 +754,8 @@ public class VfmsDbContext : DbContext
         modelBuilder.Entity<LockerIncidentLog>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.Property(e => e.VerifiedByUserId).HasMaxLength(450);
+            entity.HasOne(e => e.LockerRentalContract).WithMany().OnDelete(DeleteBehavior.Restrict);
             entity.Property(e => e.IncidentType).HasConversion<string>().HasMaxLength(20);
             entity.Property(e => e.FineAmount).HasColumnType("decimal(18,2)");
 
@@ -760,6 +773,24 @@ public class VfmsDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(e => e.HandledByUserId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<LockerRentalPayment>(entity =>
+        {
+            entity.HasIndex(e => e.OrderId).IsUnique();
+            entity.HasIndex(e => new { e.LockerRentalContractId, e.Purpose });
+            entity.HasOne<Order>().WithMany().HasForeignKey(e => e.SourceOrderId).OnDelete(DeleteBehavior.Restrict);
+            entity.Property(e => e.Purpose).HasConversion<string>().HasMaxLength(20);
+            entity.Property(e => e.OverdueFees).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.KeyReplacementFee).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.RefundAmount).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.RefundReason).HasMaxLength(60);
+            entity.Property(e => e.RefundMethod).HasConversion<string>().HasMaxLength(20);
+            entity.Property(e => e.RefundedByUserId).HasMaxLength(450);
+            entity.Property(e => e.RefundReference).HasMaxLength(100);
+            entity.HasOne(e => e.Rental).WithMany(e => e.Payments).HasForeignKey(e => e.LockerRentalContractId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.Order).WithMany().OnDelete(DeleteBehavior.Restrict);
         });
 
         // ── CheckIn ───────────────────────────────────────────────

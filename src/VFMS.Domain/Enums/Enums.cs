@@ -270,7 +270,9 @@ public enum RentalType
 {
     Monthly,
     Quarterly,
-    Yearly
+    Yearly,
+    Daily,
+    HalfYearly
 }
 
 public enum LockerContractStatus
@@ -278,7 +280,19 @@ public enum LockerContractStatus
     Active,
     Expired,
     Terminated,
-    Overdue
+    Overdue,
+    PendingPayment,
+    PendingHandover,
+    Cancelled,
+    Abandoned
+}
+
+public enum LockerPaymentPurpose
+{
+    Rental,
+    Renewal,
+    Settlement,
+    UnappliedTransfer
 }
 
 public enum LockerIncidentType

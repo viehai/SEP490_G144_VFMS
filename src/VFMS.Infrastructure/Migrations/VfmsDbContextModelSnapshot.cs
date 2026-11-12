@@ -1105,6 +1105,9 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<int>("LockerId")
                         .HasColumnType("int");
 
+                    b.Property<int?>("LockerRentalContractId")
+                        .HasColumnType("int");
+
                     b.Property<string>("MemberUserId")
                         .HasColumnType("nvarchar(128)");
 
@@ -1117,11 +1120,20 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime?>("VerifiedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("VerifiedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("HandledByUserId");
 
                     b.HasIndex("LockerId");
+
+                    b.HasIndex("LockerRentalContractId");
 
                     b.HasIndex("MemberUserId");
 
@@ -1144,6 +1156,12 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
+
+                    b.Property<decimal>("KeyReplacementFee")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("OverdueDailyFee")
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<string>("PolicyName")
                         .IsRequired()
@@ -1181,6 +1199,9 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<DateTime?>("CancelledAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime?>("CollectBy")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("ContractNumber")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -1204,11 +1225,33 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<DateOnly>("EndDate")
                         .HasColumnType("date");
 
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FinalNoticeAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FinalNoticeEmailSentAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FinalNoticeRetryAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<decimal?>("FineAmount")
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<DateTime?>("HandedOverAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("HandedOverByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
+
+                    b.Property<decimal?>("KeyReplacementFeeSnapshot")
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<int>("LockerId")
                         .HasColumnType("int");
@@ -1219,8 +1262,25 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<string>("Note")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<decimal?>("OutstandingAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal?>("OverdueDailyFeeSnapshot")
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<decimal>("RentalPrice")
                         .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("RentalTypeSnapshot")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime?>("SettledAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("SettledByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<DateOnly>("StartDate")
                         .HasColumnType("date");
@@ -1233,13 +1293,93 @@ namespace VFMS.Infrastructure.Migrations
                     b.HasIndex("ContractNumber")
                         .IsUnique();
 
-                    b.HasIndex("CustomerUserId");
-
-                    b.HasIndex("LockerId");
-
                     b.HasIndex("LockerPricingPolicyId");
 
+                    b.HasIndex("CustomerUserId", "ContractStatus");
+
+                    b.HasIndex("LockerId", "ContractStatus");
+
                     b.ToTable("LockerRentalContracts");
+                });
+
+            modelBuilder.Entity("VFMS.Domain.Entities.LockerRentalPayment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("HoldExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<decimal>("KeyReplacementFee")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("LockerRentalContractId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("OrderId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("OverdueFees")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<decimal>("RefundAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("RefundMethod")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("RefundReason")
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
+                    b.Property<string>("RefundReference")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime?>("RefundedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("RefundedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<int?>("RenewalMonths")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("RentalExpiryAtQuote")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("SourceOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderId")
+                        .IsUnique();
+
+                    b.HasIndex("SourceOrderId");
+
+                    b.HasIndex("LockerRentalContractId", "Purpose");
+
+                    b.ToTable("LockerRentalPayments");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.LockerZone", b =>
@@ -3748,6 +3888,11 @@ namespace VFMS.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("VFMS.Domain.Entities.LockerRentalContract", "LockerRentalContract")
+                        .WithMany()
+                        .HasForeignKey("LockerRentalContractId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("VFMS.Domain.Entities.ApplicationUser", "Member")
                         .WithMany()
                         .HasForeignKey("MemberUserId")
@@ -3756,6 +3901,8 @@ namespace VFMS.Infrastructure.Migrations
                     b.Navigation("HandledByUser");
 
                     b.Navigation("Locker");
+
+                    b.Navigation("LockerRentalContract");
 
                     b.Navigation("Member");
                 });
@@ -3785,6 +3932,30 @@ namespace VFMS.Infrastructure.Migrations
                     b.Navigation("Locker");
 
                     b.Navigation("LockerPricingPolicy");
+                });
+
+            modelBuilder.Entity("VFMS.Domain.Entities.LockerRentalPayment", b =>
+                {
+                    b.HasOne("VFMS.Domain.Entities.LockerRentalContract", "Rental")
+                        .WithMany("Payments")
+                        .HasForeignKey("LockerRentalContractId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("VFMS.Domain.Entities.Order", "Order")
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("VFMS.Domain.Entities.Order", null)
+                        .WithMany()
+                        .HasForeignKey("SourceOrderId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Order");
+
+                    b.Navigation("Rental");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.LockerZone", b =>
@@ -4606,6 +4777,11 @@ namespace VFMS.Infrastructure.Migrations
                     b.Navigation("Contracts");
 
                     b.Navigation("Lockers");
+                });
+
+            modelBuilder.Entity("VFMS.Domain.Entities.LockerRentalContract", b =>
+                {
+                    b.Navigation("Payments");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.LockerZone", b =>
