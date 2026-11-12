@@ -57,7 +57,8 @@ public enum FreezeRequestStatus
     Rejected,
     Active,
     Completed,
-    Expired
+    Expired,
+    Cancelled
 }
 
 public enum FreezeTierUnit

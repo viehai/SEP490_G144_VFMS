@@ -32,12 +32,12 @@ public sealed partial class MembershipPurchaseService
             detail.InvoiceNumber, new(detail.TotalFrozenDays, detail.FreezeCount, history)));
     }
 
-    private static MembershipSummaryResponse ToSummary(OwnedMembership membership, DateOnly today) =>
+    internal static MembershipSummaryResponse ToSummary(OwnedMembership membership, DateOnly today) =>
         new(membership.MembershipId, membership.MembershipPlanId, membership.PlanName,
             membership.ComponentType.ToString(), membership.StartDate, membership.EndDate,
             GetCurrentMembershipStatus(membership.Status, membership.EndDate, today).ToString());
 
-    private static MembershipStatus GetCurrentMembershipStatus(MembershipStatus status, DateOnly endDate, DateOnly today) =>
+    internal static MembershipStatus GetCurrentMembershipStatus(MembershipStatus status, DateOnly endDate, DateOnly today) =>
         status == MembershipStatus.Active && endDate < today ? MembershipStatus.Expired : status;
 
     private static Result<T> MembershipNotFound<T>() =>

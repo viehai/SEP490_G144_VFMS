@@ -318,6 +318,24 @@ public sealed partial class MembershipPurchaseService(
             ? JsonSerializer.Deserialize<ComponentTerms[]>(snapshot)!
             : item.Package.Components.OrderBy(component => component.Id).Select(ToTerms).ToArray();
 
+    internal static (int? Days, int? Months) PurchasedDuration(
+        string? snapshot, int componentId, int? currentDays, int? currentMonths)
+    {
+        if (snapshot is null)
+            return (currentDays, currentMonths);
+
+        try
+        {
+            var terms = JsonSerializer.Deserialize<ComponentTerms[]>(snapshot)?
+                .SingleOrDefault(component => component.Id == componentId);
+            return (terms?.Days ?? terms?.DurationDays, terms?.Months ?? terms?.DurationMonths);
+        }
+        catch (JsonException)
+        {
+            return (null, null);
+        }
+    }
+
     private static bool IsValidComponent(PackageComponent component, DateOnly latestStart)
     {
         var fits = component.DurationDays is > 0

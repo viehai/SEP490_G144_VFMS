@@ -1,0 +1,58 @@
+@typeparam TRequest
+@implements IDisposable
+@using FluentValidation
+
+@* Same as Components/Auth/ContractValidation, with Vietnamese text for the equipment, procurement and supplement validators. *@
+
+@code {
+    [CascadingParameter] private EditContext CurrentEditContext { get; set; } = default!;
+    [Parameter, EditorRequired] public IValidator<TRequest> Validator { get; set; } = default!;
+    [Parameter, EditorRequired] public Func<TRequest> CreateRequest { get; set; } = default!;
+    private ValidationMessageStore _messages = default!;
+
+    protected override void OnInitialized()
+    {
+        _messages = new(CurrentEditContext);
+        CurrentEditContext.OnValidationRequested += Validate;
+        CurrentEditContext.OnFieldChanged += FieldChanged;
+    }
+
+    private void Validate(object? sender, ValidationRequestedEventArgs args)
+    {
+        _messages.Clear();
+        foreach (var failure in Validator.Validate(CreateRequest()).Errors)
+            _messages.Add(Field(failure.PropertyName), OperationsText.Validation(failure.ErrorMessage));
+        CurrentEditContext.NotifyValidationStateChanged();
+    }
+
+    private void FieldChanged(object? sender, FieldChangedEventArgs args)
+    {
+        _messages.Clear(args.FieldIdentifier);
+        foreach (var failure in Validator.Validate(CreateRequest()).Errors.Where(error => Field(error.PropertyName).Equals(args.FieldIdentifier)))
+            _messages.Add(args.FieldIdentifier, OperationsText.Validation(failure.ErrorMessage));
+        CurrentEditContext.NotifyValidationStateChanged();
+    }
+
+    public void ShowErrors(IReadOnlyDictionary<string, string[]> errors)
+    {
+        _messages.Clear();
+        foreach (var field in errors)
+            _messages.Add(Field(field.Key), field.Value.Select(OperationsText.Validation));
+        CurrentEditContext.NotifyValidationStateChanged();
+    }
+
+    // "Items[0].Quantity" is shown on the form-level summary; plain names map to the model property.
+    private FieldIdentifier Field(string propertyName)
+    {
+        var name = propertyName.Split('.').Last();
+        name = CurrentEditContext.Model.GetType().GetProperties()
+            .FirstOrDefault(property => property.Name.Equals(name, StringComparison.OrdinalIgnoreCase))?.Name ?? name;
+        return new FieldIdentifier(CurrentEditContext.Model, propertyName.Contains('[') ? string.Empty : name);
+    }
+
+    public void Dispose()
+    {
+        CurrentEditContext.OnValidationRequested -= Validate;
+        CurrentEditContext.OnFieldChanged -= FieldChanged;
+    }
+}

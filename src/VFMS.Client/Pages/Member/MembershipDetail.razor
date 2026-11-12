@@ -73,6 +73,8 @@
                 </div>
             </dl>
 
+            <MembershipFreezeEligibilityPanel @key="MembershipId" MembershipId="@MembershipId" Submitted="FreezeSubmitted" />
+
             <div class="space-y-3 border-t border-vfms-border pt-4">
                 <h3 class="font-heading text-sm font-bold text-vfms-text">Lịch sử yêu cầu bảo lưu</h3>
                 @if (detail.Freeze.History.Count == 0)
@@ -110,7 +112,7 @@
                                     }
                                     <div>
                                         <dt class="text-xs font-semibold text-vfms-text-secondary">Trạng thái yêu cầu</dt>
-                                        <dd class="mt-1 font-semibold text-vfms-text">@FreezeStatusLabel(period.Status)</dd>
+                                        <dd class="mt-1"><MembershipFreezeStatusBadge Status="@period.Status" /></dd>
                                     </div>
                                 </dl>
                             </li>
@@ -168,16 +170,14 @@
     private static DateOnly VietnamDate(DateTimeOffset timestamp) =>
         DateOnly.FromDateTime(timestamp.ToOffset(TimeSpan.FromHours(7)).DateTime);
 
-    private static string FreezeStatusLabel(string status) => status switch
+    private void FreezeSubmitted(MembershipFreezeRequestResponse request)
     {
-        "Pending" => "Chờ duyệt",
-        "Approved" => "Đã duyệt",
-        "Rejected" => "Đã từ chối",
-        "Active" => "Đang bảo lưu",
-        "Completed" => "Đã hoàn tất",
-        "Expired" => "Đã hết hạn",
-        _ => status
-    };
+        if (_detail is null)
+            return;
+
+        var period = new MembershipFreezePeriodResponse(request.StartDate, request.EndDate, null, null, request.Status);
+        _detail = _detail with { Freeze = _detail.Freeze with { History = [period, .. _detail.Freeze.History] } };
+    }
 
     private void CancelLoad()
     {

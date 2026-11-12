@@ -1,0 +1,26 @@
+@using VFMS.Contracts.Supplements
+
+@* Product lines and total of a supplement order. *@
+<div>
+    <ul class="divide-y divide-[#EEF1EA] rounded-lg border border-[#D8DED2]">
+        @foreach (var item in Order.Items)
+        {
+            <li @key="item.Id" class="flex items-center gap-3 p-3">
+                @if (item.ImageUrl is { } image)
+                {
+                    <img src="@image" alt="" class="h-12 w-12 flex-none rounded-md border border-[#D8DED2] object-cover" loading="lazy" />
+                }
+                <div class="min-w-0 flex-1">
+                    <p class="truncate text-sm font-semibold text-[#383E43]">@(item.ProductName ?? $"Sản phẩm #{item.ProductId}")</p>
+                    <p class="text-xs text-[#69706A]">@item.Quantity × @OperationsText.Money(item.UnitPriceAtPurchase)</p>
+                </div>
+                <p class="whitespace-nowrap text-sm font-semibold">@OperationsText.Money(item.LineTotal)</p>
+            </li>
+        }
+    </ul>
+    <p class="mt-3 text-right text-sm">Tổng cộng: <span class="text-lg font-extrabold text-[#5F6F52]">@OperationsText.Money(Order.TotalAmount)</span></p>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public SupplementOrderResponse Order { get; set; } = default!;
+}

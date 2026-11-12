@@ -20,6 +20,29 @@
                 <AuthorizeView Roles="Manager">
                     <NavLink href="/manager/membership-plans" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">05</span> Gói hội viên <span aria-hidden="true">↗</span></NavLink>
                     <NavLink href="/manager/membership-freeze-policy" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">06</span> Chính sách bảo lưu <span aria-hidden="true">↗</span></NavLink>
+                    <NavLink href="/manager/general-policies" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">07</span> Chính sách chung <span aria-hidden="true">↗</span></NavLink>
+                    <NavLink href="/manager/business-reports" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">08</span> Báo cáo kinh doanh <span aria-hidden="true">↗</span></NavLink>
+                    <NavLink href="/manager/equipment" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">09</span> Thiết bị <span aria-hidden="true">↗</span></NavLink>
+                    <NavLink href="/manager/equipment-issues" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">10</span> Sửa chữa thiết bị <span aria-hidden="true">↗</span></NavLink>
+                    <NavLink href="/manager/purchase-proposals" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">11</span> Đề xuất mua sắm <span aria-hidden="true">↗</span></NavLink>
+                    <NavLink href="/manager/supplement-products" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">12</span> Sản phẩm bổ sung <span aria-hidden="true">↗</span></NavLink>
+                    <NavLink href="/manager/supplement-orders" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">13</span> Đơn bổ sung <span aria-hidden="true">↗</span></NavLink>
+                </AuthorizeView>
+            }
+            @if (Variant == "staff")
+            {
+                <AuthorizeView Roles="Staff">
+                    <NavLink href="/staff/equipment-issues" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">05</span> Sự cố thiết bị <span aria-hidden="true">↗</span></NavLink>
+                    <NavLink href="/staff/purchase-proposals" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">06</span> Đề xuất mua sắm <span aria-hidden="true">↗</span></NavLink>
+                    <NavLink href="/staff/supplement-orders" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">07</span> Đơn bổ sung <span aria-hidden="true">↗</span></NavLink>
+                </AuthorizeView>
+            }
+            @if (Variant == "admin")
+            {
+                <AuthorizeView Roles="Admin">
+                    <NavLink href="/admin/business-reports" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">05</span> Báo cáo kinh doanh <span aria-hidden="true">↗</span></NavLink>
+                    <NavLink href="/admin/banned-words" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">06</span> Từ khóa cấm <span aria-hidden="true">↗</span></NavLink>
+                    <NavLink href="/admin/audit-logs" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">07</span> Nhật ký hệ thống <span aria-hidden="true">↗</span></NavLink>
                 </AuthorizeView>
             }
         </nav>
