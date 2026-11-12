@@ -1356,6 +1356,9 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<DateOnly?>("ActualStartDate")
                         .HasColumnType("date");
 
+                    b.Property<int?>("AppliedExpiryExtensionDays")
+                        .HasColumnType("int");
+
                     b.Property<string>("AppliedPolicySnapshot")
                         .HasColumnType("nvarchar(max)");
 
@@ -1371,6 +1374,16 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.Property<DateTime?>("EarlyUnfreezeRequestedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("EarlyUnfreezeReviewNote")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<DateTime?>("EarlyUnfreezeReviewedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("EarlyUnfreezeReviewedByUserId")
+                        .HasColumnType("nvarchar(128)");
 
                     b.Property<int?>("FreezePolicyId")
                         .HasColumnType("int");
@@ -1413,6 +1426,8 @@ namespace VFMS.Infrastructure.Migrations
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("EarlyUnfreezeReviewedByUserId");
 
                     b.HasIndex("FreezePolicyId");
 
@@ -3675,6 +3690,11 @@ namespace VFMS.Infrastructure.Migrations
 
             modelBuilder.Entity("VFMS.Domain.Entities.MembershipFreeze", b =>
                 {
+                    b.HasOne("VFMS.Domain.Entities.ApplicationUser", "EarlyUnfreezeReviewedByUser")
+                        .WithMany()
+                        .HasForeignKey("EarlyUnfreezeReviewedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("VFMS.Domain.Entities.FreezePolicy", "FreezePolicy")
                         .WithMany()
                         .HasForeignKey("FreezePolicyId")
@@ -3696,6 +3716,8 @@ namespace VFMS.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("ReviewedByUserId")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("EarlyUnfreezeReviewedByUser");
 
                     b.Navigation("FreezePolicy");
 

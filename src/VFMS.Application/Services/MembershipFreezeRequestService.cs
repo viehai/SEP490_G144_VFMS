@@ -83,6 +83,9 @@ public sealed partial class MembershipFreezeRequestService(
                 return StateConflict();
             request.EarlyUnfreezeRequestedAt = clock.GetUtcNow().UtcDateTime;
             request.EarlyUnfreezeRequestStatus = FreezeRequestStatus.Pending;
+            request.EarlyUnfreezeReviewedByUserId = null;
+            request.EarlyUnfreezeReviewedAt = null;
+            request.EarlyUnfreezeReviewNote = null;
             await repository.SaveChangesAsync(ct);
             return Result<MembershipFreezeRequestResponse>.Success(ToResponse(request,
                 membership.OrderItem.PackageNameSnapshot, membership.MembershipStatus, LocalToday()));
@@ -150,7 +153,9 @@ public sealed partial class MembershipFreezeRequestService(
             request.RequestStatus.ToString(), request.ReviewNote, request.ReviewedAt is { } reviewed ? Utc(reviewed) : null,
             request.EarlyUnfreezeRequestedAt is { } early ? Utc(early) : null, request.EarlyUnfreezeRequestStatus?.ToString(),
             request.RequestStatus == FreezeRequestStatus.Pending, request.RequestStatus == FreezeRequestStatus.Pending,
-            CanRequestEarlyUnfreeze(request, membershipStatus, today), ReadAppliedPolicy(request.AppliedPolicySnapshot));
+            CanRequestEarlyUnfreeze(request, membershipStatus, today), ReadAppliedPolicy(request.AppliedPolicySnapshot),
+            request.EarlyUnfreezeReviewNote,
+            request.EarlyUnfreezeReviewedAt is { } earlyReviewed ? Utc(earlyReviewed) : null);
 
     private static bool CanRequestEarlyUnfreeze(MembershipFreeze request, MembershipStatus membershipStatus, DateOnly today) =>
         membershipStatus == MembershipStatus.Frozen &&
@@ -160,7 +165,7 @@ public sealed partial class MembershipFreezeRequestService(
         request.EarlyUnfreezeAt is null &&
         request.EarlyUnfreezeRequestStatus is null or FreezeRequestStatus.Rejected;
 
-    private static MembershipFreezePolicyResponse? ReadAppliedPolicy(string? snapshot)
+    internal static MembershipFreezePolicyResponse? ReadAppliedPolicy(string? snapshot)
     {
         if (snapshot is null)
             return null;

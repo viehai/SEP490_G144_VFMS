@@ -406,6 +406,9 @@ public class VfmsDbContext : DbContext
             entity.Property(e => e.RequestStatus).HasConversion<string>().HasMaxLength(50);
             entity.Property(e => e.Reason).HasMaxLength(4000);
             entity.Property(e => e.EarlyUnfreezeRequestStatus).HasConversion<string>().HasMaxLength(50);
+            entity.Property(e => e.EarlyUnfreezeReviewNote).HasMaxLength(4000);
+            entity.HasOne(e => e.EarlyUnfreezeReviewedByUser).WithMany()
+                .HasForeignKey(e => e.EarlyUnfreezeReviewedByUserId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(e => e.FreezePolicy).WithMany().HasForeignKey(e => e.FreezePolicyId)
                 .OnDelete(DeleteBehavior.Restrict);
 

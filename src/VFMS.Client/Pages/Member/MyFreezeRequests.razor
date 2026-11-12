@@ -100,6 +100,14 @@
                                 {
                                     <MembershipFreezeStatusBadge Status="@earlyStatus" />
                                 }
+                                @if (!string.IsNullOrWhiteSpace(request.EarlyUnfreezeReviewNote))
+                                {
+                                    <p class="whitespace-pre-wrap break-words text-vfms-text">@request.EarlyUnfreezeReviewNote</p>
+                                }
+                                @if (request.EarlyUnfreezeReviewedAt is { } earlyReviewedAt)
+                                {
+                                    <p class="text-vfms-text-secondary">Xử lý ngày <MembershipDate Date="@VietnamDate(earlyReviewedAt)" /></p>
+                                }
                             </div>
                         }
                         @if (request.AppliedPolicy?.Policy is { } applied)
