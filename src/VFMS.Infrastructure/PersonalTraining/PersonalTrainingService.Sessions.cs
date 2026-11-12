@@ -27,7 +27,8 @@ public sealed partial class PersonalTrainingService
 
     private static PTSessionResponse SessionResponse(PTSession s, DateTime now)
     {
-        var proposed = s.SessionStatus == PTSessionStatus.ReschedulePending && s.ProposalExpiresAt > now;
+        var awaitingChange = s.SessionStatus is PTSessionStatus.ReschedulePending or PTSessionStatus.RescheduleRequested;
+        var proposed = awaitingChange && s.ProposalExpiresAt > now;
         if (s.SessionStatus == PTSessionStatus.MakeUpPending)
         {
             var pending = s.ProposalExpiresAt is { } deadline && deadline > now;
@@ -38,7 +39,7 @@ public sealed partial class PersonalTrainingService
                         DateTime.SpecifyKind(s.ProposalExpiresAt!.Value, DateTimeKind.Utc)) : null);
         }
         return new(s.Id, s.SessionDate, s.StartTime, s.EndTime,
-            (s.SessionStatus == PTSessionStatus.ReschedulePending && !proposed ? PTSessionStatus.Scheduled : s.SessionStatus).ToString(),
+            (awaitingChange && !proposed ? PTSessionStatus.Scheduled : s.SessionStatus).ToString(),
             s.CreditUnits, s.Note, s.NoteUpdatedAt, proposed
                 ? new(s.ProposedDate!.Value, s.ProposedStartTime!.Value, s.ProposedEndTime!.Value,
                     s.ProposedAdjustmentType!.Value.ToString(),
@@ -176,15 +177,12 @@ public sealed partial class PersonalTrainingService
             ClearProposal(s);
         if (s.SessionStatus != PTSessionStatus.Scheduled || oldStart <= now)
             return Conflict<PTSessionResponse>("Chỉ có thể đề xuất cho buổi sắp tới chưa có đề xuất chờ.");
-        if (!Enum.TryParse<PTAdjustmentType>(request.Type, true, out var type) ||
-            !string.Equals(request.Type, type.ToString(), StringComparison.OrdinalIgnoreCase))
-            return Invalid<PTSessionResponse>("Loại đề xuất không hợp lệ.");
-        if (type == PTAdjustmentType.DoubleSession && (s.CreditUnits != 1 ||
-            request.Date != s.SessionDate || request.StartTime != s.StartTime))
+        const PTAdjustmentType type = PTAdjustmentType.DoubleSession;
+        if (!string.Equals(request.Type, nameof(PTAdjustmentType.DoubleSession), StringComparison.OrdinalIgnoreCase))
+            return Invalid<PTSessionResponse>("PT chỉ có thể đề xuất ca đôi qua chức năng này.");
+        if (s.CreditUnits != 1 || request.Date != s.SessionDate || request.StartTime != s.StartTime)
             return Invalid<PTSessionResponse>("Ca đôi kéo dài buổi 60 phút hiện tại.");
-        if (type == PTAdjustmentType.Reschedule && request.Date == s.SessionDate && request.StartTime == s.StartTime)
-            return Invalid<PTSessionResponse>("Chọn lịch khác với lịch hiện tại.");
-        var end = request.StartTime.AddHours(type == PTAdjustmentType.DoubleSession ? 2 : s.CreditUnits);
+        var end = request.StartTime.AddHours(2);
         if (!await CanAdjust(p, s, request.Date, request.StartTime, end, type, now, ct))
             return Conflict<PTSessionResponse>("Lịch hoặc credit không đủ điều kiện.");
         s.ProposedDate = request.Date;
@@ -195,7 +193,7 @@ public sealed partial class PersonalTrainingService
         s.SessionStatus = PTSessionStatus.ReschedulePending;
         Audit(actor, nameof(PTSession), s.Id, $"Proposed:{type}:{request.Date:yyyy-MM-dd}:{request.StartTime:HH:mm}");
         Notify(s.MemberUserId, "Đề xuất đổi lịch PT",
-            $"Lịch đề xuất {request.Date:dd/MM/yyyy} {request.StartTime:HH:mm}–{end:HH:mm}. Hủy trước ít nhất 4 giờ để giữ credit.",
+            $"Lịch đề xuất {request.Date:dd/MM/yyyy} {request.StartTime:HH:mm}–{end:HH:mm}.",
             nameof(PTSession), s.Id);
         await db.SaveChangesAsync(ct);
         return Result<PTSessionResponse>.Success(SessionResponse(s, now));
@@ -280,30 +278,6 @@ public sealed partial class PersonalTrainingService
         }
     }
 
-    public Task<Result<PTSessionResponse>> Cancel(string actor, int id, CancellationToken ct) => Write(async () =>
-    {
-        if (await User(actor, UserRole.Member, ct) is null)
-            return Forbidden<PTSessionResponse>();
-        var p = await ContractForSession(actor, id, false, ct);
-        if (p is null)
-            return Missing<PTSessionResponse>();
-        var s = p.Sessions.Single(x => x.Id == id);
-        var now = Now;
-        var start = Utc(s.SessionDate, s.StartTime);
-        if (s.SessionStatus == PTSessionStatus.Cancelled)
-            return Result<PTSessionResponse>.Success(SessionResponse(s, now));
-        if (s.SessionStatus is not (PTSessionStatus.Scheduled or PTSessionStatus.ReschedulePending) || start <= now)
-            return Conflict<PTSessionResponse>("Buổi này không thể hủy.");
-        ClearProposal(s);
-        s.SessionStatus = PTSessionStatus.Cancelled;
-        s.CancelledAt = now;
-        s.IsCreditForfeited = start - now < TimeSpan.FromHours(4);
-        SettleCredits(p);
-        Audit(actor, nameof(PTSession), s.Id, s.IsCreditForfeited ? "LateCancellation" : "Cancellation");
-        await db.SaveChangesAsync(ct);
-        return Result<PTSessionResponse>.Success(SessionResponse(s, now));
-    }, ct);
-
     public Task<Result<PTSessionResponse>> RecordAttendance(string actor, int id, bool attended, CancellationToken ct) => Write(async () =>
     {
         if (await User(actor, UserRole.PT, ct) is null)
@@ -316,7 +290,7 @@ public sealed partial class PersonalTrainingService
         var target = attended ? PTSessionStatus.Completed : PTSessionStatus.NoShow;
         if (s.SessionStatus == target)
             return Result<PTSessionResponse>.Success(SessionResponse(s, now));
-        if (s.SessionStatus is not (PTSessionStatus.Scheduled or PTSessionStatus.ReschedulePending) ||
+        if (s.SessionStatus is not (PTSessionStatus.Scheduled or PTSessionStatus.ReschedulePending or PTSessionStatus.RescheduleRequested) ||
             Utc(s.SessionDate, s.EndTime) > now)
             return Conflict<PTSessionResponse>("Buổi chưa kết thúc hoặc không thể chấm công.");
         if (attended && !await db.MemberMemberships.AnyAsync(m =>
@@ -328,7 +302,10 @@ public sealed partial class PersonalTrainingService
                     (f.ActualStartDate ?? f.RequestedStartDate) <= s.SessionDate &&
                     (f.ActualEndDate ?? f.RequestedEndDate) > s.SessionDate), ct))
             return Result<PTSessionResponse>.Failure("Cần gói Gym bao phủ ngày tập.", "PT_GYM_COVERAGE", 409);
-        ClearProposal(s);
+        if (s.SessionStatus == PTSessionStatus.RescheduleRequested)
+            CloseMemberReschedule(s, null, "RescheduleExpired", "Yêu cầu đổi lịch đã hết hạn.");
+        else
+            ClearProposal(s);
         s.SessionStatus = target;
         SettleCredits(p);
         Audit(actor, nameof(PTSession), s.Id, target.ToString());

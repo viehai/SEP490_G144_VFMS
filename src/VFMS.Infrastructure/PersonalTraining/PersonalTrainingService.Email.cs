@@ -46,7 +46,7 @@ public sealed partial class PersonalTrainingService
             proposal.ProposalEmailRetryAt = claim;
             await db.SaveChangesAsync(ct);
             var message = $"Lịch đề xuất: {proposal.ProposedDate:dd/MM/yyyy} {proposal.ProposedStartTime:HH:mm}–{proposal.ProposedEndTime:HH:mm}. " +
-                "Vào lịch PT để xác nhận hoặc từ chối. Hủy trước ít nhất 4 giờ để giữ credit.";
+                "Vào lịch PT để xác nhận hoặc từ chối.";
             return Result<PTEmail?>.Success(new(proposal.Id, false, proposal.Member.Email, "Đề xuất đổi lịch PT", message, claim));
         }, ct);
 

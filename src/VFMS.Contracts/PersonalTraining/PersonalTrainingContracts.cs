@@ -24,6 +24,9 @@ public sealed record PTProposalRequest(DateOnly Date, TimeOnly StartTime, [Requi
 public sealed record PTProposalResponse(DateOnly Date, TimeOnly StartTime, TimeOnly EndTime,
     string Type, DateTime ExpiresAt);
 public sealed record PTProposalDecision(bool Accept, DateTime ProposalExpiresAt);
+public sealed record PTRescheduleRequest(DateOnly Date, TimeOnly StartTime);
+public sealed record PTRescheduleDecision(bool Accept, DateOnly Date, TimeOnly StartTime, DateTime ProposalExpiresAt);
+public sealed record PTRescheduleSlot(DateOnly Date, TimeOnly StartTime, TimeOnly EndTime, string Status);
 public sealed record PTMakeUpRequest(DateOnly Date, TimeOnly StartTime);
 public sealed record PTNoteRequest([Required, StringLength(2000)] string Note);
 public sealed record PTSessionResponse(int Id, DateOnly Date, TimeOnly StartTime, TimeOnly EndTime,

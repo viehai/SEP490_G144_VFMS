@@ -26,11 +26,13 @@ public static class PersonalTrainingRules
         otherStart.Ticks < end.Ticks + TimeSpan.TicksPerMinute * 15;
 
     public static bool Reserved(PTSessionStatus status) =>
-        status is PTSessionStatus.Scheduled or PTSessionStatus.ReschedulePending or PTSessionStatus.PendingFreeze;
+        status is PTSessionStatus.Scheduled or PTSessionStatus.ReschedulePending or PTSessionStatus.RescheduleRequested
+            or PTSessionStatus.PendingFreeze;
 
     public static Expression<Func<PTSession, bool>> OccupiesTime(DateTime now) => session =>
         session.SessionStatus == PTSessionStatus.Scheduled ||
         session.SessionStatus == PTSessionStatus.ReschedulePending ||
+        session.SessionStatus == PTSessionStatus.RescheduleRequested ||
         session.SessionStatus == PTSessionStatus.PendingFreeze ||
         (session.SessionStatus == PTSessionStatus.CheckoutHold &&
             session.PTPurchase.Status == PTPurchaseStatus.PendingPayment &&

@@ -95,9 +95,20 @@ public sealed class PersonalTrainingController(PersonalTrainingService service) 
     public Task<IActionResult> DecideProposal(int id, PTProposalDecision request, CancellationToken ct) =>
         AsUser(actor => service.DecideProposal(actor, id, request, ct));
 
-    [HttpPost("sessions/{id:int}/cancel")]
+    [HttpGet("sessions/{id:int}/reschedule-options")]
     [Authorize(Roles = "Member")]
-    public Task<IActionResult> Cancel(int id, CancellationToken ct) => AsUser(actor => service.Cancel(actor, id, ct));
+    public Task<IActionResult> RescheduleOptions(int id, [FromQuery] DateOnly? from, CancellationToken ct) =>
+        AsUser(actor => service.RescheduleOptions(actor, id, from, ct));
+
+    [HttpPost("sessions/{id:int}/reschedule-request")]
+    [Authorize(Roles = "Member")]
+    public Task<IActionResult> RequestReschedule(int id, PTRescheduleRequest request, CancellationToken ct) =>
+        AsUser(actor => service.RequestReschedule(actor, id, request, ct));
+
+    [HttpPost("sessions/{id:int}/reschedule-request/decision")]
+    [Authorize(Roles = "PT")]
+    public Task<IActionResult> DecideReschedule(int id, PTRescheduleDecision request, CancellationToken ct) =>
+        AsUser(actor => service.DecideReschedule(actor, id, request, ct));
 
     [HttpPost("sessions/{id:int}/attendance")]
     [Authorize(Roles = "PT")]

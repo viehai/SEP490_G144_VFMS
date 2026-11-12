@@ -78,7 +78,7 @@ public sealed partial class PersonalTrainingService
             };
             db.PTFreezes.Add(freeze);
             foreach (var session in p.Sessions.Where(s => s.SessionDate >= input.StartDate && s.SessionDate < input.ResumeDate &&
-                s.SessionStatus is PTSessionStatus.Scheduled or PTSessionStatus.ReschedulePending))
+                s.SessionStatus is PTSessionStatus.Scheduled or PTSessionStatus.ReschedulePending or PTSessionStatus.RescheduleRequested))
             {
                 ClearProposal(session);
                 session.SessionStatus = PTSessionStatus.PendingFreeze;

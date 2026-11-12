@@ -98,8 +98,14 @@ public sealed partial class MembershipPurchaseApiTests
         var path = $"/api/pt/contracts/{order.ContractId}";
         var contract = (await member.GetFromJsonAsync<PTContractResponse[]>(path))!.Single();
         var old = contract.Sessions[0];
-        using var cancelled = await member.PostAsync($"/api/pt/sessions/{old.Id}/cancel", null);
-        Assert.Equal(HttpStatusCode.OK, cancelled.StatusCode);
+        await using (var scope = _app.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+            var historical = await db.PTSessions.SingleAsync(s => s.Id == old.Id);
+            historical.SessionStatus = PTSessionStatus.Cancelled;
+            historical.CancelledAt = _clock.Now.UtcDateTime;
+            await db.SaveChangesAsync();
+        }
 
         var route = $"/api/pt/sessions/{old.Id}/make-up";
         var makeUp = new PTMakeUpRequest(old.Date, new TimeOnly(15, 0));
@@ -119,12 +125,18 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Contains(after.Sessions, s => s.Id == pending.Id && s.Status == "Scheduled");
     }
 
-    [Fact]
-    public async Task MemberApprovalMovesOneSessionWhileKeepingTheOriginalReservedUntilApproval()
+    [Theory]
+    [InlineData("accept")]
+    [InlineData("decline")]
+    [InlineData("conflict")]
+    [InlineData("expire")]
+    public async Task OnlyAssignedPTCanMoveARequestedSessionAndCreditsStayReserved(string outcome)
     {
         var request = await PreparePTCheckout();
         using var member = Client("member", "Member");
+        using var otherMember = Client("gift", "Member");
         using var trainer = Client("buyer", "PT");
+        using var otherTrainer = Client("other-pt", "PT");
         using var response = await member.PostAsJsonAsync("/api/pt/purchases", request);
         Assert.True(response.StatusCode == HttpStatusCode.Created, await response.Content.ReadAsStringAsync());
         var checkout = (await response.Content.ReadFromJsonAsync<PTCheckoutResponse>())!;
@@ -136,21 +148,93 @@ public sealed partial class MembershipPurchaseApiTests
         var path = $"/api/pt/contracts/{checkout.ContractId}";
         var contract = (await member.GetFromJsonAsync<PTContractResponse[]>(path))!.Single();
         var session = contract.Sessions[0];
-        var newTime = new TimeOnly(15, 0);
-        using var proposed = await trainer.PostAsJsonAsync($"/api/pt/sessions/{session.Id}/proposal",
+        var busyTime = new TimeOnly(9, 0);
+        var newTime = new TimeOnly(12, 0);
+        await using var scope = _app.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+        var membership = await db.MemberMemberships.SingleAsync();
+        var gym = await db.Gyms.SingleAsync(g => g.GymName == "VFMS");
+        var roles = await db.ApplicationRoles.ToDictionaryAsync(role => role.RoleName);
+        db.ApplicationUserRoles.Add(new ApplicationUserRole { UserId = "gift", Role = roles["Member"] });
+        db.ApplicationUsers.Add(User("other-pt", gym, roles["PT"]));
+        var competing = new PTSession
+        {
+            MemberUserId = "gift", PTUserId = "buyer", SessionDate = session.Date,
+            StartTime = busyTime, EndTime = busyTime.AddHours(1), Note = "Private coaching note"
+        };
+        db.PTPurchases.Add(new PTPurchase
+        {
+            MemberUserId = "gift", PTUserId = "buyer", MemberMembershipId = membership.Id,
+            StartDate = contract.StartDate, EndDate = contract.EndDate, Sessions = [competing]
+        });
+        await db.SaveChangesAsync();
+        var sessionPath = $"/api/pt/sessions/{session.Id}";
+        var optionsPath = $"{sessionPath}/reschedule-options?from={session.Date:yyyy-MM-dd}";
+        using var forbidden = await otherMember.GetAsync(optionsPath);
+        Assert.Equal(HttpStatusCode.NotFound, forbidden.StatusCode);
+        using var options = await member.GetAsync(optionsPath);
+        Assert.Equal(HttpStatusCode.OK, options.StatusCode);
+        using var calendarJson = System.Text.Json.JsonDocument.Parse(await options.Content.ReadAsStringAsync());
+        Assert.All(calendarJson.RootElement.EnumerateArray(), slot =>
+            Assert.Equal(new[] { "date", "endTime", "startTime", "status" },
+                slot.EnumerateObject().Select(property => property.Name).OrderBy(name => name)));
+        var calendar = (await options.Content.ReadFromJsonAsync<PTRescheduleSlot[]>())!;
+        Assert.Contains(calendar, slot => slot.Date == session.Date && slot.StartTime == busyTime && slot.Status == "Busy");
+        Assert.Contains(calendar, slot => slot.Date == session.Date && slot.StartTime == newTime && slot.Status == "Available");
+        using var removed = await member.PostAsync($"{sessionPath}/cancel", null);
+        Assert.Equal(HttpStatusCode.NotFound, removed.StatusCode);
+        using var trainerRequest = await trainer.PostAsJsonAsync($"{sessionPath}/proposal",
             new PTProposalRequest(session.Date, newTime, "Reschedule"));
+        Assert.Equal(HttpStatusCode.BadRequest, trainerRequest.StatusCode);
+        var requestPath = $"{sessionPath}/reschedule-request";
+        using var wrongMember = await otherMember.PostAsJsonAsync(requestPath, new PTRescheduleRequest(session.Date, newTime));
+        Assert.Equal(HttpStatusCode.NotFound, wrongMember.StatusCode);
+        using var busy = await member.PostAsJsonAsync(requestPath, new PTRescheduleRequest(session.Date, busyTime));
+        Assert.Equal(HttpStatusCode.Conflict, busy.StatusCode);
+        using var proposed = await member.PostAsJsonAsync(requestPath, new PTRescheduleRequest(session.Date, newTime));
         Assert.True(proposed.StatusCode == HttpStatusCode.OK, await proposed.Content.ReadAsStringAsync());
         var pending = (await proposed.Content.ReadFromJsonAsync<PTSessionResponse>())!;
         Assert.Equal(session.StartTime, pending.StartTime);
-        Assert.Equal("ReschedulePending", pending.Status);
+        Assert.Equal("RescheduleRequested", pending.Status);
+        Assert.Equal(session.Date, pending.Date);
+        Assert.Equal(newTime, pending.Proposal!.StartTime);
         var during = (await member.GetFromJsonAsync<PTContractResponse[]>(path))!.Single();
         Assert.Equal(12, during.ReservedCredits);
-        using var accepted = await member.PostAsJsonAsync($"/api/pt/sessions/{session.Id}/proposal/decision",
-            new PTProposalDecision(true, pending.Proposal!.ExpiresAt));
-        Assert.True(accepted.StatusCode == HttpStatusCode.OK, await accepted.Content.ReadAsStringAsync());
-        var moved = (await accepted.Content.ReadFromJsonAsync<PTSessionResponse>())!;
-        Assert.Equal(newTime, moved.StartTime);
-        Assert.Null(moved.Proposal);
+        var decision = new PTRescheduleDecision(outcome != "decline", session.Date, newTime, pending.Proposal.ExpiresAt);
+        using var wrongTrainer = await otherTrainer.PostAsJsonAsync($"{requestPath}/decision", decision);
+        Assert.Equal(HttpStatusCode.NotFound, wrongTrainer.StatusCode);
+        using var memberDecision = await member.PostAsJsonAsync($"{requestPath}/decision", decision);
+        Assert.Equal(HttpStatusCode.Forbidden, memberDecision.StatusCode);
+        using var wrongRoute = await member.PostAsJsonAsync($"{sessionPath}/proposal/decision",
+            new PTProposalDecision(true, pending.Proposal.ExpiresAt));
+        Assert.Equal(HttpStatusCode.Conflict, wrongRoute.StatusCode);
+
+        if (outcome == "conflict")
+        {
+            competing.StartTime = newTime;
+            competing.EndTime = newTime.AddHours(1);
+            await db.SaveChangesAsync();
+        }
+        if (outcome == "expire")
+        {
+            _clock.Now = new DateTimeOffset(pending.Proposal.ExpiresAt);
+            await using var worker = _app.Services.CreateAsyncScope();
+            await worker.ServiceProvider.GetRequiredService<VFMS.Infrastructure.PersonalTraining.PersonalTrainingService>()
+                .ExpirePending(CancellationToken.None);
+        }
+        using var decided = await trainer.PostAsJsonAsync($"{requestPath}/decision", decision);
+        Assert.True(decided.StatusCode == (outcome is "accept" or "decline" ? HttpStatusCode.OK : HttpStatusCode.Conflict),
+            await decided.Content.ReadAsStringAsync());
+        var after = (await member.GetFromJsonAsync<PTContractResponse[]>(path))!.Single();
+        var settled = Assert.Single(after.Sessions, s => s.Id == session.Id);
+        Assert.Equal(outcome == "accept" ? newTime : session.StartTime, settled.StartTime);
+        Assert.Equal("Scheduled", settled.Status);
+        Assert.Null(settled.Proposal);
+        Assert.Equal(contract.Sessions.Count, after.Sessions.Count);
+        Assert.Equal(12, after.ReservedCredits);
+        Assert.Equal(0, after.UsedCredits);
+        Assert.Contains(await db.Notifications.AsNoTracking().ToListAsync(),
+            n => n.EntityId == session.Id && n.RecipientUserId == "member" && n.Title == "Yêu cầu đổi lịch PT");
     }
 
     [Fact]

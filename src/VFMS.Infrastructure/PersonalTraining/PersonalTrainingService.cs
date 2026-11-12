@@ -62,8 +62,16 @@ public sealed partial class PersonalTrainingService(VfmsDbContext db, TimeProvid
 
     private async Task<bool> HasConflict(string trainerId, string memberId,
         IReadOnlyList<PTCalendarSlot> dates, DateTime now, CancellationToken ct, int? ignoreSession = null,
+        int? ignorePurchase = null, bool allowSecondMemberSession = false) =>
+        (await ConflictingSlots(trainerId, memberId, dates, now, ct, ignoreSession, ignorePurchase,
+            allowSecondMemberSession)).Count != 0;
+
+    private async Task<HashSet<PTCalendarSlot>> ConflictingSlots(string trainerId, string memberId,
+        IReadOnlyList<PTCalendarSlot> dates, DateTime now, CancellationToken ct, int? ignoreSession = null,
         int? ignorePurchase = null, bool allowSecondMemberSession = false)
     {
+        if (dates.Count == 0)
+            return [];
         var from = dates.Min(s => s.Date);
         var through = dates.Max(s => s.Date);
         var pt = await Occupied(now).Where(s => s.SessionDate >= from && s.SessionDate <= through &&
@@ -73,11 +81,11 @@ public sealed partial class PersonalTrainingService(VfmsDbContext db, TimeProvid
             .Select(s => new { s.SessionDate, s.StartTime, s.EndTime, s.MemberUserId }).ToListAsync(ct);
         var yoga = await Yoga(trainerId, memberId, from, through)
             .Select(s => new { s.ScheduledDate, s.StartTime, s.EndTime }).ToListAsync(ct);
-        return dates.Any(d => pt.Any(s => s.SessionDate == d.Date &&
+        return dates.Where(d => pt.Any(s => s.SessionDate == d.Date &&
             (!allowSecondMemberSession && s.MemberUserId == memberId ||
              PersonalTrainingRules.Overlaps(d.StartTime, d.EndTime, s.StartTime, s.EndTime))) ||
             yoga.Any(s => s.ScheduledDate == d.Date &&
-             PersonalTrainingRules.Overlaps(d.StartTime, d.EndTime, s.StartTime, s.EndTime)));
+             PersonalTrainingRules.Overlaps(d.StartTime, d.EndTime, s.StartTime, s.EndTime))).ToHashSet();
     }
 
     private IQueryable<YogaClassSchedule> Yoga(string trainerId, string? memberId, DateOnly from, DateOnly through) =>
@@ -119,12 +127,16 @@ public sealed partial class PersonalTrainingService(VfmsDbContext db, TimeProvid
             }
 
             var proposals = await db.PTSessions.Where(s =>
-                (s.SessionStatus == PTSessionStatus.ReschedulePending || s.SessionStatus == PTSessionStatus.MakeUpPending) &&
+                (s.SessionStatus == PTSessionStatus.ReschedulePending || s.SessionStatus == PTSessionStatus.MakeUpPending ||
+                    s.SessionStatus == PTSessionStatus.RescheduleRequested) &&
                 s.ProposalExpiresAt <= now).OrderBy(s => s.Id).Take(100).ToListAsync(ct);
             foreach (var session in proposals)
             {
                 var isMakeUp = session.SessionStatus == PTSessionStatus.MakeUpPending;
-                ClearProposal(session);
+                if (session.SessionStatus == PTSessionStatus.RescheduleRequested)
+                    CloseMemberReschedule(session, null, "RescheduleExpired", "Yêu cầu đổi lịch đã hết hạn. Lịch cũ được giữ nguyên.");
+                else
+                    ClearProposal(session);
                 if (isMakeUp)
                     session.SessionStatus = PTSessionStatus.Cancelled;
             }
