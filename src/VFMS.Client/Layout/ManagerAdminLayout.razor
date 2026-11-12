@@ -7,7 +7,7 @@
     private string Variant => Navigation.ToBaseRelativePath(Navigation.Uri).StartsWith("admin/", StringComparison.OrdinalIgnoreCase) ? "admin" : "manager";
     private static readonly string[] LivePages =
     [
-        "manager/membership-plans", "manager/general-policies", "manager/business-reports",
+        "manager/membership-plans", "manager/membership-freeze-policy", "manager/general-policies", "manager/business-reports",
         "admin/business-reports", "admin/banned-words", "admin/audit-logs",
         "manager/equipment", "manager/equipment-issues", "manager/purchase-proposals",
         "manager/supplement-products", "manager/supplement-orders"

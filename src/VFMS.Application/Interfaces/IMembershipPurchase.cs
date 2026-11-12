@@ -8,6 +8,8 @@ public interface IMembershipPurchaseService
 {
     Task<Result<MembershipPurchaseResponse>> CreateAsync(string purchaserId, MembershipPurchaseRequest request, CancellationToken ct);
     Task<Result<MembershipPurchaseResponse>> GetAsync(string purchaserId, string orderNumber, CancellationToken ct);
+    Task<Result<IReadOnlyList<MembershipSummaryResponse>>> ListOwnedMembershipsAsync(string memberId, CancellationToken ct);
+    Task<Result<MembershipDetailResponse>> GetOwnedMembershipAsync(string memberId, int membershipId, CancellationToken ct);
     Task<Result<IReadOnlyList<MembershipRenewalOption>>> ListRenewalsAsync(string memberId, CancellationToken ct);
     Task<Result<MembershipPurchaseResponse>> RenewAsync(string memberId, int membershipId, CancellationToken ct);
     Task<Result<MembershipPurchaseResponse>> ConfirmCashAsync(
@@ -37,6 +39,8 @@ public interface IMembershipPurchaseRepository
     Task<bool> SepayReferenceUsedAsync(string reference, CancellationToken ct);
     Task<List<Order>> LoadExpiredOrdersAsync(DateTime onlineCutoff, DateTime cashCutoff, CancellationToken ct);
     Task<List<MemberMembership>> LoadCurrentMembershipsAsync(string[] userIds, DateOnly today, CancellationToken ct);
+    Task<List<OwnedMembership>> ListOwnedMembershipsAsync(string memberId, CancellationToken ct);
+    Task<OwnedMembershipDetail?> FindOwnedMembershipAsync(string memberId, int membershipId, CancellationToken ct);
     Task<Gym?> GetRenewalPolicyGymAsync(CancellationToken ct);
     Task<List<MemberMembership>> LoadRenewableMembershipsAsync(string memberId, int? membershipId, CancellationToken ct);
     Task<List<Order>> LoadRenewalOrdersAsync(int[] membershipIds, bool forUpdate, CancellationToken ct);

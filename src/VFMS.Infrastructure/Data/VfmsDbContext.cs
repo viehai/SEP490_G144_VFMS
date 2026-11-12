@@ -383,6 +383,15 @@ public class VfmsDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.PolicyName).HasMaxLength(256).IsRequired();
             entity.Property(e => e.PolicyStatus).HasConversion<string>().HasMaxLength(20);
+            entity.HasIndex(e => e.IsGlobal).IsUnique()
+                .HasFilter("[IsGlobal] = 1 AND [IsDeleted] = 0 AND [PolicyStatus] = 'Active'");
+            entity.OwnsMany(e => e.TierQuotas, quotas =>
+            {
+                quotas.ToTable("FreezePolicyTierQuotas");
+                quotas.WithOwner().HasForeignKey("FreezePolicyId");
+                quotas.HasKey("FreezePolicyId", nameof(FreezePolicyTierQuota.Unit), nameof(FreezePolicyTierQuota.Duration));
+                quotas.Property(quota => quota.Unit).HasConversion<string>().HasMaxLength(10);
+            });
 
             entity.HasOne(e => e.CreatedByUser)
                 .WithMany()

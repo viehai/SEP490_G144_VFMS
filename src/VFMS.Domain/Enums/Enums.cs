@@ -60,6 +60,12 @@ public enum FreezeRequestStatus
     Expired
 }
 
+public enum FreezeTierUnit
+{
+    Days,
+    Months
+}
+
 // ─────────────────────────────────────────────────────────────
 //  Order & Payment
 // ─────────────────────────────────────────────────────────────

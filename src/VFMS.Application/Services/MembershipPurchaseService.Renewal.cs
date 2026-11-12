@@ -43,8 +43,7 @@ public sealed partial class MembershipPurchaseService
 
             var membership = (await repository.LoadRenewableMembershipsAsync(memberId, membershipId, ct)).SingleOrDefault();
             if (membership is null)
-                return Result<MembershipPurchaseResponse>.Failure(
-                    "Không tìm thấy gói hội viên.", "MEMBERSHIP_NOT_FOUND", 404);
+                return MembershipNotFound<MembershipPurchaseResponse>();
 
             var now = clock.GetUtcNow();
             var today = LocalDate(now);
@@ -80,8 +79,7 @@ public sealed partial class MembershipPurchaseService
         IReadOnlyCollection<MemberMembership> current, DateTimeOffset now)
     {
         var today = LocalDate(now);
-        var status = membership.MembershipStatus == MembershipStatus.Active && membership.EndDate < today
-            ? MembershipStatus.Expired : membership.MembershipStatus;
+        var status = GetCurrentMembershipStatus(membership.MembershipStatus, membership.EndDate, today);
         var option = new MembershipRenewalOption(membership.Id, plan?.Name ?? membership.OrderItem.PackageNameSnapshot,
             status.ToString(), membership.EndDate, null, plan?.Price, false, null, null);
         if (status is MembershipStatus.Frozen or MembershipStatus.Suspended)
