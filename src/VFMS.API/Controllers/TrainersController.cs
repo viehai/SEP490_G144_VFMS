@@ -17,7 +17,9 @@ public sealed class TrainersController(TrainerService service) : ControllerBase
     [HttpGet, AllowAnonymous]
     public async Task<IActionResult> Search([FromQuery] TrainerSearch query, CancellationToken ct) => this.ToActionResult(await service.Search(query, ct));
     [HttpGet("{id:int}"), AllowAnonymous]
-    public async Task<IActionResult> Get(int id, CancellationToken ct) => this.ToActionResult(await service.Public(id, ct));
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> Get(int id, CancellationToken ct) =>
+        this.ToActionResult(await service.Public(id, ct, User.GetUserId()));
     [HttpPost("applications"), AllowAnonymous, EnableRateLimiting("trainer-public")]
     public async Task<IActionResult> Submit(SubmitTrainerApplicationRequest request, CancellationToken ct) => this.ToActionResult(await service.Submit(request, User.GetUserId(), ct));
     [HttpGet("applications"), Authorize(Roles = "Manager")]

@@ -5,6 +5,17 @@ namespace VFMS.UnitTests;
 public class TrainerValidationTests
 {
     [Fact]
+    public void TrainerMayUpdateEitherProfileFieldWithoutResendingTheOther()
+    {
+        var validator = new TrainerProfileValidator();
+        var avatar = new TrainerFileInput("avatar.jpg", [255, 216, 255]);
+        Assert.True(validator.Validate(new UpdateTrainerProfileRequest("Updated bio")).IsValid);
+        Assert.True(validator.Validate(new UpdateTrainerProfileRequest(Avatar: avatar)).IsValid);
+        Assert.True(validator.Validate(new UpdateTrainerProfileRequest("Updated bio", avatar)).IsValid);
+        Assert.False(validator.Validate(new UpdateTrainerProfileRequest()).IsValid);
+    }
+
+    [Fact]
     public void File_extension_cannot_disguise_other_content()
     {
         Assert.Null(TrainerFileRules.ContentType(new("certificate.pdf", "<script>"u8.ToArray())));

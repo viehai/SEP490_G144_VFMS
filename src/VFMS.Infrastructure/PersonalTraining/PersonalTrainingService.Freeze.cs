@@ -31,7 +31,7 @@ public sealed partial class PersonalTrainingService
             state = Today >= f.ActualEndDate ? PTFreezeRequestStatus.Completed :
                 Today >= f.ActualStartDate ? PTFreezeRequestStatus.Active : PTFreezeRequestStatus.Approved;
         return new(f.Id, p.Id, p.MemberUserId, p.PTUserId, f.RequestedStartDate,
-            f.ActualEndDate ?? f.RequestedEndDate, state.ToString(), f.Reason, f.SupportingDocumentUrl,
+            f.ActualEndDate ?? f.RequestedEndDate, state.ToString(), f.Reason,
             f.ReviewNote, f.ReviewedAt);
     }
 
@@ -53,9 +53,13 @@ public sealed partial class PersonalTrainingService
         {
             if (await User(actor, UserRole.Member, ct) is null)
                 return Forbidden<PTFreezeResponse>();
+            if (string.IsNullOrWhiteSpace(input.Reason))
+                return Invalid<PTFreezeResponse>("Cần nhập lý do bảo lưu.");
             var p = await ContractsWithSessions.SingleOrDefaultAsync(p => p.Id == id && p.MemberUserId == actor, ct);
             if (p is null)
                 return Missing<PTFreezeResponse>();
+            if (p.PTFreezes.Any(f => f.RequestStatus == PTFreezeRequestStatus.Pending || Approved(f)))
+                return Conflict<PTFreezeResponse>("Hợp đồng đã có yêu cầu đang chờ hoặc đã được duyệt.");
             if (EffectiveStatus(p) != PTPurchaseStatus.Active || input.StartDate < Today ||
                 input.StartDate > p.EndDate || input.StartDate < p.StartDate)
                 return Conflict<PTFreezeResponse>("Ngày bảo lưu hoặc trạng thái hợp đồng không hợp lệ.");
@@ -69,8 +73,8 @@ public sealed partial class PersonalTrainingService
             var freeze = new PTFreeze
             {
                 PTPurchaseId = id, RequestedByUserId = actor, RequestedStartDate = input.StartDate,
-                RequestedEndDate = input.ResumeDate, Reason = input.Reason?.Trim(),
-                SupportingDocumentUrl = input.SupportingDocumentUrl, MinimumDaysSnapshot = minimum, MaxDaysSnapshot = cap
+                RequestedEndDate = input.ResumeDate, Reason = input.Reason.Trim(),
+                MinimumDaysSnapshot = minimum, MaxDaysSnapshot = cap
             };
             db.PTFreezes.Add(freeze);
             foreach (var session in p.Sessions.Where(s => s.SessionDate >= input.StartDate && s.SessionDate < input.ResumeDate &&
@@ -196,48 +200,4 @@ public sealed partial class PersonalTrainingService
             return Result<PTFreezeResponse>.Success(FreezeResponse(f, purchase));
         }, ct);
 
-    public Task<Result<PTFreezeResponse>> ResumeFreeze(string actor, int id, PTFreezeResume input, CancellationToken ct) =>
-        Write(async () =>
-        {
-            if (await User(actor, UserRole.Member, ct) is null)
-                return Forbidden<PTFreezeResponse>();
-            var p = await ContractsWithSessions.SingleOrDefaultAsync(p => p.MemberUserId == actor &&
-                p.PTFreezes.Any(f => f.Id == id), ct);
-            if (p is null)
-                return Missing<PTFreezeResponse>();
-            var f = p.PTFreezes.Single(x => x.Id == id);
-            if (!Approved(f) || f.ActualStartDate is not { } start || f.ActualEndDate is not { } end ||
-                Today < start || Today >= end || input.ResumeDate < Today || input.ResumeDate <= start || input.ResumeDate >= end)
-                return Conflict<PTFreezeResponse>("Ngày tiếp tục tập không hợp lệ.");
-            var newEnd = p.EndDate.AddDays(input.ResumeDate.DayNumber - end.DayNumber);
-            var originals = p.Sessions.Where(s => s.SessionStatus == PTSessionStatus.Cancelled && s.SessionDate >= input.ResumeDate &&
-                s.SessionDate < end && Utc(s.SessionDate, s.StartTime) > Now).ToDictionary(s => s.Id);
-            var replace = p.Sessions.Where(s => s.SessionStatus == PTSessionStatus.Scheduled &&
-                s.ReplacementForSessionId is { } key && originals.ContainsKey(key)).ToArray();
-            var restored = replace.Select(s => originals[s.ReplacementForSessionId!.Value]).ToArray();
-            var lastDate = p.Sessions.Where(s => PersonalTrainingRules.Reserved(s.SessionStatus) && !replace.Contains(s))
-                .Concat(restored).Select(s => s.SessionDate).DefaultIfEmpty(Today).Max();
-            if (lastDate > newEnd || !await Coverage(actor).AnyAsync(m => m.StartDate <= Today && m.EndDate >= lastDate, ct))
-                return Conflict<PTFreezeResponse>("Lịch hiện tại vượt thời hạn mới. Cần thống nhất lịch thay thế.");
-            var targets = restored.Select(s => new PTCalendarSlot(0, s.SessionDate, s.StartTime, s.EndTime, "Available")).ToArray();
-            if (targets.Any(s => !InHours(p.PTUser.Gym, s.StartTime, s.EndTime)) ||
-                targets.Length > 0 && await HasConflict(p.PTUserId, actor, targets, Now, ct))
-                return Conflict<PTFreezeResponse>("Ca cũ đã được đặt. Cần thống nhất lịch thay thế.");
-            foreach (var s in replace)
-            {
-                s.SessionStatus = PTSessionStatus.Cancelled;
-                s.CancelledAt = Now;
-            }
-            foreach (var s in restored)
-            {
-                s.SessionStatus = PTSessionStatus.Scheduled;
-                s.CancelledAt = null;
-            }
-            p.EndDate = newEnd;
-            f.ActualEndDate = input.ResumeDate;
-            Notify(p.PTUserId, "Hội viên tiếp tục tập PT", "Lịch tập đã được cập nhật.", nameof(PTFreeze), id);
-            Audit(actor, nameof(PTFreeze), id, "EarlyResume");
-            await db.SaveChangesAsync(ct);
-            return Result<PTFreezeResponse>.Success(FreezeResponse(f, p));
-        }, ct);
 }

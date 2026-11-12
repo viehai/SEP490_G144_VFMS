@@ -7,6 +7,7 @@ public sealed class TrainerStoredFile
     public string FileName { get; set; } = string.Empty;
     public string ContentType { get; set; } = string.Empty;
     public string StorageKey { get; set; } = string.Empty;
+    public string? ReplacesCertificateId { get; set; }
     // Preserve old binary files during the forward migration; new uploads use private storage.
     public string? LegacyContentBase64 { get; set; }
     public bool IsPublic { get; set; }

@@ -35,6 +35,7 @@ public class TrainerApplication : BaseEntity
     public string? ReviewedByUserId { get; set; }
     public DateTime? ReviewedAt { get; set; }
     public string? ReviewNote { get; set; }
+    public string? InterviewNote { get; set; }
 
     // ── Navigation Properties ──────────────────────────────────
     public ApplicationUser? Applicant { get; set; }

@@ -70,7 +70,7 @@ public sealed class TrainerEmailWorker(IServiceScopeFactory scopes, IConfigurati
                 {
                     var url = config["TrainerMail:SetupPageUrl"];
                     if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != "https") throw new InvalidOperationException("Configure HTTPS setup page.");
-                    body = "Set up your trainer password within 24 hours: " + url + (url.Contains('?') ? "&" : "?") + "token=" + Uri.EscapeDataString(body[6..]);
+                    body = "Set up your trainer password within 48 hours: " + url + (url.Contains('?') ? "&" : "?") + "token=" + Uri.EscapeDataString(body[6..]);
                 }
                 var message = new MimeMessage
                 {

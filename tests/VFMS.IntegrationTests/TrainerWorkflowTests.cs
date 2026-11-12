@@ -187,6 +187,9 @@ public class TrainerWorkflowTests
     {
         await using var fixture = new TrainerTestDatabase(); await fixture.Initialize();
         var db = fixture.Db; var service = fixture.Service; var app = await fixture.Hire();
+        var reviewed = TrainerTestDatabase.Success(await service.Application(app.Id, "manager", default));
+        Assert.Equal("Interview completed", reviewed.InterviewNote);
+        Assert.NotEqual(reviewed.InterviewNote, reviewed.ReviewNote);
         TrainerTestDatabase.Success(await service.Setup(new(await fixture.SetupToken(app.Id), "TestPassword1!"), default));
         var profile = await db.TrainerProfiles.SingleAsync(); var userId = profile.PTUserId;
         var userBefore = JsonSerializer.Serialize(await db.ApplicationUsers.AsNoTracking().OrderBy(x => x.UserId).Select(x => new { x.UserId, x.FullName, x.Email, x.PhoneNumber, x.PasswordHash, x.AccountStatus, x.PasswordSetupTokenHash, x.PasswordSetupExpiresAt }).ToListAsync());
@@ -208,10 +211,12 @@ public class TrainerWorkflowTests
         Assert.Equal(403, (await service.Review(pending.Id, new("Approve", "Self approval"), userId, default)).StatusCode);
         TrainerTestDatabase.Success(await service.Review(pending.Id, new("Approve", "Verified credentials"), "manager", default));
         var approved = TrainerTestDatabase.Success(await service.Public(profile.Id, default));
-        Assert.Equal("Yoga", approved.Profile.Specialty); Assert.Equal(pendingFile.Id, approved.Certificates.Single().Id);
+        Assert.Equal("Yoga", approved.Profile.Specialty);
+        Assert.Contains(approved.Certificates, file => file.Id == pendingFile.Id);
+        Assert.Contains(approved.Certificates, file => file.Id == oldFile.Id);
         Assert.Equal(oldDetail.Profile.Bio, approved.Profile.Bio);
         Assert.Equal(update.Certificates[0].Content, TrainerTestDatabase.Success(await service.Document(profile.Id, pendingFile.Id, null, default)).Content);
-        Assert.Equal(404, (await service.Document(profile.Id, oldFile.Id, null, default)).StatusCode);
+        TrainerTestDatabase.Success(await service.Document(profile.Id, oldFile.Id, null, default));
         Assert.Equal(404, (await service.Document(profile.Id + 1000, pendingFile.Id, null, default)).StatusCode);
         Assert.False((await service.Review(pending.Id, new("Approve", "Repeat"), "manager", default)).IsSuccess);
         TrainerTestDatabase.Success(await service.Submit(update with { Specialty = "Pilates" }, userId, default));
@@ -222,6 +227,21 @@ public class TrainerWorkflowTests
         Assert.Equal(profileBeforeReject, await db.TrainerProfiles.AsNoTracking().Select(x => new { x.Specialty, x.CertificatesJson, x.Bio, x.AvatarJson, x.Level, x.CommissionTier }).SingleAsync());
         Assert.Equal(2, await db.TrainerApplications.CountAsync(x => x.ApplicantUserId == userId));
         Assert.Equal(TrainerApplicationStatus.Rejected, (await db.TrainerApplications.SingleAsync(x => x.Id == rejected.Id)).ApplicationStatus);
+
+        var replacement = update with
+        {
+            Certificates = [new("replacement.pdf", "%PDF-1.7 replacement"u8.ToArray(), oldFile.Id)]
+        };
+        TrainerTestDatabase.Success(await service.Submit(replacement, userId, default));
+        var edit = await db.TrainerApplications.SingleAsync(x => x.ApplicationType == "ProfileUpdate" &&
+            x.ApplicationStatus == TrainerApplicationStatus.Pending);
+        var history = TrainerTestDatabase.Success(await service.Application(edit.Id, "manager", default)).SubmissionHistory!;
+        Assert.Equal(new[] { edit.Id, rejected.Id, pending.Id }, history.Select(x => x.Id));
+        TrainerTestDatabase.Success(await service.Review(edit.Id, new("Approve", "Verified replacement"), "manager", default));
+        var afterEdit = TrainerTestDatabase.Success(await service.Public(profile.Id, default));
+        Assert.DoesNotContain(afterEdit.Certificates, file => file.Id == oldFile.Id);
+        Assert.Contains(afterEdit.Certificates, file => file.Id == pendingFile.Id);
+        Assert.Contains(afterEdit.Certificates, file => file.FileName == "replacement.pdf");
         Assert.Equal(userBefore, JsonSerializer.Serialize(await db.ApplicationUsers.AsNoTracking().OrderBy(x => x.UserId).Select(x => new { x.UserId, x.FullName, x.Email, x.PhoneNumber, x.PasswordHash, x.AccountStatus, x.PasswordSetupTokenHash, x.PasswordSetupExpiresAt }).ToListAsync()));
         Assert.Equal(rolesBefore, await db.ApplicationUserRoles.OrderBy(x => x.Id).Select(x => new { x.Id, x.UserId, x.RoleId }).ToListAsync());
         Assert.Equal(1, await db.TrainerProfiles.CountAsync());

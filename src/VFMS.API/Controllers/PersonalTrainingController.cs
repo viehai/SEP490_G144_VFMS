@@ -62,6 +62,11 @@ public sealed class PersonalTrainingController(PersonalTrainingService service) 
     public Task<IActionResult> Checkout(PTBookingRequest request, CancellationToken ct) =>
         AsUser(actor => service.Checkout(actor, request, ct));
 
+    [HttpPost("purchases/{orderNumber}/payment")]
+    [Authorize(Roles = "Member")]
+    public Task<IActionResult> StartPayment(string orderNumber, PTPaymentRequest request, CancellationToken ct) =>
+        AsUser(actor => service.StartPayment(actor, orderNumber, request, ct));
+
     [HttpGet("purchases/{orderNumber}")]
     [Authorize(Roles = "Member")]
     public Task<IActionResult> CheckoutStatus(string orderNumber, CancellationToken ct) =>
@@ -113,11 +118,6 @@ public sealed class PersonalTrainingController(PersonalTrainingService service) 
     [Authorize(Roles = "Member")]
     public Task<IActionResult> Freezes(CancellationToken ct) => AsUser(actor => service.Freezes(actor, false, ct));
 
-    [HttpPost("freezes/{id:int}/resume")]
-    [Authorize(Roles = "Member")]
-    public Task<IActionResult> ResumeFreeze(int id, PTFreezeResume request, CancellationToken ct) =>
-        AsUser(actor => service.ResumeFreeze(actor, id, request, ct));
-
     [HttpGet("manager/freezes")]
     [Authorize(Roles = "Manager")]
     public Task<IActionResult> ManagerFreezes(CancellationToken ct) => AsUser(actor => service.Freezes(actor, true, ct));
@@ -131,6 +131,11 @@ public sealed class PersonalTrainingController(PersonalTrainingService service) 
     [Authorize(Roles = "Manager")]
     public Task<IActionResult> DecideFreeze(int id, PTFreezeDecision request, CancellationToken ct) =>
         AsUser(actor => service.DecideFreeze(actor, id, request, ct));
+
+    [HttpPost("sessions/{id:int}/make-up")]
+    [Authorize(Roles = "PT")]
+    public Task<IActionResult> ProposeMakeUp(int id, PTMakeUpRequest request, CancellationToken ct) =>
+        AsUser(actor => service.ProposeMakeUp(actor, id, request, ct));
 
     [HttpPost("contracts/{id:int}/review")]
     [Authorize(Roles = "Member")]

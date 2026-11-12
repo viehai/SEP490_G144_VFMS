@@ -2733,6 +2733,10 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<string>("HiredUserId")
                         .HasColumnType("nvarchar(128)");
 
+                    b.Property<string>("InterviewNote")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 

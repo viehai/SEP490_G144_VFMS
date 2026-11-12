@@ -45,6 +45,7 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
         foreach (var file in files)
         {
             var stored = await store.SaveFile(file, ct);
+            stored.ReplacesCertificateId = file.ReplacesCertificateId;
             stored.IsPublic = false;
             stored.IsAvatar = false;
             saved.Add(stored);
@@ -86,7 +87,14 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
             var original = await store.First(store.Query<TrainerApplication>().Where(x => x.HiredUserId == actor && x.ApplicationType == "Recruitment" && x.ApplicationStatus == TrainerApplicationStatus.Hired).OrderBy(x => x.SubmittedAt).ThenBy(x => x.Id), ct);
             if (profile == null || owner == null || original == null || !string.Equals(owner.Email.Trim(), email, StringComparison.OrdinalIgnoreCase) || original.CitizenId != citizen)
                 return Error<TrainerApplicationReceipt>("TRAINER_IDENTITY_CONFLICT", "Email must match the current account and citizen identity must match its hired application.");
+            var replacements = r.Certificates.Select(file => file.ReplacesCertificateId).OfType<string>().ToArray();
+            var published = Records<TrainerStoredFile>(profile.CertificatesJson);
+            if (replacements.Distinct().Count() != replacements.Length ||
+                replacements.Any(id => !published.Any(file => file.Id == id && !file.IsDeleted && !file.IsAvatar && file.IsPublic)))
+                return Error<TrainerApplicationReceipt>("TRAINER_CERTIFICATE_TARGET_INVALID", "Select distinct published certificates to replace.", 400);
         }
+        else if (r.Certificates.Any(file => file.ReplacesCertificateId != null))
+            return Error<TrainerApplicationReceipt>("TRAINER_CERTIFICATE_TARGET_INVALID", "Recruitment cannot replace published certificates.", 400);
         if (pt && await store.Count(store.Query<TrainerApplication>().Where(x => (x.ApplicantUserId == actor || x.HiredUserId == actor || x.Email.ToLower() == email || x.CitizenId == citizen) && x.ApplicationType == r.ApplicationType && (x.ApplicationStatus == TrainerApplicationStatus.Pending || x.ApplicationStatus == TrainerApplicationStatus.UnderReview || x.ApplicationStatus == TrainerApplicationStatus.Interviewing)), ct) > 0)
             return Error<TrainerApplicationReceipt>("TRAINER_CHANGE_PENDING", "An application of this type is already pending.");
         var history = store.Query<TrainerApplication>().Where(x => x.ApplicationType == r.ApplicationType && (x.Email.ToLower() == email || x.CitizenId == citizen));
@@ -165,9 +173,20 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
     {
         if (!await Role(actor, "Manager", ct)) return Error<TrainerApplicationResponse>("TRAINER_FORBIDDEN", "Manager role required.", 403);
         var a = await store.First(store.Query<TrainerApplication>().Where(x => x.Id == id), ct);
-        return a == null
-            ? Error<TrainerApplicationResponse>("TRAINER_NOT_FOUND", "Application not found.", 404)
-            : Result<TrainerApplicationResponse>.Success(ApplicationResponse(a));
+        if (a == null)
+            return Error<TrainerApplicationResponse>("TRAINER_NOT_FOUND", "Application not found.", 404);
+
+        var history = await store.List(store.Query<TrainerApplication>()
+            .Where(x => x.ApplicationType == a.ApplicationType &&
+                (x.Id == a.Id || x.Email.ToLower() == a.Email.ToLower() ||
+                 (a.CitizenId != "" && x.CitizenId == a.CitizenId)))
+            .OrderByDescending(x => x.SubmittedAt).ThenByDescending(x => x.Id)
+            .Select(x => new TrainerSubmissionAttempt(x.Id, x.SubmissionAttempt, x.SubmittedAt, x.ApplicationStatus.ToString())), ct);
+        return Result<TrainerApplicationResponse>.Success(ApplicationResponse(a) with
+        {
+            SubmissionHistory = history,
+            InterviewNote = a.InterviewNote
+        });
     }
 
     public Task<Result<TrainerApplicationResponse>> Review(int id, ReviewTrainerApplicationRequest r, string actor, CancellationToken ct) => store.Write(async () =>
@@ -186,8 +205,23 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
             if (r.Action == "Approve")
             {
                 if (await Moderated(a.Specialty, ct)) return Error<TrainerApplicationResponse>("TRAINER_CONTENT_REJECTED", "Specialty contains prohibited content.", 400);
+                var published = Records<TrainerStoredFile>(profile.CertificatesJson);
+                foreach (var file in Records<TrainerStoredFile>(a.CertificatesJson))
+                {
+                    if (file.ReplacesCertificateId is { } target)
+                    {
+                        var index = published.FindIndex(item => item.Id == target && item.IsPublic && !item.IsDeleted && !item.IsAvatar);
+                        if (index < 0)
+                            return Error<TrainerApplicationResponse>("TRAINER_CERTIFICATE_TARGET_INVALID", "A certificate to replace is no longer published.");
+                        published.RemoveAt(index);
+                    }
+                    file.ReplacesCertificateId = null;
+                    file.IsPublic = true;
+                    file.IsAvatar = false;
+                    published.Add(file);
+                }
                 profile.Specialty = a.Specialty;
-                profile.CertificatesJson = PublishCertificates(a.CertificatesJson);
+                profile.CertificatesJson = JsonSerializer.Serialize(published);
             }
             a.ApplicationStatus = r.Action == "Approve" ? TrainerApplicationStatus.Approved : TrainerApplicationStatus.Rejected;
             a.ReviewNote = r.Note.Trim();
@@ -260,11 +294,14 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
             a.ApplicationStatus = r.Action == "Interview" ? TrainerApplicationStatus.Interviewing : TrainerApplicationStatus.Rejected;
             if (r.Action == "Reject") Mail(a, a.Email, "Trainer application decision", $"Application {a.TrackingCode} was rejected. Contact the gym for details.");
         }
-        a.ReviewNote = r.Note.Trim();
+        if (r.Action == "Interview")
+            a.InterviewNote = r.Note.Trim();
+        else
+            a.ReviewNote = r.Note.Trim();
         a.ReviewedByUserId = actor;
         a.ReviewedAt = DateTime.UtcNow;
         Audit(actor, nameof(TrainerApplication), a.Id, r.Action, before, a.ApplicationStatus.ToString());
-        return Result<TrainerApplicationResponse>.Success(ApplicationResponse(a));
+        return Result<TrainerApplicationResponse>.Success(ApplicationResponse(a) with { InterviewNote = a.InterviewNote });
     }, ct);
     private void QueueSetup(ApplicationUser user, TrainerApplication application)
     {
@@ -331,7 +368,7 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
             q = q.Where(x => x.AverageRating >= r.MinimumRating);
         return Result<PagedResponse<TrainerProfileResponse>>.Success(new(r.Page, r.PageSize, await store.Count(q, ct), await store.List(q.OrderBy(x => x.FullName).ThenBy(x => x.Id).Skip((r.Page - 1) * r.PageSize).Take(r.PageSize), ct)));
     }
-    public async Task<Result<TrainerPublicDetail>> Public(int id, CancellationToken ct)
+    public async Task<Result<TrainerPublicDetail>> Public(int id, CancellationToken ct, string? actor = null)
     {
         var p = await store.First(PublicProfiles().Where(x => x.Id == id), ct);
         if (p == null)
@@ -355,8 +392,15 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
             .Select(x => new TrainerAvailabilityResponse(x.Date, x.Slot.StartTime, x.Slot.EndTime,
                 booked.Any(b => b.SessionDate == x.Date && PersonalTrainingRules.Overlaps(x.Slot.StartTime, x.Slot.EndTime, b.StartTime, b.EndTime))
                     ? nameof(SlotStatus.Booked) : x.Slot.SlotStatus.ToString())).ToList();
+        var hasActiveContract = await Role(actor, "Member", ct) &&
+            await store.Count(store.Query<PTPurchase>().Where(x => x.MemberUserId == actor && x.PTUserId == p.UserId &&
+                x.Status == PTPurchaseStatus.Active && !x.IsCompleted && x.EndDate >= today &&
+                !x.PTFreezes.Any(f => (f.RequestStatus == PTFreezeRequestStatus.Approved ||
+                    f.RequestStatus == PTFreezeRequestStatus.Active || f.RequestStatus == PTFreezeRequestStatus.Completed) &&
+                    f.ActualStartDate <= today && f.ActualEndDate > today)), ct) > 0;
         return Result<TrainerPublicDetail>.Success(new(p, certificates, availability,
-            await store.List(store.Query<TrainerReview>().Where(x => x.TrainerUserId == p.UserId && x.IsVisible && x.ReviewStatus == TrainerReviewStatus.Approved).OrderByDescending(x => x.CreatedAt).Take(20).Select(x => new TrainerReviewResponse(x.Rating, x.Comment)), ct)));
+            await store.List(store.Query<TrainerReview>().Where(x => x.TrainerUserId == p.UserId && x.IsVisible && x.ReviewStatus == TrainerReviewStatus.Approved).OrderByDescending(x => x.CreatedAt).Take(20).Select(x => new TrainerReviewResponse(x.Rating, x.Comment)), ct),
+            hasActiveContract));
     }
     public async Task<Result<TrainerPublicDetail>> Mine(string actor, CancellationToken ct)
     {
@@ -370,12 +414,13 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
     {
         if (!await Role(actor, "PT", ct)) return Error<bool>("TRAINER_FORBIDDEN", "PT role required.", 403);
         if (!(await new TrainerProfileValidator().ValidateAsync(r, ct)).IsValid) return Error<bool>("TRAINER_VALIDATION", "Invalid bio or avatar.", 400);
-        if (await Moderated(r.Bio, ct)) return Error<bool>("TRAINER_CONTENT_REJECTED", "Biography contains prohibited content.", 400);
+        if (r.Bio != null && await Moderated(r.Bio, ct)) return Error<bool>("TRAINER_CONTENT_REJECTED", "Biography contains prohibited content.", 400);
         var p = await store.First(store.Query<TrainerProfile>().Where(x => x.PTUserId == actor && x.IsActive), ct);
         if (p == null)
             return Error<bool>("TRAINER_NOT_FOUND", "Profile not found.", 404);
 
-        p.Bio = r.Bio.Trim();
+        if (r.Bio != null)
+            p.Bio = r.Bio.Trim();
         if (r.Avatar != null)
         {
             var d = await store.SaveFile(r.Avatar, ct);

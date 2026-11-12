@@ -12,9 +12,11 @@ namespace VFMS.IntegrationTests;
 public sealed partial class MembershipPurchaseApiTests
 {
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task PTCheckoutReusesSepayAndOnlyAnOnTimeCallbackConfirmsHeldSessions(bool late)
+    [InlineData(false, false, false)]
+    [InlineData(true, false, false)]
+    [InlineData(true, true, false)]
+    [InlineData(true, false, true)]
+    public async Task PTCheckoutUsesTransferTimeAndRechecksReleasedSlots(bool delayed, bool lateTransfer, bool taken)
     {
         var request = await PreparePTCheckout();
         using var member = Client("member", "Member");
@@ -27,13 +29,38 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.True(response.StatusCode == HttpStatusCode.Created, await response.Content.ReadAsStringAsync());
         var checkout = (await response.Content.ReadFromJsonAsync<PTCheckoutResponse>())!;
         Assert.Equal("Pending", checkout.Status);
+        Assert.Null(checkout.VietQr);
+        using var invalidVoucher = await member.PostAsJsonAsync($"/api/pt/purchases/{checkout.OrderNumber}/payment",
+            new PTPaymentRequest("INVALID"));
+        Assert.Equal(HttpStatusCode.BadRequest, invalidVoucher.StatusCode);
         using var second = await member.PostAsJsonAsync("/api/pt/purchases", request);
         Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+        checkout = await IssueQr(member, checkout, "PT-OFF");
+        Assert.Equal(550_000m, checkout.AmountDue);
+        Assert.Equal(checkout.AmountDue, (await IssueQr(member, checkout)).AmountDue);
 
-        var transferAt = new DateTimeOffset(checkout.ExpiresAt.ToUniversalTime()).AddMinutes(-14);
-        _clock.Now = late ? new DateTimeOffset(checkout.ExpiresAt.ToUniversalTime()).AddSeconds(1) : transferAt.AddSeconds(1);
-        if (late)
+        var deadline = new DateTimeOffset(checkout.ExpiresAt.ToUniversalTime());
+        var transferAt = lateTransfer ? deadline.AddSeconds(1) : deadline.AddMinutes(-14);
+        _clock.Now = delayed ? deadline.AddSeconds(2) : transferAt.AddSeconds(1);
+        if (delayed)
+        {
             await RunJobAsync((service, ct) => service.ExpireOrdersAsync(ct));
+            await using var workerScope = _app.Services.CreateAsyncScope();
+            await workerScope.ServiceProvider.GetRequiredService<VFMS.Infrastructure.PersonalTraining.PersonalTrainingService>()
+                .ExpirePending(CancellationToken.None);
+        }
+        if (taken)
+        {
+            using var competingHold = await member.PostAsJsonAsync("/api/pt/purchases", request);
+            Assert.Equal(HttpStatusCode.Created, competingHold.StatusCode);
+            var competing = (await competingHold.Content.ReadFromJsonAsync<PTCheckoutResponse>())!;
+            await using var competingScope = _app.Services.CreateAsyncScope();
+            var competingDb = competingScope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+            var currentHold = await competingDb.PTPurchases.SingleAsync(p => p.Id == competing.ContractId);
+            // Order.CreatedAt is set by the database context using wall time, while this test advances the service clock.
+            currentHold.HoldExpiresAt = _clock.Now.UtcDateTime.AddMinutes(15);
+            await competingDb.SaveChangesAsync();
+        }
         using var payment = await NotifyTransferAsync(checkout.VietQr!.TransferContent, checkout.AmountDue, 91, transferAt);
         Assert.True(payment.StatusCode == HttpStatusCode.OK, await payment.Content.ReadAsStringAsync());
         using var replay = await NotifyTransferAsync(checkout.VietQr.TransferContent, checkout.AmountDue, 91, transferAt);
@@ -41,17 +68,55 @@ public sealed partial class MembershipPurchaseApiTests
 
         await using var scope = _app.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
-        var contract = await db.PTPurchases.Include(p => p.Sessions).SingleAsync();
-        Assert.Equal(late ? PTPurchaseStatus.Expired : PTPurchaseStatus.Active, contract.Status);
+        var contract = await db.PTPurchases.Include(p => p.Sessions).SingleAsync(p => p.Id == checkout.ContractId);
+        var unfulfilled = lateTransfer || taken;
+        Assert.Equal(unfulfilled ? PTPurchaseStatus.Expired : PTPurchaseStatus.Active, contract.Status);
         Assert.Equal(12, contract.Sessions.Count);
-        Assert.All(contract.Sessions, s => Assert.Equal(late ? PTSessionStatus.Cancelled : PTSessionStatus.Scheduled, s.SessionStatus));
-        Assert.Equal(late ? 0 : 1, await db.Invoices.CountAsync());
+        Assert.All(contract.Sessions, s => Assert.Equal(unfulfilled ? PTSessionStatus.Cancelled : PTSessionStatus.Scheduled, s.SessionStatus));
+        Assert.Equal(unfulfilled ? 0 : 1, await db.Invoices.CountAsync());
         Assert.Equal(1, await db.MemberMemberships.CountAsync());
-        if (late)
+        if (lateTransfer)
         {
             using var retry = await member.PostAsJsonAsync("/api/pt/purchases", request);
             Assert.Equal(HttpStatusCode.Created, retry.StatusCode);
         }
+    }
+
+    [Fact]
+    public async Task PTCanProposeAMakeUpButOnlyMemberAcceptanceReservesTheReturnedCredit()
+    {
+        var request = await PreparePTCheckout();
+        using var member = Client("member", "Member");
+        using var trainer = Client("buyer", "PT");
+        using var held = await member.PostAsJsonAsync("/api/pt/purchases", request);
+        Assert.Equal(HttpStatusCode.Created, held.StatusCode);
+        var order = await IssueQr(member, (await held.Content.ReadFromJsonAsync<PTCheckoutResponse>())!);
+        var transfer = new DateTimeOffset(order.ExpiresAt).AddMinutes(-14);
+        _clock.Now = transfer.AddSeconds(1);
+        using var paid = await NotifyTransferAsync(order.VietQr!.TransferContent, order.AmountDue, 96, transfer);
+        Assert.Equal(HttpStatusCode.OK, paid.StatusCode);
+        var path = $"/api/pt/contracts/{order.ContractId}";
+        var contract = (await member.GetFromJsonAsync<PTContractResponse[]>(path))!.Single();
+        var old = contract.Sessions[0];
+        using var cancelled = await member.PostAsync($"/api/pt/sessions/{old.Id}/cancel", null);
+        Assert.Equal(HttpStatusCode.OK, cancelled.StatusCode);
+
+        var route = $"/api/pt/sessions/{old.Id}/make-up";
+        var makeUp = new PTMakeUpRequest(old.Date, new TimeOnly(15, 0));
+        using var forbidden = await member.PostAsJsonAsync(route, makeUp);
+        Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+        using var proposed = await trainer.PostAsJsonAsync(route, makeUp);
+        Assert.True(proposed.StatusCode == HttpStatusCode.Created, await proposed.Content.ReadAsStringAsync());
+        var pending = (await proposed.Content.ReadFromJsonAsync<PTSessionResponse>())!;
+        Assert.Equal("MakeUpPending", pending.Status);
+        Assert.Equal(1, (await member.GetFromJsonAsync<PTContractResponse[]>(path))!.Single().AvailableCredits);
+        using var accepted = await member.PostAsJsonAsync($"/api/pt/sessions/{pending.Id}/proposal/decision",
+            new PTProposalDecision(true, pending.Proposal!.ExpiresAt));
+        Assert.True(accepted.StatusCode == HttpStatusCode.OK, await accepted.Content.ReadAsStringAsync());
+        var after = (await member.GetFromJsonAsync<PTContractResponse[]>(path))!.Single();
+        Assert.Equal(0, after.AvailableCredits);
+        Assert.Contains(after.Sessions, s => s.Id == old.Id && s.Status == "Cancelled");
+        Assert.Contains(after.Sessions, s => s.Id == pending.Id && s.Status == "Scheduled");
     }
 
     [Fact]
@@ -63,6 +128,7 @@ public sealed partial class MembershipPurchaseApiTests
         using var response = await member.PostAsJsonAsync("/api/pt/purchases", request);
         Assert.True(response.StatusCode == HttpStatusCode.Created, await response.Content.ReadAsStringAsync());
         var checkout = (await response.Content.ReadFromJsonAsync<PTCheckoutResponse>())!;
+        checkout = await IssueQr(member, checkout);
         var transferAt = new DateTimeOffset(checkout.ExpiresAt.ToUniversalTime()).AddMinutes(-14);
         _clock.Now = transferAt.AddSeconds(1);
         using var payment = await NotifyTransferAsync(checkout.VietQr!.TransferContent, checkout.AmountDue, 92, transferAt);
@@ -97,6 +163,7 @@ public sealed partial class MembershipPurchaseApiTests
         using var response = await member.PostAsJsonAsync("/api/pt/purchases", request);
         Assert.True(response.StatusCode == HttpStatusCode.Created, await response.Content.ReadAsStringAsync());
         var checkout = (await response.Content.ReadFromJsonAsync<PTCheckoutResponse>())!;
+        checkout = await IssueQr(member, checkout);
         var transferAt = new DateTimeOffset(checkout.ExpiresAt.ToUniversalTime()).AddMinutes(-14);
         _clock.Now = transferAt.AddSeconds(1);
         using var payment = await NotifyTransferAsync(checkout.VietQr!.TransferContent, checkout.AmountDue, 93, transferAt);
@@ -110,8 +177,21 @@ public sealed partial class MembershipPurchaseApiTests
             PackageInput(13, 5, 5));
         Assert.True(edited.StatusCode == HttpStatusCode.OK, await edited.Content.ReadAsStringAsync());
         var start = before.Sessions[0].Date;
+        using var missingReason = await member.PostAsJsonAsync($"{contractPath}/freezes",
+            new PTFreezeRequest(start, start.AddDays(7), " "));
+        Assert.Equal(HttpStatusCode.BadRequest, missingReason.StatusCode);
+        using var first = await member.PostAsJsonAsync($"{contractPath}/freezes",
+            new PTFreezeRequest(start, start.AddDays(7), "Travel"));
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+        var firstFreeze = (await first.Content.ReadFromJsonAsync<PTFreezeResponse>())!;
+        using var duplicate = await member.PostAsJsonAsync($"{contractPath}/freezes",
+            new PTFreezeRequest(start.AddDays(8), start.AddDays(15), "Second"));
+        Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
+        using var rejected = await manager.PostAsJsonAsync($"/api/pt/manager/freezes/{firstFreeze.Id}/decision",
+            new PTFreezeDecision(false, "Try again"));
+        Assert.Equal(HttpStatusCode.OK, rejected.StatusCode);
         using var requested = await member.PostAsJsonAsync($"{contractPath}/freezes",
-            new PTFreezeRequest(start, start.AddDays(7), "Travel", null));
+            new PTFreezeRequest(start, start.AddDays(7), "Travel"));
         Assert.True(requested.StatusCode == HttpStatusCode.Created, await requested.Content.ReadAsStringAsync());
         var freeze = (await requested.Content.ReadFromJsonAsync<PTFreezeResponse>())!;
         var protectedSessions = (await member.GetFromJsonAsync<PTContractResponse[]>(contractPath))!.Single()
@@ -129,6 +209,9 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Equal(0, after.UsedCredits);
         Assert.Equal(3, after.Sessions.Count(s => s.Status == "Cancelled"));
         Assert.Equal(13, after.Sessions.Count(s => s.Status == "Scheduled"));
+        using var afterApproval = await member.PostAsJsonAsync($"{contractPath}/freezes",
+            new PTFreezeRequest(start.AddDays(8), start.AddDays(15), "Second"));
+        Assert.Equal(HttpStatusCode.Conflict, afterApproval.StatusCode);
 
         using var nextCheckout = await member.PostAsJsonAsync("/api/pt/purchases",
             request with { StartDate = after.EndDate.AddDays(1) });
@@ -149,18 +232,64 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    private static object PackageInput(int credits, int minimum, int maximum) => new
+    [Fact]
+    public async Task PreviewStillReturnsScheduleWhenMembershipDoesNotCoverIt()
+    {
+        var request = await PreparePTCheckout(13, 5, 20, validity: 90);
+        await using var scope = _app.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+        var gymMembership = await db.MemberMemberships.SingleAsync();
+        gymMembership.EndDate = Today.AddDays(1);
+        await db.SaveChangesAsync();
+        using var member = Client("member", "Member");
+        using var preview = await member.PostAsJsonAsync("/api/pt/schedule/preview", request);
+        Assert.Equal(HttpStatusCode.OK, preview.StatusCode);
+        var schedule = (await preview.Content.ReadFromJsonAsync<PTBookingPreview>())!;
+        Assert.Equal(13, schedule.Sessions.Count);
+        Assert.Equal(request.StartDate.AddDays(89), schedule.ExpiresOn);
+        using var hold = await member.PostAsJsonAsync("/api/pt/purchases", request);
+        Assert.Equal(HttpStatusCode.Conflict, hold.StatusCode);
+        Assert.Empty(await db.PTPurchases.ToListAsync());
+    }
+
+    [Fact]
+    public async Task AttendanceCannotCompleteASessionWhenGymMembershipIsSuspended()
+    {
+        var request = await PreparePTCheckout();
+        using var member = Client("member", "Member");
+        using var trainer = Client("buyer", "PT");
+        using var response = await member.PostAsJsonAsync("/api/pt/purchases", request);
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var checkout = await IssueQr(member, (await response.Content.ReadFromJsonAsync<PTCheckoutResponse>())!);
+        var transfer = new DateTimeOffset(checkout.ExpiresAt).AddMinutes(-14);
+        _clock.Now = transfer.AddSeconds(1);
+        using var paid = await NotifyTransferAsync(checkout.VietQr!.TransferContent, checkout.AmountDue, 95, transfer);
+        Assert.Equal(HttpStatusCode.OK, paid.StatusCode);
+
+        await using var scope = _app.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+        var session = await db.PTSessions.AsNoTracking().OrderBy(s => s.SessionDate).FirstAsync();
+        var membership = await db.MemberMemberships.SingleAsync();
+        membership.MembershipStatus = MembershipStatus.Suspended;
+        await db.SaveChangesAsync();
+        _clock.Now = new DateTimeOffset(session.SessionDate.ToDateTime(session.EndTime), TimeSpan.FromHours(7)).AddMinutes(1);
+        using var attendance = await trainer.PostAsJsonAsync($"/api/pt/sessions/{session.Id}/attendance", true);
+        Assert.Equal(HttpStatusCode.Conflict, attendance.StatusCode);
+        Assert.Equal(PTSessionStatus.Scheduled, await db.PTSessions.Where(s => s.Id == session.Id).Select(s => s.SessionStatus).SingleAsync());
+    }
+
+    private static object PackageInput(int credits, int minimum, int maximum, int validity = 60) => new
     {
         name = $"PT {credits}",
         credits,
-        validityDays = 60,
+        validityDays = validity,
         price = 600_000,
         trainerLevel = "Senior",
         freezeMinimumDays = minimum,
         freezeMaxTotalDays = maximum
     };
 
-    private async Task<PTBookingRequest> PreparePTCheckout(int credits = 12, int minimum = 7, int maximum = 15)
+    private async Task<PTBookingRequest> PreparePTCheckout(int credits = 12, int minimum = 7, int maximum = 15, int validity = 60)
     {
         await using (var scope = _app.Services.CreateAsyncScope())
         {
@@ -186,12 +315,18 @@ public sealed partial class MembershipPurchaseApiTests
             };
             db.Orders.Add(order);
             db.TrainerProfiles.Add(new TrainerProfile { PTUserId = "buyer", Level = TrainerLevel.Senior });
+            db.Vouchers.Add(new Voucher
+            {
+                Code = "PT-OFF", Name = "Test PT voucher", DiscountValue = 50_000,
+                DiscountType = DiscountType.FIXED, CreatedByUserId = "manager",
+                StartAt = _clock.Now.UtcDateTime.AddDays(-1), EndAt = _clock.Now.UtcDateTime.AddDays(1)
+            });
             await db.SaveChangesAsync();
         }
 
         using var manager = Client("manager", "Manager");
         using var create = await manager.PostAsJsonAsync("/api/pt/manager/packages",
-            PackageInput(credits, minimum, maximum));
+            PackageInput(credits, minimum, maximum, validity));
         Assert.True(create.StatusCode == HttpStatusCode.Created, await create.Content.ReadAsStringAsync());
         var package = (await create.Content.ReadFromJsonAsync<PTPackageResponse>())!;
         using var trainer = Client("buyer", "PT");
@@ -205,6 +340,16 @@ public sealed partial class MembershipPurchaseApiTests
             s.Date.DayOfWeek is DayOfWeek.Monday or DayOfWeek.Wednesday or DayOfWeek.Friday)
             .Select(s => s.TemplateId).Distinct().ToArray();
         Assert.Equal(3, pattern.Length);
-        return new("buyer", package.Id, start, pattern, null);
+        return new("buyer", package.Id, start, pattern);
+    }
+
+    private static async Task<PTCheckoutResponse> IssueQr(HttpClient member, PTCheckoutResponse hold, string? voucher = null)
+    {
+        using var issued = await member.PostAsJsonAsync($"/api/pt/purchases/{hold.OrderNumber}/payment", new PTPaymentRequest(voucher));
+        Assert.True(issued.StatusCode == HttpStatusCode.OK, await issued.Content.ReadAsStringAsync());
+        var checkout = (await issued.Content.ReadFromJsonAsync<PTCheckoutResponse>())!;
+        Assert.NotNull(checkout.VietQr);
+        Assert.Equal(hold.ExpiresAt, checkout.ExpiresAt);
+        return checkout;
     }
 }

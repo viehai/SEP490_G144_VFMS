@@ -159,7 +159,8 @@ public enum PTSessionStatus
     NoShow,
     CheckoutHold,
     ReschedulePending,
-    PendingFreeze
+    PendingFreeze,
+    MakeUpPending
 }
 
 public enum PTPurchaseStatus

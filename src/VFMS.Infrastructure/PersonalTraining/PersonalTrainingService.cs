@@ -105,20 +105,29 @@ public sealed partial class PersonalTrainingService(VfmsDbContext db, TimeProvid
         var now = Now;
         await Write(async () =>
         {
-            var expired = await db.PTPurchases.Include(p => p.Sessions).Where(p =>
+            var expired = await db.PTPurchases.Include(p => p.Sessions)
+                .Include(p => p.Order).ThenInclude(o => o!.PaymentTransaction).Where(p =>
                     p.Status == PTPurchaseStatus.PendingPayment && p.HoldExpiresAt <= now)
                 .OrderBy(p => p.Id).Take(100).ToListAsync(ct);
             foreach (var contract in expired)
             {
                 contract.Status = PTPurchaseStatus.Expired;
+                if (contract.Order is { OrderStatus: OrderStatus.Pending, PaymentTransaction: null } order)
+                    order.OrderStatus = OrderStatus.Expired;
                 foreach (var session in contract.Sessions.Where(s => s.SessionStatus == PTSessionStatus.CheckoutHold))
                     session.SessionStatus = PTSessionStatus.Cancelled;
             }
 
-            var proposals = await db.PTSessions.Where(s => s.SessionStatus == PTSessionStatus.ReschedulePending &&
+            var proposals = await db.PTSessions.Where(s =>
+                (s.SessionStatus == PTSessionStatus.ReschedulePending || s.SessionStatus == PTSessionStatus.MakeUpPending) &&
                 s.ProposalExpiresAt <= now).OrderBy(s => s.Id).Take(100).ToListAsync(ct);
             foreach (var session in proposals)
+            {
+                var isMakeUp = session.SessionStatus == PTSessionStatus.MakeUpPending;
                 ClearProposal(session);
+                if (isMakeUp)
+                    session.SessionStatus = PTSessionStatus.Cancelled;
+            }
             await db.SaveChangesAsync(ct);
             return Result<bool>.Success(true);
         }, ct);

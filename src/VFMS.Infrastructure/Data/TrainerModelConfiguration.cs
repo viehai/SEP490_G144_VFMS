@@ -20,6 +20,7 @@ internal static class TrainerModelConfiguration
             e.Property(x => x.Specialty).HasMaxLength(200);
             e.Property(x => x.Bio).HasMaxLength(4000);
             e.Property(x => x.ReviewNote).HasMaxLength(2000);
+            e.Property(x => x.InterviewNote).HasMaxLength(2000);
             e.Property(x => x.ApplicationType).HasMaxLength(20);
             e.HasIndex(x => new { x.Email, x.SubmittedAt }); e.HasIndex(x => new { x.CitizenId, x.SubmittedAt });
             e.HasIndex(x => x.ApplicantUserId).IsUnique(false);

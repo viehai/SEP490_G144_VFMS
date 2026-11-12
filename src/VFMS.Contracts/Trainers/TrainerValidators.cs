@@ -55,7 +55,8 @@ public sealed class TrainerProfileValidator : AbstractValidator<UpdateTrainerPro
 {
     public TrainerProfileValidator()
     {
-        RuleFor(x => x.Bio).NotEmpty().MaximumLength(4000);
+        RuleFor(x => x).Must(x => x.Bio != null || x.Avatar != null);
+        RuleFor(x => x.Bio).NotEmpty().MaximumLength(4000).When(x => x.Bio != null);
         RuleFor(x => x.Avatar).Must(x => x == null || TrainerFileRules.ContentType(x, true) != null);
     }
 }
