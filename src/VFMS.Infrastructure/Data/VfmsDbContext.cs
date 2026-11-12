@@ -272,6 +272,11 @@ public class VfmsDbContext : DbContext
                 .WithMany(u => u.BeneficiaryOrderItems)
                 .HasForeignKey(e => e.BeneficiaryUserId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.RenewedFromMembership)
+                .WithMany()
+                .HasForeignKey(e => e.RenewedFromMembershipId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         // ── PaymentTransaction ────────────────────────────────────
@@ -279,6 +284,9 @@ public class VfmsDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.GatewayName).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.GatewayTransactionReference).HasMaxLength(100);
+            entity.HasIndex(e => e.GatewayTransactionReference).IsUnique()
+                .HasFilter("[GatewayName] = 'SePay' AND [GatewayTransactionReference] IS NOT NULL");
             entity.Property(e => e.AmountDue).HasColumnType("decimal(18,2)");
             entity.Property(e => e.AmountReceived).HasColumnType("decimal(18,2)");
             entity.Property(e => e.PaymentStatus).HasConversion<string>().HasMaxLength(50);
@@ -375,6 +383,15 @@ public class VfmsDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.PolicyName).HasMaxLength(256).IsRequired();
             entity.Property(e => e.PolicyStatus).HasConversion<string>().HasMaxLength(20);
+            entity.HasIndex(e => e.IsGlobal).IsUnique()
+                .HasFilter("[IsGlobal] = 1 AND [IsDeleted] = 0 AND [PolicyStatus] = 'Active'");
+            entity.OwnsMany(e => e.TierQuotas, quotas =>
+            {
+                quotas.ToTable("FreezePolicyTierQuotas");
+                quotas.WithOwner().HasForeignKey("FreezePolicyId");
+                quotas.HasKey("FreezePolicyId", nameof(FreezePolicyTierQuota.Unit), nameof(FreezePolicyTierQuota.Duration));
+                quotas.Property(quota => quota.Unit).HasConversion<string>().HasMaxLength(10);
+            });
 
             entity.HasOne(e => e.CreatedByUser)
                 .WithMany()
@@ -387,6 +404,10 @@ public class VfmsDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.RequestStatus).HasConversion<string>().HasMaxLength(50);
+            entity.Property(e => e.Reason).HasMaxLength(4000);
+            entity.Property(e => e.EarlyUnfreezeRequestStatus).HasConversion<string>().HasMaxLength(50);
+            entity.HasOne(e => e.FreezePolicy).WithMany().HasForeignKey(e => e.FreezePolicyId)
+                .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasOne(e => e.MemberMembership)
                 .WithMany(m => m.MembershipFreezes)

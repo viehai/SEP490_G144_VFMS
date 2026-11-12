@@ -1,0 +1,402 @@
+@page "/manager/equipment"
+@layout ManagerAdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using VFMS.Client.Components.Operations
+@using VFMS.Contracts.Common
+@using VFMS.Contracts.Equipment
+@using VFMS.Contracts.Equipment.Validators
+@attribute [Authorize(Roles = "Manager")]
+@inject OperationsApiClient Api
+@implements IDisposable
+
+<PageTitle>Thiết bị | Victor Fitness</PageTitle>
+
+<div class="workspace-page space-y-6">
+    <PageHeader Overline="VFMS / FACILITY" Title="Thiết bị" Description="Hồ sơ thiết bị, danh mục và trạng thái vận hành của phòng tập.">
+        <button type="button" class="@Ui.PrimaryButton" @onclick="StartCreate">+ Thêm thiết bị</button>
+    </PageHeader>
+
+    <Alerts Notice="@_notice" Error="@_error" />
+
+    @if (_formOpen)
+    {
+        <section class="@Ui.Card" aria-labelledby="equipment-form-title">
+            <h2 id="equipment-form-title" class="text-base font-bold text-[#383E43]">@(_editingId is null ? "Thêm thiết bị" : "Sửa thiết bị")</h2>
+            <EditForm Model="_form" OnValidSubmit="SaveAsync" class="mt-4" novalidate>
+                <OperationsValidation TRequest="EquipmentRequest" Validator="_validator" CreateRequest="CreateRequest" @ref="_validation" />
+                <ValidationSummary />
+                <fieldset disabled="@_working" class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <label class="@Ui.Label sm:col-span-2" for="eq-name">Tên thiết bị
+                        <InputText id="eq-name" class="@Ui.Field" @bind-Value="_form.Name" maxlength="200" required />
+                    </label>
+                    <label class="@Ui.Label" for="eq-code">Mã thiết bị
+                        <InputText id="eq-code" class="@Ui.Field" @bind-Value="_form.Code" maxlength="50" />
+                    </label>
+                    <label class="@Ui.Label" for="eq-category">Danh mục
+                        <InputSelect id="eq-category" class="@Ui.Field" @bind-Value="_form.CategoryId">
+                            <option value="">Chưa phân loại</option>
+                            @foreach (var category in _categories) { <option value="@category.Id">@category.Name</option> }
+                        </InputSelect>
+                    </label>
+                    <label class="@Ui.Label" for="eq-brand">Hãng
+                        <InputText id="eq-brand" class="@Ui.Field" @bind-Value="_form.Brand" maxlength="100" />
+                    </label>
+                    <label class="@Ui.Label" for="eq-model">Model
+                        <InputText id="eq-model" class="@Ui.Field" @bind-Value="_form.Model" maxlength="100" />
+                    </label>
+                    <label class="@Ui.Label" for="eq-date">Ngày mua
+                        <InputDate id="eq-date" class="@Ui.Field" @bind-Value="_form.PurchaseDate" />
+                    </label>
+                    <label class="@Ui.Label" for="eq-price">Giá mua (₫)
+                        <InputNumber id="eq-price" class="@Ui.Field" @bind-Value="_form.PurchasePrice" min="0" step="1000" />
+                    </label>
+                    <label class="@Ui.Label" for="eq-url">Đường dẫn tài liệu
+                        <InputText id="eq-url" class="@Ui.Field" @bind-Value="_form.DescriptionUrl" placeholder="https://..." />
+                    </label>
+                    <label class="@Ui.Label sm:col-span-2 lg:col-span-3" for="eq-note">Ghi chú
+                        <InputTextArea id="eq-note" class="@Ui.Field" rows="2" @bind-Value="_form.Note" maxlength="1000" />
+                    </label>
+                    <div class="flex flex-wrap gap-3 sm:col-span-2 lg:col-span-3">
+                        <button type="submit" class="@Ui.PrimaryButton">@(_working ? "Đang lưu..." : "Lưu thiết bị")</button>
+                        <button type="button" class="@Ui.Button" @onclick="CloseForm">Hủy</button>
+                    </div>
+                </fieldset>
+            </EditForm>
+        </section>
+    }
+
+    @if (_statusTarget is { } target)
+    {
+        <section class="@Ui.Card" aria-labelledby="status-form-title">
+            <h2 id="status-form-title" class="text-base font-bold text-[#383E43]">Đổi trạng thái: @target.Name</h2>
+            <form class="mt-4" @onsubmit="ChangeStatusAsync" @onsubmit:preventDefault>
+                <fieldset disabled="@_working" class="flex flex-wrap items-end gap-3">
+                    <label class="@Ui.Label" for="status-new">Trạng thái mới
+                        <select id="status-new" class="@Ui.Field" @bind="_newStatus">
+                            @foreach (var status in OperationsText.EquipmentStatuses.Where(s => s != target.Status))
+                            {
+                                <option value="@status">@OperationsText.Label(status)</option>
+                            }
+                        </select>
+                    </label>
+                    <label class="@Ui.Label min-w-[260px] flex-1" for="status-note">Ghi chú @(_newStatus == "Retired" ? "(bắt buộc khi thanh lý)" : "")
+                        <input id="status-note" class="@Ui.Field" @bind="_statusNote" maxlength="1000" required="@(_newStatus == "Retired")" />
+                    </label>
+                    <button type="submit" class="@Ui.PrimaryButton">Cập nhật</button>
+                    <button type="button" class="@Ui.Button" @onclick="() => _statusTarget = null">Hủy</button>
+                </fieldset>
+            </form>
+            @if (_newStatus == "Retired")
+            {
+                <p class="mt-3 text-xs text-red-700">Thiết bị đã thanh lý sẽ không thể đổi trạng thái lại.</p>
+            }
+        </section>
+    }
+
+    <section class="@Ui.ListCard" aria-labelledby="equipment-list-title" aria-busy="@_loading">
+        <div class="@Ui.ListHeader">
+            <h2 id="equipment-list-title" class="mb-3 text-sm font-bold text-[#383E43]">Danh sách thiết bị</h2>
+            <form @onsubmit="() => LoadAsync(1)" @onsubmit:preventDefault>
+                <fieldset disabled="@Busy" class="flex flex-wrap items-end gap-3">
+                    <label class="@Ui.Label w-full sm:w-64" for="eq-search">Tìm kiếm
+                        <input id="eq-search" type="search" class="@Ui.Field" @bind="_search" maxlength="100" placeholder="Tên, mã, hãng..." />
+                    </label>
+                    <label class="@Ui.Label" for="eq-filter-category">Danh mục
+                        <select id="eq-filter-category" class="@Ui.Field" @bind="_filterCategory">
+                            <option value="">Tất cả</option>
+                            @foreach (var category in _categories) { <option value="@category.Id">@category.Name</option> }
+                        </select>
+                    </label>
+                    <label class="@Ui.Label" for="eq-filter-status">Trạng thái
+                        <select id="eq-filter-status" class="@Ui.Field" @bind="_filterStatus">
+                            <option value="">Tất cả</option>
+                            @foreach (var status in OperationsText.EquipmentStatuses) { <option value="@status">@OperationsText.Label(status)</option> }
+                        </select>
+                    </label>
+                    <button type="submit" class="@Ui.Button">Áp dụng</button>
+                </fieldset>
+            </form>
+        </div>
+        @if (_loading)
+        {
+            <p role="status" class="p-5 text-sm">Đang tải thiết bị...</p>
+        }
+        else if (_page is { Items.Count: > 0 } list)
+        {
+            <div class="overflow-x-auto">
+                <table class="workspace-table min-w-[860px]">
+                    <thead>
+                        <tr><th scope="col">Thiết bị</th><th scope="col">Danh mục</th><th scope="col">Hãng / Model</th><th scope="col">Ngày mua</th><th scope="col">Trạng thái</th><th scope="col">Thao tác</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in list.Items)
+                        {
+                            <tr @key="row.Id">
+                                <th scope="row" class="font-semibold">@row.Name<span class="block text-xs font-normal text-[#8A9089]">@(row.Code ?? "Chưa có mã")</span></th>
+                                <td>@(row.CategoryName ?? "—")</td>
+                                <td>@(string.Join(" · ", new[] { row.Brand, row.Model }.Where(v => !string.IsNullOrWhiteSpace(v))) is { Length: > 0 } brand ? brand : "—")</td>
+                                <td class="whitespace-nowrap">@(row.PurchaseDate?.ToString("dd/MM/yyyy") ?? "—")</td>
+                                <td><span class="@OperationsText.Badge(row.Status)">@OperationsText.Label(row.Status)</span></td>
+                                <td>
+                                    <div class="flex flex-wrap gap-2">
+                                        <button type="button" class="@Ui.Button" disabled="@(Busy || row.Status == "Retired")" aria-label="Sửa @row.Name" @onclick="() => StartEdit(row)">Sửa</button>
+                                        <button type="button" class="@Ui.Button" disabled="@(Busy || row.Status == "Retired")" @onclick="() => StartStatus(row)">Đổi trạng thái</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <Pager Page="list.Page" PageSize="list.PageSize" TotalCount="list.TotalCount" Noun="thiết bị" AriaLabel="Phân trang thiết bị" Disabled="Busy" OnPage="LoadAsync" />
+        }
+        else
+        {
+            <p role="status" class="p-5 text-sm text-[#69706A]">Chưa có thiết bị phù hợp.</p>
+        }
+    </section>
+
+    <section class="@Ui.ListCard" aria-labelledby="category-title">
+        <div class="@Ui.ListHeader">
+            <h2 id="category-title" class="mb-3 text-sm font-bold text-[#383E43]">Danh mục thiết bị</h2>
+            <EditForm Model="_categoryForm" OnValidSubmit="SaveCategoryAsync" novalidate>
+                <OperationsValidation TRequest="EquipmentCategoryRequest" Validator="_categoryValidator" CreateRequest="CreateCategoryRequest" @ref="_categoryValidation" />
+                <ValidationSummary />
+                <fieldset disabled="@_working" class="flex flex-wrap items-end gap-3">
+                    <label class="@Ui.Label w-full sm:w-56" for="cat-name">Tên danh mục
+                        <InputText id="cat-name" class="@Ui.Field" @bind-Value="_categoryForm.Name" maxlength="100" required />
+                    </label>
+                    <label class="@Ui.Label min-w-[220px] flex-1" for="cat-desc">Mô tả
+                        <InputText id="cat-desc" class="@Ui.Field" @bind-Value="_categoryForm.Description" maxlength="500" />
+                    </label>
+                    <button type="submit" class="@Ui.PrimaryButton">@(_editingCategoryId is null ? "Thêm danh mục" : "Lưu danh mục")</button>
+                    @if (_editingCategoryId is not null)
+                    {
+                        <button type="button" class="@Ui.Button" @onclick="CancelCategoryEdit">Hủy</button>
+                    }
+                </fieldset>
+            </EditForm>
+        </div>
+        @if (_categories.Count == 0)
+        {
+            <p role="status" class="p-5 text-sm text-[#69706A]">Chưa có danh mục.</p>
+        }
+        else
+        {
+            <ul class="divide-y divide-[#EEF1EA]">
+                @foreach (var category in _categories)
+                {
+                    <li @key="category.Id" class="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
+                        <div>
+                            <p class="text-sm font-semibold text-[#383E43]">@category.Name <span class="ml-1 text-xs font-normal text-[#8A9089]">@category.EquipmentCount thiết bị</span></p>
+                            @if (!string.IsNullOrWhiteSpace(category.Description)) { <p class="text-xs text-[#69706A]">@category.Description</p> }
+                        </div>
+                        <div class="flex gap-2">
+                            <button type="button" class="@Ui.Button" disabled="@Busy" aria-label="Sửa danh mục @category.Name" @onclick="() => StartCategoryEdit(category)">Sửa</button>
+                            <button type="button" class="@Ui.DangerButton" disabled="@(Busy || category.EquipmentCount > 0)"
+                                    title="@(category.EquipmentCount > 0 ? "Danh mục đang có thiết bị" : null)" aria-label="Xóa danh mục @category.Name"
+                                    @onclick="() => DeleteCategoryAsync(category)">Xóa</button>
+                        </div>
+                    </li>
+                }
+            </ul>
+        }
+    </section>
+</div>
+
+@code {
+    private const int PageSize = 20;
+    private readonly CancellationTokenSource _lifetime = new();
+    private readonly EquipmentModel _form = new();
+    private readonly CategoryModel _categoryForm = new();
+    private readonly EquipmentRequestValidator _validator = new();
+    private readonly EquipmentCategoryRequestValidator _categoryValidator = new();
+    private OperationsValidation<EquipmentRequest>? _validation;
+    private OperationsValidation<EquipmentCategoryRequest>? _categoryValidation;
+    private PagedResponse<EquipmentResponse>? _page;
+    private List<EquipmentCategoryResponse> _categories = [];
+    private EquipmentResponse? _statusTarget;
+    private int? _editingId, _editingCategoryId;
+    private bool _formOpen, _loading, _working;
+    private string _search = "", _filterCategory = "", _filterStatus = "", _newStatus = "", _statusNote = "";
+    private string? _notice, _error;
+    private bool Busy => _loading || _working;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCategoriesAsync();
+        await LoadAsync(1);
+    }
+
+    private EquipmentRequest CreateRequest() => new(_form.Name.Trim(), _form.CategoryId, Blank(_form.Code), Blank(_form.Brand),
+        Blank(_form.Model), _form.PurchaseDate, _form.PurchasePrice, Blank(_form.DescriptionUrl), Blank(_form.Note));
+
+    private EquipmentCategoryRequest CreateCategoryRequest() => new(_categoryForm.Name.Trim(), Blank(_categoryForm.Description));
+
+    private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private async Task LoadAsync(int page)
+    {
+        _loading = true;
+        try
+        {
+            int? category = int.TryParse(_filterCategory, out var id) ? id : null;
+            _page = await Api.GetEquipmentAsync(new(Blank(_search), category, Blank(_filterStatus), page, PageSize), _lifetime.Token);
+        }
+        catch (AuthApiException error) { _error = error.Message; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        finally { _loading = false; }
+    }
+
+    private async Task LoadCategoriesAsync()
+    {
+        try { _categories = await Api.GetCategoriesAsync(_lifetime.Token); }
+        catch (AuthApiException error) { _error = error.Message; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+    }
+
+    private void StartCreate()
+    {
+        _editingId = null;
+        _form.Reset();
+        _statusTarget = null;
+        _formOpen = true;
+    }
+
+    private void StartEdit(EquipmentResponse row)
+    {
+        _editingId = row.Id;
+        _form.Name = row.Name;
+        _form.Code = row.Code;
+        _form.CategoryId = row.CategoryId;
+        _form.Brand = row.Brand;
+        _form.Model = row.Model;
+        _form.PurchaseDate = row.PurchaseDate;
+        _form.PurchasePrice = row.PurchasePrice;
+        _form.DescriptionUrl = row.DescriptionUrl;
+        _form.Note = row.Note;
+        _statusTarget = null;
+        _formOpen = true;
+    }
+
+    private void CloseForm()
+    {
+        _formOpen = false;
+        _editingId = null;
+    }
+
+    private void StartStatus(EquipmentResponse row)
+    {
+        _formOpen = false;
+        _statusTarget = row;
+        _newStatus = OperationsText.EquipmentStatuses.First(s => s != row.Status);
+        _statusNote = "";
+    }
+
+    private Task SaveAsync() => RunAsync(async () =>
+    {
+        var saved = _editingId is { } id
+            ? await Api.UpdateEquipmentAsync(id, CreateRequest(), _lifetime.Token)
+            : await Api.CreateEquipmentAsync(CreateRequest(), _lifetime.Token);
+        _notice = _editingId is null ? $"Đã thêm thiết bị \"{saved.Name}\"." : $"Đã cập nhật thiết bị \"{saved.Name}\".";
+        CloseForm();
+        await LoadCategoriesAsync();
+        await LoadAsync(_page?.Page ?? 1);
+    }, errors => _validation?.ShowErrors(errors));
+
+    private Task ChangeStatusAsync() => RunAsync(async () =>
+    {
+        if (_statusTarget is not { } target) return;
+        if (_newStatus == "Retired" && string.IsNullOrWhiteSpace(_statusNote))
+        {
+            _error = "Cần nhập lý do khi thanh lý thiết bị.";
+            return;
+        }
+        var saved = await Api.ChangeEquipmentStatusAsync(target.Id, new(_newStatus, Blank(_statusNote)), _lifetime.Token);
+        _notice = $"\"{saved.Name}\" chuyển sang {OperationsText.Label(saved.Status).ToLowerInvariant()}.";
+        _statusTarget = null;
+        await LoadAsync(_page?.Page ?? 1);
+    });
+
+    private Task SaveCategoryAsync() => RunAsync(async () =>
+    {
+        var saved = _editingCategoryId is { } id
+            ? await Api.UpdateCategoryAsync(id, CreateCategoryRequest(), _lifetime.Token)
+            : await Api.CreateCategoryAsync(CreateCategoryRequest(), _lifetime.Token);
+        _notice = _editingCategoryId is null ? $"Đã thêm danh mục \"{saved.Name}\"." : $"Đã cập nhật danh mục \"{saved.Name}\".";
+        CancelCategoryEdit();
+        await LoadCategoriesAsync();
+        await LoadAsync(_page?.Page ?? 1);
+    }, errors => _categoryValidation?.ShowErrors(errors));
+
+    private Task DeleteCategoryAsync(EquipmentCategoryResponse category) => RunAsync(async () =>
+    {
+        await Api.DeleteCategoryAsync(category.Id, _lifetime.Token);
+        _notice = $"Đã xóa danh mục \"{category.Name}\".";
+        if (_editingCategoryId == category.Id) CancelCategoryEdit();
+        await LoadCategoriesAsync();
+    });
+
+    private void StartCategoryEdit(EquipmentCategoryResponse category)
+    {
+        _editingCategoryId = category.Id;
+        _categoryForm.Name = category.Name;
+        _categoryForm.Description = category.Description;
+    }
+
+    private void CancelCategoryEdit()
+    {
+        _editingCategoryId = null;
+        _categoryForm.Name = "";
+        _categoryForm.Description = null;
+    }
+
+    private async Task RunAsync(Func<Task> action, Action<IReadOnlyDictionary<string, string[]>>? showErrors = null)
+    {
+        if (Busy) return;
+        _working = true;
+        _notice = _error = null;
+        try { await action(); }
+        catch (AuthApiException error)
+        {
+            _error = error.Message;
+            showErrors?.Invoke(error.Errors);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        finally { _working = false; }
+    }
+
+    public void Dispose()
+    {
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+    }
+
+    private sealed class EquipmentModel
+    {
+        public string Name { get; set; } = "";
+        public string? Code { get; set; }
+        public int? CategoryId { get; set; }
+        public string? Brand { get; set; }
+        public string? Model { get; set; }
+        public DateOnly? PurchaseDate { get; set; }
+        public decimal? PurchasePrice { get; set; }
+        public string? DescriptionUrl { get; set; }
+        public string? Note { get; set; }
+
+        public void Reset()
+        {
+            Name = "";
+            Code = Brand = Model = DescriptionUrl = Note = null;
+            CategoryId = null;
+            PurchaseDate = null;
+            PurchasePrice = null;
+        }
+    }
+
+    private sealed class CategoryModel
+    {
+        public string Name { get; set; } = "";
+        public string? Description { get; set; }
+    }
+}

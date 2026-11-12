@@ -46,7 +46,8 @@ public enum MembershipStatus
     Active,
     Frozen,
     Expired,
-    Cancelled
+    Cancelled,
+    Suspended
 }
 
 public enum FreezeRequestStatus
@@ -56,7 +57,14 @@ public enum FreezeRequestStatus
     Rejected,
     Active,
     Completed,
-    Expired
+    Expired,
+    Cancelled
+}
+
+public enum FreezeTierUnit
+{
+    Days,
+    Months
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -457,7 +465,12 @@ public enum AuditActionType
     RoleChange,
     AccountLock,
     AccountUnlock,
-    PasswordChange
+    PasswordChange,
+    CreateMembershipPlan,
+    UpdateMembershipPlan,
+    ActivateMembershipPlan,
+    DeactivateMembershipPlan,
+    DeleteMembershipPlan
 }
 
 // ─────────────────────────────────────────────────────────────

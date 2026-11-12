@@ -1,0 +1,188 @@
+@using System.Globalization
+@using VFMS.Contracts.Memberships
+@using VFMS.Contracts.Memberships.Validators
+@implements IDisposable
+@inject MembershipPlanApiClient Api
+
+<div class="space-y-4">
+    <dl class="grid gap-3 text-sm sm:grid-cols-2">
+        @if (Eligibility.Policy is { } policy)
+        {
+            <div>
+                <dt class="text-xs font-semibold text-vfms-text-secondary">Thời hạn mỗi yêu cầu</dt>
+                <dd class="mt-1 font-semibold text-vfms-text">@policy.MinimumFreezeDays đến @policy.MaximumFreezeDays ngày</dd>
+            </div>
+            <div>
+                <dt class="text-xs font-semibold text-vfms-text-secondary">Báo trước tối thiểu</dt>
+                <dd class="mt-1 font-semibold text-vfms-text">@policy.MinimumRequestDays ngày</dd>
+            </div>
+        }
+        @if (Eligibility.RemainingQuota is { } remaining)
+        {
+            <div>
+                <dt class="text-xs font-semibold text-vfms-text-secondary">Hạn ngạch còn lại</dt>
+                <dd class="mt-1 font-semibold text-vfms-text">@remaining ngày</dd>
+            </div>
+        }
+        @if (Eligibility.EarliestStartDate is { } earliest)
+        {
+            <div>
+                <dt class="text-xs font-semibold text-vfms-text-secondary">Có thể bắt đầu từ</dt>
+                <dd class="mt-1 font-semibold text-vfms-text"><MembershipDate Date="@earliest" /></dd>
+            </div>
+        }
+    </dl>
+
+    @if (!Eligibility.Eligible)
+    {
+        <p role="status" class="rounded-lg bg-vfms-muted p-3 text-sm text-vfms-text-secondary">@Eligibility.Message</p>
+    }
+    else
+    {
+        <EditForm @key="_model" Model="_model" OnValidSubmit="SaveAsync" OnInvalidSubmit="InvalidSubmit" novalidate>
+            <ContractValidation TRequest="MembershipFreezeRequest" Validator="_validator" CreateRequest="CreateRequest" @ref="_validation" />
+            @if (_error is not null)
+            {
+                <div role="alert" tabindex="-1" @ref="_errorNotice" class="mb-4 space-y-1 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+                    <p class="font-semibold">@_error</p>
+                    <ValidationSummary />
+                </div>
+            }
+            <fieldset disabled="@_saving" aria-busy="@(_saving ? "true" : "false")" class="grid gap-4 sm:grid-cols-2">
+                <legend class="sr-only">@(ExistingRequest is null ? "Gửi yêu cầu bảo lưu" : "Chỉnh sửa yêu cầu bảo lưu")</legend>
+                <div>
+                    <label class="block text-sm font-semibold text-vfms-text" for="@($"{_fieldPrefix}-start")">Ngày bắt đầu bảo lưu</label>
+                    <InputDate id="@($"{_fieldPrefix}-start")" class="@Field" @bind-Value="_model.StartDate"
+                               min="@Eligibility.EarliestStartDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)"
+                               required aria-describedby="@($"{_fieldPrefix}-start-error")" ParsingErrorMessage="Nhập ngày bắt đầu hợp lệ." />
+                    <div id="@($"{_fieldPrefix}-start-error")"><ValidationMessage For="@(() => _model.StartDate)" /></div>
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-vfms-text" for="@($"{_fieldPrefix}-days")">Thời gian bảo lưu (ngày)</label>
+                    <InputNumber id="@($"{_fieldPrefix}-days")" class="@Field" @bind-Value="_model.RequestedDays"
+                                 min="@Eligibility.Policy?.MinimumFreezeDays" max="@Eligibility.Policy?.MaximumFreezeDays"
+                                 step="1" required aria-describedby="@($"{_fieldPrefix}-days-error")" ParsingErrorMessage="Nhập số ngày nguyên." />
+                    <div id="@($"{_fieldPrefix}-days-error")"><ValidationMessage For="@(() => _model.RequestedDays)" /></div>
+                </div>
+                <div class="sm:col-span-2">
+                    <label class="block text-sm font-semibold text-vfms-text" for="@($"{_fieldPrefix}-reason")">Lý do bảo lưu</label>
+                    <InputTextArea id="@($"{_fieldPrefix}-reason")" class="@Field" @bind-Value="_model.Reason"
+                                   rows="4" maxlength="4000" required aria-describedby="@($"{_fieldPrefix}-reason-error")" />
+                    <div id="@($"{_fieldPrefix}-reason-error")"><ValidationMessage For="@(() => _model.Reason)" /></div>
+                </div>
+                <div class="flex flex-wrap gap-3 sm:col-span-2">
+                    <button type="submit" class="min-h-[44px] rounded-lg bg-vfms-primary px-5 py-2 text-sm font-semibold text-white hover:bg-vfms-primary-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary">
+                        @(_saving ? "Đang gửi..." : ExistingRequest is null ? "Gửi yêu cầu bảo lưu" : "Lưu thay đổi")
+                    </button>
+                    @if (ExistingRequest is not null)
+                    {
+                        <button type="button" class="min-h-[44px] rounded-lg border border-vfms-border bg-white px-4 py-2 text-sm font-semibold text-vfms-text hover:bg-vfms-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary"
+                                @onclick="CancelEditingAsync">Đóng chỉnh sửa</button>
+                    }
+                </div>
+                <p role="status" class="text-sm text-vfms-text-secondary sm:col-span-2">@(_saving ? "Đang gửi yêu cầu bảo lưu..." : "")</p>
+            </fieldset>
+        </EditForm>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public MembershipFreezeEligibilityResponse Eligibility { get; set; } = default!;
+    [Parameter] public MembershipFreezeRequestResponse? ExistingRequest { get; set; }
+    [Parameter] public EventCallback<MembershipFreezeRequestResponse> Saved { get; set; }
+    [Parameter] public EventCallback CancelEditing { get; set; }
+
+    private const string Field = "mt-1 block min-h-[44px] w-full rounded-lg border border-vfms-border bg-white px-3 py-2 text-base text-vfms-text focus:border-vfms-primary focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-vfms-primary sm:text-sm";
+    private readonly CancellationTokenSource _lifetime = new();
+    private readonly MembershipFreezeRequestValidator _validator = new();
+    private RequestForm _model = new();
+    private ContractValidation<MembershipFreezeRequest>? _validation;
+    private ElementReference _errorNotice;
+    private string _fieldPrefix = "";
+    private int _membershipId;
+    private int? _requestId;
+    private string? _error;
+    private bool _saving;
+    private bool _focusError;
+
+    protected override void OnParametersSet()
+    {
+        if (_membershipId == Eligibility.Membership.MembershipId && _requestId == ExistingRequest?.FreezeRequestId)
+            return;
+
+        _membershipId = Eligibility.Membership.MembershipId;
+        _requestId = ExistingRequest?.FreezeRequestId;
+        _fieldPrefix = FormattableString.Invariant($"freeze-{_membershipId}-{_requestId ?? 0}");
+        _model = new()
+        {
+            StartDate = ExistingRequest?.StartDate,
+            RequestedDays = ExistingRequest?.RequestedDays,
+            Reason = ExistingRequest?.Reason ?? ""
+        };
+        _error = null;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_focusError)
+            return;
+        _focusError = false;
+        await _errorNotice.FocusAsync();
+    }
+
+    private MembershipFreezeRequest CreateRequest() =>
+        new(_membershipId, _model.StartDate, _model.RequestedDays, _model.Reason.Trim());
+
+    private void InvalidSubmit()
+    {
+        _error = "Vui lòng kiểm tra các thông tin được đánh dấu.";
+        _focusError = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_saving || !Eligibility.Eligible)
+            return;
+
+        _saving = true;
+        _error = null;
+        var ct = _lifetime.Token;
+        try
+        {
+            var request = CreateRequest();
+            var response = _requestId is { } id
+                ? await Api.UpdateFreezeRequestAsync(id, request, ct)
+                : await Api.CreateFreezeRequestAsync(request, ct);
+            if (!ct.IsCancellationRequested)
+                await Saved.InvokeAsync(response);
+        }
+        catch (AuthApiException error)
+        {
+            if (ct.IsCancellationRequested)
+                return;
+            _error = error.Message;
+            _validation?.ShowErrors(error.Errors);
+            _focusError = true;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private Task CancelEditingAsync() => _saving ? Task.CompletedTask : CancelEditing.InvokeAsync();
+
+    public void Dispose()
+    {
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+    }
+
+    private sealed class RequestForm
+    {
+        public DateOnly? StartDate { get; set; }
+        public int? RequestedDays { get; set; }
+        public string Reason { get; set; } = "";
+    }
+}

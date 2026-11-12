@@ -1,7 +1,7 @@
 @inherits LayoutComponentBase
 @inject NavigationManager Navigation
 
-<WorkspaceShell Variant="@Variant">@Body</WorkspaceShell>
+<WorkspaceShell Variant="@Variant" IsPreview="@IsPreview">@Body</WorkspaceShell>
 
 @code {
     /// <summary>
@@ -16,4 +16,8 @@
         var path when path.StartsWith("staff/", StringComparison.OrdinalIgnoreCase) => "staff",
         _ => "member"
     };
+    private static readonly string[] LivePages = ["staff/equipment-issues", "staff/purchase-proposals", "staff/supplement-orders"];
+
+    private bool IsPreview => !LivePages.Contains(Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].TrimEnd('/'),
+        StringComparer.OrdinalIgnoreCase);
 }
