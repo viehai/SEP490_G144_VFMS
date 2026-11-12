@@ -34,7 +34,7 @@
                     }
                     @if (auth.User.IsInRole("Member"))
                     {
-                        <NavLink href="/my-memberships" Match="NavLinkMatch.All" ActiveClass="text-[#5F6F52] underline underline-offset-4"
+                        <NavLink href="/my-memberships" Match="NavLinkMatch.Prefix" ActiveClass="text-[#5F6F52] underline underline-offset-4"
                                  class="@MyMembershipsClass">
                             Gói của tôi
                         </NavLink>

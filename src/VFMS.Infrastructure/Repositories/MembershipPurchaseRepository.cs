@@ -81,6 +81,33 @@ public sealed class MembershipPurchaseRepository(VfmsDbContext context) : IMembe
                  membership.MembershipStatus == MembershipStatus.Suspended))
             .Include(membership => membership.PackageComponent).ToListAsync(ct);
 
+    public Task<List<OwnedMembership>> ListOwnedMembershipsAsync(string memberId, CancellationToken ct) =>
+        OwnedMemberships(memberId)
+            .OrderByDescending(membership => membership.EndDate).ThenByDescending(membership => membership.Id)
+            .Select(membership => new OwnedMembership(membership.Id, membership.OrderItem.PackageId,
+                membership.OrderItem.PackageNameSnapshot, membership.PackageComponent.ComponentType,
+                membership.StartDate, membership.EndDate, membership.MembershipStatus))
+            .ToListAsync(ct);
+
+    public Task<OwnedMembershipDetail?> FindOwnedMembershipAsync(string memberId, int membershipId, CancellationToken ct) =>
+        OwnedMemberships(memberId).Where(membership => membership.Id == membershipId)
+            .Select(membership => new OwnedMembershipDetail(
+                new OwnedMembership(membership.Id, membership.OrderItem.PackageId,
+                    membership.OrderItem.PackageNameSnapshot, membership.PackageComponent.ComponentType,
+                    membership.StartDate, membership.EndDate, membership.MembershipStatus),
+                membership.OrderItem.Order.PaymentTransaction!.PaidAt ?? membership.OrderItem.Order.CompletedAt,
+                membership.OrderItem.Order.PurchaserUserId == memberId
+                    ? membership.OrderItem.Order.PaymentTransaction!.Invoice!.InvoiceNumber : null,
+                membership.TotalFrozenDays, membership.FreezeCount,
+                membership.MembershipFreezes.OrderByDescending(period => period.RequestedStartDate)
+                    .ThenByDescending(period => period.Id)
+                    .Select(period => new OwnedMembershipFreeze(period.RequestedStartDate, period.RequestedEndDate,
+                        period.ActualStartDate, period.ActualEndDate, period.RequestStatus)).ToList()))
+            .SingleOrDefaultAsync(ct);
+
+    private IQueryable<MemberMembership> OwnedMemberships(string memberId) =>
+        context.MemberMemberships.AsNoTracking().Where(membership => membership.MemberUserId == memberId);
+
     // General Policies configures renewal windows on the default gym.
     public Task<Gym?> GetRenewalPolicyGymAsync(CancellationToken ct) =>
         context.Gyms.AsNoTracking().OrderBy(gym => gym.Id).FirstOrDefaultAsync(ct);

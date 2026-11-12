@@ -5,6 +5,13 @@
 
 @code {
     private string Variant => Navigation.ToBaseRelativePath(Navigation.Uri).StartsWith("admin/", StringComparison.OrdinalIgnoreCase) ? "admin" : "manager";
-    private bool IsPreview => !Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].TrimEnd('/')
-        .Equals("manager/membership-plans", StringComparison.OrdinalIgnoreCase);
+    private bool IsPreview
+    {
+        get
+        {
+            var route = Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].TrimEnd('/');
+            return !route.Equals("manager/membership-plans", StringComparison.OrdinalIgnoreCase) &&
+                !route.Equals("manager/membership-freeze-policy", StringComparison.OrdinalIgnoreCase);
+        }
+    }
 }

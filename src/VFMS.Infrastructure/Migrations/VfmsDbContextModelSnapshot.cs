@@ -847,6 +847,9 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<bool>("IsGlobal")
                         .HasColumnType("bit");
 
+                    b.Property<int?>("MinFreezeDaysPerRequest")
+                        .HasColumnType("int");
+
                     b.Property<int>("MinimumRequestDays")
                         .HasColumnType("int");
 
@@ -866,6 +869,10 @@ namespace VFMS.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("IsGlobal")
+                        .IsUnique()
+                        .HasFilter("[IsGlobal] = 1 AND [IsDeleted] = 0 AND [PolicyStatus] = 'Active'");
 
                     b.ToTable("FreezePolicies");
                 });
@@ -3602,7 +3609,32 @@ namespace VFMS.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.OwnsMany("VFMS.Domain.Entities.FreezePolicyTierQuota", "TierQuotas", b1 =>
+                        {
+                            b1.Property<int>("FreezePolicyId")
+                                .HasColumnType("int");
+
+                            b1.Property<string>("Unit")
+                                .HasMaxLength(10)
+                                .HasColumnType("nvarchar(10)");
+
+                            b1.Property<int>("Duration")
+                                .HasColumnType("int");
+
+                            b1.Property<int>("MaximumCumulativeFreezeDays")
+                                .HasColumnType("int");
+
+                            b1.HasKey("FreezePolicyId", "Unit", "Duration");
+
+                            b1.ToTable("FreezePolicyTierQuotas", (string)null);
+
+                            b1.WithOwner()
+                                .HasForeignKey("FreezePolicyId");
+                        });
+
                     b.Navigation("CreatedByUser");
+
+                    b.Navigation("TierQuotas");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.GymAnnouncement", b =>
