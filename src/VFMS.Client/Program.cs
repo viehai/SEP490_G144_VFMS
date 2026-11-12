@@ -16,19 +16,17 @@ builder.Services.AddScoped(_ => new AuthApiClient(CreateApiHttpClient()));
 builder.Services.AddScoped<AuthSession>();
 builder.Services.AddScoped<AuthenticationStateProvider>(sp => sp.GetRequiredService<AuthSession>());
 builder.Services.AddScoped(sp => new MembershipPlanApiClient(CreateApiHttpClient(), sp.GetRequiredService<AuthSession>()));
-// 40 s: AI workout plan generation can take longer than the 30 s default.
-builder.Services.AddScoped(sp => new VfmsApiClient(CreateApiHttpClient(40), sp.GetRequiredService<AuthSession>()));
 builder.Services.AddScoped(sp => new SystemAdministrationApiClient(CreateApiHttpClient(), sp.GetRequiredService<AuthSession>()));
 builder.Services.AddScoped(sp => new OperationsApiClient(CreateApiHttpClient(), sp.GetRequiredService<AuthSession>()));
 
 await builder.Build().RunAsync();
 
-HttpClient CreateApiHttpClient(int timeoutSeconds = 30)
+HttpClient CreateApiHttpClient()
 {
     var apiBaseUrl = builder.Configuration["ApiBaseUrl"] ?? builder.HostEnvironment.BaseAddress;
     return new HttpClient
     {
         BaseAddress = new Uri(apiBaseUrl.TrimEnd('/') + "/"),
-        Timeout = TimeSpan.FromSeconds(timeoutSeconds)
+        Timeout = TimeSpan.FromSeconds(30)
     };
 }
