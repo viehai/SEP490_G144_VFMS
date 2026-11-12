@@ -19,7 +19,7 @@ public sealed record PTScheduleSuggestion(string TrainerId, DateOnly StartDate, 
 public sealed record PTBookingPreview(int PackageId, string TrainerId, DateOnly ExpiresOn,
     decimal Price, IReadOnlyList<PTCalendarSlot> Sessions, IReadOnlyList<PTScheduleSuggestion>? Suggestions = null);
 public sealed record PTCheckoutResponse(int ContractId, string OrderNumber, string Status, decimal AmountDue,
-    DateTime ExpiresAt, VietQrPaymentResponse? VietQr, string? InvoiceNumber);
+    DateTime ExpiresAt, VietQrPaymentResponse? VietQr, string? InvoiceNumber, DateTime HoldExpiresAt = default);
 public sealed record PTProposalRequest(DateOnly Date, TimeOnly StartTime, [Required] string Type);
 public sealed record PTProposalResponse(DateOnly Date, TimeOnly StartTime, TimeOnly EndTime,
     string Type, DateTime ExpiresAt);

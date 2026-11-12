@@ -17,34 +17,52 @@ public sealed partial class LockerService
             var rental = await Rentals.SingleOrDefaultAsync(r => r.Id == id && r.Locker.LockerZone.GymId == staff.GymId, ct);
             if (rental is null)
                 return Missing<LockerRentalView>();
-            var now = Now.UtcDateTime;
+            var current = Now;
+            var now = current.UtcDateTime;
             if (rental.HandedOverAt is not null)
                 return Result<LockerRentalView>.Success(View(rental, now));
             if (!request.TermsAccepted || !request.IdentityVerified)
                 return Invalid<LockerRentalView>("Cần xác minh hội viên, xác nhận đồng ý điều khoản và giao chìa.");
-            if (rental.ContractStatus != LockerContractStatus.PendingHandover || rental.CollectBy <= now ||
+            var payment = rental.Payments.SingleOrDefault(p => p.LockerPurpose == LockerPaymentPurpose.Rental);
+            var collectCash = request.CashAmount is not null && rental.ContractStatus == LockerContractStatus.PendingPayment;
+            if (payment is null || rental.ExpiresAt <= now ||
                 rental.Locker.LockerStatus != LockerStatus.Reserved ||
                 !await Eligible(rental.CustomerUserId, now, ct))
-                return Conflict<LockerRentalView>("Hợp đồng chưa thanh toán, đã hết hạn nhận chìa hoặc hội viên không đủ điều kiện.");
-            var local = Local(now);
-            DateTime end;
+                return Conflict<LockerRentalView>("Hợp đồng hoặc hội viên không còn đủ điều kiện nhận chìa.");
+
+            if (collectCash)
+            {
+                if (payment.Order.Channel != OrderChannel.Counter || payment.PaymentMethod != PaymentMethod.Cash ||
+                    request.CashAmount != payment.AmountDue || !Pending(payment, now) ||
+                    !await CanFulfill(payment, now, now, ct))
+                    return Conflict<LockerRentalView>("Kiểm tra phương thức, số tiền và thời hạn của đơn tại quầy.");
+            }
+            else if (rental.ContractStatus != LockerContractStatus.PendingHandover ||
+                payment.PaymentStatus != PaymentStatus.Paid || payment.PaidAt is null)
+                return Conflict<LockerRentalView>("Đơn chưa thanh toán.");
+
+            var today = LocalDate(now);
+            var paidAt = collectCash ? now : payment.PaidAt!.Value;
+            if (Type(rental) == RentalType.Daily &&
+                (today != LocalDate(paidAt) || !OpenForDailyRental(rental.Locker.LockerZone.Gym, now)))
+                return Conflict<LockerRentalView>("Chỉ giao chìa thuê ngày trong giờ mở cửa của ngày đã thanh toán.");
+            if (collectCash)
+                await ApplyPayment(payment, payment.AmountDue, current, null, current, actor, ct);
             if (Type(rental) == RentalType.Daily)
             {
-                var time = TimeOnly.FromDateTime(local);
                 var gym = rental.Locker.LockerZone.Gym;
-                if (gym.OpenTime is not { } open || gym.CloseTime is not { } close || time < open || time >= close)
-                    return Conflict<LockerRentalView>("Chỉ giao chìa thuê ngày trong giờ mở cửa.");
-                end = LocalDate(now).ToDateTime(close, DateTimeKind.Utc).Subtract(LocalOffset);
+                rental.StartDate = today;
+                rental.EndDate = today;
+                rental.ExpiresAt = today.ToDateTime(gym.CloseTime!.Value, DateTimeKind.Utc).Subtract(LocalOffset);
             }
             else
             {
-                end = local.AddMonths(Months(Type(rental))).Subtract(LocalOffset);
+                var latestStart = LocalDate(paidAt).AddDays(2);
+                var start = payment.Order.Channel == OrderChannel.Online && latestStart < today ? latestStart : today;
+                SetMonthlyTerm(rental, start, Months(Type(rental)));
             }
             rental.HandedOverAt = now;
             rental.HandedOverByUserId = actor;
-            rental.ExpiresAt = end;
-            rental.StartDate = LocalDate(now);
-            rental.EndDate = LocalDate(end);
             rental.ContractStatus = LockerContractStatus.Active;
             rental.Locker.LockerStatus = LockerStatus.Rented;
             Audit(actor, rental, "LockerKeyHandedOver:IdentityVerified:TermsAccepted", now);
@@ -71,7 +89,7 @@ public sealed partial class LockerService
             !await Eligible(rental.CustomerUserId, now, ct))
             return Conflict<LockerCheckout>("Hợp đồng không đủ điều kiện gia hạn.");
         if (rental.Payments.Any(p => Pending(p, now) ||
-            p.Purpose == LockerPaymentPurpose.Settlement && p.Order.OrderStatus == OrderStatus.Paid))
+            p.LockerPurpose == LockerPaymentPurpose.Settlement && p.Order.OrderStatus == OrderStatus.Paid))
             return Conflict<LockerCheckout>("Hợp đồng đang có khoản thu gia hạn hoặc tất toán cần xử lý.");
         var policy = await db.LockerPricingPolicies.AsNoTracking().SingleOrDefaultAsync(p =>
             p.Id == request.PolicyId && p.PolicyStatus == PolicyStatus.Active, ct);
@@ -86,7 +104,7 @@ public sealed partial class LockerService
         var qr = Qr(charge);
         if (method == PaymentMethod.VietQR && qr is null)
             return PaymentUnavailable();
-        db.LockerRentalPayments.Add(charge);
+        db.PaymentTransactions.Add(charge);
         await db.SaveChangesAsync(ct);
         return Result<LockerCheckout>.Success(Checkout(charge, now, qr), 201);
     }, ct);
@@ -122,7 +140,10 @@ public sealed partial class LockerService
                 previous.PolicyStatus = PolicyStatus.Inactive;
             var next = tiers.Select(t => new LockerPricingPolicy
             {
-                RentalType = t.Type, PolicyName = t.Name, RentalPrice = t.Price, DepositAmount = t.Deposit,
+                RentalType = t.Type,
+                PolicyName = t.Name,
+                RentalPrice = t.Price,
+                DepositAmount = t.Deposit,
                 OverdueDailyFee = t.Type == RentalType.Daily ? 0 : input.OverdueDailyFee,
                 KeyReplacementFee = input.KeyReplacementFee
             }).ToArray();
@@ -167,11 +188,12 @@ public sealed partial class LockerService
                 (overdueOnly || r.ContractStatus != LockerContractStatus.PendingPayment));
         if (overdueOnly)
             query = query.Where(r => r.ContractStatus != LockerContractStatus.PendingPayment &&
-                r.ContractStatus != LockerContractStatus.PendingHandover &&
-                (r.ExpiresAt < now || r.ExpiresAt == null && r.EndDate < today));
+                (r.ExpiresAt <= now || r.ContractStatus != LockerContractStatus.PendingHandover &&
+                    r.ExpiresAt == null && r.EndDate < today));
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(r => r.ContractNumber.Contains(search) || r.Locker.LockerNumber.Contains(search) ||
-                r.Customer.FullName.Contains(search));
+                r.Customer.FullName.Contains(search) || r.Payments.Any(p => p.LockerPurpose == LockerPaymentPurpose.Rental &&
+                    p.Invoice!.InvoiceNumber.Contains(search)));
         var data = await query.OrderBy(r => r.EndDate).ThenBy(r => r.Id).Take(100).ToListAsync(ct);
         return Result<IReadOnlyList<LockerStaffRental>>.Success(data.Select(r =>
             new LockerStaffRental(View(r, now), r.CustomerUserId, r.Customer.FullName, r.Customer.PhoneNumber)).ToArray());

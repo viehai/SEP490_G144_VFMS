@@ -3,6 +3,7 @@ using VFMS.Contracts.Common;
 using VFMS.Contracts.Lockers;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
+using VFMS.Infrastructure.Payments;
 
 namespace VFMS.Infrastructure.Lockers;
 
@@ -13,10 +14,38 @@ public sealed partial class LockerService
 
     private static LockerSettlementQuote CalculateSettlement(LockerRentalContract rental, bool damaged, DateTime now)
     {
+        damaged |= rental.KeyLossConfirmedAt is not null;
+        if (Type(rental) == RentalType.Daily)
+            return new(0, 0, rental.DepositAmount, damaged ? 0 : rental.DepositAmount, 0,
+                damaged ? rental.DepositAmount : 0);
         var overdue = OverdueFees(rental, now);
         var key = damaged ? rental.KeyReplacementFeeSnapshot ?? rental.LockerPricingPolicy.KeyReplacementFee : 0;
         return SettleAmounts(rental, overdue, key);
     }
+
+    public Task<Result<LockerSettlementQuote>> ConfirmKeyLoss(string actor, int id, CancellationToken ct) =>
+        Write(async () =>
+        {
+            var staff = await Actor(actor, UserRole.Staff, ct);
+            if (staff is null)
+                return Forbidden<LockerSettlementQuote>();
+            var rental = await StaffRental(staff, id, ct);
+            if (rental is null)
+                return Missing<LockerSettlementQuote>();
+            if (!InUse(rental))
+                return Conflict<LockerSettlementQuote>("Chỉ xác nhận mất chìa cho hợp đồng đang thuê hoặc quá hạn.");
+            var now = Now.UtcDateTime;
+            if (rental.KeyLossConfirmedAt is null)
+            {
+                if (rental.Payments.Any(p => p.LockerPurpose == LockerPaymentPurpose.Settlement &&
+                    (Pending(p, now) || p.Order.OrderStatus == OrderStatus.Paid)))
+                    return Conflict<LockerSettlementQuote>("Cần xử lý khoản tất toán hiện có.");
+                rental.KeyLossConfirmedAt = now;
+                Audit(actor, rental, "LockerKeyLossConfirmed", now);
+                await db.SaveChangesAsync(ct);
+            }
+            return Result<LockerSettlementQuote>.Success(CalculateSettlement(rental, false, now));
+        }, ct);
 
     private static LockerSettlementQuote SettleAmounts(LockerRentalContract rental, decimal overdue, decimal key)
     {
@@ -49,7 +78,7 @@ public sealed partial class LockerService
             return Missing<LockerCheckout>();
         var now = Now.UtcDateTime;
         if (!InUse(rental) || rental.Payments.Any(p => Pending(p, now) ||
-            p.Purpose == LockerPaymentPurpose.Settlement && p.Order.OrderStatus == OrderStatus.Paid))
+            p.LockerPurpose == LockerPaymentPurpose.Settlement && p.Order.OrderStatus == OrderStatus.Paid))
             return Conflict<LockerCheckout>("Hợp đồng không thể thu khoản tất toán mới.");
         if (ParseCollection(request.PaymentMethod) is not { } method)
             return Invalid<LockerCheckout>("Chọn Cash hoặc VietQR.");
@@ -64,7 +93,12 @@ public sealed partial class LockerService
         var qr = Qr(charge);
         if (method == PaymentMethod.VietQR && qr is null)
             return PaymentUnavailable();
-        db.LockerRentalPayments.Add(charge);
+        if (request.KeyLostOrDamaged && rental.KeyLossConfirmedAt is null)
+        {
+            rental.KeyLossConfirmedAt = now;
+            Audit(actor, rental, "LockerKeyLossConfirmed", now);
+        }
+        db.PaymentTransactions.Add(charge);
         await db.SaveChangesAsync(ct);
         return Result<LockerCheckout>.Success(Checkout(charge, now, qr), 201);
     }, ct);
@@ -87,14 +121,14 @@ public sealed partial class LockerService
                 return Invalid<LockerRentalView>("Cần xác nhận tủ đã trống.");
 
             var quote = CalculateSettlement(rental, request.KeyLostOrDamaged, now);
-            var paid = rental.Payments.SingleOrDefault(p => p.Purpose == LockerPaymentPurpose.Settlement &&
+            var paid = rental.Payments.SingleOrDefault(p => p.LockerPurpose == LockerPaymentPurpose.Settlement &&
                 p.Order.OrderStatus == OrderStatus.Paid);
             if (paid is not null)
             {
                 if (paid.Order.OrderNumber != request.SettlementOrderNumber ||
                     paid.RentalExpiryAtQuote != RentalExpiry(rental) || paid.KeyReplacementFee != quote.KeyReplacementFee)
                     return Conflict<LockerRentalView>("Khoản đã thu không khớp biên bản trả tủ.");
-                quote = SettleAmounts(rental, paid.OverdueFees, paid.KeyReplacementFee);
+                quote = SettleAmounts(rental, paid.OverdueFees ?? 0, paid.KeyReplacementFee ?? 0);
             }
             else if (quote.AdditionalAmountDue > 0)
             {
@@ -106,22 +140,28 @@ public sealed partial class LockerService
                 if (ParseRefund(request.RefundMethod) is not { } method ||
                     (method == PaymentMethod.BankTransfer && string.IsNullOrWhiteSpace(request.RefundReference)))
                     return Invalid<LockerRentalView>("Cần ghi nhận cách hoàn cọc và mã tham chiếu nếu chuyển khoản.");
-                var initial = rental.Payments.SingleOrDefault(p => p.Purpose == LockerPaymentPurpose.Rental);
-                if (initial is null || initial.RefundedAt is not null)
+                var initial = rental.Payments.SingleOrDefault(p => p.LockerPurpose == LockerPaymentPurpose.Rental);
+                if (initial is null || initial.RefundStatus is not null)
                     return Conflict<LockerRentalView>("Không tìm thấy khoản cọc có thể hoàn.");
                 initial.RefundAmount = quote.RefundAmount;
                 initial.RefundReason = "DailyDepositReturn";
-                RecordRefund(initial, actor, method, request.RefundReference, now);
+                CheckoutRefunds.Resolve(db, initial, actor, true, method, request.RefundReference?.Trim(), now);
             }
+            if (request.KeyLostOrDamaged && rental.KeyLossConfirmedAt is null)
+            {
+                rental.KeyLossConfirmedAt = now;
+                Audit(actor, rental, "LockerKeyLossConfirmed", now);
+            }
+            ReleaseReplacement(rental);
             rental.ContractStatus = LockerContractStatus.Terminated;
             rental.CancelledAt = now;
             rental.SettledAt = now;
             rental.SettledByUserId = actor;
-            rental.FineAmount = quote.OverdueFees + quote.KeyReplacementFee;
-            rental.Locker.LockerStatus = request.KeyLostOrDamaged || !request.LockSafe
+            rental.FineAmount = quote.OverdueFees + quote.KeyReplacementFee + quote.ForfeitedDeposit;
+            rental.Locker.LockerStatus = rental.KeyLossConfirmedAt is not null || !request.LockSafe
                 ? LockerStatus.Maintenance : LockerStatus.Available;
             Audit(actor, rental, FormattableString.Invariant(
-                $"LockerTerminated:Overdue={quote.OverdueFees}:Replacement={quote.KeyReplacementFee}:Refund={quote.RefundAmount}"), now);
+                $"LockerTerminated:Overdue={quote.OverdueFees}:Replacement={quote.KeyReplacementFee}:Refund={quote.RefundAmount}:Forfeited={quote.ForfeitedDeposit}"), now);
             Notify(rental, "Đã trả tủ", FormattableString.Invariant(
                 $"Hợp đồng {rental.ContractNumber} đã kết thúc. Số tiền hoàn cọc: {quote.RefundAmount:N0} VND."), now);
             await db.SaveChangesAsync(ct);
@@ -133,9 +173,9 @@ public sealed partial class LockerService
         var user = await Actor(actor, role, ct);
         if (user is null)
             return Forbidden<IReadOnlyList<LockerCheckout>>();
-        var pending = await db.LockerRentalPayments.AsNoTracking().Include(p => p.Order)
-            .ThenInclude(o => o.PaymentTransaction).ThenInclude(p => p!.Invoice)
-            .Where(p => p.Rental.Locker.LockerZone.GymId == user.GymId && p.RefundAmount > 0 && p.RefundedAt == null)
+        var pending = await db.PaymentTransactions.AsNoTracking().Include(p => p.Order).Include(p => p.Invoice)
+            .Where(p => p.LockerRentalContract!.Locker.LockerZone.GymId == user.GymId &&
+                p.RefundAmount > 0 && p.RefundStatus != "Refunded")
             .OrderBy(p => p.Id).Take(100).ToListAsync(ct);
         var now = Now.UtcDateTime;
         return Result<IReadOnlyList<LockerCheckout>>.Success(pending.Select(p => Checkout(p, now)).ToArray());
@@ -149,31 +189,21 @@ public sealed partial class LockerService
             return Forbidden<LockerCheckout>();
         var order = await commerce.FindOrderAsync(orderNumber, null, forUpdate: true, ct);
         var charge = order is null ? null : await LoadCharge(order.Id, ct);
-        if (charge is null || charge.Rental.Locker.LockerZone.GymId != user.GymId)
+        if (charge is null || charge.LockerRentalContract!.Locker.LockerZone.GymId != user.GymId)
             return Missing<LockerCheckout>();
         var now = Now.UtcDateTime;
-        if (charge.RefundedAt is not null)
+        if (charge.RefundStatus == "Refunded")
             return Result<LockerCheckout>.Success(Checkout(charge, now));
-        if (charge.RefundAmount <= 0)
+        if (charge.RefundAmount is not > 0)
             return Conflict<LockerCheckout>("Đơn không có khoản cần hoàn.");
         if (ParseRefund(input.Method) is not { } method ||
             (method == PaymentMethod.BankTransfer && string.IsNullOrWhiteSpace(input.Reference)))
             return Invalid<LockerCheckout>("Cần ghi nhận cách hoàn tiền và mã tham chiếu nếu chuyển khoản.");
-        RecordRefund(charge, actor, method, input.Reference, now);
-        Audit(actor, charge.Rental, $"LockerRefundConfirmed:{charge.Order.OrderNumber}", now);
-        Notify(charge.Rental, "Đã hoàn tiền thuê tủ", $"Khoản hoàn của đơn {orderNumber} đã được ghi nhận.", now);
+        await db.Entry(charge).Reference(p => p.SourcePaymentTransaction).Query().Include(p => p.Order).LoadAsync(ct);
+        CheckoutRefunds.Resolve(db, charge, actor, true, method, input.Reference?.Trim(), now);
+        Audit(actor, charge.LockerRentalContract!, $"LockerRefundConfirmed:{charge.Order.OrderNumber}", now);
         await db.SaveChangesAsync(ct);
         return Result<LockerCheckout>.Success(Checkout(charge, now));
     }, ct);
 
-    private static void RecordRefund(LockerRentalPayment charge, string actor, PaymentMethod method, string? reference, DateTime now)
-    {
-        charge.RefundMethod = method;
-        charge.RefundReference = reference?.Trim();
-        charge.RefundedAt = now;
-        charge.RefundedByUserId = actor;
-        var payment = charge.Order.PaymentTransaction!;
-        if (charge.RefundAmount == payment.AmountReceived)
-            payment.PaymentStatus = PaymentStatus.Refunded;
-    }
 }

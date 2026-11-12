@@ -31,6 +31,9 @@ public class LockerRentalContract : BaseEntity
     public DateTime? SettledAt { get; set; }
     public string? SettledByUserId { get; set; }
     public decimal? OutstandingAmount { get; set; }
+    public DateTime? KeyLossConfirmedAt { get; set; }
+    public int? ReplacementLockerId { get; set; }
+    public Locker? ReplacementLocker { get; set; }
     public LockerContractStatus ContractStatus { get; set; } = LockerContractStatus.Active;
     public DateTime? CancelledAt { get; set; }
     public string? Note { get; set; }
@@ -41,6 +44,6 @@ public class LockerRentalContract : BaseEntity
     public Locker Locker { get; set; } = null!;
     public LockerPricingPolicy LockerPricingPolicy { get; set; } = null!;
     public ApplicationUser Customer { get; set; } = null!;
-    public ICollection<LockerRentalPayment> Payments { get; set; } = [];
+    public ICollection<PaymentTransaction> Payments { get; set; } = [];
 }
 

@@ -40,7 +40,8 @@ internal sealed class TrainerTestDatabase : IAsyncDisposable
         {
             ["TrainerFiles:Root"] = files,
             ["JwtSettings:Secret"] = "Synthetic-test-signing-key-at-least-32-bytes-long",
-            ["JwtSettings:Issuer"] = "vfms-tests", ["JwtSettings:Audience"] = "vfms-tests"
+            ["JwtSettings:Issuer"] = "vfms-tests",
+            ["JwtSettings:Audience"] = "vfms-tests"
         }).Build();
         Service = new(new TrainerStore(Db, Protection, Configuration), new PasswordHasher());
     }
@@ -104,9 +105,13 @@ public class TrainerWorkflowTests
         var customerRole = new ApplicationRole { RoleName = "Customer" };
         var customer = new ApplicationUser
         {
-            UserId = "existing-customer", GymId = await db.Gyms.Select(x => x.Id).SingleAsync(),
-            FullName = "Existing Customer", Email = "current@example.test", PhoneNumber = request.PhoneNumber,
-            PasswordHash = new PasswordHasher().Hash("OriginalPassword1!"), AccountStatus = AccountStatus.Active
+            UserId = "existing-customer",
+            GymId = await db.Gyms.Select(x => x.Id).SingleAsync(),
+            FullName = "Existing Customer",
+            Email = "current@example.test",
+            PhoneNumber = request.PhoneNumber,
+            PasswordHash = new PasswordHasher().Hash("OriginalPassword1!"),
+            AccountStatus = AccountStatus.Active
         };
         db.AddRange(customerRole, customer); await db.SaveChangesAsync();
         db.Add(new ApplicationUserRole { UserId = customer.UserId, RoleId = customerRole.Id }); await db.SaveChangesAsync();

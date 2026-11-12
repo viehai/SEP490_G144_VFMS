@@ -14,11 +14,27 @@ public sealed partial class LockerService(VfmsDbContext db, TimeProvider clock,
 {
     private static readonly TimeSpan LocalOffset = TimeSpan.FromHours(7);
     private static readonly TimeSpan PaymentWindow = TimeSpan.FromMinutes(15);
-    private const string Reconciliation = "LOCKER_RECONCILIATION_REQUIRED";
+    private static readonly TimeSpan HoldWindow = TimeSpan.FromMinutes(20);
+
     private DateTimeOffset Now => clock.GetUtcNow();
     private static DateTime Utc(DateTime value) => DateTime.SpecifyKind(value, DateTimeKind.Utc);
     private static DateTime Local(DateTime utc) => utc.Add(LocalOffset);
     private static DateOnly LocalDate(DateTime utc) => DateOnly.FromDateTime(Local(utc));
+    private static DateTime Midnight(DateOnly localDate) =>
+        localDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc).Subtract(LocalOffset);
+
+    private static bool OpenForDailyRental(Gym gym, DateTime now)
+    {
+        var time = TimeOnly.FromDateTime(Local(now));
+        return gym.OpenTime is { } open && gym.CloseTime is { } close && open <= time && time < close;
+    }
+
+    private static void SetMonthlyTerm(LockerRentalContract rental, DateOnly start, int months)
+    {
+        rental.StartDate = start;
+        rental.EndDate = start.AddMonths(months).AddDays(-1);
+        rental.ExpiresAt = Midnight(rental.EndDate.AddDays(1));
+    }
 
     private IQueryable<ApplicationUser> Users(UserRole role) => db.ApplicationUsers
         .Where(u => u.AccountStatus == AccountStatus.Active && !u.IsBanned &&
@@ -29,16 +45,19 @@ public sealed partial class LockerService(VfmsDbContext db, TimeProvider clock,
 
     private IQueryable<LockerRentalContract> Rentals => db.LockerRentalContracts
         .Include(r => r.Locker).ThenInclude(l => l.LockerZone).ThenInclude(z => z.Gym)
-        .Include(r => r.LockerPricingPolicy).Include(r => r.Customer)
-        .Include(r => r.Payments).ThenInclude(p => p.Order).ThenInclude(o => o.PaymentTransaction).ThenInclude(p => p!.Invoice)
+        .Include(r => r.LockerPricingPolicy)
+        .Include(r => r.Customer)
+        .Include(r => r.ReplacementLocker)
+        .Include(r => r.Payments).ThenInclude(p => p.Order)
+        .Include(r => r.Payments).ThenInclude(p => p.Invoice)
         .AsSplitQuery();
 
     private static IQueryable<LockerRentalContract> Allocations(IQueryable<LockerRentalContract> rentals, DateTime now) =>
         rentals.Where(r => r.ContractStatus == LockerContractStatus.Active || r.ContractStatus == LockerContractStatus.Overdue ||
             (r.ContractStatus == LockerContractStatus.Expired && r.CancelledAt == null) ||
-            (r.ContractStatus == LockerContractStatus.PendingHandover && r.CollectBy > now) ||
+            r.ContractStatus == LockerContractStatus.PendingHandover ||
             (r.ContractStatus == LockerContractStatus.PendingPayment && r.Payments.Any(p =>
-                p.Purpose == LockerPaymentPurpose.Rental && p.Order.OrderStatus == OrderStatus.Pending && p.HoldExpiresAt > now)));
+                p.LockerPurpose == LockerPaymentPurpose.Rental && p.Order.OrderStatus == OrderStatus.Pending && p.HoldExpiresAt > now)));
 
     private IQueryable<MemberMembership> EligibleMemberships(DateTime now)
     {
@@ -59,11 +78,19 @@ public sealed partial class LockerService(VfmsDbContext db, TimeProvider clock,
 
     private async Task<Result<T>> Write<T>(Func<Task<Result<T>>> action, CancellationToken ct)
     {
-        try { return await commerce.ExecuteInSerializableTransactionAsync(action, ct); }
+        const string conflictMessage = "Dữ liệu tủ vừa thay đổi. Vui lòng thử lại.";
+        try
+        {
+            return await commerce.ExecuteInSerializableTransactionAsync(action, ct);
+        }
         catch (SqlException ex) when (ex.Number == 1205)
-        { return Conflict<T>("Dữ liệu tủ vừa thay đổi. Vui lòng thử lại."); }
+        {
+            return Conflict<T>(conflictMessage);
+        }
         catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 1205 or 2601 or 2627 })
-        { return Conflict<T>("Dữ liệu tủ vừa thay đổi. Vui lòng thử lại."); }
+        {
+            return Conflict<T>(conflictMessage);
+        }
     }
 
     private static Result<T> Invalid<T>(string message) => Result<T>.Failure(message, "LOCKER_VALIDATION");
@@ -84,10 +111,13 @@ public sealed partial class LockerService(VfmsDbContext db, TimeProvider clock,
         rental.RentalTypeSnapshot ?? rental.LockerPricingPolicy.RentalType;
 
     private static DateTime RentalExpiry(LockerRentalContract rental) =>
-        rental.ExpiresAt ?? rental.EndDate.ToDateTime(new TimeOnly(23, 59, 59), DateTimeKind.Utc).Subtract(LocalOffset);
+        rental.ExpiresAt ?? Midnight(rental.EndDate.AddDays(1));
 
     private static int OverdueDays(LockerRentalContract rental, DateTime now) =>
-        (int)Math.Max(0, Math.Ceiling((now - RentalExpiry(rental)).TotalDays));
+        now < RentalExpiry(rental) ? 0 : LocalDate(now).DayNumber - LocalDate(RentalExpiry(rental)).DayNumber + 1;
+
+    private static DateTime ClearanceAt(LockerRentalContract rental) =>
+        RentalExpiry(rental).AddDays(7);
 
     private static decimal OverdueFees(LockerRentalContract rental, DateTime now) =>
         Type(rental) == RentalType.Daily ? 0 :
@@ -98,7 +128,9 @@ public sealed partial class LockerService(VfmsDbContext db, TimeProvider clock,
             LockerContractStatus.Active or LockerContractStatus.Overdue or LockerContractStatus.Expired;
 
     private static string Status(LockerRentalContract rental, DateTime now) =>
-        InUse(rental) ? (now > RentalExpiry(rental) ? "Overdue" : "Active") : rental.ContractStatus.ToString();
+        (InUse(rental) || rental.ContractStatus == LockerContractStatus.PendingHandover && rental.ExpiresAt != null) &&
+        now >= RentalExpiry(rental) ? "Overdue" :
+        InUse(rental) ? "Active" : rental.ContractStatus.ToString();
 
     private static string SlotStatus(Locker locker, LockerRentalContract? allocation, DateTime now)
     {
@@ -119,30 +151,53 @@ public sealed partial class LockerService(VfmsDbContext db, TimeProvider clock,
 
     private static LockerRentalView View(LockerRentalContract rental, DateTime now)
     {
+        var rentalType = Type(rental);
+        var daily = rentalType == RentalType.Daily;
+        var inUse = InUse(rental);
+        var hasTerm = inUse || rental.ExpiresAt != null;
         var status = Status(rental, now);
-        var overdue = InUse(rental) ? OverdueDays(rental, now) : 0;
-        var initial = rental.Payments.SingleOrDefault(p => p.Purpose == LockerPaymentPurpose.Rental);
-        var lastRenewal = rental.Payments.Where(p => p.Purpose == LockerPaymentPurpose.Renewal &&
-            p.Order.OrderStatus == OrderStatus.Paid).OrderByDescending(p => p.Id).FirstOrDefault();
-        var settlement = rental.Payments.SingleOrDefault(p => p.Purpose == LockerPaymentPurpose.Settlement &&
+        var pendingHandover = status == "PendingHandover";
+        var overdue = status == "Overdue" ? OverdueDays(rental, now) : 0;
+        var allocation = inUse || rental.ContractStatus == LockerContractStatus.PendingHandover ? rental : null;
+        var initial = rental.Payments.SingleOrDefault(p => p.LockerPurpose == LockerPaymentPurpose.Rental);
+        var lastRenewal = rental.Payments
+            .Where(p => p.LockerPurpose == LockerPaymentPurpose.Renewal && p.Order.OrderStatus == OrderStatus.Paid)
+            .OrderByDescending(p => p.Id)
+            .FirstOrDefault();
+        var settlement = rental.Payments.SingleOrDefault(p => p.LockerPurpose == LockerPaymentPurpose.Settlement &&
             p.Order.OrderStatus == OrderStatus.Paid);
-        return new(rental.Id, rental.ContractNumber, Slot(rental.Locker, InUse(rental) ||
-                rental.ContractStatus == LockerContractStatus.PendingHandover ? SlotStatus(rental.Locker, rental, now) :
-                SlotStatus(rental.Locker, null, now)), Type(rental).ToString(), status, rental.RentalPrice,
-            InUse(rental) ? rental.DepositAmount : 0,
-            rental.HandedOverAt is { } handover ? Utc(handover) : null,
-            InUse(rental) || rental.ExpiresAt != null ? Utc(RentalExpiry(rental)) : null,
-            rental.CollectBy is { } collectBy ? Utc(collectBy) : null,
-            overdue, overdue > 0 ? OverdueFees(rental, now) : 0,
-            overdue > 0 ? Utc(RentalExpiry(rental).AddDays(7)) : null,
-            Type(rental) != RentalType.Daily && InUse(rental) && overdue <= 7 &&
+
+        return new(
+            rental.Id,
+            rental.ContractNumber,
+            Slot(rental.Locker, SlotStatus(rental.Locker, allocation, now)),
+            rentalType.ToString(),
+            status,
+            rental.RentalPrice,
+            DepositHeld: inUse ? rental.DepositAmount : 0,
+            HandedOverAt: rental.HandedOverAt is { } handover ? Utc(handover) : null,
+            ExpiresAt: hasTerm ? Utc(RentalExpiry(rental)) : null,
+            CollectBy: null,
+            OverdueDays: overdue,
+            OverdueFees: overdue > 0 ? OverdueFees(rental, now) : 0,
+            ClearanceAfter: overdue > 0 && !daily ? Utc(ClearanceAt(rental)) : null,
+            CanRenew: !daily && inUse && overdue <= 7 &&
                 rental.Locker.LockerStatus is not (LockerStatus.Maintenance or LockerStatus.Damaged),
-            status == "PendingHandover" ? "Mang mã hợp đồng hoặc hóa đơn đến lễ tân để nhận chìa khóa." : null,
-            initial?.Order.PaymentTransaction?.Invoice?.InvoiceNumber, rental.OutstandingAmount,
-            status == "Active" && Type(rental) != RentalType.Daily && RentalExpiry(rental) - now <= TimeSpan.FromDays(7),
-            lastRenewal?.RenewalMonths ?? Months(Type(rental)), rental.SettledAt is { } settled ? Utc(settled) : null,
-            initial is { RefundReason: "DailyDepositReturn", RefundedAt: not null } ? initial.RefundAmount : 0,
-            settlement?.Order.PaymentTransaction?.Invoice?.InvoiceNumber);
+            PickupInstructions: pendingHandover ? "Mang mã hợp đồng hoặc hóa đơn đến lễ tân để nhận chìa khóa." : null,
+            InvoiceNumber: initial?.Invoice?.InvoiceNumber,
+            OutstandingAmount: rental.OutstandingAmount,
+            RenewalDue: status == "Active" && !daily && RentalExpiry(rental) - now <= TimeSpan.FromDays(7),
+            TermMonths: lastRenewal?.RenewalMonths ?? Months(rentalType),
+            SettledAt: rental.SettledAt is { } settled ? Utc(settled) : null,
+            RefundedDeposit: initial is { RefundReason: "DailyDepositReturn", RefundStatus: "Refunded" }
+                ? initial.RefundAmount ?? 0
+                : 0,
+            SettlementInvoiceNumber: settlement?.Invoice?.InvoiceNumber,
+            ReplacementLockerId: rental.ReplacementLockerId,
+            StartDate: hasTerm ? rental.StartDate : null,
+            LastRentalDate: hasTerm ? rental.EndDate : null,
+            AutomaticStartAt: pendingHandover && rental.CollectBy is { } automaticStart ? Utc(automaticStart) : null,
+            DailyKeyOutstanding: status == "Overdue" && daily && rental.KeyLossConfirmedAt is null);
     }
 
     private static LockerPolicy Policy(LockerPricingPolicy p) =>
@@ -152,15 +207,24 @@ public sealed partial class LockerService(VfmsDbContext db, TimeProvider clock,
     private void Audit(string? actor, LockerRentalContract rental, string value, DateTime now) =>
         db.AuditLogs.Add(new AuditLog
         {
-            ActorUserId = actor, ActionType = AuditActionType.Update, AuditEntity = nameof(LockerRentalContract),
-            EntityId = rental.Id, NewValue = value, OccurredAt = now
+            ActorUserId = actor,
+            ActionType = AuditActionType.Update,
+            AuditEntity = nameof(LockerRentalContract),
+            EntityId = rental.Id,
+            NewValue = value,
+            OccurredAt = now
         });
 
     private void Notify(LockerRentalContract rental, string title, string message, DateTime now) =>
         db.Notifications.Add(new Notification
         {
-            RecipientUserId = rental.CustomerUserId, NotificationType = "Locker", Title = title, Message = message,
-            EntityType = nameof(LockerRentalContract), EntityId = rental.Id, NotifiedAt = now
+            RecipientUserId = rental.CustomerUserId,
+            NotificationType = "Locker",
+            Title = title,
+            Message = message,
+            EntityType = nameof(LockerRentalContract),
+            EntityId = rental.Id,
+            NotifiedAt = now
         });
 
     public async Task<Result<IReadOnlyList<LockerSlot>>> Grid(string actor, UserRole role, CancellationToken ct)
@@ -175,8 +239,9 @@ public sealed partial class LockerService(VfmsDbContext db, TimeProvider clock,
         var rentals = await Allocations(db.LockerRentalContracts.AsNoTracking(), now)
             .Where(r => r.Locker.LockerZone.GymId == user.GymId).OrderByDescending(r => r.Id).ToListAsync(ct);
         var byLocker = rentals.ToLookup(r => r.LockerId);
+        var replacements = rentals.Where(r => r.ReplacementLockerId != null).Select(r => r.ReplacementLockerId!.Value).ToHashSet();
         return Result<IReadOnlyList<LockerSlot>>.Success(lockers.Select(l =>
-            Slot(l, SlotStatus(l, byLocker[l.Id].FirstOrDefault(), now))).ToArray());
+            Slot(l, replacements.Contains(l.Id) ? "Reserved" : SlotStatus(l, byLocker[l.Id].FirstOrDefault(), now))).ToArray());
     }
 
     public async Task<Result<IReadOnlyList<LockerPolicy>>> Pricing(string actor, UserRole role, CancellationToken ct)

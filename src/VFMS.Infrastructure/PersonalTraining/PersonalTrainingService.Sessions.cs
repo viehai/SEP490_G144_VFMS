@@ -348,8 +348,13 @@ public sealed partial class PersonalTrainingService
             return Invalid<int>("Điểm hoặc nội dung đánh giá không hợp lệ.");
         var review = new TrainerReview
         {
-            PTPurchaseId = p.Id, MemberUserId = actor, TrainerUserId = p.PTUserId,
-            Rating = request.Rating, Comment = comment, ReviewStatus = TrainerReviewStatus.Approved, IsVisible = true
+            PTPurchaseId = p.Id,
+            MemberUserId = actor,
+            TrainerUserId = p.PTUserId,
+            Rating = request.Rating,
+            Comment = comment,
+            ReviewStatus = TrainerReviewStatus.Approved,
+            IsVisible = true
         };
         db.TrainerReviews.Add(review);
         await db.SaveChangesAsync(ct);

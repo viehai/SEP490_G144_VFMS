@@ -72,9 +72,13 @@ public sealed partial class PersonalTrainingService
                 return Conflict<PTFreezeResponse>("Khoảng bảo lưu bị trùng hoặc không đáp ứng hạn mức.");
             var freeze = new PTFreeze
             {
-                PTPurchaseId = id, RequestedByUserId = actor, RequestedStartDate = input.StartDate,
-                RequestedEndDate = input.ResumeDate, Reason = input.Reason.Trim(),
-                MinimumDaysSnapshot = minimum, MaxDaysSnapshot = cap
+                PTPurchaseId = id,
+                RequestedByUserId = actor,
+                RequestedStartDate = input.StartDate,
+                RequestedEndDate = input.ResumeDate,
+                Reason = input.Reason.Trim(),
+                MinimumDaysSnapshot = minimum,
+                MaxDaysSnapshot = cap
             };
             db.PTFreezes.Add(freeze);
             foreach (var session in p.Sessions.Where(s => s.SessionDate >= input.StartDate && s.SessionDate < input.ResumeDate &&
@@ -170,8 +174,12 @@ public sealed partial class PersonalTrainingService
                     original.CancelledAt = Now;
                     purchase.Sessions.Add(new PTSession
                     {
-                        PTUserId = original.PTUserId, MemberUserId = original.MemberUserId, SessionDate = slot.Date,
-                        StartTime = slot.StartTime, EndTime = slot.EndTime, CreditUnits = original.CreditUnits,
+                        PTUserId = original.PTUserId,
+                        MemberUserId = original.MemberUserId,
+                        SessionDate = slot.Date,
+                        StartTime = slot.StartTime,
+                        EndTime = slot.EndTime,
+                        CreditUnits = original.CreditUnits,
                         ReplacementForSessionId = original.Id
                     });
                 }

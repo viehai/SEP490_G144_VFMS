@@ -17,6 +17,7 @@ public sealed partial class MembershipPurchaseApiTests
 
     [Theory]
     [InlineData("no-worker", true)]
+    [InlineData("grace", true)]
     [InlineData("expired", true)]
     [InlineData("reallocated", false)]
     [InlineData("cancelled", false)]
@@ -37,7 +38,7 @@ public sealed partial class MembershipPurchaseApiTests
             Assert.Equal(HttpStatusCode.OK, cancelled.StatusCode);
         }
 
-        _clock.Now = deadline.AddMinutes(2);
+        _clock.Now = deadline.AddMinutes(situation == "grace" ? 2 : 6);
         if (situation is "expired" or "reallocated")
         {
             await using var scope = _app.Services.CreateAsyncScope();
@@ -49,6 +50,14 @@ public sealed partial class MembershipPurchaseApiTests
             var next = await CreateLockerCheckout(member, "/api/lockers/rentals", request);
             replacement = next.GetProperty("orderNumber").GetString();
         }
+        if (situation == "grace")
+        {
+            var waiting = await member.GetFromJsonAsync<JsonElement>($"/api/lockers/orders/{number}");
+            Assert.Equal("AwaitingConfirmation", waiting.GetProperty("status").GetString());
+            Assert.Equal(JsonValueKind.Null, waiting.GetProperty("vietQr").ValueKind);
+            using var blocked = await member.PostAsJsonAsync("/api/lockers/rentals", request);
+            Assert.Equal(HttpStatusCode.Conflict, blocked.StatusCode);
+        }
 
         var code = checkout.GetProperty("vietQr").GetProperty("transferContent").GetString()!;
         var amount = checkout.GetProperty("amountDue").GetDecimal();
@@ -57,7 +66,7 @@ public sealed partial class MembershipPurchaseApiTests
         using var replay = await NotifyTransferAsync(code, amount, 913, transferAt);
         Assert.Equal(HttpStatusCode.OK, replay.StatusCode);
         var order = await member.GetFromJsonAsync<JsonElement>($"/api/lockers/orders/{number}");
-        Assert.Equal(fulfilled ? "Paid" : "ReconciliationRequired", order.GetProperty("status").GetString());
+        Assert.Equal(fulfilled ? "Paid" : "RefundPending", order.GetProperty("status").GetString());
         var refunds = await staff.GetFromJsonAsync<JsonElement>("/api/lockers/staff/refunds");
         Assert.Equal(fulfilled ? 0 : 1, refunds.GetArrayLength());
         if (fulfilled)
@@ -112,13 +121,13 @@ public sealed partial class MembershipPurchaseApiTests
         var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
         Assert.Equal(1, await db.Invoices.CountAsync());
         Assert.Equal(1, await db.MemberMemberships.CountAsync());
-        Assert.Equal(1, await db.LockerRentalPayments.CountAsync(p => p.Purpose == LockerPaymentPurpose.UnappliedTransfer));
+        Assert.Equal(1, await db.PaymentTransactions.CountAsync(p => p.LockerPurpose == LockerPaymentPurpose.UnappliedTransfer));
     }
 
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task LockerExpiredPaymentOrPickupReleasesTheLockerAndTracksRefund(bool latePayment)
+    public async Task LockerLateTransferRequestsARefundButUncollectedMonthlyRentalStartsAutomatically(bool latePayment)
     {
         var (lockerId, policyId) = await PrepareLocker();
         using var member = Client("member", "Member");
@@ -134,17 +143,37 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Equal(HttpStatusCode.OK, paid.StatusCode);
         if (!latePayment)
         {
-            _clock.Now = transfer.AddHours(24);
+            var start = new DateTimeOffset(Today.AddDays(2).ToDateTime(TimeOnly.MinValue), TimeSpan.FromHours(7));
+            _clock.Now = start.AddDays(1);
             await using var scope = _app.Services.CreateAsyncScope();
             await scope.ServiceProvider.GetRequiredService<LockerService>().Expire(CancellationToken.None);
+            var rental = await member.GetFromJsonAsync<JsonElement>("/api/lockers/my-rental");
+            Assert.Equal("PendingHandover", rental.GetProperty("status").GetString());
+            var id = rental.GetProperty("id").GetInt32();
+            var expiry = rental.GetProperty("expiresAt").GetDateTime();
+            Assert.Equal(start.UtcDateTime.AddMonths(1), expiry);
+            using var handedOver = await staff.PostAsJsonAsync($"/api/lockers/staff/rentals/{id}/handover", LockerHandover);
+            Assert.Equal(HttpStatusCode.OK, handedOver.StatusCode);
+            var after = await handedOver.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal(expiry, after.GetProperty("expiresAt").GetDateTime());
+            Assert.Empty((await member.GetFromJsonAsync<JsonElement>("/api/checkout-refunds/mine")).EnumerateArray());
+            return;
         }
         var grid = await member.GetFromJsonAsync<JsonElement>("/api/lockers");
         Assert.Equal("Available", Assert.Single(grid.EnumerateArray()).GetProperty("status").GetString());
         var refunds = await staff.GetFromJsonAsync<JsonElement>("/api/lockers/staff/refunds");
         var pending = Assert.Single(refunds.EnumerateArray());
         Assert.Equal(amount, pending.GetProperty("refundAmount").GetDecimal());
-        var refundPath = $"/api/lockers/staff/orders/{orderNumber}/refund";
-        using var completed = await staff.PostAsJsonAsync(refundPath, new { method = "BankTransfer", reference = "TRANSFER-REFUND" });
+        var automatic = Assert.Single((await member.GetFromJsonAsync<JsonElement>("/api/checkout-refunds/mine")).EnumerateArray());
+        Assert.Equal(amount, automatic.GetProperty("amount").GetDecimal());
+        Assert.Equal("Pending", automatic.GetProperty("status").GetString());
+        Assert.Equal(orderNumber, automatic.GetProperty("orderNumber").GetString());
+        var refundPath = $"/api/checkout-refunds/{automatic.GetProperty("id").GetInt32()}/outcome";
+        using var failed = await staff.PostAsJsonAsync(refundPath, new { succeeded = false });
+        Assert.Equal(HttpStatusCode.OK, failed.StatusCode);
+        var failedRefund = await failed.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Failed", failedRefund.GetProperty("status").GetString());
+        using var completed = await staff.PostAsJsonAsync(refundPath, new { succeeded = true, reference = "TRANSFER-REFUND" });
         Assert.True(completed.StatusCode == HttpStatusCode.OK, await completed.Content.ReadAsStringAsync());
         var result = await completed.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("Refunded", result.GetProperty("status").GetString());
@@ -154,8 +183,10 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Empty(rest.EnumerateArray());
     }
 
-    [Fact]
-    public async Task LockerDailyCashReturnsDepositAndReleasesLockerExactlyOnce()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LockerDailyCashSettlesDepositUsingRecordedKeyOutcome(bool keyLost)
     {
         var (lockerId, _) = await PrepareLocker();
         _clock.Now = new DateTimeOffset(Today.ToDateTime(new TimeOnly(10, 0)), TimeSpan.FromHours(7));
@@ -164,8 +195,14 @@ public sealed partial class MembershipPurchaseApiTests
         using var member = Client("member", "Member");
         using var policy = await manager.PutAsJsonAsync("/api/lockers/manager/pricing", new
         {
-            dailyFee = 20_000, dailyDeposit = 100_000, oneMonth = 200_000, threeMonths = 550_000,
-            sixMonths = 1_000_000, twelveMonths = 1_900_000, overdueDailyFee = 10_000, keyReplacementFee = 100_000
+            dailyFee = 20_000,
+            dailyDeposit = 100_000,
+            oneMonth = 200_000,
+            threeMonths = 550_000,
+            sixMonths = 1_000_000,
+            twelveMonths = 1_900_000,
+            overdueDailyFee = 10_000,
+            keyReplacementFee = 100_000
         });
         Assert.True(policy.StatusCode == HttpStatusCode.OK, await policy.Content.ReadAsStringAsync());
         var tiers = await policy.Content.ReadFromJsonAsync<JsonElement>();
@@ -174,29 +211,42 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Equal(HttpStatusCode.BadRequest, online.StatusCode);
         var checkout = await CreateLockerCheckout(staff, "/api/lockers/staff/rentals",
             new { memberId = "member", lockerId, policyId, paymentMethod = "Cash" });
-        var orderNumber = checkout.GetProperty("orderNumber").GetString();
         var rentalId = checkout.GetProperty("rentalId").GetInt32();
         Assert.Equal(120_000, checkout.GetProperty("amountDue").GetDecimal());
-        using var paid = await staff.PostAsJsonAsync($"/api/lockers/staff/orders/{orderNumber}/cash", new { amount = 120_000 });
-        Assert.True(paid.StatusCode == HttpStatusCode.OK, await paid.Content.ReadAsStringAsync());
         var rentalPath = $"/api/lockers/staff/rentals/{rentalId}";
-        using var handover = await staff.PostAsJsonAsync($"{rentalPath}/handover", LockerHandover);
+        using var handover = await staff.PostAsJsonAsync($"{rentalPath}/handover",
+            new { termsAccepted = true, identityVerified = true, cashAmount = 120_000 });
         Assert.True(handover.StatusCode == HttpStatusCode.OK, await handover.Content.ReadAsStringAsync());
         var rental = await handover.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(_clock.Now.UtcDateTime.Date.AddHours(15), rental.GetProperty("expiresAt").GetDateTime());
         Assert.Equal(100_000, rental.GetProperty("depositHeld").GetDecimal());
+        if (keyLost)
+        {
+            using var confirmed = await staff.PostAsync($"{rentalPath}/key-loss", null);
+            Assert.Equal(HttpStatusCode.OK, confirmed.StatusCode);
+            var quote = await confirmed.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal(100_000, quote.GetProperty("forfeitedDeposit").GetDecimal());
+            Assert.Equal(0, quote.GetProperty("additionalAmountDue").GetDecimal());
+        }
+        else
+        {
+            _clock.Now = new DateTimeOffset(rental.GetProperty("expiresAt").GetDateTime()).AddSeconds(1);
+            var outstanding = await member.GetFromJsonAsync<JsonElement>("/api/lockers/my-rental");
+            Assert.True(outstanding.GetProperty("dailyKeyOutstanding").GetBoolean());
+            Assert.Equal(100_000, outstanding.GetProperty("depositHeld").GetDecimal());
+        }
         var close = new { lockerEmpty = true, lockSafe = true, refundMethod = "Cash" };
         using var terminate = await staff.PostAsJsonAsync($"{rentalPath}/terminate", close);
         Assert.True(terminate.StatusCode == HttpStatusCode.OK, await terminate.Content.ReadAsStringAsync());
         var closed = await terminate.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("Terminated", closed.GetProperty("status").GetString());
-        Assert.Equal(100_000, closed.GetProperty("refundedDeposit").GetDecimal());
+        Assert.Equal(keyLost ? 0 : 100_000, closed.GetProperty("refundedDeposit").GetDecimal());
         using var retry = await staff.PostAsJsonAsync($"{rentalPath}/terminate", close);
         Assert.Equal(HttpStatusCode.OK, retry.StatusCode);
         await using var scope = _app.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
-        Assert.Equal(1, await db.LockerRentalPayments.CountAsync());
-        Assert.Equal(LockerStatus.Available, (await db.Lockers.SingleAsync()).LockerStatus);
+        Assert.Equal(1, await db.PaymentTransactions.CountAsync(p => p.LockerRentalContractId == rentalId));
+        Assert.Equal(keyLost ? LockerStatus.Maintenance : LockerStatus.Available, (await db.Lockers.SingleAsync()).LockerStatus);
         Assert.Equal(1, await db.AuditLogs.CountAsync(a => a.NewValue!.StartsWith("LockerTerminated:")));
     }
 
@@ -230,18 +280,47 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.True(handedOver.StatusCode == HttpStatusCode.OK, await handedOver.Content.ReadAsStringAsync());
         var original = await handedOver.Content.ReadFromJsonAsync<JsonElement>();
         var originalExpiry = original.GetProperty("expiresAt").GetDateTime();
-        Assert.Equal(_clock.Now.UtcDateTime.AddMonths(1), originalExpiry);
+        Assert.Equal(new DateTimeOffset(endOfMonth.AddMonths(1).ToDateTime(TimeOnly.MinValue), TimeSpan.FromHours(7)).UtcDateTime,
+            originalExpiry);
+        int replacementId;
+        await using (var scope = _app.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+            var zone = await db.LockerZones.SingleAsync();
+            var replacement = new Locker { LockerNumber = "A02", LockerZone = zone };
+            db.Lockers.Add(replacement);
+            await db.SaveChangesAsync();
+            replacementId = replacement.Id;
+        }
+        using var broken = await staff.PutAsJsonAsync($"/api/lockers/staff/grid/{lockerId}/maintenance",
+            new { maintenance = true });
+        Assert.Equal(HttpStatusCode.OK, broken.StatusCode);
+        using var select = await member.PostAsJsonAsync($"/api/lockers/rentals/{id}/replacement", new { lockerId = replacementId });
+        Assert.True(select.StatusCode == HttpStatusCode.OK, await select.Content.ReadAsStringAsync());
+        var grid = await member.GetFromJsonAsync<JsonElement>("/api/lockers");
+        Assert.Equal("Reserved", Assert.Single(grid.EnumerateArray(), slot => slot.GetProperty("id").GetInt32() == replacementId)
+            .GetProperty("status").GetString());
+        using var relocate = await staff.PostAsJsonAsync($"{staffPath}/replacement/handover", new { lockerId = replacementId });
+        Assert.True(relocate.StatusCode == HttpStatusCode.OK, await relocate.Content.ReadAsStringAsync());
+        var relocated = await relocate.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(id, relocated.GetProperty("id").GetInt32());
+        Assert.Equal(originalExpiry, relocated.GetProperty("expiresAt").GetDateTime());
+        Assert.Equal(replacementId, relocated.GetProperty("locker").GetProperty("id").GetInt32());
 
-        _clock.Now = new DateTimeOffset(originalExpiry).AddDays(-1);
-        var renewal = await CreateLockerCheckout(staff, $"{staffPath}/renew", new { policyId, paymentMethod = "Cash" });
-        var renewalNumber = renewal.GetProperty("orderNumber").GetString();
-        using var renewed = await staff.PostAsJsonAsync($"/api/lockers/staff/orders/{renewalNumber}/cash", new { amount = 250_000 });
+        _clock.Now = new DateTimeOffset(originalExpiry).AddMinutes(-2);
+        var renewal = await CreateLockerCheckout(member, $"/api/lockers/rentals/{id}/renew", new { policyId });
+        var renewalCode = renewal.GetProperty("vietQr").GetProperty("transferContent").GetString()!;
+        var amountDue = renewal.GetProperty("amountDue").GetDecimal();
+        Assert.Equal(250_000, amountDue);
+        var transferred = _clock.Now.AddMinutes(1);
+        _clock.Now = _clock.Now.AddMinutes(3);
+        using var renewed = await NotifyTransferAsync(renewalCode, amountDue, 915, transferred);
         Assert.Equal(HttpStatusCode.OK, renewed.StatusCode);
         var mine = await member.GetFromJsonAsync<JsonElement>("/api/lockers/my-rental");
-        Assert.Equal(lockerId, mine.GetProperty("locker").GetProperty("id").GetInt32());
+        Assert.Equal(replacementId, mine.GetProperty("locker").GetProperty("id").GetInt32());
         var renewedExpiry = mine.GetProperty("expiresAt").GetDateTime();
         Assert.Equal(originalExpiry.AddMonths(1), renewedExpiry);
-        _clock.Now = new DateTimeOffset(renewedExpiry).AddDays(7);
+        _clock.Now = new DateTimeOffset(renewedExpiry).AddDays(7).AddSeconds(-1);
         var inventory = new { inventory = new[] { new { name = "Khăn", quantity = 1 } } };
         using var tooEarly = await staff.PostAsJsonAsync($"{staffPath}/clearance", inventory);
         Assert.Equal(HttpStatusCode.Conflict, tooEarly.StatusCode);
@@ -258,7 +337,7 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Equal("Abandoned", abandoned.GetProperty("status").GetString());
         Assert.Equal("Maintenance", abandoned.GetProperty("locker").GetProperty("status").GetString());
         Assert.Equal(180_000, abandoned.GetProperty("outstandingAmount").GetDecimal());
-        using var safe = await staff.PutAsJsonAsync($"/api/lockers/staff/grid/{lockerId}/maintenance",
+        using var safe = await staff.PutAsJsonAsync($"/api/lockers/staff/grid/{replacementId}/maintenance",
             new { maintenance = false, safeInspection = true });
         Assert.Equal(HttpStatusCode.OK, safe.StatusCode);
     }
@@ -273,7 +352,9 @@ public sealed partial class MembershipPurchaseApiTests
         var component = await db.PackageComponents.SingleAsync(c => c.PackageId == _basic);
         db.Orders.Add(new Order
         {
-            OrderNumber = "LOCKER-TEST-GYM", PurchaserUserId = "member", OrderStatus = OrderStatus.Paid,
+            OrderNumber = "LOCKER-TEST-GYM",
+            PurchaserUserId = "member",
+            OrderStatus = OrderStatus.Paid,
             Items = [new OrderItem
             {
                 PackageId = _basic, BeneficiaryUserId = "member",
@@ -286,13 +367,17 @@ public sealed partial class MembershipPurchaseApiTests
         });
         var policy = new LockerPricingPolicy
         {
-            PolicyName = "1 tháng", RentalType = RentalType.Monthly, RentalPrice = 250_000,
-            OverdueDailyFee = 10_000, KeyReplacementFee = 100_000
+            PolicyName = "1 tháng",
+            RentalType = RentalType.Monthly,
+            RentalPrice = 250_000,
+            OverdueDailyFee = 10_000,
+            KeyReplacementFee = 100_000
         };
         db.LockerPricingPolicies.Add(policy);
         var locker = new Locker
         {
-            LockerNumber = "A01", LockerZone = new LockerZone { Gym = gym, ZoneName = "A", FloorNumber = 1 }
+            LockerNumber = "A01",
+            LockerZone = new LockerZone { Gym = gym, ZoneName = "A", FloorNumber = 1 }
         };
         db.Lockers.Add(locker);
         await db.SaveChangesAsync();

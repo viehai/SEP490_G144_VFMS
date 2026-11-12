@@ -78,7 +78,10 @@ public sealed partial class PersonalTrainingService
             slot.IsDeleted = true;
         db.PTAvailabilities.AddRange(added.Select(s => new PTAvailability
         {
-            PTUserId = actor, DayOfWeek = s.DayOfWeek, StartTime = s.StartTime, EndTime = s.StartTime.AddHours(1)
+            PTUserId = actor,
+            DayOfWeek = s.DayOfWeek,
+            StartTime = s.StartTime,
+            EndTime = s.StartTime.AddHours(1)
         }));
         await db.SaveChangesAsync(ct);
         return Result<bool>.Success(true);

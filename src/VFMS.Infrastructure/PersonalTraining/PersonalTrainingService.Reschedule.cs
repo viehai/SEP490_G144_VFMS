@@ -41,10 +41,15 @@ public sealed partial class PersonalTrainingService
         bookings.AddRange(await Yoga(contract.PTUserId, null, start, through)
             .Select(s => new PTRescheduleSlot(s.ScheduledDate, s.StartTime, s.EndTime, "Busy")).ToListAsync(ct));
 
-        var slots = candidates.Select(s => new PTRescheduleSlot(s.Date, s.StartTime, s.EndTime,
-                conflicts.Contains(s) || IsOriginalTime(session, s.Date, s.StartTime) ? "Busy" :
-                RescheduleTimeEligible(contract, s.Date, s.StartTime, s.EndTime, now, memberships) ? "Available" : "Unavailable"))
-            .Union(bookings).OrderBy(s => s.Date).ThenBy(s => s.StartTime).ThenBy(s => s.EndTime).ToArray();
+        var slots = candidates.Select(slot =>
+        {
+            var busy = conflicts.Contains(slot) || IsOriginalTime(session, slot.Date, slot.StartTime);
+            var status = busy ? "Busy" :
+                RescheduleTimeEligible(contract, slot.Date, slot.StartTime, slot.EndTime, now, memberships)
+                    ? "Available"
+                    : "Unavailable";
+            return new PTRescheduleSlot(slot.Date, slot.StartTime, slot.EndTime, status);
+        }).Union(bookings).OrderBy(s => s.Date).ThenBy(s => s.StartTime).ThenBy(s => s.EndTime).ToArray();
         return Result<IReadOnlyList<PTRescheduleSlot>>.Success(slots);
     }
 

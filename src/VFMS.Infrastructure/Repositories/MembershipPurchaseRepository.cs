@@ -67,6 +67,8 @@ public sealed class MembershipPurchaseRepository(VfmsDbContext context) : IMembe
     public Task<List<Order>> LoadExpiredOrdersAsync(DateTime onlineCutoff, DateTime cashCutoff, CancellationToken ct) =>
         context.Orders.Where(order => order.OrderStatus == OrderStatus.Pending &&
                 order.PaymentTransaction!.PaymentStatus == PaymentStatus.Pending &&
+                !context.PTPurchases.Any(p => p.OrderId == order.Id) &&
+                order.PaymentTransaction.LockerRentalContractId == null &&
                 ((order.Channel == OrderChannel.Online && order.CreatedAt <= onlineCutoff) ||
                  (order.Channel == OrderChannel.Counter && order.CreatedAt <= cashCutoff)))
             .OrderBy(order => order.CreatedAt).Take(100)

@@ -97,15 +97,24 @@ public sealed partial class PersonalTrainingService(VfmsDbContext db, TimeProvid
     private void Audit(string? actor, string entity, int id, string value) =>
         db.AuditLogs.Add(new AuditLog
         {
-            ActorUserId = actor, ActionType = AuditActionType.Update, AuditEntity = entity,
-            EntityId = id, NewValue = value, OccurredAt = Now
+            ActorUserId = actor,
+            ActionType = AuditActionType.Update,
+            AuditEntity = entity,
+            EntityId = id,
+            NewValue = value,
+            OccurredAt = Now
         });
 
     private void Notify(string recipient, string title, string message, string entity, int id) =>
         db.Notifications.Add(new Notification
         {
-            RecipientUserId = recipient, Title = title, Message = message, NotificationType = "PersonalTraining",
-            EntityType = entity, EntityId = id, NotifiedAt = Now
+            RecipientUserId = recipient,
+            Title = title,
+            Message = message,
+            NotificationType = "PersonalTraining",
+            EntityType = entity,
+            EntityId = id,
+            NotifiedAt = Now
         });
 
     public async Task ExpirePending(CancellationToken ct)
@@ -114,14 +123,21 @@ public sealed partial class PersonalTrainingService(VfmsDbContext db, TimeProvid
         await Write(async () =>
         {
             var expired = await db.PTPurchases.Include(p => p.Sessions)
-                .Include(p => p.Order).ThenInclude(o => o!.PaymentTransaction).Where(p =>
+                .Include(p => p.Order).ThenInclude(o => o!.PaymentTransaction)
+                .Include(p => p.Order).ThenInclude(o => o!.VoucherRedemption).Where(p =>
                     p.Status == PTPurchaseStatus.PendingPayment && p.HoldExpiresAt <= now)
                 .OrderBy(p => p.Id).Take(100).ToListAsync(ct);
             foreach (var contract in expired)
             {
                 contract.Status = PTPurchaseStatus.Expired;
-                if (contract.Order is { OrderStatus: OrderStatus.Pending, PaymentTransaction: null } order)
+                if (contract.Order is { OrderStatus: OrderStatus.Pending } order)
+                {
                     order.OrderStatus = OrderStatus.Expired;
+                    if (order.PaymentTransaction is { PaymentStatus: PaymentStatus.Pending } payment)
+                        payment.PaymentStatus = PaymentStatus.Cancelled;
+                    if (order.VoucherRedemption is { RedemptionStatus: VoucherRedemptionStatus.Reserved } voucher)
+                        voucher.RedemptionStatus = VoucherRedemptionStatus.Released;
+                }
                 foreach (var session in contract.Sessions.Where(s => s.SessionStatus == PTSessionStatus.CheckoutHold))
                     session.SessionStatus = PTSessionStatus.Cancelled;
             }

@@ -61,6 +61,11 @@ public sealed class LockersController(LockerService service) : ControllerBase
     public Task<IActionResult> Renew(int id, LockerRenewalRequest request, CancellationToken ct) =>
         AsUser(actor => service.Renew(actor, UserRole.Member, id, request, ct));
 
+    [HttpPost("rentals/{id:int}/replacement")]
+    [Authorize(Roles = "Member")]
+    public Task<IActionResult> SelectReplacement(int id, LockerRelocationRequest request, CancellationToken ct) =>
+        AsUser(actor => service.SelectReplacement(actor, id, request.LockerId, ct));
+
     [HttpGet("staff/grid")]
     [Authorize(Roles = "Staff,Manager")]
     public Task<IActionResult> DeskGrid(CancellationToken ct) => AsUser(actor => service.Grid(actor, DeskRole, ct));
@@ -118,6 +123,16 @@ public sealed class LockersController(LockerService service) : ControllerBase
     [Authorize(Roles = "Staff")]
     public Task<IActionResult> DeskRenew(int id, LockerRenewalRequest request, CancellationToken ct) =>
         AsUser(actor => service.Renew(actor, UserRole.Staff, id, request, ct));
+
+    [HttpPost("staff/rentals/{id:int}/replacement/handover")]
+    [Authorize(Roles = "Staff")]
+    public Task<IActionResult> ConfirmReplacement(int id, LockerRelocationRequest request, CancellationToken ct) =>
+        AsUser(actor => service.ConfirmRelocation(actor, id, request.LockerId, ct));
+
+    [HttpPost("staff/rentals/{id:int}/key-loss")]
+    [Authorize(Roles = "Staff")]
+    public Task<IActionResult> ConfirmKeyLoss(int id, CancellationToken ct) =>
+        AsUser(actor => service.ConfirmKeyLoss(actor, id, ct));
 
     [HttpGet("staff/rentals/{id:int}/settlement")]
     [Authorize(Roles = "Staff")]

@@ -7,12 +7,15 @@ using VFMS.Contracts.Memberships;
 using VFMS.Contracts.PersonalTraining;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
+using VFMS.Infrastructure.Payments;
 
 namespace VFMS.Infrastructure.PersonalTraining;
 
 public sealed partial class PersonalTrainingService
 {
-    private static readonly TimeSpan HoldDuration = TimeSpan.FromMinutes(15);
+    private static readonly TimeSpan PaymentDuration = TimeSpan.FromMinutes(15);
+    private static readonly TimeSpan HoldDuration = TimeSpan.FromMinutes(20);
+    private static DateTime PaymentDeadline(Order order) => order.CreatedAt.Add(PaymentDuration);
     private sealed record Booking(PTBookingPreview Preview, Package Package, TrainerProfile Trainer,
         ApplicationUser TrainerUser, PTAvailability[] Pattern);
 
@@ -151,20 +154,31 @@ public sealed partial class PersonalTrainingService
 
             var purchase = new PTPurchase
             {
-                Order = order, MemberMembershipId = eligible.Data!.Id, MemberUserId = actor,
-                PTUserId = request.TrainerId, Status = PTPurchaseStatus.PendingPayment,
-                HoldExpiresAt = now.Add(HoldDuration), PackageNameSnapshot = booking.Package.Name,
-                TrainerLevelSnapshot = booking.Trainer.Level, PurchaseDate = Today,
+                Order = order,
+                MemberMembershipId = eligible.Data!.Id,
+                MemberUserId = actor,
+                PTUserId = request.TrainerId,
+                Status = PTPurchaseStatus.PendingPayment,
+                HoldExpiresAt = now.Add(HoldDuration),
+                PackageNameSnapshot = booking.Package.Name,
+                TrainerLevelSnapshot = booking.Trainer.Level,
+                PurchaseDate = Today,
                 FreezeMinimumDaysSnapshot = component.PTFreezeMinimumDays ?? 0,
                 FreezeMaxTotalDaysSnapshot = component.PTFreezeMaxTotalDays ?? 0,
-                StartDate = request.StartDate, EndDate = booking.Preview.ExpiresOn,
-                PurchasePrice = booking.Package.Price, TotalSessions = booking.Preview.Sessions.Count,
+                StartDate = request.StartDate,
+                EndDate = booking.Preview.ExpiresOn,
+                PurchasePrice = booking.Package.Price,
+                TotalSessions = booking.Preview.Sessions.Count,
                 RemainingSessions = booking.Preview.Sessions.Count,
                 WeeklyPatternJson = JsonSerializer.Serialize(booking.Pattern.Select(p => new PTSlotInput(p.DayOfWeek!.Value, p.StartTime))),
                 Sessions = booking.Preview.Sessions.Select(s => new PTSession
                 {
-                    PTAvailabilityId = s.TemplateId, PTUserId = request.TrainerId, MemberUserId = actor,
-                    SessionDate = s.Date, StartTime = s.StartTime, EndTime = s.EndTime,
+                    PTAvailabilityId = s.TemplateId,
+                    PTUserId = request.TrainerId,
+                    MemberUserId = actor,
+                    SessionDate = s.Date,
+                    StartTime = s.StartTime,
+                    EndTime = s.EndTime,
                     SessionStatus = PTSessionStatus.CheckoutHold
                 }).ToList()
             };
@@ -187,8 +201,8 @@ public sealed partial class PersonalTrainingService
             if (purchase is null)
                 return Missing<PTCheckoutResponse>();
             var now = Now;
-            if (purchase.Status != PTPurchaseStatus.PendingPayment || purchase.HoldExpiresAt is not { } expiry ||
-                expiry <= now || order.OrderStatus != OrderStatus.Pending)
+            if (purchase.Status != PTPurchaseStatus.PendingPayment || PaymentDeadline(order) <= now ||
+                order.OrderStatus != OrderStatus.Pending)
                 return Conflict<PTCheckoutResponse>("Đơn PT đã hết hạn hoặc đã được xử lý.");
 
             if (order.PaymentTransaction is { } issued)
@@ -213,7 +227,10 @@ public sealed partial class PersonalTrainingService
             order.VoucherRedemption = voucher;
             order.PaymentTransaction = new PaymentTransaction
             {
-                UserId = actor, GatewayName = "SePay", PaymentMethod = PaymentMethod.VietQR, AmountDue = due
+                UserId = actor,
+                GatewayName = "SePay",
+                PaymentMethod = PaymentMethod.VietQR,
+                AmountDue = due
             };
             purchase.PurchasePrice = due;
             await db.SaveChangesAsync(ct);
@@ -230,17 +247,25 @@ public sealed partial class PersonalTrainingService
         if (purchase?.Order is not { } order)
             return Missing<PTCheckoutResponse>();
         var now = Now;
-        var qr = order.OrderStatus == OrderStatus.Pending && purchase.HoldExpiresAt > now &&
+        var qr = order.OrderStatus == OrderStatus.Pending && PaymentDeadline(order) > now &&
             order.PaymentTransaction is { } payment ? gateway.CreateVietQr(order.OrderNumber, payment.AmountDue) : null;
         return Result<PTCheckoutResponse>.Success(CheckoutResponse(purchase, order, qr, now));
     }
 
     private static PTCheckoutResponse CheckoutResponse(PTPurchase purchase, Order order, VietQrPaymentResponse? qr, DateTime now) =>
         new(purchase.Id, order.OrderNumber,
-            (order.OrderStatus == OrderStatus.Pending && purchase.HoldExpiresAt <= now ? OrderStatus.Expired : order.OrderStatus).ToString(),
+            order.PaymentTransaction?.RefundStatus switch
+            {
+                "Pending" => "RefundPending",
+                "Refunded" => "Refunded",
+                "Failed" => "RefundFailed",
+                _ when order.OrderStatus == OrderStatus.Pending && purchase.HoldExpiresAt <= now => "Expired",
+                _ when order.OrderStatus == OrderStatus.Pending && PaymentDeadline(order) <= now => "AwaitingConfirmation",
+                _ => order.OrderStatus.ToString()
+            },
             order.PaymentTransaction?.AmountDue ?? purchase.PurchasePrice,
-            DateTime.SpecifyKind(purchase.HoldExpiresAt!.Value, DateTimeKind.Utc),
-            qr, order.PaymentTransaction?.Invoice?.InvoiceNumber);
+            DateTime.SpecifyKind(PaymentDeadline(order), DateTimeKind.Utc),
+            qr, order.PaymentTransaction?.Invoice?.InvoiceNumber, DateTime.SpecifyKind(purchase.HoldExpiresAt!.Value, DateTimeKind.Utc));
 
     private async Task<VoucherRedemption?> ReserveVoucher(string actor, string code, decimal price, DateTime now, CancellationToken ct)
     {
@@ -257,7 +282,9 @@ public sealed partial class PersonalTrainingService
         discount = decimal.Floor(discount);
         return discount > 0 && discount < price ? new VoucherRedemption
         {
-            VoucherId = voucher.Id, DiscountAmount = discount, RedeemedAt = now
+            VoucherId = voucher.Id,
+            DiscountAmount = discount,
+            RedeemedAt = now
         } : null;
     }
 
@@ -280,21 +307,27 @@ public sealed partial class PersonalTrainingService
             return null;
         var payment = order.PaymentTransaction!;
         var now = clock.GetUtcNow();
-        if (payment.GatewayTransactionReference == transfer.TransactionId)
+        if (await CheckoutRefunds.IsRecorded(db, payment, transfer.TransactionId, ct))
             return Result<SepayWebhookResponse>.Success(new(true));
         var created = new DateTimeOffset(DateTime.SpecifyKind(order.CreatedAt, DateTimeKind.Utc));
-        if (contract.Status is not (PTPurchaseStatus.PendingPayment or PTPurchaseStatus.Expired) ||
-            order.OrderStatus is not (OrderStatus.Pending or OrderStatus.Expired) ||
-            payment.AmountDue != transfer.Amount || transfer.TransferredAt.ToUnixTimeSeconds() < created.ToUnixTimeSeconds() ||
+        if (transfer.TransferredAt.ToUnixTimeSeconds() < created.ToUnixTimeSeconds() ||
             await payments.SepayReferenceUsedAsync(transfer.TransactionId, ct))
             return Result<SepayWebhookResponse>.Failure("Không thể xác nhận thanh toán PT.", "PT_PAYMENT_REJECTED", 409);
+        if (payment.GatewayTransactionReference is not null || order.OrderStatus == OrderStatus.Paid)
+        {
+            CheckoutRefunds.RecordExtraTransfer(db, payment, transfer, now.UtcDateTime);
+            await db.SaveChangesAsync(ct);
+            return Result<SepayWebhookResponse>.Success(new(true));
+        }
 
         var slots = contract.Sessions.Select(s => new PTCalendarSlot(s.PTAvailabilityId ?? 0, s.SessionDate,
             s.StartTime, s.EndTime, "Available")).ToArray();
         var lastDate = slots.Select(s => s.Date).DefaultIfEmpty().Max();
         var redemption = await db.VoucherRedemptions.Include(r => r.Voucher)
             .SingleOrDefaultAsync(r => r.OrderId == order.Id, ct);
-        if (contract.HoldExpiresAt is not { } expiry || transfer.TransferredAt.UtcDateTime >= expiry ||
+        if (contract.Status is not (PTPurchaseStatus.PendingPayment or PTPurchaseStatus.Expired) ||
+            order.OrderStatus is not (OrderStatus.Pending or OrderStatus.Expired) ||
+            payment.AmountDue != transfer.Amount || transfer.TransferredAt.UtcDateTime >= PaymentDeadline(order) ||
             slots.Length != contract.TotalSessions || slots.Length == 0 ||
             slots.Any(s => Utc(s.Date, s.StartTime) <= now.UtcDateTime) ||
             (redemption?.RedemptionStatus == VoucherRedemptionStatus.Released &&
@@ -302,18 +335,13 @@ public sealed partial class PersonalTrainingService
             !await Coverage(contract.MemberUserId).AnyAsync(m => m.StartDate <= Today && m.EndDate >= lastDate, ct) ||
             await HasConflict(contract.PTUserId, contract.MemberUserId, slots, now.UtcDateTime, ct, ignorePurchase: contract.Id))
         {
-            payment.GatewayTransactionReference = transfer.TransactionId;
-            payment.AmountReceived = transfer.Amount;
-            payment.PaidAt = transfer.TransferredAt.UtcDateTime;
-            payment.RawGatewayStatus = "PT_RECONCILIATION_REQUIRED";
-            payment.PaymentStatus = PaymentStatus.Cancelled;
-            order.OrderStatus = OrderStatus.Expired;
+            CheckoutRefunds.RecordUnappliedTransfer(db, payment, transfer, now.UtcDateTime);
             contract.Status = PTPurchaseStatus.Expired;
             foreach (var session in contract.Sessions)
                 session.SessionStatus = PTSessionStatus.Cancelled;
             if (redemption is not null)
                 redemption.RedemptionStatus = VoucherRedemptionStatus.Released;
-            Audit(null, nameof(PTPurchase), contract.Id, "PT_RECONCILIATION_REQUIRED");
+            Audit(null, nameof(PTPurchase), contract.Id, "PT_REFUND_REQUESTED");
             await db.SaveChangesAsync(ct);
             return Result<SepayWebhookResponse>.Success(new(true));
         }
