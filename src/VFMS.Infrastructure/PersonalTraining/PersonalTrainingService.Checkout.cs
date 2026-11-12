@@ -32,6 +32,8 @@ public sealed partial class PersonalTrainingService
         var trainer = await User(request.TrainerId, UserRole.PT, ct);
         if (trainer is null || trainer.GymId != member.GymId || actor == request.TrainerId)
             return Missing<Booking>();
+        if (await ActiveYogaAssignments.AnyAsync(c => c.InstructorUserId == request.TrainerId, ct))
+            return Conflict<Booking>("Huấn luyện viên đang phụ trách lớp Yoga.");
         var profile = await db.TrainerProfiles.SingleOrDefaultAsync(p => p.PTUserId == request.TrainerId && p.IsActive, ct);
         var package = await PTPackages.SingleOrDefaultAsync(p => p.Id == request.PackageId &&
             p.PackageStatus == PackageStatus.Active, ct);
@@ -94,7 +96,8 @@ public sealed partial class PersonalTrainingService
         var otherTrainers = await ActiveUsers.Include(u => u.Gym)
             .Where(u => u.GymId == gymId && u.UserId != actor && u.UserId != request.TrainerId &&
                 u.TrainerProfile != null && u.TrainerProfile.IsActive && u.TrainerProfile.Level == level &&
-                u.UserRoles.Any(r => r.Role.RoleName == nameof(UserRole.PT)))
+                u.UserRoles.Any(r => r.Role.RoleName == nameof(UserRole.PT)) &&
+                !ActiveYogaAssignments.Any(c => c.InstructorUserId == u.UserId))
             .OrderBy(u => u.UserId).Take(4).ToListAsync(ct);
         var suggestions = new List<PTScheduleSuggestion>();
         var credits = booking.Package.Components.Single().SessionCount!.Value;
@@ -332,6 +335,7 @@ public sealed partial class PersonalTrainingService
             slots.Any(s => Utc(s.Date, s.StartTime) <= now.UtcDateTime) ||
             (redemption?.RedemptionStatus == VoucherRedemptionStatus.Released &&
                 !await VoucherHasCapacity(redemption.Voucher, contract.MemberUserId, ct, order.Id)) ||
+            await ActiveYogaAssignments.AnyAsync(c => c.InstructorUserId == contract.PTUserId, ct) ||
             !await Coverage(contract.MemberUserId).AnyAsync(m => m.StartDate <= Today && m.EndDate >= lastDate, ct) ||
             await HasConflict(contract.PTUserId, contract.MemberUserId, slots, now.UtcDateTime, ct, ignorePurchase: contract.Id))
         {

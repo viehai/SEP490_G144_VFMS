@@ -1281,6 +1281,9 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<int?>("ReplacementLockerId")
                         .HasColumnType("int");
 
+                    b.Property<DateTime?>("ReturnedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime?>("SettledAt")
                         .HasColumnType("datetime2");
 

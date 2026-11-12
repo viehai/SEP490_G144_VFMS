@@ -342,6 +342,112 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Equal(HttpStatusCode.OK, safe.StatusCode);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task LockerRenewalUsesTransferTimeAtTheEndOfTheGracePeriod(bool transferredBeforeCutoff)
+    {
+        var (lockerId, policyId) = await PrepareLocker();
+        using var staff = Client("staff", "Staff");
+        using var member = Client("member", "Member");
+        var initial = await CreateLockerCheckout(staff, "/api/lockers/staff/rentals",
+            new { memberId = "member", lockerId, policyId, paymentMethod = "Cash" });
+        var id = initial.GetProperty("rentalId").GetInt32();
+        using var handover = await staff.PostAsJsonAsync($"/api/lockers/staff/rentals/{id}/handover",
+            new { termsAccepted = true, identityVerified = true, cashAmount = 250_000 });
+        Assert.True(handover.IsSuccessStatusCode, await handover.Content.ReadAsStringAsync());
+        var original = await handover.Content.ReadFromJsonAsync<JsonElement>();
+        var originalExpiry = original.GetProperty("expiresAt").GetDateTimeOffset();
+        var graceCutoff = originalExpiry.ToOffset(TimeSpan.FromHours(7)).AddDays(7);
+
+        _clock.Now = graceCutoff.AddMinutes(-5);
+        var renewal = await CreateLockerCheckout(member, $"/api/lockers/rentals/{id}/renew", new { policyId });
+        var amount = renewal.GetProperty("amountDue").GetDecimal();
+        Assert.Equal(320_000, amount);
+        var code = renewal.GetProperty("vietQr").GetProperty("transferContent").GetString()!;
+        var number = renewal.GetProperty("orderNumber").GetString();
+        var transferredAt = transferredBeforeCutoff ? graceCutoff.AddMinutes(-2) : graceCutoff;
+
+        _clock.Now = graceCutoff.AddMinutes(1);
+        using var callback = await NotifyTransferAsync(code, amount, 923, transferredAt);
+        Assert.True(callback.IsSuccessStatusCode, await callback.Content.ReadAsStringAsync());
+
+        var order = await member.GetFromJsonAsync<JsonElement>($"/api/lockers/orders/{number}");
+        Assert.Equal(transferredBeforeCutoff ? "Paid" : "RefundPending", order.GetProperty("status").GetString());
+        var rental = await member.GetFromJsonAsync<JsonElement>("/api/lockers/my-rental");
+        var expectedExpiry = transferredBeforeCutoff ? graceCutoff.AddDays(-1).AddMonths(1) : originalExpiry;
+        Assert.Equal(expectedExpiry, rental.GetProperty("expiresAt").GetDateTimeOffset());
+        var refunds = await member.GetFromJsonAsync<JsonElement>("/api/checkout-refunds/mine");
+        if (transferredBeforeCutoff)
+            Assert.Empty(refunds.EnumerateArray());
+        else
+            Assert.Equal(amount, Assert.Single(refunds.EnumerateArray()).GetProperty("amount").GetDecimal());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LockerReturnFreezesFeesAndOnlyOneSettlementIsAccepted(bool olderTransferArrivesFirst)
+    {
+        var (lockerId, policyId) = await PrepareLocker();
+        using var staff = Client("staff", "Staff");
+        using var member = Client("member", "Member");
+        var initial = await CreateLockerCheckout(staff, "/api/lockers/staff/rentals",
+            new { memberId = "member", lockerId, policyId, paymentMethod = "Cash" });
+        var id = initial.GetProperty("rentalId").GetInt32();
+        var path = $"/api/lockers/staff/rentals/{id}";
+        var initialNumber = initial.GetProperty("orderNumber").GetString();
+        using var cash = await staff.PostAsJsonAsync($"/api/lockers/staff/orders/{initialNumber}/cash", new { amount = 250_000 });
+        Assert.Equal(HttpStatusCode.OK, cash.StatusCode);
+        using var handover = await staff.PostAsJsonAsync($"{path}/handover", LockerHandover);
+        Assert.Equal(HttpStatusCode.OK, handover.StatusCode);
+        var rental = await handover.Content.ReadFromJsonAsync<JsonElement>();
+        _clock.Now = rental.GetProperty("expiresAt").GetDateTimeOffset().AddDays(1).AddMinutes(-5);
+
+        var checkoutRequest = new { paymentMethod = "VietQR" };
+        using var premature = await staff.PostAsJsonAsync($"{path}/settlement", checkoutRequest);
+        Assert.Equal(HttpStatusCode.Conflict, premature.StatusCode);
+        using var returned = await staff.PostAsJsonAsync($"{path}/return", new { lockerEmpty = true });
+        Assert.True(returned.IsSuccessStatusCode, await returned.Content.ReadAsStringAsync());
+        var quote = await returned.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(10_000, quote.GetProperty("overdueFees").GetDecimal());
+        var older = await CreateLockerCheckout(staff, $"{path}/settlement", checkoutRequest);
+        var olderPaidAt = _clock.Now.AddMinutes(2);
+        _clock.Now = _clock.Now.AddMinutes(21);
+        using var repeatedReturn = await staff.PostAsJsonAsync($"{path}/return", new { lockerEmpty = true });
+        Assert.Equal(HttpStatusCode.OK, repeatedReturn.StatusCode);
+        var repeatedQuote = await repeatedReturn.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(quote.GetProperty("returnedAt").GetDateTimeOffset(), repeatedQuote.GetProperty("returnedAt").GetDateTimeOffset());
+        var newer = await CreateLockerCheckout(staff, $"{path}/settlement", checkoutRequest);
+        Assert.Equal(10_000, newer.GetProperty("amountDue").GetDecimal());
+        var olderCode = older.GetProperty("vietQr").GetProperty("transferContent").GetString()!;
+        var newerCode = newer.GetProperty("vietQr").GetProperty("transferContent").GetString()!;
+        var newerPaidAt = _clock.Now.AddMinutes(1);
+        _clock.Now = _clock.Now.AddMinutes(2);
+        var firstCode = olderTransferArrivesFirst ? olderCode : newerCode;
+        var secondCode = olderTransferArrivesFirst ? newerCode : olderCode;
+        var firstPaidAt = olderTransferArrivesFirst ? olderPaidAt : newerPaidAt;
+        var secondPaidAt = olderTransferArrivesFirst ? newerPaidAt : olderPaidAt;
+        using var first = await NotifyTransferAsync(firstCode, 10_000, 921, firstPaidAt);
+        using var second = await NotifyTransferAsync(secondCode, 10_000, 922, secondPaidAt);
+        using var replay = await NotifyTransferAsync(secondCode, 10_000, 922, secondPaidAt);
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, replay.StatusCode);
+
+        var refunds = await member.GetFromJsonAsync<JsonElement>("/api/checkout-refunds/mine");
+        Assert.Equal(10_000, Assert.Single(refunds.EnumerateArray()).GetProperty("amount").GetDecimal());
+        var winning = olderTransferArrivesFirst ? older : newer;
+        using var repeatedSettlement = await staff.PostAsJsonAsync($"{path}/settlement", checkoutRequest);
+        Assert.Equal(HttpStatusCode.OK, repeatedSettlement.StatusCode);
+        var settled = await repeatedSettlement.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(winning.GetProperty("orderNumber").GetString(), settled.GetProperty("orderNumber").GetString());
+        Assert.Equal("Paid", settled.GetProperty("status").GetString());
+        using var terminated = await staff.PostAsJsonAsync($"{path}/terminate",
+            new { lockerEmpty = true, lockSafe = true, settlementOrderNumber = winning.GetProperty("orderNumber").GetString() });
+        Assert.True(terminated.IsSuccessStatusCode, await terminated.Content.ReadAsStringAsync());
+    }
+
     private async Task<(int LockerId, int PolicyId)> PrepareLocker()
     {
         await using var scope = _app.Services.CreateAsyncScope();

@@ -48,6 +48,8 @@ public sealed partial class PersonalTrainingService
         var trainer = await User(actor, UserRole.PT, ct);
         if (trainer is null)
             return Forbidden<bool>();
+        if (await ActiveYogaAssignments.AnyAsync(c => c.InstructorUserId == actor, ct))
+            return Conflict<bool>("Huấn luyện viên đang phụ trách lớp Yoga.");
         if (request.Slots.Any(s => s is null))
             return Invalid<bool>("Mẫu lịch chứa ca không hợp lệ.");
         var desired = request.Slots.Distinct().ToArray();

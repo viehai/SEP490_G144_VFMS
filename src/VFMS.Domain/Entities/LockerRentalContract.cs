@@ -28,6 +28,7 @@ public class LockerRentalContract : BaseEntity
     public DateTime? FinalNoticeAt { get; set; }
     public DateTime? FinalNoticeEmailSentAt { get; set; }
     public DateTime? FinalNoticeRetryAt { get; set; }
+    public DateTime? ReturnedAt { get; set; }
     public DateTime? SettledAt { get; set; }
     public string? SettledByUserId { get; set; }
     public decimal? OutstandingAmount { get; set; }

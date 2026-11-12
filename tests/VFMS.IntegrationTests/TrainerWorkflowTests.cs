@@ -127,11 +127,35 @@ public class TrainerWorkflowTests
         TrainerTestDatabase.Success(await service.Submit(update, customer.UserId, default));
         var firstUpdate = await db.TrainerApplications.SingleAsync(x => x.ApplicationType == "ProfileUpdate");
         TrainerTestDatabase.Success(await service.Review(firstUpdate.Id, new("Reject", "Resubmit certificate"), "manager", default));
-        TrainerTestDatabase.Success(await service.Submit(update, customer.UserId, default));
+        Assert.Equal("TRAINER_PROFILE_UPDATE_COOLDOWN", (await service.Submit(update, customer.UserId, default)).ErrorCode);
+        firstUpdate = await db.TrainerApplications.SingleAsync(x => x.Id == firstUpdate.Id);
+        firstUpdate.SubmittedAt = DateTime.UtcNow.AddMinutes(-10);
+        await db.SaveChangesAsync();
+        var retried = TrainerTestDatabase.Success(await service.Submit(update, customer.UserId, default));
+        Assert.Equal(2, retried.SubmissionAttempt);
         var unchangedAccount = await db.ApplicationUsers.SingleAsync(x => x.UserId == customer.UserId);
         Assert.Equal(passwordBefore, unchangedAccount.PasswordHash); Assert.Equal(customer.Email, unchangedAccount.Email);
         Assert.Null(unchangedAccount.PasswordSetupTokenHash); Assert.Equal(AccountStatus.Active, unchangedAccount.AccountStatus);
         Assert.Equal(2, await db.ApplicationUserRoles.CountAsync(x => x.UserId == customer.UserId));
+    }
+
+    [SqlTrainerFact]
+    public async Task RecruitmentCooldownMatchesEitherIdentityAndAllowsPendingResubmissionAfterTenMinutes()
+    {
+        await using var fixture = new TrainerTestDatabase();
+        await fixture.Initialize();
+        var request = TrainerTestDatabase.Request;
+        var service = fixture.Service;
+        TrainerTestDatabase.Success(await service.Submit(request, null, default));
+        Assert.Equal("RECRUITMENT_COOLDOWN", (await service.Submit(request with { CitizenId = "000000000011" }, null, default)).ErrorCode);
+        Assert.Equal("RECRUITMENT_COOLDOWN", (await service.Submit(request with { Email = "second@example.test" }, null, default)).ErrorCode);
+
+        var original = await fixture.Db.TrainerApplications.SingleAsync();
+        original.SubmittedAt = DateTime.UtcNow.AddMinutes(-10);
+        await fixture.Db.SaveChangesAsync();
+        var resubmission = TrainerTestDatabase.Success(await service.Submit(request with { Email = "second@example.test" }, null, default));
+        Assert.Equal(2, resubmission.SubmissionAttempt);
+        Assert.Equal(2, await fixture.Db.TrainerApplications.CountAsync());
     }
 
     [SqlTrainerFact]
@@ -224,6 +248,9 @@ public class TrainerWorkflowTests
         TrainerTestDatabase.Success(await service.Document(profile.Id, oldFile.Id, null, default));
         Assert.Equal(404, (await service.Document(profile.Id + 1000, pendingFile.Id, null, default)).StatusCode);
         Assert.False((await service.Review(pending.Id, new("Approve", "Repeat"), "manager", default)).IsSuccess);
+        pending = await db.TrainerApplications.SingleAsync(x => x.Id == pending.Id);
+        pending.SubmittedAt = DateTime.UtcNow.AddMinutes(-11);
+        await db.SaveChangesAsync();
         TrainerTestDatabase.Success(await service.Submit(update with { Specialty = "Pilates" }, userId, default));
         var rejected = await db.TrainerApplications.SingleAsync(x => x.ApplicationType == "ProfileUpdate" && x.ApplicationStatus == TrainerApplicationStatus.Pending);
         var profileBeforeReject = await db.TrainerProfiles.AsNoTracking().Select(x => new { x.Specialty, x.CertificatesJson, x.Bio, x.AvatarJson, x.Level, x.CommissionTier }).SingleAsync();
@@ -237,6 +264,9 @@ public class TrainerWorkflowTests
         {
             Certificates = [new("replacement.pdf", "%PDF-1.7 replacement"u8.ToArray(), oldFile.Id)]
         };
+        rejected = await db.TrainerApplications.SingleAsync(x => x.Id == rejected.Id);
+        rejected.SubmittedAt = DateTime.UtcNow.AddMinutes(-10);
+        await db.SaveChangesAsync();
         TrainerTestDatabase.Success(await service.Submit(replacement, userId, default));
         var edit = await db.TrainerApplications.SingleAsync(x => x.ApplicationType == "ProfileUpdate" &&
             x.ApplicationStatus == TrainerApplicationStatus.Pending);

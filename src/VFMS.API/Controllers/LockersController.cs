@@ -134,6 +134,11 @@ public sealed class LockersController(LockerService service) : ControllerBase
     public Task<IActionResult> ConfirmKeyLoss(int id, CancellationToken ct) =>
         AsUser(actor => service.ConfirmKeyLoss(actor, id, ct));
 
+    [HttpPost("staff/rentals/{id:int}/return")]
+    [Authorize(Roles = "Staff")]
+    public Task<IActionResult> RecordReturn(int id, LockerReturnRequest request, CancellationToken ct) =>
+        AsUser(actor => service.RecordReturn(actor, id, request, ct));
+
     [HttpGet("staff/rentals/{id:int}/settlement")]
     [Authorize(Roles = "Staff")]
     public Task<IActionResult> SettlementQuote(int id, [FromQuery] bool keyLostOrDamaged, CancellationToken ct) =>

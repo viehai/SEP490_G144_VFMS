@@ -365,6 +365,36 @@ public sealed partial class MembershipPurchaseApiTests
     }
 
     [Fact]
+    public async Task ActiveYogaInstructorCannotSellNewPTSessions()
+    {
+        var request = await PreparePTCheckout();
+        await using var scope = _app.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+        var yogaClass = new YogaClass
+        {
+            ClassName = "Yoga",
+            YogaClassType = new YogaClassType { TypeName = "Yoga" },
+            InstructorUserId = request.TrainerId,
+            ClassStatus = YogaClassStatus.Published,
+            MinParticipants = 1,
+            MaxParticipants = 10,
+            DurationMinutes = 60
+        };
+        db.YogaClasses.Add(yogaClass);
+        await db.SaveChangesAsync();
+
+        using var member = Client("member", "Member");
+        using var hold = await member.PostAsJsonAsync("/api/pt/purchases", request);
+        Assert.Equal(HttpStatusCode.Conflict, hold.StatusCode);
+        Assert.Empty(await db.PTPurchases.ToListAsync());
+
+        yogaClass.ClassStatus = YogaClassStatus.Completed;
+        await db.SaveChangesAsync();
+        using var available = await member.PostAsJsonAsync("/api/pt/purchases", request);
+        Assert.True(available.StatusCode == HttpStatusCode.Created, await available.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
     public async Task PreviewStillReturnsScheduleWhenMembershipDoesNotCoverIt()
     {
         var request = await PreparePTCheckout(13, 5, 20, validity: 90);

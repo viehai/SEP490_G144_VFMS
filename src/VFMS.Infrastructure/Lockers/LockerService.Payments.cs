@@ -195,12 +195,19 @@ public sealed partial class LockerService
             ((OrderStatus.Pending, PaymentStatus.Pending) or (OrderStatus.Expired, PaymentStatus.Cancelled)))
             return false;
         if (charge.LockerPurpose == LockerPaymentPurpose.Settlement)
-            return InUse(rental) && RentalExpiry(rental) == charge.RentalExpiryAtQuote;
+        {
+            var quote = CalculateSettlement(rental, false, now);
+            return InUse(rental) && RentalExpiry(rental) == charge.RentalExpiryAtQuote &&
+                quote.KeyReplacementFee == charge.KeyReplacementFee &&
+                (rental.ReturnedAt is null || quote.OverdueFees == charge.OverdueFees) &&
+                !rental.Payments.Any(p => p.Id != charge.Id && IsPaidSettlement(p));
+        }
         if (rental.Locker.LockerStatus is LockerStatus.Maintenance or LockerStatus.Damaged ||
             !await Eligible(rental.CustomerUserId, now, ct))
             return false;
         if (charge.LockerPurpose == LockerPaymentPurpose.Renewal)
-            return InUse(rental) && OverdueDays(rental, now) <= 7 && RentalExpiry(rental) == charge.RentalExpiryAtQuote &&
+            return InUse(rental) && rental.ReturnedAt is null && paidAt < ClearanceAt(rental) &&
+                RentalExpiry(rental) == charge.RentalExpiryAtQuote &&
                 OverdueFees(rental, paidAt) == charge.OverdueFees &&
                 !rental.Payments.Any(p => p.Id != charge.Id && p.LockerPurpose != LockerPaymentPurpose.Rental && Pending(p, now));
         if (Type(rental) == RentalType.Daily &&
@@ -243,6 +250,14 @@ public sealed partial class LockerService
                 rental.FinalNoticeEmailSentAt = null;
                 rental.FinalNoticeRetryAt = null;
                 Notify(rental, "Đã gia hạn thuê tủ", "Thời hạn thuê tủ đã được cập nhật.", now.UtcDateTime);
+                break;
+            case LockerPaymentPurpose.Settlement:
+                foreach (var other in rental.Payments.Where(p => p.Id != charge.Id &&
+                    p.LockerPurpose == LockerPaymentPurpose.Settlement && p.Order.OrderStatus == OrderStatus.Pending))
+                {
+                    other.Order.OrderStatus = OrderStatus.Cancelled;
+                    other.PaymentStatus = PaymentStatus.Cancelled;
+                }
                 break;
         }
         Audit(actor, rental, $"LockerPaymentConfirmed:{charge.LockerPurpose}:{charge.Order.OrderNumber}", now.UtcDateTime);

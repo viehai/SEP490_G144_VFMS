@@ -25,13 +25,14 @@ public sealed record LockerRentalView(int Id, string ContractNumber, LockerSlot 
     string? InvoiceNumber, decimal? OutstandingAmount, bool RenewalDue, int TermMonths,
     DateTime? SettledAt, decimal RefundedDeposit, string? SettlementInvoiceNumber, int? ReplacementLockerId = null,
     DateOnly? StartDate = null, DateOnly? LastRentalDate = null, DateTime? AutomaticStartAt = null,
-    bool DailyKeyOutstanding = false);
+    bool DailyKeyOutstanding = false, DateTime? ReturnedAt = null);
 public sealed record LockerRelocationRequest(int LockerId);
 public sealed record LockerStaffRental(LockerRentalView Rental, string MemberId, string MemberName, string Phone);
 public sealed record LockerMember(string Id, string Name, string Phone, bool Eligible);
+public sealed record LockerReturnRequest(bool LockerEmpty, bool KeyLostOrDamaged);
 public sealed record LockerSettlementRequest(bool KeyLostOrDamaged, [StringLength(20)] string? PaymentMethod);
 public sealed record LockerSettlementQuote(decimal OverdueFees, decimal KeyReplacementFee, decimal DepositHeld,
-    decimal RefundAmount, decimal AdditionalAmountDue, decimal ForfeitedDeposit = 0);
+    decimal RefundAmount, decimal AdditionalAmountDue, decimal ForfeitedDeposit = 0, DateTime? ReturnedAt = null);
 public sealed record LockerTerminationRequest(bool KeyLostOrDamaged, bool LockerEmpty, bool LockSafe,
     [StringLength(50)] string? SettlementOrderNumber, [StringLength(20)] string? RefundMethod,
     [StringLength(100)] string? RefundReference);

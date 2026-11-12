@@ -11,6 +11,11 @@ namespace VFMS.Application.Services;
 
 public sealed class TrainerService(ITrainerStore store, IPasswordHasher passwords)
 {
+    private static readonly TimeSpan SubmissionCooldown = TimeSpan.FromMinutes(10);
+
+    private IQueryable<YogaClass> ActiveYogaAssignments => store.Query<YogaClass>().Where(c =>
+        c.ClassStatus == YogaClassStatus.Draft || c.ClassStatus == YogaClassStatus.Published);
+
     private static Result<T> Error<T>(string code, string message, int status = 409) =>
         Result<T>.Failure(message, code, status);
 
@@ -106,12 +111,23 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
         }
         else if (r.Certificates.Any(file => file.ReplacesCertificateId != null))
             return Error<TrainerApplicationReceipt>("TRAINER_CERTIFICATE_TARGET_INVALID", "Recruitment cannot replace published certificates.", 400);
-        if (pt && await store.Count(store.Query<TrainerApplication>().Where(x => (x.ApplicantUserId == actor || x.HiredUserId == actor || x.Email.ToLower() == email || x.CitizenId == citizen) && x.ApplicationType == r.ApplicationType && (x.ApplicationStatus == TrainerApplicationStatus.Pending || x.ApplicationStatus == TrainerApplicationStatus.UnderReview || x.ApplicationStatus == TrainerApplicationStatus.Interviewing)), ct) > 0)
-            return Error<TrainerApplicationReceipt>("TRAINER_CHANGE_PENDING", "An application of this type is already pending.");
-        var history = store.Query<TrainerApplication>().Where(x => x.ApplicationType == r.ApplicationType && (x.Email.ToLower() == email || x.CitizenId == citizen));
+        var applications = store.Query<TrainerApplication>().Where(x => x.ApplicationType == r.ApplicationType);
+        var history = update
+            ? applications.Where(x => x.ApplicantUserId == actor || x.HiredUserId == actor)
+            : applications.Where(x => x.Email.ToLower() == email || x.CitizenId == citizen);
+        if (update && await store.Count(history.Where(x =>
+                x.ApplicationStatus == TrainerApplicationStatus.Pending ||
+                x.ApplicationStatus == TrainerApplicationStatus.UnderReview ||
+                x.ApplicationStatus == TrainerApplicationStatus.Interviewing), ct) > 0)
+            return Error<TrainerApplicationReceipt>("TRAINER_CHANGE_PENDING", "A profile update is already pending.");
         var last = await store.First(history.OrderByDescending(x => x.SubmittedAt), ct);
-        if (!update && last != null && last.SubmittedAt > now.AddDays(-30))
-            return Error<TrainerApplicationReceipt>("RECRUITMENT_COOLDOWN", $"You can submit again after {last.SubmittedAt.AddDays(30):O}.");
+        if (last != null && last.SubmittedAt > now - SubmissionCooldown)
+        {
+            var errorCode = update ? "TRAINER_PROFILE_UPDATE_COOLDOWN" : "RECRUITMENT_COOLDOWN";
+            var nextSubmissionAt = last.SubmittedAt + SubmissionCooldown;
+            return Error<TrainerApplicationReceipt>(errorCode, $"You can submit again after {nextSubmissionAt:O}.");
+        }
+
         var a = new TrainerApplication
         {
             ApplicantUserId = actor,
@@ -259,6 +275,9 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
                     return Error<TrainerApplicationResponse>("TRAINER_IDENTITY_CONFLICT", "Verify and explicitly select the existing active account; resolve conflicting identities first.");
             }
             else if (r.ExistingUserId != null) return Error<TrainerApplicationResponse>("TRAINER_IDENTITY_CONFLICT", "Selected account does not match applicant identity.");
+            if (user != null && await store.Count(ActiveYogaAssignments.Where(c => c.InstructorUserId == user.UserId), ct) > 0)
+                return Error<TrainerApplicationResponse>("TRAINER_TEACHING_ROLE_CONFLICT",
+                    "A Yoga instructor cannot be hired as a PT while assigned to Yoga classes.");
             if (user != null && await store.Count(store.Query<TrainerProfile>().Where(x => x.PTUserId == user.UserId), ct) > 0) return Error<TrainerApplicationResponse>("TRAINER_PROFILE_EXISTS", "Account already has a trainer profile.");
             if (await ContainsBannedWord(a.Bio + " " + a.Specialty, ct)) return Error<TrainerApplicationResponse>("TRAINER_CONTENT_REJECTED", "Applicant public content requires correction before hiring.", 400);
             var role = await store.First(store.Query<ApplicationRole>().Where(x => x.RoleName == "PT"), ct);
@@ -349,22 +368,34 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
             nameof(AccountStatus.PendingVerification), nameof(AccountStatus.Active));
         return Result<bool>.Success(true);
     }, ct);
-    private IQueryable<TrainerProfileResponse> PublicProfiles() => from p in store.Query<TrainerProfile>()
-                                                                   join u in store.Query<ApplicationUser>() on p.PTUserId equals u.UserId
-                                                                   where p.IsActive && u.AccountStatus == AccountStatus.Active && !u.IsBanned
-                                                                   select new TrainerProfileResponse
-                                                                   {
-                                                                       Id = p.Id,
-                                                                       UserId = p.PTUserId,
-                                                                       FullName = u.FullName,
-                                                                       Level = p.Level.ToString(),
-                                                                       Specialty = p.Specialty,
-                                                                       Gender = p.Gender,
-                                                                       ExperienceYears = p.ExperienceYears,
-                                                                       Bio = p.Bio,
-                                                                       AvatarUrl = p.AvatarJson != null && p.AvatarJson != "" ? "/api/trainers/" + p.Id + "/avatar" : p.AvatarUrl,
-                                                                       AverageRating = store.Query<TrainerReview>().Where(r => r.TrainerUserId == p.PTUserId && r.IsVisible && r.ReviewStatus == TrainerReviewStatus.Approved).Select(r => (decimal?)r.Rating).Average() ?? 0
-                                                                   };
+    private IQueryable<TrainerProfileResponse> PublicProfiles()
+    {
+        var yogaAssignments = ActiveYogaAssignments;
+        return from profile in store.Query<TrainerProfile>()
+               join user in store.Query<ApplicationUser>() on profile.PTUserId equals user.UserId
+               where profile.IsActive && user.AccountStatus == AccountStatus.Active && !user.IsBanned &&
+                   !yogaAssignments.Any(c => c.InstructorUserId == profile.PTUserId)
+               select new TrainerProfileResponse
+               {
+                   Id = profile.Id,
+                   UserId = profile.PTUserId,
+                   FullName = user.FullName,
+                   Level = profile.Level.ToString(),
+                   Specialty = profile.Specialty,
+                   Gender = profile.Gender,
+                   ExperienceYears = profile.ExperienceYears,
+                   Bio = profile.Bio,
+                   AvatarUrl = profile.AvatarJson != null && profile.AvatarJson != ""
+                       ? "/api/trainers/" + profile.Id + "/avatar"
+                       : profile.AvatarUrl,
+                   AverageRating = store.Query<TrainerReview>()
+                       .Where(r => r.TrainerUserId == profile.PTUserId && r.IsVisible &&
+                           r.ReviewStatus == TrainerReviewStatus.Approved)
+                       .Select(r => (decimal?)r.Rating)
+                       .Average() ?? 0
+               };
+    }
+
     public async Task<Result<PagedResponse<TrainerProfileResponse>>> Search(TrainerSearch r, CancellationToken ct)
     {
         if (!(await new TrainerSearchValidator().ValidateAsync(r, ct)).IsValid) return Error<PagedResponse<TrainerProfileResponse>>("TRAINER_VALIDATION", "Invalid filters.", 400);

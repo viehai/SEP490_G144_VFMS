@@ -84,7 +84,8 @@ public sealed partial class LockerService
         if (rental is null)
             return Missing<LockerRentalView>();
         var now = Now.UtcDateTime;
-        if (Status(rental, now) != "Overdue" || Type(rental) == RentalType.Daily || OverdueDays(rental, now) > 7)
+        if (rental.ReturnedAt is not null || Status(rental, now) != "Overdue" ||
+            Type(rental) == RentalType.Daily || OverdueDays(rental, now) > 7)
             return Conflict<LockerRentalView>("Chỉ gửi thông báo cuối cho hợp đồng quá hạn từ 1 đến 7 ngày.");
         if (rental.FinalNoticeAt is null)
         {
@@ -104,8 +105,11 @@ public sealed partial class LockerService
         var now = Now.UtcDateTime;
         var claimed = await Write(async () =>
         {
-            var rental = await Rentals.Where(r => r.FinalNoticeAt != null && r.FinalNoticeEmailSentAt == null &&
-                (r.FinalNoticeRetryAt == null || r.FinalNoticeRetryAt <= now)).OrderBy(r => r.Id).FirstOrDefaultAsync(ct);
+            var rental = await Rentals
+                .Where(r => r.ReturnedAt == null && r.FinalNoticeAt != null && r.FinalNoticeEmailSentAt == null &&
+                    (r.FinalNoticeRetryAt == null || r.FinalNoticeRetryAt <= now))
+                .OrderBy(r => r.Id)
+                .FirstOrDefaultAsync(ct);
             if (rental is not null)
             {
                 rental.FinalNoticeRetryAt = now.AddMinutes(2);
@@ -133,7 +137,8 @@ public sealed partial class LockerService
             if (rental is null)
                 return Missing<int>();
             var now = Now.UtcDateTime;
-            if (Status(rental, now) != "Overdue" || Type(rental) == RentalType.Daily || now < ClearanceAt(rental))
+            if (rental.ReturnedAt is not null || Status(rental, now) != "Overdue" ||
+                Type(rental) == RentalType.Daily || now < ClearanceAt(rental))
                 return Conflict<int>("Chỉ xử lý thuê tháng sau khi hết đủ 7 ngày quá hạn.");
             if (request.Inventory is null || request.Inventory.Length > 100 ||
                 request.NoBelongings != (request.Inventory.Length == 0) ||
@@ -193,9 +198,9 @@ public sealed partial class LockerService
             var now = Now.UtcDateTime;
             if (incident.VerifiedAt is not null)
                 return Result<LockerRentalView>.Success(View(rental, now));
-            if (Status(rental, now) != "Overdue" || Type(rental) == RentalType.Daily || now < ClearanceAt(rental) ||
-                rental.Payments.Any(p => Pending(p, now) ||
-                    p.LockerPurpose == LockerPaymentPurpose.Settlement && p.Order.OrderStatus == OrderStatus.Paid))
+            if (rental.ReturnedAt is not null || Status(rental, now) != "Overdue" ||
+                Type(rental) == RentalType.Daily || now < ClearanceAt(rental) ||
+                rental.Payments.Any(p => Pending(p, now) || IsPaidSettlement(p)))
                 return Conflict<LockerRentalView>("Hợp đồng đã thay đổi hoặc còn giao dịch phải xử lý.");
 
             rental.OutstandingAmount = OverdueFees(rental, now) +

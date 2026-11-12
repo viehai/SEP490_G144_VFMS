@@ -70,7 +70,7 @@ public sealed partial class LockerService
         }, ct);
 
     private static bool CanRelocate(LockerRentalContract rental, DateTime now) =>
-        InUse(rental) && rental.KeyLossConfirmedAt is null && now < RentalExpiry(rental) &&
+        InUse(rental) && rental.ReturnedAt is null && rental.KeyLossConfirmedAt is null && now < RentalExpiry(rental) &&
         rental.Locker.LockerStatus is LockerStatus.Maintenance or LockerStatus.Damaged;
 
     private static void ReleaseReplacement(LockerRentalContract rental)

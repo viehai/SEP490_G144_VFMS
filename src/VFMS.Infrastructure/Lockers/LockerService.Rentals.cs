@@ -84,12 +84,12 @@ public sealed partial class LockerService
         if (rental is null)
             return Missing<LockerCheckout>();
         var now = Now.UtcDateTime;
-        if (!InUse(rental) || OverdueDays(rental, now) > 7 || Type(rental) == RentalType.Daily ||
+        if (!InUse(rental) || rental.ReturnedAt is not null ||
+            OverdueDays(rental, now) > 7 || Type(rental) == RentalType.Daily ||
             rental.Locker.LockerStatus is LockerStatus.Maintenance or LockerStatus.Damaged ||
             !await Eligible(rental.CustomerUserId, now, ct))
             return Conflict<LockerCheckout>("Hợp đồng không đủ điều kiện gia hạn.");
-        if (rental.Payments.Any(p => Pending(p, now) ||
-            p.LockerPurpose == LockerPaymentPurpose.Settlement && p.Order.OrderStatus == OrderStatus.Paid))
+        if (rental.Payments.Any(p => Pending(p, now) || IsPaidSettlement(p)))
             return Conflict<LockerCheckout>("Hợp đồng đang có khoản thu gia hạn hoặc tất toán cần xử lý.");
         var policy = await db.LockerPricingPolicies.AsNoTracking().SingleOrDefaultAsync(p =>
             p.Id == request.PolicyId && p.PolicyStatus == PolicyStatus.Active, ct);

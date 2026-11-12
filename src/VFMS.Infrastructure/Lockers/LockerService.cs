@@ -113,8 +113,12 @@ public sealed partial class LockerService(VfmsDbContext db, TimeProvider clock,
     private static DateTime RentalExpiry(LockerRentalContract rental) =>
         rental.ExpiresAt ?? Midnight(rental.EndDate.AddDays(1));
 
-    private static int OverdueDays(LockerRentalContract rental, DateTime now) =>
-        now < RentalExpiry(rental) ? 0 : LocalDate(now).DayNumber - LocalDate(RentalExpiry(rental)).DayNumber + 1;
+    private static int OverdueDays(LockerRentalContract rental, DateTime now)
+    {
+        var until = rental.ReturnedAt is { } returned && returned < now ? returned : now;
+        var expiry = RentalExpiry(rental);
+        return until < expiry ? 0 : LocalDate(until).DayNumber - LocalDate(expiry).DayNumber + 1;
+    }
 
     private static DateTime ClearanceAt(LockerRentalContract rental) =>
         RentalExpiry(rental).AddDays(7);
@@ -164,8 +168,10 @@ public sealed partial class LockerService(VfmsDbContext db, TimeProvider clock,
             .Where(p => p.LockerPurpose == LockerPaymentPurpose.Renewal && p.Order.OrderStatus == OrderStatus.Paid)
             .OrderByDescending(p => p.Id)
             .FirstOrDefault();
-        var settlement = rental.Payments.SingleOrDefault(p => p.LockerPurpose == LockerPaymentPurpose.Settlement &&
-            p.Order.OrderStatus == OrderStatus.Paid);
+        var settlement = rental.Payments
+            .Where(IsPaidSettlement)
+            .OrderBy(p => p.Id)
+            .FirstOrDefault();
 
         return new(
             rental.Id,
@@ -180,13 +186,13 @@ public sealed partial class LockerService(VfmsDbContext db, TimeProvider clock,
             CollectBy: null,
             OverdueDays: overdue,
             OverdueFees: overdue > 0 ? OverdueFees(rental, now) : 0,
-            ClearanceAfter: overdue > 0 && !daily ? Utc(ClearanceAt(rental)) : null,
-            CanRenew: !daily && inUse && overdue <= 7 &&
+            ClearanceAfter: overdue > 0 && !daily && rental.ReturnedAt is null ? Utc(ClearanceAt(rental)) : null,
+            CanRenew: !daily && inUse && rental.ReturnedAt is null && overdue <= 7 &&
                 rental.Locker.LockerStatus is not (LockerStatus.Maintenance or LockerStatus.Damaged),
             PickupInstructions: pendingHandover ? "Mang mã hợp đồng hoặc hóa đơn đến lễ tân để nhận chìa khóa." : null,
             InvoiceNumber: initial?.Invoice?.InvoiceNumber,
             OutstandingAmount: rental.OutstandingAmount,
-            RenewalDue: status == "Active" && !daily && RentalExpiry(rental) - now <= TimeSpan.FromDays(7),
+            RenewalDue: status == "Active" && !daily && rental.ReturnedAt is null && RentalExpiry(rental) - now <= TimeSpan.FromDays(7),
             TermMonths: lastRenewal?.RenewalMonths ?? Months(rentalType),
             SettledAt: rental.SettledAt is { } settled ? Utc(settled) : null,
             RefundedDeposit: initial is { RefundReason: "DailyDepositReturn", RefundStatus: "Refunded" }
@@ -197,7 +203,8 @@ public sealed partial class LockerService(VfmsDbContext db, TimeProvider clock,
             StartDate: hasTerm ? rental.StartDate : null,
             LastRentalDate: hasTerm ? rental.EndDate : null,
             AutomaticStartAt: pendingHandover && rental.CollectBy is { } automaticStart ? Utc(automaticStart) : null,
-            DailyKeyOutstanding: status == "Overdue" && daily && rental.KeyLossConfirmedAt is null);
+            DailyKeyOutstanding: status == "Overdue" && daily && rental.ReturnedAt is null && rental.KeyLossConfirmedAt is null,
+            ReturnedAt: rental.ReturnedAt is { } returned ? Utc(returned) : null);
     }
 
     private static LockerPolicy Policy(LockerPricingPolicy p) =>

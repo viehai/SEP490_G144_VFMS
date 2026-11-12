@@ -47,6 +47,9 @@ public sealed partial class PersonalTrainingService(VfmsDbContext db, TimeProvid
         ActiveUsers.Include(u => u.Gym).SingleOrDefaultAsync(u => u.UserId == id &&
             u.UserRoles.Any(r => r.Role.RoleName == role.ToString()), ct);
 
+    private IQueryable<YogaClass> ActiveYogaAssignments => db.YogaClasses.Where(c =>
+        !c.IsDeleted && (c.ClassStatus == YogaClassStatus.Draft || c.ClassStatus == YogaClassStatus.Published));
+
     private IQueryable<PTAvailability> Templates(string trainerId) => db.PTAvailabilities
         .Where(x => x.PTUserId == trainerId && x.DayOfWeek != null && x.SlotStatus == SlotStatus.Available);
 
