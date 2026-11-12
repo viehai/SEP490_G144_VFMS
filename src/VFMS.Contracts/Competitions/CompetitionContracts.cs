@@ -127,5 +127,6 @@ public sealed record CompetitionLeaderboardEntry(
     decimal? Score,
     string Status,
     string? PrizeName,
-    string? VoucherCode
+    string? VoucherCode,
+    string? Note = null
 );

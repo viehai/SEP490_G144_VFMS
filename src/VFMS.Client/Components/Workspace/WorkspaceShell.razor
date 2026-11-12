@@ -1,16 +1,25 @@
 @inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
 
 <div class="workspace-shell workspace-shell--@Variant rounded-none">
     <aside class="workspace-sidebar @SidebarTone rounded-none" aria-label="Điều hướng không gian làm việc">
         <a href="/" class="workspace-logo rounded-none"><img src="/brand/logo-remove.png" alt="Victor Fitness - Trang chủ" /></a>
         <div class="workspace-sidebar-label">V-FITNESS MANAGEMENT</div>
-        <div class="workspace-role rounded-none"><span aria-hidden="true">@RoleMark</span><div><strong>@RoleName</strong><small>KHÔNG GIAN LÀM VIỆC</small></div></div>
+        <div class="workspace-role rounded-none"><span aria-hidden="true">@DisplayRoleMark</span><div><strong>@DisplayRoleName</strong><small>KHÔNG GIAN LÀM VIỆC</small></div></div>
         <p class="workspace-sidebar-label workspace-sidebar-label--menu">ĐIỀU HƯỚNG</p>
         <nav class="workspace-nav">
             <NavLink href="@DashboardRoute" Match="NavLinkMatch.All" class="workspace-nav-link rounded-none" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">01</span> Tổng quan <span aria-hidden="true">↗</span></NavLink>
             <a href="@(DashboardRoute + "#quick-actions")" class="workspace-nav-link rounded-none"><span aria-hidden="true">02</span> Truy cập nhanh <span aria-hidden="true">↗</span></a>
             <NavLink href="/profile" Match="NavLinkMatch.All" class="workspace-nav-link rounded-none" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">03</span> Hồ sơ cá nhân <span aria-hidden="true">↗</span></NavLink>
-            <NavLink href="/competitions" Match="NavLinkMatch.All" class="workspace-nav-link rounded-none" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">04</span> Cuộc thi <span aria-hidden="true">↗</span></NavLink>
+            @* Mục "Cuộc thi" trỏ tới trang quản lý riêng của từng vai trò, không dùng chung trang công khai. *@
+            @if (IsManagerOrAdmin)
+            {
+                <NavLink href="/manager/competitions" Match="NavLinkMatch.All" class="workspace-nav-link rounded-none" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">04</span> Quản lý cuộc thi <span aria-hidden="true">↗</span></NavLink>
+            }
+            else
+            {
+                <NavLink href="/competitions" Match="NavLinkMatch.All" class="workspace-nav-link rounded-none" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">04</span> Cuộc thi <span aria-hidden="true">↗</span></NavLink>
+            }
             <a href="/" class="workspace-nav-link rounded-none"><span aria-hidden="true">05</span> Trang chủ <span aria-hidden="true">↗</span></a>
         </nav>
         <div class="workspace-sidebar-bottom">
@@ -20,7 +29,7 @@
     </aside>
     <div class="workspace-content">
         <header class="workspace-topbar rounded-none">
-            <div class="workspace-breadcrumb"><a href="/">VFMS</a><span aria-hidden="true">/</span><strong>@RoleName</strong></div>
+            <div class="workspace-breadcrumb"><a href="/">VFMS</a><span aria-hidden="true">/</span><strong>@DisplayRoleName</strong></div>
             <div class="workspace-preview-picker">
                 <label for="workspace-preview">XEM GIAO DIỆN</label>
                 <select id="workspace-preview" value="@CurrentRoute" @onchange="ChangePreview" class="rounded-none">
@@ -44,8 +53,66 @@
     private string SidebarTone => Variant == "manager" ? "bg-[#0F172A]" : "bg-[#0A0A0A]";
     private string RoleName => Variant switch { "admin" => "ADMIN", "manager" => "MANAGER", "pt" => "PERSONAL TRAINER", _ => "STAFF" };
     private string RoleMark => Variant switch { "admin" => "AD", "manager" => "MG", "pt" => "PT", _ => "ST" };
-    private string DashboardRoute => Variant switch { "admin" => "/admin/dashboard", "manager" => "/manager/dashboard", "pt" => "/pt/dashboard", _ => "/staff/dashboard" };
     private string CurrentRoute => "/" + Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].Trim('/');
+
+    /// <summary>Manager và Admin dùng trang quản lý cuộc thi riêng; các vai trò khác dùng trang công khai.</summary>
+    private bool IsManagerOrAdmin => Variant is "manager" or "admin";
+
+    /// <summary>Trang chủ của người dùng theo vai trò, dùng cho mục "Tổng quan".</summary>
+    private string DashboardRoute => Variant switch
+    {
+        "admin" => "/admin/dashboard",
+        "manager" => "/manager/dashboard",
+        "pt" => "/pt/dashboard",
+        "staff" => "/staff/dashboard",
+        _ => "/"
+    };
+
+    /// <summary>
+    /// Tên vai trò hiển thị trên sidebar. Với các trang dùng chung (ví dụ /competitions) mà người dùng
+    /// không thuộc vai trò của layout, hiển thị đúng vai trò thật của tài khoản đang đăng nhập.
+    /// </summary>
+    private string DisplayRoleName
+    {
+        get
+        {
+            if (Variant is "admin" or "manager" or "pt" or "staff") return RoleName;
+            return _actualRole?.ToUpperInvariant() ?? "MEMBER";
+        }
+    }
+
+    private string DisplayRoleMark => _actualRoleMark ?? RoleMark;
+
+    private string? _actualRole;
+    private string? _actualRoleMark;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var state = await AuthStateProvider.GetAuthenticationStateAsync();
+            var role = state.User.Claims
+                .Where(c => c.Type == System.Security.Claims.ClaimTypes.Role)
+                .Select(c => c.Value)
+                .FirstOrDefault();
+            _actualRole = role;
+            _actualRoleMark = role switch
+            {
+                "Admin" => "AD",
+                "Manager" => "MG",
+                "PersonalTrainer" or "PT" => "PT",
+                "Staff" => "ST",
+                "Member" => "MB",
+                "Customer" => "CU",
+                _ => null
+            };
+        }
+        catch (Exception)
+        {
+            // Không đọc được trạng thái đăng nhập thì giữ nhãn mặc định của layout.
+        }
+    }
+
     private void ChangePreview(ChangeEventArgs args)
     {
         var target = args.Value?.ToString();

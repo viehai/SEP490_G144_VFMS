@@ -4,5 +4,16 @@
 <WorkspaceShell Variant="@Variant">@Body</WorkspaceShell>
 
 @code {
-    private string Variant => Navigation.ToBaseRelativePath(Navigation.Uri).StartsWith("pt/", StringComparison.OrdinalIgnoreCase) ? "pt" : "staff";
+    /// <summary>
+    /// Trang dùng chung cho mọi vai trò (ví dụ /competitions) dùng variant "member" để
+    /// sidebar hiển thị đúng vai trò của tài khoản đang đăng nhập.
+    /// </summary>
+    private string Variant => Navigation.ToBaseRelativePath(Navigation.Uri) switch
+    {
+        var path when path.StartsWith("admin/", StringComparison.OrdinalIgnoreCase) => "admin",
+        var path when path.StartsWith("manager/", StringComparison.OrdinalIgnoreCase) => "manager",
+        var path when path.StartsWith("pt/", StringComparison.OrdinalIgnoreCase) => "pt",
+        var path when path.StartsWith("staff/", StringComparison.OrdinalIgnoreCase) => "staff",
+        _ => "member"
+    };
 }

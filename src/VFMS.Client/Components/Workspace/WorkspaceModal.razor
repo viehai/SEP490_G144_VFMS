@@ -1,0 +1,70 @@
+@using Microsoft.AspNetCore.Components.Web
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@* Modal dùng chung cho giao diện workspace. Hiển thị lớp phủ toàn màn hình, đóng bằng nút X, phím Esc hoặc bấm ra ngoài. *@
+
+@if (Open)
+{
+    <div class="workspace-modal-backdrop" role="presentation" @onclick="OnBackdropClick">
+        <div class="workspace-modal-panel" role="dialog" aria-modal="true" aria-labelledby="@TitleId" @onclick:stopPropagation="true">
+            <header class="workspace-modal-header">
+                <div class="min-w-0">
+                    <p class="workspace-heading text-[10px] font-bold uppercase tracking-[.18em] text-[#71717A]">@Eyebrow</p>
+                    <h2 id="@TitleId" class="workspace-heading mt-1 truncate text-lg font-extrabold uppercase tracking-tight">@Title</h2>
+                </div>
+                <button type="button" @onclick="OnClose" class="workspace-heading ml-auto shrink-0 border border-black bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider rounded-none" aria-label="Đóng">Đóng ✕</button>
+            </header>
+
+            <div class="workspace-modal-body">
+                @ChildContent
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public string Title { get; set; } = string.Empty;
+    [Parameter] public string Eyebrow { get; set; } = string.Empty;
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private string TitleId => $"workspace-modal-title-{_id}";
+    private readonly string _id = Guid.NewGuid().ToString("N")[..8];
+    private bool _escBound;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Open && !_escBound)
+        {
+            _escBound = true;
+            try { await JS.InvokeVoidAsync("vfmsModal.registerEscape", _id, DotNetObjectReference.Create(this)); }
+            catch (Exception) { /* trình duyệt không hỗ trợ - bỏ qua */ }
+        }
+        else if (!Open && _escBound)
+        {
+            _escBound = false;
+            try { await JS.InvokeVoidAsync("vfmsModal.unregisterEscape", _id); }
+            catch (Exception) { /* trình duyệt không hỗ trợ - bỏ qua */ }
+        }
+    }
+
+    [JSInvokable]
+    public async Task CloseFromEscape()
+    {
+        if (OnClose.HasDelegate) await OnClose.InvokeAsync();
+    }
+
+    private async Task OnBackdropClick()
+    {
+        if (OnClose.HasDelegate) await OnClose.InvokeAsync();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!_escBound) return;
+        try { await JS.InvokeVoidAsync("vfmsModal.unregisterEscape", _id); }
+        catch (Exception) { /* trình duyệt không hỗ trợ - bỏ qua */ }
+    }
+}

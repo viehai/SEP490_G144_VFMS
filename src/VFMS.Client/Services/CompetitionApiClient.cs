@@ -144,6 +144,11 @@ public sealed class CompetitionApiClient(HttpClient http, AuthSession session)
 
     private static async Task<string> ReadProblemAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+            return "Vui lòng đăng nhập để sử dụng chức năng cuộc thi.";
+        if (response.StatusCode == HttpStatusCode.Forbidden)
+            return "Tài khoản của bạn không có quyền thực hiện thao tác này.";
+
         try
         {
             var text = await response.Content.ReadAsStringAsync(cancellationToken);

@@ -1,4 +1,5 @@
 @page "/competitions"
+@layout StaffPTLayout
 @inject CompetitionApiClient Api
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthStateProvider
@@ -10,7 +11,6 @@
         <div>
             <p class="workspace-heading mb-3 text-[10px] font-bold tracking-[.18em] text-[#71717A]">VFMS / MODULE 06 / COMPETITIONS</p>
             <h1 class="workspace-heading text-3xl font-extrabold uppercase tracking-tight sm:text-4xl">Cuộc thi<span class="text-[#6366F1]">.</span></h1>
-            <p class="mt-3 max-w-2xl text-sm leading-6 text-[#545454]">UC-56 Xem cuộc thi · UC-57 Đăng ký thi · UC-58 Lịch sử tham gia.</p>
         </div>
         <button type="button" @onclick="ReloadAsync" class="workspace-heading inline-flex w-fit items-center gap-2 border border-black bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider rounded-none">Làm mới ↻</button>
     </header>
@@ -98,7 +98,7 @@
     {
         <section class="overflow-hidden border-2 border-black bg-white rounded-none" aria-labelledby="comp-history-title">
             <div class="flex flex-wrap items-center justify-between gap-3 border-b-2 border-black px-5 py-5 sm:px-6">
-                <h2 id="comp-history-title" class="workspace-heading text-sm font-extrabold uppercase tracking-wider">Lịch sử tham gia của tôi (UC-58)</h2>
+                <h2 id="comp-history-title" class="workspace-heading text-sm font-extrabold uppercase tracking-wider">Lịch sử tham gia của tôi</h2>
                 <button type="button" @onclick="ReloadHistoryAsync" class="text-xs text-[#6366F1]">Làm mới ↻</button>
             </div>
             @if (_history.Count == 0)
@@ -110,7 +110,7 @@
                 <div class="overflow-x-auto">
                     <table class="workspace-table w-full min-w-[700px] text-left text-sm">
                         <thead class="workspace-heading bg-[#F7F7F7] text-[10px] uppercase tracking-wider">
-                            <tr><th class="px-6 py-4">Cuộc thi</th><th class="px-6 py-4">Ngày đăng ký</th><th class="px-6 py-4">Điểm</th><th class="px-6 py-4">Hạng</th><th class="px-6 py-4">Trạng thái</th></tr>
+                            <tr><th class="px-6 py-4">Cuộc thi</th><th class="px-6 py-4">Ngày đăng ký</th><th class="px-6 py-4">Điểm</th><th class="px-6 py-4">Hạng</th><th class="px-6 py-4">Ghi chú</th><th class="px-6 py-4">Trạng thái</th></tr>
                         </thead>
                         <tbody class="divide-y divide-[#CFCFCF]">
                             @foreach (var row in _history)
@@ -120,6 +120,7 @@
                                     <td class="px-6 py-5 text-xs text-[#545454]">@row.RegisteredAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
                                     <td class="workspace-heading px-6 py-5 text-xs font-bold">@(row.Score?.ToString("0.##") ?? "-")</td>
                                     <td class="workspace-heading px-6 py-5 text-xs font-bold">@(row.Rank?.ToString() ?? "-")</td>
+                                    <td class="max-w-sm whitespace-pre-line px-6 py-5 text-xs text-[#545454]">@(string.IsNullOrWhiteSpace(row.Note) ? "-" : row.Note)</td>
                                     <td class="px-6 py-5"><span class="@StatusClass(row.Status)">@row.Status</span></td>
                                 </tr>
                             }
@@ -129,11 +130,59 @@
             }
         </section>
     }
+
+    @if (_selectedCompetition is not null)
+    {
+        <WorkspaceModal Open="true" Eyebrow="VFMS / MODULE 06 / CHI TIẾT" Title="@_selectedCompetition.Name" OnClose="CloseDetail">
+            <div class="grid gap-6 p-6 sm:grid-cols-2">
+                <div class="sm:col-span-2">
+                    <h3 class="workspace-heading mb-2 text-xs font-extrabold uppercase tracking-wider">Mô tả</h3>
+                    <p class="text-sm text-[#545454]">@(string.IsNullOrWhiteSpace(_selectedCompetition.Description) ? "Chưa có mô tả." : _selectedCompetition.Description)</p>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(_selectedCompetition.Rules))
+                {
+                    <div class="sm:col-span-2">
+                        <h3 class="workspace-heading mb-2 text-xs font-extrabold uppercase tracking-wider">Thể lệ</h3>
+                        <p class="whitespace-pre-line text-sm text-[#545454]">@_selectedCompetition.Rules</p>
+                    </div>
+                }
+                <div>
+                    <h3 class="workspace-heading mb-2 text-xs font-extrabold uppercase tracking-wider">Thời gian đăng ký</h3>
+                    <p class="text-sm text-[#545454]">@FormatRange(_selectedCompetition.RegistrationStart, _selectedCompetition.RegistrationEnd)</p>
+                </div>
+                <div>
+                    <h3 class="workspace-heading mb-2 text-xs font-extrabold uppercase tracking-wider">Thời gian thi</h3>
+                    <p class="text-sm text-[#545454]">@FormatRange(_selectedCompetition.StartDate, _selectedCompetition.EndDate)</p>
+                </div>
+                <div>
+                    <h3 class="workspace-heading mb-2 text-xs font-extrabold uppercase tracking-wider">Người tham gia</h3>
+                    <p class="text-sm text-[#545454]">@_selectedCompetition.ParticipantCount@(_selectedCompetition.MaxParticipants is { } max ? $" / {max}" : "")</p>
+                </div>
+                <div>
+                    <h3 class="workspace-heading mb-2 text-xs font-extrabold uppercase tracking-wider">Trạng thái</h3>
+                    <span class="@StatusClass(_selectedCompetition.Status)">@_selectedCompetition.Status</span>
+                </div>
+                @if (_selectedCompetition.Prizes.Count > 0)
+                {
+                    <div class="sm:col-span-2">
+                        <h3 class="workspace-heading mb-2 text-xs font-extrabold uppercase tracking-wider">Giải thưởng</h3>
+                        <ul class="space-y-2 text-sm text-[#545454]">
+                            @foreach (var prize in _selectedCompetition.Prizes.OrderBy(prize => prize.Rank))
+                            {
+                                <li>Hạng @prize.Rank — @prize.PrizeName</li>
+                            }
+                        </ul>
+                    </div>
+                }
+            </div>
+        </WorkspaceModal>
+    }
 </div>
 
 @code {
     private IReadOnlyCollection<CompetitionResponse> _items = [];
     private IReadOnlyCollection<CompetitionParticipantResponse> _history = [];
+    private CompetitionResponse? _selectedCompetition;
     private string _search = string.Empty;
     private string _status = string.Empty;
     private int _total;
@@ -208,7 +257,14 @@
         catch (CompetitionApiException error) { _error = error.Message; }
     }
 
-    private Task OpenDetailAsync(int id) => Task.CompletedTask;
+    private Task OpenDetailAsync(int id)
+    {
+        _selectedCompetition = _items.FirstOrDefault(item => item.Id == id);
+        _error = null;
+        return Task.CompletedTask;
+    }
+
+    private void CloseDetail() => _selectedCompetition = null;
 
     private bool CanRegister(CompetitionResponse item) =>
         _isMember

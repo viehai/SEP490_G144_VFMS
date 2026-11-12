@@ -44,8 +44,20 @@ public sealed class CompetitionService : ICompetitionService
 
         var (items, total) = await _repository.SearchCompetitionsAsync(
             status, EquipmentService.Clean(request.Search), request.Page, request.PageSize, cancellationToken);
+
+        // Project each competition with its real participant count.
+        // NOTE: a method group must not be passed directly to Select, otherwise it binds to
+        // Select<TSource, TResult>(source, Func<TSource, int, TResult>) and the second argument
+        // (the item index) is used as the participant count.
+        var responses = new CompetitionResponse[items.Count];
+        for (var index = 0; index < items.Count; index++)
+        {
+            var count = await _repository.CountActiveParticipantsAsync(items[index].Id, cancellationToken);
+            responses[index] = ToResponse(items[index], count);
+        }
+
         return Result<PagedResponse<CompetitionResponse>>.Success(new PagedResponse<CompetitionResponse>(
-            request.Page, request.PageSize, total, items.Select(ToResponse).ToArray()));
+            request.Page, request.PageSize, total, responses));
     }
 
     public async Task<Result<CompetitionResponse>> GetCompetitionAsync(int id, CancellationToken cancellationToken = default)
@@ -82,7 +94,7 @@ public sealed class CompetitionService : ICompetitionService
                 return new CompetitionLeaderboardEntry(
                     x.Join.Id, x.Rank, x.Join.MemberUserId,
                     x.Join.Member?.FullName ?? string.Empty, x.Join.Score, x.Join.Status.ToString(),
-                    prize?.PrizeName, prize?.Voucher?.Code);
+                    prize?.PrizeName, prize?.Voucher?.Code, x.Join.Note);
             })
             .ToArray();
         return Result<IReadOnlyList<CompetitionLeaderboardEntry>>.Success(entries);

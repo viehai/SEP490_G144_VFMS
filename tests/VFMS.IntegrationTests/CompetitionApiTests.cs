@@ -133,11 +133,12 @@ public sealed class CompetitionApiTests
 
         // The Manager confirms the result and grants the prize voucher (UC-62).
         var confirmed = await PostJsonAsync(client, "/api/competitions/results/confirm",
-            new ConfirmCompetitionResultRequest(joinId, 95.5m, 1, "Final", true), manager);
+            new ConfirmCompetitionResultRequest(joinId, 95.5m, 1, null, true), manager);
         Assert.Equal(HttpStatusCode.OK, confirmed.StatusCode);
         var confirmedBody = await ReadJsonAsync(confirmed);
         Assert.Equal("Completed", confirmedBody.GetProperty("status").GetString());
         Assert.Equal(1, confirmedBody.GetProperty("rank").GetInt32());
+        Assert.Equal("Great form", confirmedBody.GetProperty("note").GetString());
 
         // The winner got a notification with the voucher code.
         var notifications = await app.Services.GetRequiredService<VfmsDbContext>()
@@ -154,6 +155,7 @@ public sealed class CompetitionApiTests
         Assert.Single(entries!);
         Assert.Equal("Champion", entries![0].PrizeName);
         Assert.Equal($"PRIZE2026{RunId}", entries[0].VoucherCode);
+        Assert.Equal("Great form", entries[0].Note);
     }
 
     [Fact]
