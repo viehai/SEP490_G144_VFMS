@@ -50,13 +50,15 @@
                 <textarea rows="3" maxlength="500" class="mt-1 w-full border border-[#CFCFCF] px-3 py-2 text-sm rounded-none" @bind="_survey.Health"></textarea>
                 <span class="mt-1 block font-normal text-[#71717A]">Không nhập tên, số điện thoại hay thông tin cá nhân khác.</span>
             </label>
-            <button type="submit" disabled="@_busy" class="w-full bg-black px-6 py-3 font-['Montserrat'] text-xs font-bold uppercase text-white rounded-none disabled:opacity-50">Lưu khảo sát</button>
+            <label class="flex items-start gap-2 text-xs leading-5">
+                <input type="checkbox" class="mt-1" @bind="_consent" />
+                <span>Tôi đồng ý gửi dữ liệu khảo sát đã ẩn danh (không có tên, email, số điện thoại) tới Google Gemini để tạo giáo án.</span>
+            </label>
+            <button type="submit" disabled="@_busy" class="w-full bg-black px-6 py-3 font-['Montserrat'] text-xs font-bold uppercase text-white rounded-none disabled:opacity-50">
+                @(_busy ? "Đang xử lý…" : _consent ? "Lưu khảo sát & tạo giáo án" : "Lưu khảo sát")
+            </button>
 
             <div class="border-t border-[#CFCFCF] pt-4 space-y-3">
-                <label class="flex items-start gap-2 text-xs leading-5">
-                    <input type="checkbox" class="mt-1" @bind="_consent" />
-                    <span>Tôi đồng ý gửi dữ liệu khảo sát đã ẩn danh (không có tên, email, số điện thoại) tới Google Gemini để tạo giáo án.</span>
-                </label>
                 <button type="button" disabled="@(_busy || !_consent || !_surveyComplete)" @onclick="Generate"
                         class="w-full border-2 border-black bg-white px-6 py-3 font-['Montserrat'] text-xs font-bold uppercase rounded-none hover:bg-black hover:text-white disabled:opacity-40">
                     @(_busy ? "Đang tạo giáo án…" : "Tạo giáo án mới")
@@ -183,15 +185,20 @@
                 string.IsNullOrEmpty(_survey.Gender) ? null : _survey.Gender, _survey.Dob, _survey.Health));
             _surveyComplete = saved.IsComplete;
             Show("Fitness survey updated successfully.", false);
+            // With consent ticked, saving the survey also builds a new plan from it (the API archives the old one).
+            if (_consent && _surveyComplete)
+                await GeneratePlan();
         });
     }
 
-    private Task Generate() => Busy(async () =>
+    private Task Generate() => Busy(GeneratePlan);
+
+    private async Task GeneratePlan()
     {
         _plan = await Api.PostAsync<WorkoutPlanResponse>("api/workout/plans/generate", new GenerateWorkoutPlanRequest(_consent));
         _history = await Api.GetAsync<List<WorkoutPlanSummaryResponse>>("api/workout/plans");
-        Show(_plan.IsFallback ? "Đã áp dụng giáo án tiêu chuẩn." : "Workout plan created successfully.", false);
-    });
+        Show(_plan.IsFallback ? "Đã áp dụng giáo án tiêu chuẩn." : "Đã tạo giáo án mới.", false);
+    }
 
     private Task Toggle(WorkoutPlanItemResponse item, bool done) => Busy(async () =>
     {
