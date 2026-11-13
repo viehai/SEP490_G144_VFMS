@@ -1,0 +1,19 @@
+@* Page footer for workspace lists: "Trang x / y · n {Noun}" with previous/next buttons. *@
+<nav aria-label="@AriaLabel" class="flex flex-wrap items-center justify-between gap-3 border-t border-[#D8DED2] p-4 text-xs font-medium text-[#69706A]">
+    <p>Trang @Page / @PageCount · @TotalCount @Noun</p>
+    <div class="flex gap-2">
+        <button type="button" class="@Ui.Button" disabled="@(Disabled || Page <= 1)" @onclick="() => OnPage.InvokeAsync(Page - 1)">Trang trước</button>
+        <button type="button" class="@Ui.Button" disabled="@(Disabled || Page >= PageCount)" @onclick="() => OnPage.InvokeAsync(Page + 1)">Trang sau</button>
+    </div>
+</nav>
+
+@code {
+    [Parameter] public int Page { get; set; }
+    [Parameter] public int PageSize { get; set; } = 20;
+    [Parameter] public int TotalCount { get; set; }
+    [Parameter] public string Noun { get; set; } = "bản ghi";
+    [Parameter] public string AriaLabel { get; set; } = "Phân trang";
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public EventCallback<int> OnPage { get; set; }
+    private int PageCount => Math.Max(1, (int)Math.Ceiling((double)TotalCount / Math.Max(1, PageSize)));
+}

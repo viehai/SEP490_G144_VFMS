@@ -1,0 +1,142 @@
+@page "/manager/membership-freeze-policy"
+@layout ManagerAdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using VFMS.Contracts.Memberships
+@attribute [Authorize(Roles = "Manager")]
+
+<PageTitle>Chính sách bảo lưu hội viên | Victor Fitness</PageTitle>
+
+<div class="workspace-page max-w-5xl space-y-6">
+    <header class="space-y-2 border-b border-vfms-border pb-5">
+        <p class="workspace-heading text-xs text-vfms-primary">Quản lý hội viên</p>
+        <h1 class="workspace-heading text-3xl text-vfms-text">Chính sách bảo lưu hội viên</h1>
+        <p class="text-sm leading-6 text-vfms-text-secondary">Thiết lập thời hạn, thời gian báo trước và hạn ngạch bảo lưu cho các yêu cầu mới.</p>
+    </header>
+
+    @if (_loading)
+    {
+        <p class="rounded-xl border border-vfms-border bg-vfms-surface p-5 text-sm text-vfms-text-secondary" role="status">
+            Đang tải chính sách bảo lưu...
+        </p>
+    }
+    else if (_loadError is not null)
+    {
+        <div class="space-y-3 rounded-xl border border-red-200 bg-red-50 p-5">
+            <p class="text-sm text-red-800" role="alert">@_loadError</p>
+            <button type="button" class="@SecondaryButton" @onclick="LoadAsync">Tải lại</button>
+        </div>
+    }
+    else if (_form is { } form && _editContext is { } editContext)
+    {
+        @if (!_configured)
+        {
+            <p class="rounded-xl border border-vfms-border bg-vfms-muted p-4 text-sm text-vfms-text">
+                Chưa có chính sách bảo lưu. Nhập các quy tắc để thiết lập chính sách lần đầu.
+            </p>
+        }
+        @if (_success)
+        {
+            <p role="status" tabindex="-1" @ref="_successNotice" class="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+                Đã cập nhật chính sách bảo lưu hội viên thành công.
+            </p>
+        }
+
+        <EditForm @key="editContext" EditContext="editContext" OnValidSubmit="SaveAsync" OnInvalidSubmit="FocusErrors" novalidate>
+            @if (editContext.GetValidationMessages().Any() || _saveError is not null)
+            {
+                <div role="alert" tabindex="-1" @ref="_errorNotice" class="mb-4 space-y-1 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+                    <p class="font-semibold">@(_saveError ?? "Vui lòng kiểm tra các giá trị được đánh dấu.")</p>
+                    <ValidationSummary />
+                </div>
+            }
+
+            <fieldset disabled="@_saving" aria-busy="@(_saving ? "true" : "false")" class="space-y-6">
+                <legend class="sr-only">Cấu hình chính sách bảo lưu</legend>
+
+                <section class="space-y-4 rounded-xl border border-vfms-border bg-vfms-surface p-5 sm:p-6" aria-labelledby="freeze-duration-title">
+                    <h2 id="freeze-duration-title" class="workspace-heading text-lg">Thời hạn và báo trước</h2>
+                    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                        <div>
+                            <label class="@Label" for="freeze-min-days">Tối thiểu mỗi yêu cầu (ngày)</label>
+                            <InputNumber id="freeze-min-days" class="@Field" @bind-Value="form.MinimumFreezeDays" min="1" step="1" required
+                                         aria-describedby="freeze-min-error" ParsingErrorMessage="Nhập số ngày nguyên." />
+                            <div id="freeze-min-error"><ValidationMessage For="@(() => form.MinimumFreezeDays)" /></div>
+                        </div>
+                        <div>
+                            <label class="@Label" for="freeze-max-days">Tối đa mỗi yêu cầu (ngày)</label>
+                            <InputNumber id="freeze-max-days" class="@Field" @bind-Value="form.MaximumFreezeDays" min="1" step="1" required
+                                         aria-describedby="freeze-max-error" ParsingErrorMessage="Nhập số ngày nguyên." />
+                            <div id="freeze-max-error"><ValidationMessage For="@(() => form.MaximumFreezeDays)" /></div>
+                        </div>
+                        <div>
+                            <label class="@Label" for="freeze-notice-days">Báo trước tối thiểu (ngày)</label>
+                            <InputNumber id="freeze-notice-days" class="@Field" @bind-Value="form.MinimumRequestDays" min="0" step="1" required
+                                         aria-describedby="freeze-notice-error" ParsingErrorMessage="Nhập số ngày nguyên." />
+                            <div id="freeze-notice-error"><ValidationMessage For="@(() => form.MinimumRequestDays)" /></div>
+                        </div>
+                        <div>
+                            <label class="@Label" for="freeze-eligibility-days">Đã thanh toán tối thiểu (ngày)</label>
+                            <InputNumber id="freeze-eligibility-days" class="@Field" @bind-Value="form.EligibilityPaidDays" min="0" step="1" required
+                                         aria-describedby="freeze-eligibility-error" ParsingErrorMessage="Nhập số ngày nguyên." />
+                            <div id="freeze-eligibility-error"><ValidationMessage For="@(() => form.EligibilityPaidDays)" /></div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="space-y-4 rounded-xl border border-vfms-border bg-vfms-surface p-5 sm:p-6" aria-labelledby="freeze-quota-title">
+                    <div class="space-y-1">
+                        <h2 id="freeze-quota-title" class="workspace-heading text-lg">Hạn ngạch theo kỳ hạn gói</h2>
+                        <p class="text-sm leading-6 text-vfms-text-secondary">
+                            Đặt tổng số ngày bảo lưu cho từng kỳ hạn. Hạn ngạch 0 ngày không cho phép bảo lưu.
+                        </p>
+                    </div>
+                    <ValidationMessage For="@(() => form.Quotas)" />
+                    @if (form.Quotas.Count == 0)
+                    {
+                        <p class="border-t border-vfms-border pt-4 text-sm text-vfms-text-secondary">Chưa có hạn ngạch theo kỳ hạn.</p>
+                    }
+                    @for (var index = 0; index < form.Quotas.Count; index++)
+                    {
+                        var quota = form.Quotas[index];
+                        var durationId = $"freeze-quota-{quota.Id}-duration";
+                        var unitId = $"freeze-quota-{quota.Id}-unit";
+                        var limitId = $"freeze-quota-{quota.Id}-limit";
+                        <fieldset @key="quota" class="min-w-0 border-t border-vfms-border pt-3">
+                            <legend class="sr-only">Kỳ hạn @(index + 1)</legend>
+                            <div class="grid items-start gap-4 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1.5fr_auto]">
+                                <div>
+                                    <label class="@Label" for="@durationId">Kỳ hạn</label>
+                                    <InputNumber id="@durationId" class="@Field" @bind-Value="quota.Duration" @ref="quota.DurationInput" min="1" step="1" required
+                                                 aria-describedby="@(durationId + "-error")" ParsingErrorMessage="Nhập kỳ hạn bằng số nguyên." />
+                                    <div id="@(durationId + "-error")"><ValidationMessage For="@(() => quota.Duration)" /></div>
+                                </div>
+                                <div>
+                                    <label class="@Label" for="@unitId">Đơn vị kỳ hạn</label>
+                                    <InputSelect id="@unitId" class="@Field" @bind-Value="quota.Unit" required aria-describedby="@(unitId + "-error")">
+                                        <option value="">Chọn đơn vị</option>
+                                        <option value="@MembershipFreezeTierUnits.Days">Ngày</option>
+                                        <option value="@MembershipFreezeTierUnits.Months">Tháng</option>
+                                    </InputSelect>
+                                    <div id="@(unitId + "-error")"><ValidationMessage For="@(() => quota.Unit)" /></div>
+                                </div>
+                                <div>
+                                    <label class="@Label" for="@limitId">Tổng hạn ngạch (ngày)</label>
+                                    <InputNumber id="@limitId" class="@Field" @bind-Value="quota.MaximumCumulativeFreezeDays" min="0" step="1" required
+                                                 aria-describedby="@(limitId + "-error")" ParsingErrorMessage="Nhập số ngày nguyên." />
+                                    <div id="@(limitId + "-error")"><ValidationMessage For="@(() => quota.MaximumCumulativeFreezeDays)" /></div>
+                                </div>
+                                <button type="button" class="@SecondaryButton mt-1 justify-self-start lg:mt-6"
+                                        aria-label="@($"Bỏ hạn ngạch kỳ hạn {index + 1}")" @onclick="() => RemoveQuota(quota)">Bỏ hạn ngạch</button>
+                            </div>
+                        </fieldset>
+                    }
+                    <button type="button" class="@SecondaryButton" @ref="_addQuotaButton" @onclick="AddQuota">Thêm hạn ngạch</button>
+                </section>
+
+                <button type="submit" class="min-h-[44px] rounded-lg bg-vfms-primary px-5 py-2 text-sm font-semibold text-white hover:bg-vfms-primary-hover">
+                    @(_saving ? "Đang lưu..." : _configured ? "Cập nhật chính sách" : "Lưu chính sách")
+                </button>
+            </fieldset>
+        </EditForm>
+    }
+</div>

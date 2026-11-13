@@ -1,0 +1,189 @@
+@page "/my-memberships/{MembershipId:int}"
+@layout PublicLayout
+@using Microsoft.AspNetCore.Authorization
+@using System.Net
+@using VFMS.Client.Components.Memberships
+@using VFMS.Contracts.Memberships
+@attribute [Authorize(Roles = "Member")]
+@inject MembershipPlanApiClient Plans
+@implements IDisposable
+
+<PageTitle>Chi tiết gói hội viên | Victor Fitness</PageTitle>
+
+<section class="mx-auto max-w-4xl space-y-6 px-5 pb-16 pt-28 font-body" aria-labelledby="membership-title">
+    <header class="space-y-2 border-b border-vfms-border pb-5">
+        <a href="/my-memberships" class="inline-flex min-h-[44px] items-center gap-2 text-sm font-bold text-vfms-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary">
+            <span aria-hidden="true">←</span> Về Gói của tôi
+        </a>
+        <h1 id="membership-title" class="break-words font-heading text-3xl font-extrabold text-vfms-text">
+            @(_detail?.Membership.PlanName ?? "Chi tiết gói hội viên")
+        </h1>
+    </header>
+
+    @if (_notFound)
+    {
+        <p role="status" class="rounded-xl border border-vfms-border bg-vfms-surface p-5 text-sm text-vfms-text">Không tìm thấy gói hội viên.</p>
+    }
+    else if (_loadError is not null)
+    {
+        <div class="rounded-xl border border-red-200 bg-red-50 p-4">
+            <p role="alert" class="text-sm text-red-800">@_loadError</p>
+            <button type="button" class="mt-3 min-h-[44px] rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-800 hover:bg-red-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary" @onclick="LoadAsync">Thử lại</button>
+        </div>
+    }
+    else if (_detail is { } detail)
+    {
+        <section class="space-y-4 rounded-xl border border-vfms-border bg-vfms-surface p-5 sm:p-6" aria-labelledby="membership-term-title">
+            <div class="flex flex-wrap items-baseline justify-between gap-2">
+                <h2 id="membership-term-title" class="font-heading text-xl font-bold text-vfms-text">Thông tin gói</h2>
+                <MembershipStatusBadge Status="@detail.Membership.Status" />
+            </div>
+            <MembershipTermDetails Membership="@detail.Membership" />
+            @if (detail.PurchasedAt.HasValue || detail.InvoiceNumber is not null)
+            {
+                <dl class="grid gap-3 border-t border-vfms-border pt-4 text-sm sm:grid-cols-3">
+                    @if (detail.PurchasedAt is { } purchasedAt)
+                    {
+                        <div>
+                            <dt class="text-xs font-semibold text-vfms-text-secondary">Ngày mua</dt>
+                            <dd class="mt-1 font-bold text-vfms-text"><MembershipDate Date="@VietnamDate(purchasedAt)" /></dd>
+                        </div>
+                    }
+                    @if (detail.InvoiceNumber is { } invoice)
+                    {
+                        <div>
+                            <dt class="text-xs font-semibold text-vfms-text-secondary">Số hóa đơn</dt>
+                            <dd class="mt-1 break-words font-bold text-vfms-text">@invoice</dd>
+                        </div>
+                    }
+                </dl>
+            }
+        </section>
+
+        <section class="space-y-4 rounded-xl border border-vfms-border bg-vfms-surface p-5 sm:p-6" aria-labelledby="membership-freeze-title">
+            <h2 id="membership-freeze-title" class="font-heading text-xl font-bold text-vfms-text">Thông tin bảo lưu</h2>
+            <dl class="grid gap-3 text-sm sm:grid-cols-3">
+                <div>
+                    <dt class="text-xs font-semibold text-vfms-text-secondary">Số ngày đã bảo lưu</dt>
+                    <dd class="mt-1 font-bold text-vfms-text">@detail.Freeze.TotalFrozenDays</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-semibold text-vfms-text-secondary">Số lần đã bảo lưu</dt>
+                    <dd class="mt-1 font-bold text-vfms-text">@detail.Freeze.FreezeCount</dd>
+                </div>
+            </dl>
+
+            <MembershipFreezeEligibilityPanel @key="MembershipId" MembershipId="@MembershipId" Submitted="FreezeSubmitted" />
+
+            <div class="space-y-3 border-t border-vfms-border pt-4">
+                <h3 class="font-heading text-sm font-bold text-vfms-text">Lịch sử yêu cầu bảo lưu</h3>
+                @if (detail.Freeze.History.Count == 0)
+                {
+                    <p class="text-sm text-vfms-text-secondary">Gói này chưa có yêu cầu bảo lưu.</p>
+                }
+                else
+                {
+                    <ul class="list-none divide-y divide-vfms-border p-0">
+                        @foreach (var period in detail.Freeze.History)
+                        {
+                            <li class="py-3 first:pt-0 last:pb-0">
+                                <dl class="grid gap-3 text-sm sm:grid-cols-3">
+                                    <div>
+                                        <dt class="text-xs font-semibold text-vfms-text-secondary">Thời gian bảo lưu đề nghị</dt>
+                                        <dd class="mt-1 font-semibold text-vfms-text">
+                                            <MembershipDate Date="@period.RequestedStartDate" /> đến <MembershipDate Date="@period.RequestedEndDate" />
+                                        </dd>
+                                    </div>
+                                    @if (period.ActualStartDate.HasValue || period.ActualEndDate.HasValue)
+                                    {
+                                        <div>
+                                            <dt class="text-xs font-semibold text-vfms-text-secondary">Thời gian bảo lưu thực tế</dt>
+                                            <dd class="mt-1 font-semibold text-vfms-text">
+                                                @if (period.ActualStartDate is { } actualStart)
+                                                {
+                                                    <MembershipDate Date="@actualStart" />
+                                                }
+                                                @if (period.ActualEndDate is { } actualEnd)
+                                                {
+                                                    <span>@(period.ActualStartDate.HasValue ? " đến " : "Kết thúc ngày ")</span><MembershipDate Date="@actualEnd" />
+                                                }
+                                            </dd>
+                                        </div>
+                                    }
+                                    <div>
+                                        <dt class="text-xs font-semibold text-vfms-text-secondary">Trạng thái yêu cầu</dt>
+                                        <dd class="mt-1"><MembershipFreezeStatusBadge Status="@period.Status" /></dd>
+                                    </div>
+                                </dl>
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
+        </section>
+    }
+    else
+    {
+        <p role="status" class="py-8 text-sm text-vfms-text-secondary">Đang tải thông tin gói hội viên...</p>
+    }
+</section>
+
+@code {
+    [Parameter] public int MembershipId { get; set; }
+
+    private CancellationTokenSource? _loadRequest;
+    private MembershipDetailResponse? _detail;
+    private string? _loadError;
+    private bool _notFound;
+
+    protected override Task OnParametersSetAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        CancelLoad();
+        _loadRequest = new();
+        var ct = _loadRequest.Token;
+        _detail = null;
+        _loadError = null;
+        _notFound = false;
+        try
+        {
+            var detail = await Plans.GetMembershipDetailAsync(MembershipId, ct);
+            if (!ct.IsCancellationRequested)
+                _detail = detail;
+        }
+        catch (AuthApiException ex)
+        {
+            if (ct.IsCancellationRequested)
+                return;
+            if (ex.StatusCode == HttpStatusCode.NotFound)
+                _notFound = true;
+            else
+                _loadError = ex.Message;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // The route changed or the member left the page.
+        }
+    }
+
+    private static DateOnly VietnamDate(DateTimeOffset timestamp) =>
+        DateOnly.FromDateTime(timestamp.ToOffset(TimeSpan.FromHours(7)).DateTime);
+
+    private void FreezeSubmitted(MembershipFreezeRequestResponse request)
+    {
+        if (_detail is null)
+            return;
+
+        var period = new MembershipFreezePeriodResponse(request.StartDate, request.EndDate, null, null, request.Status);
+        _detail = _detail with { Freeze = _detail.Freeze with { History = [period, .. _detail.Freeze.History] } };
+    }
+
+    private void CancelLoad()
+    {
+        _loadRequest?.Cancel();
+        _loadRequest?.Dispose();
+    }
+
+    public void Dispose() => CancelLoad();
+}

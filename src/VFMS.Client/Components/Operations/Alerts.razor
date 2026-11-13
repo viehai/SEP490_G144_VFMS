@@ -1,0 +1,13 @@
+@if (Notice is not null)
+{
+    <p role="status" class="@Ui.Notice">@Notice</p>
+}
+@if (Error is not null)
+{
+    <p role="alert" class="@Ui.Error">@Error</p>
+}
+
+@code {
+    [Parameter] public string? Notice { get; set; }
+    [Parameter] public string? Error { get; set; }
+}

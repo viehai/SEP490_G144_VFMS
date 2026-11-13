@@ -1,0 +1,7 @@
+@using System.Globalization
+
+<time datetime="@(Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))">@Date.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)</time>
+
+@code {
+    [Parameter, EditorRequired] public DateOnly Date { get; set; }
+}

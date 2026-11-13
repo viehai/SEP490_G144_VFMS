@@ -13,12 +13,16 @@ public class FreezePolicy : BaseEntity
     public int EligibilityPaidDays { get; set; }
     /// <summary>Minimum advance notice days required for a freeze request (GBR-42).</summary>
     public int MinimumRequestDays { get; set; }
+    /// <summary>Minimum consecutive days per request. Null for legacy policies awaiting configuration.</summary>
+    public int? MinFreezeDaysPerRequest { get; set; }
+    /// <summary>Global maximum consecutive days per request (GBR-40).</summary>
     public int DefaultMaxFreezeDays { get; set; }
     public int DefaultMaxFreezeCount { get; set; }
     public PolicyStatus PolicyStatus { get; set; } = PolicyStatus.Active;
     public bool IsGlobal { get; set; } = true;
 
-public string CreatedByUserId { get; set; } = string.Empty; // Đổi từ int sang string
-public ApplicationUser CreatedByUser { get; set; } = null!;
+    public string CreatedByUserId { get; set; } = string.Empty;
+    public ApplicationUser CreatedByUser { get; set; } = null!;
+    public ICollection<FreezePolicyTierQuota> TierQuotas { get; set; } = [];
 }
 

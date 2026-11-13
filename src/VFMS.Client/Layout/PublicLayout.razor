@@ -34,9 +34,23 @@
                     }
                     @if (auth.User.IsInRole("Member"))
                     {
-                        <NavLink href="/my-memberships" Match="NavLinkMatch.All" ActiveClass="text-[#5F6F52] underline underline-offset-4"
+                        <NavLink href="/my-memberships" Match="NavLinkMatch.Prefix" ActiveClass="text-[#5F6F52] underline underline-offset-4"
                                  class="@MyMembershipsClass">
                             Gói của tôi
+                        </NavLink>
+                    }
+                    @if (auth.User.IsInRole("Member") || auth.User.IsInRole("Customer"))
+                    {
+                        <NavLink href="/supplements" Match="NavLinkMatch.Prefix" ActiveClass="text-[#5F6F52] underline underline-offset-4"
+                                 class="@MyMembershipsClass">
+                            Cửa hàng
+                        </NavLink>
+                    }
+                    @if (auth.User.IsInRole("Member"))
+                    {
+                        <NavLink href="/equipment-issues" Match="NavLinkMatch.All" ActiveClass="text-[#5F6F52] underline underline-offset-4"
+                                 class="@MyMembershipsClass">
+                            Báo hỏng
                         </NavLink>
                     }
                     <NavLink href="/profile" Match="NavLinkMatch.All" ActiveClass="text-[#5F6F52] underline underline-offset-4"

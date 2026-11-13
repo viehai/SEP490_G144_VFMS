@@ -1,0 +1,13 @@
+@page "/manager/equipment-issues"
+@layout ManagerAdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using VFMS.Client.Components.Operations
+@attribute [Authorize(Roles = "Manager")]
+
+<PageTitle>Sửa chữa thiết bị | Victor Fitness</PageTitle>
+
+<div class="workspace-page space-y-6">
+    <PageHeader Overline="VFMS / FACILITY" Title="Sửa chữa thiết bị"
+                Description="Nhận sự cố được nhân viên chuyển lên, theo dõi sửa chữa và quyết định thanh lý." />
+    <EquipmentIssueBoard Role="Manager" />
+</div>

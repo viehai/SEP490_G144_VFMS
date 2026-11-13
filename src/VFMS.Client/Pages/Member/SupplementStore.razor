@@ -1,0 +1,244 @@
+@page "/supplements"
+@layout PublicLayout
+@using Microsoft.AspNetCore.Authorization
+@using VFMS.Client.Components.Operations
+@using VFMS.Contracts.Common
+@using VFMS.Contracts.Supplements
+@using VFMS.Contracts.Supplements.Validators
+@attribute [Authorize(Roles = "Customer,Member")]
+@inject OperationsApiClient Api
+@implements IDisposable
+
+<PageTitle>Thực phẩm bổ sung | Victor Fitness</PageTitle>
+
+<section class="mx-auto max-w-6xl space-y-6 px-5 pb-16 pt-28" aria-labelledby="store-title">
+    <header class="flex flex-wrap items-end justify-between gap-4 border-b border-[#D8DED2] pb-5">
+        <div class="space-y-2">
+            <h1 id="store-title" class="font-['Montserrat',sans-serif] text-3xl font-black text-[#383E43]">Thực phẩm bổ sung</h1>
+            <p class="text-sm text-[#69706A]">Đặt trước, nhận tại quầy hoặc giao tận nơi và thanh toán khi nhận hàng.</p>
+        </div>
+        <a href="/my-supplement-orders" class="text-sm font-semibold text-[#5F6F52] underline underline-offset-4">Đơn hàng của tôi →</a>
+    </header>
+
+    <Alerts Notice="@_notice" Error="@_error" />
+
+    @if (_placed is { } placed)
+    {
+        <div class="rounded-xl border border-emerald-300 bg-emerald-50 p-5 text-sm text-emerald-900" role="status">
+            <p class="text-base font-bold">Đặt hàng thành công · @placed.OrderNumber</p>
+            <p class="mt-1">@(placed.FulfillmentType == "GymPickup" ? "Nhân viên sẽ chuẩn bị đơn; bạn thanh toán khi nhận tại quầy." : "Đơn sẽ được giao tận nơi; bạn thanh toán khi nhận hàng (COD).") Tổng: <strong>@OperationsText.Money(placed.TotalAmount)</strong></p>
+            <a href="/my-supplement-orders" class="mt-2 inline-block font-semibold underline underline-offset-4">Theo dõi đơn hàng</a>
+        </div>
+    }
+
+    <div class="grid gap-6 lg:grid-cols-[1fr_340px]">
+        <div class="space-y-4">
+            <form class="flex flex-wrap items-end gap-3" @onsubmit="() => LoadAsync(1)" @onsubmit:preventDefault>
+                <label class="@Ui.Label w-full sm:w-64" for="store-search">Tìm sản phẩm
+                    <input id="store-search" type="search" class="@Ui.Field" @bind="_search" maxlength="100" placeholder="Whey, creatine..." />
+                </label>
+                <label class="@Ui.Label" for="store-category">Danh mục
+                    <select id="store-category" class="@Ui.Field" @bind="_category">
+                        <option value="">Tất cả</option>
+                        @foreach (var category in _categories) { <option value="@category">@category</option> }
+                    </select>
+                </label>
+                <button type="submit" class="@Ui.Button" disabled="@_loading">Lọc</button>
+            </form>
+
+            @if (_loading)
+            {
+                <p role="status" class="py-8 text-sm text-[#69706A]">Đang tải sản phẩm...</p>
+            }
+            else if (_page is { Items.Count: > 0 } list)
+            {
+                <ul class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                    @foreach (var product in list.Items)
+                    {
+                        <li @key="product.Id" class="flex flex-col overflow-hidden rounded-xl border border-[#D8DED2] bg-white shadow-sm">
+                            <div class="aspect-square bg-[#EEF1EA]">
+                                @if (product.ImageUrl is { } image) { <img src="@image" alt="@product.Name" class="h-full w-full object-cover" loading="lazy" /> }
+                            </div>
+                            <div class="flex flex-1 flex-col gap-2 p-4">
+                                <p class="text-[11px] font-bold tracking-wider text-[#8A9089]">@((product.Category ?? "Khác").ToUpperInvariant())</p>
+                                <h2 class="font-['Montserrat',sans-serif] text-sm font-bold text-[#383E43]">@product.Name</h2>
+                                @if (!string.IsNullOrWhiteSpace(product.Description)) { <p class="line-clamp-3 text-xs text-[#69706A]">@product.Description</p> }
+                                <div class="mt-auto flex items-center justify-between gap-2 pt-2">
+                                    <span class="text-base font-extrabold text-[#5F6F52]">@OperationsText.Money(product.UnitPrice)</span>
+                                    @if (product.CanOrder)
+                                    {
+                                        <button type="button" class="@Ui.PrimaryButton px-3 py-1.5 text-xs" aria-label="Thêm @product.Name vào giỏ" @onclick="() => Add(product)">Thêm vào giỏ</button>
+                                    }
+                                    else
+                                    {
+                                        <span class="@OperationsText.Badge(product.Status)">@OperationsText.Label(product.Status)</span>
+                                    }
+                                </div>
+                            </div>
+                        </li>
+                    }
+                </ul>
+                <div class="overflow-hidden rounded-xl border border-[#D8DED2] bg-white">
+                    <Pager Page="list.Page" PageSize="list.PageSize" TotalCount="list.TotalCount" Noun="sản phẩm" AriaLabel="Phân trang sản phẩm" Disabled="_loading" OnPage="LoadAsync" />
+                </div>
+            }
+            else
+            {
+                <p role="status" class="py-8 text-sm text-[#69706A]">Không có sản phẩm phù hợp.</p>
+            }
+        </div>
+
+        <aside class="@Ui.Card h-fit space-y-4 lg:sticky lg:top-28" aria-labelledby="cart-title">
+            <h2 id="cart-title" class="text-base font-bold text-[#383E43]">Giỏ hàng (@_cart.Sum(line => line.Quantity))</h2>
+            @if (_cart.Count == 0)
+            {
+                <p class="text-sm text-[#69706A]">Chưa có sản phẩm nào.</p>
+            }
+            else
+            {
+                <ul class="divide-y divide-[#EEF1EA]">
+                    @foreach (var line in _cart)
+                    {
+                        <li @key="line.Product.Id" class="flex items-center gap-2 py-2">
+                            <div class="min-w-0 flex-1">
+                                <p class="truncate text-sm font-semibold">@line.Product.Name</p>
+                                <p class="text-xs text-[#69706A]">@OperationsText.Money(line.Product.UnitPrice * line.Quantity)</p>
+                            </div>
+                            <input type="number" class="w-16 rounded-lg border border-[#D8DED2] px-2 py-1 text-sm" min="1" max="999" aria-label="Số lượng @line.Product.Name"
+                                   value="@line.Quantity" @onchange="args => SetQuantity(line, args.Value?.ToString())" />
+                            <button type="button" class="text-xs font-semibold text-red-700 hover:underline" aria-label="Bỏ @line.Product.Name" @onclick="() => _cart.Remove(line)">Bỏ</button>
+                        </li>
+                    }
+                </ul>
+                <p class="flex justify-between text-sm"><span>Tạm tính</span><strong class="text-[#5F6F52]">@OperationsText.Money(_cart.Sum(line => line.Product.UnitPrice * line.Quantity))</strong></p>
+
+                <EditForm Model="_checkout" OnValidSubmit="PlaceAsync" novalidate>
+                    <OperationsValidation TRequest="PlaceSupplementOrderRequest" Validator="_validator" CreateRequest="CreateRequest" @ref="_validation" />
+                    <ValidationSummary />
+                    <fieldset disabled="@_working" class="space-y-3">
+                        <legend class="text-xs font-semibold text-[#383E43]">Hình thức nhận hàng</legend>
+                        <InputRadioGroup @bind-Value="_checkout.FulfillmentType">
+                            @foreach (var type in OperationsText.FulfillmentTypes)
+                            {
+                                <label class="flex items-center gap-2 text-sm"><InputRadio Value="@type" /> @OperationsText.Label(type)</label>
+                            }
+                        </InputRadioGroup>
+                        @if (_checkout.FulfillmentType == "HomeDelivery")
+                        {
+                            <label class="@Ui.Label block" for="recipient">Người nhận
+                                <InputText id="recipient" class="@Ui.Field" @bind-Value="_checkout.RecipientName" maxlength="150" />
+                            </label>
+                            <label class="@Ui.Label block" for="address">Địa chỉ giao hàng
+                                <InputTextArea id="address" class="@Ui.Field" rows="2" @bind-Value="_checkout.DeliveryAddress" maxlength="500" />
+                            </label>
+                            <label class="@Ui.Label block" for="delivery-note">Ghi chú
+                                <InputText id="delivery-note" class="@Ui.Field" @bind-Value="_checkout.DeliveryNote" maxlength="500" />
+                            </label>
+                        }
+                        <button type="submit" class="@Ui.PrimaryButton w-full">@(_working ? "Đang đặt hàng..." : "Đặt hàng")</button>
+                    </fieldset>
+                </EditForm>
+            }
+        </aside>
+    </div>
+</section>
+
+@code {
+    private sealed class CartLine(SupplementProductResponse product)
+    {
+        public SupplementProductResponse Product { get; } = product;
+        public int Quantity { get; set; } = 1;
+    }
+
+    private const int PageSize = 12;
+    private readonly CancellationTokenSource _lifetime = new();
+    private readonly CheckoutModel _checkout = new();
+    private readonly PlaceSupplementOrderRequestValidator _validator = new();
+    private OperationsValidation<PlaceSupplementOrderRequest>? _validation;
+    private readonly List<CartLine> _cart = [];
+    private PagedResponse<SupplementProductResponse>? _page;
+    private SupplementOrderResponse? _placed;
+    private List<string> _categories = [];
+    private string _search = "", _category = "";
+    private string? _notice, _error;
+    private bool _loading, _working;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { _categories = await Api.GetProductCategoriesAsync(_lifetime.Token); }
+        catch (AuthApiException error) { _error = error.Message; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        await LoadAsync(1);
+    }
+
+    private PlaceSupplementOrderRequest CreateRequest()
+    {
+        var delivery = _checkout.FulfillmentType == "HomeDelivery";
+        return new(_cart.Select(line => new SupplementOrderLineRequest(line.Product.Id, line.Quantity)).ToList(), _checkout.FulfillmentType,
+            delivery ? _checkout.RecipientName?.Trim() : null, delivery ? _checkout.DeliveryAddress?.Trim() : null,
+            delivery && !string.IsNullOrWhiteSpace(_checkout.DeliveryNote) ? _checkout.DeliveryNote.Trim() : null);
+    }
+
+    private async Task LoadAsync(int page)
+    {
+        _loading = true;
+        try
+        {
+            _page = await Api.GetProductsAsync(new(string.IsNullOrWhiteSpace(_search) ? null : _search.Trim(),
+                string.IsNullOrEmpty(_category) ? null : _category, null, page, PageSize), manage: false, _lifetime.Token);
+        }
+        catch (AuthApiException error) { _error = error.Message; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        finally { _loading = false; }
+    }
+
+    private void Add(SupplementProductResponse product)
+    {
+        _placed = null;
+        if (_cart.FirstOrDefault(line => line.Product.Id == product.Id) is { } line)
+            line.Quantity = Math.Min(999, line.Quantity + 1);
+        else
+            _cart.Add(new(product));
+        _notice = $"Đã thêm \"{product.Name}\" vào giỏ.";
+    }
+
+    private static void SetQuantity(CartLine line, string? value)
+    {
+        if (int.TryParse(value, out var quantity)) line.Quantity = Math.Clamp(quantity, 1, 999);
+    }
+
+    private async Task PlaceAsync()
+    {
+        if (_working || _cart.Count == 0) return;
+        _working = true;
+        _notice = _error = null;
+        try
+        {
+            _placed = await Api.PlaceOrderAsync(CreateRequest(), _lifetime.Token);
+            _cart.Clear();
+            _checkout.DeliveryNote = null;
+        }
+        catch (AuthApiException error)
+        {
+            _error = error.Message;
+            _validation?.ShowErrors(error.Errors);
+            if (error.ErrorCode == "SUPPLEMENT_PRODUCT_UNAVAILABLE") await LoadAsync(_page?.Page ?? 1);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        finally { _working = false; }
+    }
+
+    public void Dispose()
+    {
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+    }
+
+    private sealed class CheckoutModel
+    {
+        public string FulfillmentType { get; set; } = "GymPickup";
+        public string? RecipientName { get; set; }
+        public string? DeliveryAddress { get; set; }
+        public string? DeliveryNote { get; set; }
+    }
+}

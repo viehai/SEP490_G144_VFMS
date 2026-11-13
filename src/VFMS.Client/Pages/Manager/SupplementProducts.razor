@@ -1,0 +1,258 @@
+@page "/manager/supplement-products"
+@layout ManagerAdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using VFMS.Client.Components.Operations
+@using VFMS.Contracts.Common
+@using VFMS.Contracts.Supplements
+@using VFMS.Contracts.Supplements.Validators
+@attribute [Authorize(Roles = "Manager")]
+@inject OperationsApiClient Api
+@implements IDisposable
+
+<PageTitle>Sản phẩm bổ sung | Victor Fitness</PageTitle>
+
+<div class="workspace-page space-y-6">
+    <PageHeader Overline="VFMS / SUPPLEMENT STORE" Title="Sản phẩm bổ sung" Description="Danh mục sản phẩm, giá bán và trạng thái hiển thị trên cửa hàng.">
+        <button type="button" class="@Ui.PrimaryButton" @onclick="StartCreate">+ Thêm sản phẩm</button>
+    </PageHeader>
+
+    <Alerts Notice="@_notice" Error="@_error" />
+
+    @if (_formOpen)
+    {
+        <section class="@Ui.Card" aria-labelledby="product-form-title">
+            <h2 id="product-form-title" class="text-base font-bold text-[#383E43]">@(_editingId is null ? "Thêm sản phẩm" : "Sửa sản phẩm")</h2>
+            <EditForm Model="_form" OnValidSubmit="SaveAsync" class="mt-4" novalidate>
+                <OperationsValidation TRequest="SupplementProductRequest" Validator="_validator" CreateRequest="CreateRequest" @ref="_validation" />
+                <ValidationSummary />
+                <fieldset disabled="@_working" class="mt-4 grid gap-4 sm:grid-cols-[1fr_1fr_160px]">
+                    <label class="@Ui.Label sm:col-span-2" for="product-name">Tên sản phẩm
+                        <InputText id="product-name" class="@Ui.Field" @bind-Value="_form.Name" maxlength="200" required />
+                    </label>
+                    <div class="row-span-3 flex items-start justify-center">
+                        @if (!string.IsNullOrWhiteSpace(_form.ImageUrl))
+                        {
+                            <img src="@_form.ImageUrl" alt="Ảnh xem trước" class="h-36 w-36 rounded-lg border border-[#D8DED2] object-cover" />
+                        }
+                        else
+                        {
+                            <div class="flex h-36 w-36 items-center justify-center rounded-lg border border-dashed border-[#D8DED2] text-xs text-[#8A9089]">Chưa có ảnh</div>
+                        }
+                    </div>
+                    <label class="@Ui.Label" for="product-category">Danh mục
+                        <InputText id="product-category" class="@Ui.Field" @bind-Value="_form.Category" list="product-categories" maxlength="100" />
+                        <datalist id="product-categories">@foreach (var category in _categories) { <option value="@category"></option> }</datalist>
+                    </label>
+                    <label class="@Ui.Label" for="product-price">Giá bán (₫)
+                        <InputNumber id="product-price" class="@Ui.Field" @bind-Value="_form.UnitPrice" min="1" step="1000" />
+                    </label>
+                    <label class="@Ui.Label sm:col-span-2" for="product-image">Link ảnh (png, jpg, jpeg)
+                        <InputText id="product-image" class="@Ui.Field" @bind-Value="_form.ImageUrl" placeholder="https://.../anh.jpg" />
+                    </label>
+                    <label class="@Ui.Label sm:col-span-3" for="product-description">Mô tả
+                        <InputTextArea id="product-description" class="@Ui.Field" rows="3" @bind-Value="_form.Description" maxlength="2000" />
+                    </label>
+                    <label class="@Ui.Label" for="product-status">Trạng thái
+                        <InputSelect id="product-status" class="@Ui.Field" @bind-Value="_form.Status">
+                            @foreach (var status in OperationsText.ProductStatuses) { <option value="@status">@OperationsText.Label(status)</option> }
+                        </InputSelect>
+                    </label>
+                    <div class="flex flex-wrap items-end gap-3 sm:col-span-2">
+                        <button type="submit" class="@Ui.PrimaryButton">@(_working ? "Đang lưu..." : "Lưu sản phẩm")</button>
+                        <button type="button" class="@Ui.Button" @onclick="() => _formOpen = false">Hủy</button>
+                    </div>
+                </fieldset>
+            </EditForm>
+        </section>
+    }
+
+    <section class="@Ui.ListCard" aria-labelledby="product-list-title" aria-busy="@_loading">
+        <div class="@Ui.ListHeader">
+            <h2 id="product-list-title" class="mb-3 text-sm font-bold text-[#383E43]">Sản phẩm</h2>
+            <form @onsubmit="() => LoadAsync(1)" @onsubmit:preventDefault>
+                <fieldset disabled="@Busy" class="flex flex-wrap items-end gap-3">
+                    <label class="@Ui.Label w-full sm:w-64" for="product-search">Tìm kiếm
+                        <input id="product-search" type="search" class="@Ui.Field" @bind="_search" maxlength="100" />
+                    </label>
+                    <label class="@Ui.Label" for="product-filter-category">Danh mục
+                        <select id="product-filter-category" class="@Ui.Field" @bind="_filterCategory">
+                            <option value="">Tất cả</option>
+                            @foreach (var category in _categories) { <option value="@category">@category</option> }
+                        </select>
+                    </label>
+                    <label class="@Ui.Label" for="product-filter-status">Trạng thái
+                        <select id="product-filter-status" class="@Ui.Field" @bind="_filterStatus">
+                            <option value="">Tất cả</option>
+                            @foreach (var status in OperationsText.ProductStatuses) { <option value="@status">@OperationsText.Label(status)</option> }
+                        </select>
+                    </label>
+                    <button type="submit" class="@Ui.Button">Áp dụng</button>
+                </fieldset>
+            </form>
+        </div>
+        @if (_loading)
+        {
+            <p role="status" class="p-5 text-sm">Đang tải sản phẩm...</p>
+        }
+        else if (_page is { Items.Count: > 0 } list)
+        {
+            <div class="overflow-x-auto">
+                <table class="workspace-table min-w-[860px]">
+                    <thead>
+                        <tr><th scope="col">Sản phẩm</th><th scope="col">Danh mục</th><th scope="col" class="text-right">Giá bán</th><th scope="col">Trạng thái</th><th scope="col">Thao tác</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in list.Items)
+                        {
+                            <tr @key="row.Id">
+                                <th scope="row">
+                                    <div class="flex items-center gap-3">
+                                        @if (row.ImageUrl is { } image) { <img src="@image" alt="" class="h-10 w-10 flex-none rounded-md border border-[#D8DED2] object-cover" loading="lazy" /> }
+                                        <span class="font-semibold">@row.Name</span>
+                                    </div>
+                                </th>
+                                <td>@(row.Category ?? "—")</td>
+                                <td class="text-right whitespace-nowrap">@OperationsText.Money(row.UnitPrice)</td>
+                                <td><span class="@OperationsText.Badge(row.Status)">@OperationsText.Label(row.Status)</span></td>
+                                <td>
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <button type="button" class="@Ui.Button" disabled="@Busy" aria-label="Sửa @row.Name" @onclick="() => StartEdit(row)">Sửa</button>
+                                        <select class="rounded-lg border border-[#D8DED2] bg-white px-2 py-1.5 text-xs font-semibold text-[#383E43]" disabled="@Busy"
+                                                aria-label="Đổi trạng thái @row.Name" value="@row.Status" @onchange="args => ChangeStatusAsync(row, args.Value?.ToString())">
+                                            @foreach (var status in OperationsText.ProductStatuses) { <option value="@status">@OperationsText.Label(status)</option> }
+                                        </select>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <Pager Page="list.Page" PageSize="list.PageSize" TotalCount="list.TotalCount" Noun="sản phẩm" AriaLabel="Phân trang sản phẩm" Disabled="Busy" OnPage="LoadAsync" />
+        }
+        else
+        {
+            <p role="status" class="p-5 text-sm text-[#69706A]">Chưa có sản phẩm phù hợp.</p>
+        }
+    </section>
+</div>
+
+@code {
+    private const int PageSize = 20;
+    private readonly CancellationTokenSource _lifetime = new();
+    private readonly ProductModel _form = new();
+    private readonly SupplementProductRequestValidator _validator = new();
+    private OperationsValidation<SupplementProductRequest>? _validation;
+    private PagedResponse<SupplementProductResponse>? _page;
+    private List<string> _categories = [];
+    private int? _editingId;
+    private string _search = "", _filterCategory = "", _filterStatus = "";
+    private string? _notice, _error;
+    private bool _formOpen, _loading, _working;
+    private bool Busy => _loading || _working;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCategoriesAsync();
+        await LoadAsync(1);
+    }
+
+    private SupplementProductRequest CreateRequest() => new(_form.Name.Trim(), _form.Description.Trim(), _form.ImageUrl.Trim(),
+        _form.UnitPrice, string.IsNullOrWhiteSpace(_form.Category) ? null : _form.Category.Trim(), _form.Status);
+
+    private static string? Blank(string value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private async Task LoadAsync(int page)
+    {
+        _loading = true;
+        try { _page = await Api.GetProductsAsync(new(Blank(_search), Blank(_filterCategory), Blank(_filterStatus), page, PageSize), manage: true, _lifetime.Token); }
+        catch (AuthApiException error) { _error = error.Message; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        finally { _loading = false; }
+    }
+
+    private async Task LoadCategoriesAsync()
+    {
+        try { _categories = await Api.GetProductCategoriesAsync(_lifetime.Token); }
+        catch (AuthApiException error) { _error = error.Message; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+    }
+
+    private void StartCreate()
+    {
+        _editingId = null;
+        _form.Name = _form.Description = _form.ImageUrl = "";
+        _form.Category = null;
+        _form.UnitPrice = 0;
+        _form.Status = "Active";
+        _formOpen = true;
+    }
+
+    private void StartEdit(SupplementProductResponse product)
+    {
+        _editingId = product.Id;
+        _form.Name = product.Name;
+        _form.Description = product.Description ?? "";
+        _form.ImageUrl = product.ImageUrl ?? "";
+        _form.Category = product.Category;
+        _form.UnitPrice = product.UnitPrice;
+        _form.Status = product.Status;
+        _formOpen = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (Busy) return;
+        _working = true;
+        _notice = _error = null;
+        try
+        {
+            var saved = _editingId is { } id
+                ? await Api.UpdateProductAsync(id, CreateRequest(), _lifetime.Token)
+                : await Api.CreateProductAsync(CreateRequest(), _lifetime.Token);
+            _notice = _editingId is null ? $"Đã thêm \"{saved.Name}\"." : $"Đã cập nhật \"{saved.Name}\".";
+            _formOpen = false;
+            await LoadCategoriesAsync();
+            await LoadAsync(_page?.Page ?? 1);
+        }
+        catch (AuthApiException error)
+        {
+            _error = error.Message;
+            _validation?.ShowErrors(error.Errors);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        finally { _working = false; }
+    }
+
+    private async Task ChangeStatusAsync(SupplementProductResponse product, string? status)
+    {
+        if (Busy || status is null || status == product.Status) return;
+        _working = true;
+        _notice = _error = null;
+        try
+        {
+            var saved = await Api.ChangeProductStatusAsync(product.Id, status, _lifetime.Token);
+            _notice = $"\"{saved.Name}\": {OperationsText.Label(saved.Status).ToLowerInvariant()}.";
+        }
+        catch (AuthApiException error) { _error = error.Message; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        finally { _working = false; }
+        await LoadAsync(_page?.Page ?? 1);
+    }
+
+    public void Dispose()
+    {
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+    }
+
+    private sealed class ProductModel
+    {
+        public string Name { get; set; } = "";
+        public string Description { get; set; } = "";
+        public string ImageUrl { get; set; } = "";
+        public string? Category { get; set; }
+        public decimal UnitPrice { get; set; }
+        public string Status { get; set; } = "Active";
+    }
+}

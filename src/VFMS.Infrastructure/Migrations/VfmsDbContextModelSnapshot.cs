@@ -851,6 +851,9 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<bool>("IsGlobal")
                         .HasColumnType("bit");
 
+                    b.Property<int?>("MinFreezeDaysPerRequest")
+                        .HasColumnType("int");
+
                     b.Property<int>("MinimumRequestDays")
                         .HasColumnType("int");
 
@@ -870,6 +873,10 @@ namespace VFMS.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("IsGlobal")
+                        .IsUnique()
+                        .HasFilter("[IsGlobal] = 1 AND [IsDeleted] = 0 AND [PolicyStatus] = 'Active'");
 
                     b.ToTable("FreezePolicies");
                 });
@@ -1431,17 +1438,47 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<DateOnly?>("ActualStartDate")
                         .HasColumnType("date");
 
+                    b.Property<int?>("AppliedExpiryExtensionDays")
+                        .HasColumnType("int");
+
+                    b.Property<string>("AppliedPolicySnapshot")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
                     b.Property<DateTime?>("EarlyUnfreezeAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("EarlyUnfreezeRequestStatus")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime?>("EarlyUnfreezeRequestedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("EarlyUnfreezeReviewNote")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<DateTime?>("EarlyUnfreezeReviewedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("EarlyUnfreezeReviewedByUserId")
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<int?>("FreezePolicyId")
+                        .HasColumnType("int");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
                     b.Property<int>("MemberMembershipId")
                         .HasColumnType("int");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
 
                     b.Property<string>("RequestStatus")
                         .IsRequired()
@@ -1471,6 +1508,10 @@ namespace VFMS.Infrastructure.Migrations
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("EarlyUnfreezeReviewedByUserId");
+
+                    b.HasIndex("FreezePolicyId");
 
                     b.HasIndex("MemberMembershipId");
 
@@ -3813,7 +3854,32 @@ namespace VFMS.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.OwnsMany("VFMS.Domain.Entities.FreezePolicyTierQuota", "TierQuotas", b1 =>
+                        {
+                            b1.Property<int>("FreezePolicyId")
+                                .HasColumnType("int");
+
+                            b1.Property<string>("Unit")
+                                .HasMaxLength(10)
+                                .HasColumnType("nvarchar(10)");
+
+                            b1.Property<int>("Duration")
+                                .HasColumnType("int");
+
+                            b1.Property<int>("MaximumCumulativeFreezeDays")
+                                .HasColumnType("int");
+
+                            b1.HasKey("FreezePolicyId", "Unit", "Duration");
+
+                            b1.ToTable("FreezePolicyTierQuotas", (string)null);
+
+                            b1.WithOwner()
+                                .HasForeignKey("FreezePolicyId");
+                        });
+
                     b.Navigation("CreatedByUser");
+
+                    b.Navigation("TierQuotas");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.GymAnnouncement", b =>
@@ -3970,6 +4036,16 @@ namespace VFMS.Infrastructure.Migrations
 
             modelBuilder.Entity("VFMS.Domain.Entities.MembershipFreeze", b =>
                 {
+                    b.HasOne("VFMS.Domain.Entities.ApplicationUser", "EarlyUnfreezeReviewedByUser")
+                        .WithMany()
+                        .HasForeignKey("EarlyUnfreezeReviewedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("VFMS.Domain.Entities.FreezePolicy", "FreezePolicy")
+                        .WithMany()
+                        .HasForeignKey("FreezePolicyId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("VFMS.Domain.Entities.MemberMembership", "MemberMembership")
                         .WithMany("MembershipFreezes")
                         .HasForeignKey("MemberMembershipId")
@@ -3986,6 +4062,10 @@ namespace VFMS.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("ReviewedByUserId")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("EarlyUnfreezeReviewedByUser");
+
+                    b.Navigation("FreezePolicy");
 
                     b.Navigation("MemberMembership");
 

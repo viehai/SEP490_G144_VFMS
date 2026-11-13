@@ -12,6 +12,10 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
     private const string BasePath = "api/manager/membership-plans";
     private const string PurchasesPath = "api/membership-purchases";
     private const string RenewalsPath = "api/membership-renewals";
+    private const string MembershipsPath = "api/memberships";
+    private const string FreezePolicyPath = "api/manager/membership-freeze-policy";
+    private const string FreezeRequestsPath = "api/membership-freeze-requests";
+    private const string FreezeReviewsPath = "api/manager/membership-freeze-requests";
 
     public Task<PagedResponse<MembershipPlanResponse>> ListAsync(MembershipPlanListRequest request, CancellationToken cancellationToken = default)
     {
@@ -39,6 +43,13 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
     public Task<MembershipPlanDeleteResponse> DeleteAsync(int id, CancellationToken cancellationToken = default) =>
         SendAsync<MembershipPlanDeleteResponse>(HttpMethod.Delete, $"{BasePath}/{id}", cancellationToken);
 
+    public Task<MembershipFreezePolicyResponse> GetMembershipFreezePolicyAsync(CancellationToken cancellationToken = default) =>
+        SendAsync<MembershipFreezePolicyResponse>(HttpMethod.Get, FreezePolicyPath, cancellationToken);
+
+    public Task<MembershipFreezePolicyResponse> UpdateMembershipFreezePolicyAsync(
+        MembershipFreezePolicyRequest request, CancellationToken cancellationToken = default) =>
+        SendAsync<MembershipFreezePolicyResponse>(HttpMethod.Put, FreezePolicyPath, cancellationToken, JsonContent.Create(request));
+
     public Task<PagedResponse<MembershipPlanCatalogItemResponse>> ListCatalogAsync(int page, CancellationToken cancellationToken = default) =>
         SendAsync<PagedResponse<MembershipPlanCatalogItemResponse>>(HttpMethod.Get,
             FormattableString.Invariant($"api/membership-plans?page={page}&pageSize=9"), cancellationToken);
@@ -48,6 +59,73 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
 
     public Task<MembershipPurchaseResponse> GetPurchaseAsync(string orderNumber, CancellationToken cancellationToken = default) =>
         SendAsync<MembershipPurchaseResponse>(HttpMethod.Get, $"{PurchasesPath}/{Uri.EscapeDataString(orderNumber)}", cancellationToken);
+
+    public Task<IReadOnlyList<MembershipSummaryResponse>> GetMyMembershipsAsync(CancellationToken cancellationToken = default) =>
+        SendAsync<IReadOnlyList<MembershipSummaryResponse>>(HttpMethod.Get, $"{MembershipsPath}/me", cancellationToken);
+
+    public Task<MembershipDetailResponse> GetMembershipDetailAsync(int membershipId, CancellationToken cancellationToken = default) =>
+        SendAsync<MembershipDetailResponse>(HttpMethod.Get,
+            FormattableString.Invariant($"{MembershipsPath}/{membershipId}"), cancellationToken);
+
+    public Task<MembershipFreezeEligibilityResponse> GetFreezeEligibilityAsync(
+        int membershipId, int? excludeRequestId = null, CancellationToken cancellationToken = default)
+    {
+        var path = FormattableString.Invariant($"{MembershipsPath}/{membershipId}/freeze-eligibility");
+        if (excludeRequestId is { } requestId)
+            path += FormattableString.Invariant($"?excludeRequestId={requestId}");
+        return SendAsync<MembershipFreezeEligibilityResponse>(HttpMethod.Get, path, cancellationToken);
+    }
+
+    public Task<IReadOnlyList<MembershipFreezeRequestResponse>> GetMyFreezeRequestsAsync(CancellationToken cancellationToken = default) =>
+        SendAsync<IReadOnlyList<MembershipFreezeRequestResponse>>(HttpMethod.Get, FreezeRequestsPath, cancellationToken);
+
+    public Task<MembershipFreezeRequestResponse> GetFreezeRequestAsync(int requestId, CancellationToken cancellationToken = default) =>
+        SendAsync<MembershipFreezeRequestResponse>(HttpMethod.Get,
+            FormattableString.Invariant($"{FreezeRequestsPath}/{requestId}"), cancellationToken);
+
+    public Task<MembershipFreezeRequestResponse> CreateFreezeRequestAsync(
+        MembershipFreezeRequest request, CancellationToken cancellationToken = default) =>
+        SendAsync<MembershipFreezeRequestResponse>(HttpMethod.Post, FreezeRequestsPath, cancellationToken, JsonContent.Create(request));
+
+    public Task<MembershipFreezeRequestResponse> UpdateFreezeRequestAsync(
+        int requestId, MembershipFreezeRequest request, CancellationToken cancellationToken = default) =>
+        SendAsync<MembershipFreezeRequestResponse>(HttpMethod.Put,
+            FormattableString.Invariant($"{FreezeRequestsPath}/{requestId}"), cancellationToken, JsonContent.Create(request));
+
+    public Task<MembershipFreezeRequestResponse> CancelFreezeRequestAsync(int requestId, CancellationToken cancellationToken = default) =>
+        SendAsync<MembershipFreezeRequestResponse>(HttpMethod.Post,
+            FormattableString.Invariant($"{FreezeRequestsPath}/{requestId}/cancel"), cancellationToken);
+
+    public Task<MembershipFreezeRequestResponse> RequestEarlyUnfreezeAsync(int requestId, CancellationToken cancellationToken = default) =>
+        SendAsync<MembershipFreezeRequestResponse>(HttpMethod.Post,
+            FormattableString.Invariant($"{FreezeRequestsPath}/{requestId}/early-unfreeze"), cancellationToken);
+
+    public Task<PagedResponse<MembershipFreezeReviewSummaryResponse>> ListFreezeReviewsAsync(
+        MembershipFreezeReviewListRequest request, CancellationToken cancellationToken = default)
+    {
+        var path = FormattableString.Invariant($"{FreezeReviewsPath}?page={request.Page}&pageSize={request.PageSize}");
+        if (!string.IsNullOrWhiteSpace(request.Type))
+            path += $"&type={Uri.EscapeDataString(request.Type.Trim())}";
+        return SendAsync<PagedResponse<MembershipFreezeReviewSummaryResponse>>(HttpMethod.Get, path, cancellationToken);
+    }
+
+    public Task<MembershipFreezeReviewDetailResponse> GetFreezeReviewAsync(
+        int requestId, string requestType, CancellationToken cancellationToken = default) =>
+        SendAsync<MembershipFreezeReviewDetailResponse>(HttpMethod.Get,
+            FormattableString.Invariant($"{FreezeReviewsPath}/{requestId}?type={Uri.EscapeDataString(requestType)}"), cancellationToken);
+
+    public Task<MembershipFreezeReviewDetailResponse> ApproveFreezeReviewAsync(
+        int requestId, string requestType, CancellationToken cancellationToken = default) =>
+        SendAsync<MembershipFreezeReviewDetailResponse>(HttpMethod.Post, FreezeReviewActionPath(requestId, requestType, "approve"), cancellationToken);
+
+    public Task<MembershipFreezeReviewDetailResponse> RejectFreezeReviewAsync(
+        int requestId, string requestType, RejectMembershipFreezeRequest request, CancellationToken cancellationToken = default) =>
+        SendAsync<MembershipFreezeReviewDetailResponse>(HttpMethod.Post, FreezeReviewActionPath(requestId, requestType, "reject"),
+            cancellationToken, JsonContent.Create(request));
+
+    private static string FreezeReviewActionPath(int requestId, string requestType, string action) =>
+        FormattableString.Invariant($"{FreezeReviewsPath}/{requestId}") +
+        (requestType == MembershipFreezeReviewTypes.EarlyUnfreeze ? "/early-unfreeze" : "") + $"/{action}";
 
     public Task<IReadOnlyList<MembershipRenewalOption>> ListRenewalsAsync(CancellationToken cancellationToken = default) =>
         SendAsync<IReadOnlyList<MembershipRenewalOption>>(HttpMethod.Get, RenewalsPath, cancellationToken);

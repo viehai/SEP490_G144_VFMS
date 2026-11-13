@@ -69,6 +69,9 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
         var ptWorker = builder.Services.Single(service => service.ImplementationType ==
             typeof(VFMS.Infrastructure.PersonalTraining.PersonalTrainingWorker));
         builder.Services.Remove(ptWorker);
+        builder.Services.AddMembershipFreezePolicyModule();
+        builder.Services.AddMembershipFreezeRequestModule();
+        builder.Services.AddMembershipFreezeReviewModule();
         var worker = builder.Services.Single(service =>
             service.ServiceType == typeof(IHostedService) && service.ImplementationType == typeof(MembershipCommerceWorker));
         builder.Services.Remove(worker);

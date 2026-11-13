@@ -1,0 +1,24 @@
+<span class="inline-block rounded-full px-2.5 py-1 text-xs font-semibold @StatusClass">@StatusLabel</span>
+
+@code {
+    [Parameter, EditorRequired] public string Status { get; set; } = "";
+
+    private string StatusLabel => Status switch
+    {
+        "Active" => "Đang hoạt động",
+        "Expired" => "Đã hết hạn",
+        "Scheduled" => "Chờ kích hoạt",
+        "Frozen" => "Đang bảo lưu",
+        "Suspended" => "Đang tạm ngưng",
+        "Cancelled" => "Đã hủy",
+        _ => Status
+    };
+
+    private string StatusClass => Status switch
+    {
+        "Active" => "bg-green-50 text-green-800",
+        "Scheduled" or "Frozen" => "bg-amber-50 text-amber-800",
+        "Expired" => "bg-red-50 text-red-800",
+        _ => "bg-gray-100 text-gray-700"
+    };
+}

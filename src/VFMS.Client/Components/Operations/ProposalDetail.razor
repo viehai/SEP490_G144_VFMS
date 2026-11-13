@@ -1,0 +1,49 @@
+@using VFMS.Contracts.Procurement
+
+@* Items, total and review history of a purchase proposal. *@
+<div class="space-y-4">
+    @if (!string.IsNullOrWhiteSpace(Proposal.Description))
+    {
+        <p class="rounded-lg border border-[#D8DED2] bg-[#F7F4EC] p-4 text-sm whitespace-pre-wrap">@Proposal.Description</p>
+    }
+    <div class="overflow-x-auto rounded-lg border border-[#D8DED2]">
+        <table class="workspace-table min-w-[640px]">
+            <thead>
+                <tr><th scope="col">Hạng mục</th><th scope="col">Thiết bị liên quan</th><th scope="col" class="text-right">SL</th><th scope="col" class="text-right">Đơn giá</th><th scope="col" class="text-right">Thành tiền</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var item in Proposal.Items)
+                {
+                    <tr @key="item.Id">
+                        <th scope="row" class="font-semibold">@item.ItemName@if (item.Reason is { } reason) { <span class="block text-xs font-normal text-[#69706A]">@reason</span> }</th>
+                        <td>@(item.EquipmentName ?? "—")</td>
+                        <td class="text-right">@item.Quantity</td>
+                        <td class="text-right whitespace-nowrap">@OperationsText.Money(item.EstimatedUnitPrice)</td>
+                        <td class="text-right whitespace-nowrap font-semibold">@OperationsText.Money(item.LineTotal)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <p class="text-right text-sm">Tổng ngân sách dự kiến: <span class="text-lg font-extrabold text-[#5F6F52]">@OperationsText.Money(Proposal.TotalBudget)</span></p>
+    @if (Proposal.Reviews.Count > 0)
+    {
+        <div>
+            <p class="mb-2 text-xs font-bold text-[#383E43]">Lịch sử duyệt</p>
+            <ul class="space-y-2">
+                @foreach (var review in Proposal.Reviews.OrderByDescending(r => r.ReviewedAt))
+                {
+                    <li class="rounded-lg border border-[#D8DED2] p-3 text-xs">
+                        <span class="@OperationsText.Badge(review.Action switch { "Approve" or "Approved" => "Approved", "Reject" or "Rejected" => "Rejected", "Complete" or "Completed" => "Completed", _ => "Submitted" })">@OperationsText.Label(review.Action)</span>
+                        <span class="ml-2 text-[#69706A]">@OperationsText.Local(review.ReviewedAt) · @(review.ReviewedByName ?? "Quản lý")</span>
+                        @if (review.ReviewNote is { } note) { <p class="mt-1 text-sm text-[#383E43]">@note</p> }
+                    </li>
+                }
+            </ul>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public PurchaseProposalResponse Proposal { get; set; } = default!;
+}

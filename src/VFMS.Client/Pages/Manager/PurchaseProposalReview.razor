@@ -1,0 +1,176 @@
+@page "/manager/purchase-proposals"
+@layout ManagerAdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using VFMS.Client.Components.Operations
+@using VFMS.Contracts.Common
+@using VFMS.Contracts.Procurement
+@attribute [Authorize(Roles = "Manager")]
+@inject OperationsApiClient Api
+@implements IDisposable
+
+<PageTitle>Duyệt đề xuất mua sắm | Victor Fitness</PageTitle>
+
+<div class="workspace-page space-y-6">
+    <PageHeader Overline="VFMS / PROCUREMENT" Title="Duyệt đề xuất mua sắm"
+                Description="Xem đề xuất của nhân viên, duyệt, từ chối hoặc yêu cầu sửa; đánh dấu hoàn tất khi đã mua." />
+
+    <Alerts Notice="@_notice" Error="@_error" />
+
+    @if (_selected is { } selected)
+    {
+        <section class="@Ui.Card" aria-labelledby="review-title">
+            <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <h2 id="review-title" class="text-base font-bold text-[#383E43]">@selected.ProposalNumber</h2>
+                    <p class="mt-1 text-xs text-[#69706A]">@(selected.ProposedByName ?? "Nhân viên") · @(selected.SubmittedAt is { } sent ? $"Gửi {OperationsText.Local(sent)}" : $"Tạo {OperationsText.Local(selected.CreatedAt)}")</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="@OperationsText.Badge(selected.Status)">@OperationsText.Label(selected.Status)</span>
+                    <button type="button" class="@Ui.Button" @onclick="() => _selected = null">Đóng</button>
+                </div>
+            </div>
+            <ProposalDetail Proposal="selected" />
+            @if (selected.Status == "Submitted")
+            {
+                <form class="mt-5 space-y-3 border-t border-[#D8DED2] pt-5" @onsubmit:preventDefault>
+                    <fieldset disabled="@_working" class="space-y-3">
+                        <label class="@Ui.Label block" for="review-note">Ghi chú duyệt (bắt buộc khi từ chối hoặc yêu cầu sửa)
+                            <textarea id="review-note" class="@Ui.Field" rows="2" @bind="_note" maxlength="1000"></textarea>
+                        </label>
+                        <div class="flex flex-wrap gap-3">
+                            <button type="button" class="@Ui.PrimaryButton" @onclick='() => ActAsync(selected, "approve")'>Duyệt</button>
+                            <button type="button" class="@Ui.Button" @onclick='() => ActAsync(selected, "request-revision")'>Yêu cầu sửa</button>
+                            <button type="button" class="@Ui.DangerButton" @onclick='() => ActAsync(selected, "reject")'>Từ chối</button>
+                        </div>
+                    </fieldset>
+                </form>
+            }
+            else if (selected.Status == "Approved")
+            {
+                <div class="mt-5 border-t border-[#D8DED2] pt-5">
+                    <button type="button" class="@Ui.PrimaryButton" disabled="@_working" @onclick='() => ActAsync(selected, "complete")'>Đánh dấu đã mua xong</button>
+                </div>
+            }
+        </section>
+    }
+
+    <section class="@Ui.ListCard" aria-labelledby="review-list-title" aria-busy="@_loading">
+        <div class="@Ui.ListHeader">
+            <h2 id="review-list-title" class="mb-3 text-sm font-bold text-[#383E43]">Đề xuất</h2>
+            <form @onsubmit="() => LoadAsync(1)" @onsubmit:preventDefault>
+                <fieldset disabled="@Busy" class="flex flex-wrap items-end gap-3">
+                    <label class="@Ui.Label w-full sm:w-64" for="review-search">Tìm kiếm
+                        <input id="review-search" type="search" class="@Ui.Field" @bind="_search" maxlength="100" placeholder="Mã hoặc mô tả" />
+                    </label>
+                    <label class="@Ui.Label" for="review-status">Trạng thái
+                        <select id="review-status" class="@Ui.Field" @bind="_status">
+                            <option value="">Tất cả</option>
+                            @foreach (var status in OperationsText.ProposalStatuses.Where(s => s != "Draft")) { <option value="@status">@OperationsText.Label(status)</option> }
+                        </select>
+                    </label>
+                    <button type="submit" class="@Ui.Button">Áp dụng</button>
+                </fieldset>
+            </form>
+        </div>
+        @if (_loading)
+        {
+            <p role="status" class="p-5 text-sm">Đang tải đề xuất...</p>
+        }
+        else if (_page is { Items.Count: > 0 } list)
+        {
+            <div class="overflow-x-auto">
+                <table class="workspace-table min-w-[820px]">
+                    <thead>
+                        <tr><th scope="col">Mã</th><th scope="col">Người đề xuất</th><th scope="col">Mô tả</th><th scope="col" class="text-right">Ngân sách</th><th scope="col">Trạng thái</th><th scope="col">Chi tiết</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in list.Items)
+                        {
+                            <tr @key="row.Id">
+                                <th scope="row" class="whitespace-nowrap font-semibold">@row.ProposalNumber<span class="block text-xs font-normal text-[#8A9089]">@(row.SubmittedAt is { } sent ? OperationsText.Local(sent) : "—")</span></th>
+                                <td>@(row.ProposedByName ?? "—")</td>
+                                <td class="max-w-72 truncate">@(row.Description ?? "—")</td>
+                                <td class="text-right whitespace-nowrap">@OperationsText.Money(row.TotalBudget)</td>
+                                <td><span class="@OperationsText.Badge(row.Status)">@OperationsText.Label(row.Status)</span></td>
+                                <td><button type="button" class="@Ui.Button" disabled="@Busy" @onclick="() => Select(row)">@(row.Status is "Submitted" or "Approved" ? "Xử lý" : "Xem")</button></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <Pager Page="list.Page" PageSize="list.PageSize" TotalCount="list.TotalCount" Noun="đề xuất" AriaLabel="Phân trang đề xuất" Disabled="Busy" OnPage="LoadAsync" />
+        }
+        else
+        {
+            <p role="status" class="p-5 text-sm text-[#69706A]">Không có đề xuất phù hợp.</p>
+        }
+    </section>
+</div>
+
+@code {
+    private const int PageSize = 20;
+    private readonly CancellationTokenSource _lifetime = new();
+    private PagedResponse<PurchaseProposalResponse>? _page;
+    private PurchaseProposalResponse? _selected;
+    private string _search = "", _status = "Submitted", _note = "";
+    private string? _notice, _error;
+    private bool _loading, _working;
+    private bool Busy => _loading || _working;
+
+    protected override Task OnInitializedAsync() => LoadAsync(1);
+
+    private async Task LoadAsync(int page)
+    {
+        _loading = true;
+        try
+        {
+            _page = await Api.GetProposalsAsync(new(string.IsNullOrEmpty(_status) ? null : _status,
+                string.IsNullOrWhiteSpace(_search) ? null : _search.Trim(), page, PageSize), mine: false, _lifetime.Token);
+        }
+        catch (AuthApiException error) { _error = error.Message; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        finally { _loading = false; }
+    }
+
+    private void Select(PurchaseProposalResponse proposal)
+    {
+        _selected = proposal;
+        _note = "";
+        _notice = _error = null;
+    }
+
+    private async Task ActAsync(PurchaseProposalResponse proposal, string action)
+    {
+        if (Busy) return;
+        if (action is "reject" or "request-revision" && string.IsNullOrWhiteSpace(_note))
+        {
+            _error = "Vui lòng nhập ghi chú khi từ chối hoặc yêu cầu sửa.";
+            return;
+        }
+        _working = true;
+        _notice = _error = null;
+        try
+        {
+            var saved = await Api.ProposalActionAsync(proposal.Id, action, string.IsNullOrWhiteSpace(_note) ? null : _note.Trim(), _lifetime.Token);
+            _notice = action switch
+            {
+                "approve" => $"Đã duyệt {saved.ProposalNumber}.",
+                "reject" => $"Đã từ chối {saved.ProposalNumber}.",
+                "request-revision" => $"Đã trả {saved.ProposalNumber} về nhân viên để sửa.",
+                _ => $"{saved.ProposalNumber} đã hoàn tất."
+            };
+            _selected = saved.Status == "Approved" ? saved : null;
+            _note = "";
+            await LoadAsync(_page?.Page ?? 1);
+        }
+        catch (AuthApiException error) { _error = error.Message; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        finally { _working = false; }
+    }
+
+    public void Dispose()
+    {
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+    }
+}

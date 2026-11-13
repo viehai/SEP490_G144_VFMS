@@ -1,0 +1,104 @@
+@using VFMS.Contracts.Memberships
+@implements IDisposable
+@inject MembershipPlanApiClient Api
+
+<div class="space-y-4 border-t border-vfms-border pt-4">
+    <div class="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 class="font-heading text-base font-bold text-vfms-text">Yêu cầu bảo lưu</h3>
+        <a href="/my-freeze-requests" class="inline-flex min-h-[44px] items-center text-sm font-semibold text-vfms-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary">Yêu cầu bảo lưu của tôi</a>
+    </div>
+    @if (_created is { } created)
+    {
+        <div role="status" tabindex="-1" @ref="_successNotice" class="space-y-2 rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-900">
+            <p class="font-semibold">Đã gửi yêu cầu bảo lưu. Yêu cầu đang chờ duyệt.</p>
+            <p><MembershipDate Date="@created.StartDate" /> đến <MembershipDate Date="@created.EndDate" /> · @created.RequestedDays ngày</p>
+        </div>
+    }
+    else if (_loading)
+    {
+        <p role="status" class="text-sm text-vfms-text-secondary">Đang kiểm tra điều kiện bảo lưu...</p>
+    }
+    else if (_error is not null)
+    {
+        <div class="space-y-2 rounded-lg border border-red-200 bg-red-50 p-4">
+            <p role="alert" class="text-sm text-red-800">@_error</p>
+            <button type="button" class="min-h-[44px] rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary" @onclick="LoadAsync">Thử lại</button>
+        </div>
+    }
+    else if (_eligibility is { } eligibility)
+    {
+        <MembershipFreezeRequestForm Eligibility="@eligibility" Saved="SubmittedAsync" />
+    }
+</div>
+
+@code {
+    [Parameter] public int MembershipId { get; set; }
+    [Parameter] public EventCallback<MembershipFreezeRequestResponse> Submitted { get; set; }
+
+    private CancellationTokenSource? _load;
+    private MembershipFreezeEligibilityResponse? _eligibility;
+    private MembershipFreezeRequestResponse? _created;
+    private ElementReference _successNotice;
+    private int _loadedMembershipId;
+    private string? _error;
+    private bool _loading;
+    private bool _focusSuccess;
+
+    protected override Task OnParametersSetAsync()
+    {
+        if (_loadedMembershipId == MembershipId)
+            return Task.CompletedTask;
+        _loadedMembershipId = MembershipId;
+        _created = null;
+        return LoadAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_focusSuccess)
+            return;
+        _focusSuccess = false;
+        await _successNotice.FocusAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        CancelLoad();
+        _load = new();
+        var ct = _load.Token;
+        _loading = true;
+        _error = null;
+        try
+        {
+            var eligibility = await Api.GetFreezeEligibilityAsync(MembershipId, cancellationToken: ct);
+            if (!ct.IsCancellationRequested)
+                _eligibility = eligibility;
+        }
+        catch (AuthApiException error)
+        {
+            if (!ct.IsCancellationRequested)
+                _error = error.Message;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        finally
+        {
+            if (!ct.IsCancellationRequested)
+                _loading = false;
+        }
+    }
+
+    private async Task SubmittedAsync(MembershipFreezeRequestResponse request)
+    {
+        _created = request;
+        _focusSuccess = true;
+        await Submitted.InvokeAsync(request);
+    }
+
+    private void CancelLoad()
+    {
+        _load?.Cancel();
+        _load?.Dispose();
+    }
+
+    public void Dispose() => CancelLoad();
+}

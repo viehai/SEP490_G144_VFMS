@@ -1,0 +1,283 @@
+@page "/staff/purchase-proposals"
+@layout StaffPTLayout
+@using Microsoft.AspNetCore.Authorization
+@using VFMS.Client.Components.Operations
+@using VFMS.Contracts.Common
+@using VFMS.Contracts.Equipment
+@using VFMS.Contracts.Procurement
+@using VFMS.Contracts.Procurement.Validators
+@attribute [Authorize(Roles = "Staff")]
+@inject OperationsApiClient Api
+@implements IDisposable
+
+<PageTitle>Đề xuất mua sắm | Victor Fitness</PageTitle>
+
+<div class="workspace-page space-y-6">
+    <PageHeader Overline="VFMS / PROCUREMENT" Title="Đề xuất mua sắm" Description="Lập đề xuất mua thiết bị, vật tư; lưu nháp hoặc gửi quản lý duyệt.">
+        <button type="button" class="@Ui.PrimaryButton" @onclick="StartCreate">+ Tạo đề xuất</button>
+    </PageHeader>
+
+    <Alerts Notice="@_notice" Error="@_error" />
+
+    @if (_formOpen)
+    {
+        <section class="@Ui.Card" aria-labelledby="proposal-form-title">
+            <h2 id="proposal-form-title" class="text-base font-bold text-[#383E43]">@(_editing is null ? "Đề xuất mới" : $"Sửa {_editing.ProposalNumber}")</h2>
+            @if (_editing?.Reviews.OrderByDescending(r => r.ReviewedAt).FirstOrDefault() is { ReviewNote: { } feedback })
+            {
+                <p class="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"><span class="font-semibold">Quản lý yêu cầu sửa:</span> @feedback</p>
+            }
+            <EditForm Model="_form" OnValidSubmit="SaveAsync" class="mt-4" novalidate>
+                <OperationsValidation TRequest="PurchaseProposalRequest" Validator="_validator" CreateRequest="CreateRequest" @ref="_validation" />
+                <ValidationSummary />
+                <fieldset disabled="@_working" class="mt-4 space-y-4">
+                    <label class="@Ui.Label block" for="proposal-description">Mô tả / lý do đề xuất
+                        <InputTextArea id="proposal-description" class="@Ui.Field" rows="2" @bind-Value="_form.Description" maxlength="1000" />
+                    </label>
+                    <div class="space-y-3">
+                        @for (var index = 0; index < _form.Items.Count; index++)
+                        {
+                            var item = _form.Items[index];
+                            var number = index + 1;
+                            <div @key="item" class="grid gap-3 rounded-lg border border-[#D8DED2] p-4 sm:grid-cols-6">
+                                <label class="@Ui.Label sm:col-span-2">Hạng mục @number
+                                    <input class="@Ui.Field" @bind="item.ItemName" maxlength="200" required />
+                                </label>
+                                <label class="@Ui.Label">Số lượng
+                                    <input type="number" class="@Ui.Field" @bind="item.Quantity" min="1" max="10000" />
+                                </label>
+                                <label class="@Ui.Label">Đơn giá dự kiến (₫)
+                                    <input type="number" class="@Ui.Field" @bind="item.EstimatedUnitPrice" min="1" step="1000" />
+                                </label>
+                                <label class="@Ui.Label sm:col-span-2">Thiết bị liên quan
+                                    <select class="@Ui.Field" @bind="item.EquipmentId">
+                                        <option value="">Không có (mua mới)</option>
+                                        @foreach (var equipment in _equipment) { <option value="@equipment.Id">@equipment.Name@(equipment.Code is { } code ? $" · {code}" : "")</option> }
+                                    </select>
+                                </label>
+                                <label class="@Ui.Label sm:col-span-5">Ghi chú
+                                    <input class="@Ui.Field" @bind="item.Reason" maxlength="500" />
+                                </label>
+                                <div class="flex items-end justify-between gap-2 sm:col-span-1 sm:flex-col sm:items-end">
+                                    <span class="text-xs font-semibold text-[#5F6F52]">@OperationsText.Money(item.Quantity * item.EstimatedUnitPrice)</span>
+                                    <button type="button" class="@Ui.DangerButton" disabled="@(_form.Items.Count == 1)" aria-label="Xóa hạng mục @number" @onclick="() => _form.Items.Remove(item)">Xóa</button>
+                                </div>
+                            </div>
+                        }
+                        <button type="button" class="@Ui.Button" disabled="@(_form.Items.Count >= 50)" @onclick="() => _form.Items.Add(new())">+ Thêm hạng mục</button>
+                    </div>
+                    <p class="text-right text-sm">Tổng dự kiến: <span class="text-lg font-extrabold text-[#5F6F52]">@OperationsText.Money(_form.Items.Sum(i => i.Quantity * i.EstimatedUnitPrice))</span></p>
+                    <div class="flex flex-wrap gap-3">
+                        <button type="submit" class="@Ui.PrimaryButton" @onclick="() => _submit = true">Gửi duyệt</button>
+                        <button type="submit" class="@Ui.Button" @onclick="() => _submit = false">Lưu nháp</button>
+                        <button type="button" class="@Ui.Button" @onclick="() => _formOpen = false">Hủy</button>
+                    </div>
+                </fieldset>
+            </EditForm>
+        </section>
+    }
+
+    @if (_selected is { } selected)
+    {
+        <section class="@Ui.Card" aria-labelledby="proposal-detail-title">
+            <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <h2 id="proposal-detail-title" class="text-base font-bold text-[#383E43]">@selected.ProposalNumber</h2>
+                    <p class="mt-1 text-xs text-[#69706A]">Tạo @OperationsText.Local(selected.CreatedAt)@(selected.SubmittedAt is { } sent ? $" · Gửi {OperationsText.Local(sent)}" : "")</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="@OperationsText.Badge(selected.Status)">@OperationsText.Label(selected.Status)</span>
+                    <button type="button" class="@Ui.Button" @onclick="() => _selected = null">Đóng</button>
+                </div>
+            </div>
+            <ProposalDetail Proposal="selected" />
+        </section>
+    }
+
+    <section class="@Ui.ListCard" aria-labelledby="proposal-list-title" aria-busy="@_loading">
+        <div class="@Ui.ListHeader">
+            <h2 id="proposal-list-title" class="mb-3 text-sm font-bold text-[#383E43]">Đề xuất của tôi</h2>
+            <form @onsubmit="() => LoadAsync(1)" @onsubmit:preventDefault>
+                <fieldset disabled="@Busy" class="flex flex-wrap items-end gap-3">
+                    <label class="@Ui.Label w-full sm:w-64" for="proposal-search">Tìm kiếm
+                        <input id="proposal-search" type="search" class="@Ui.Field" @bind="_search" maxlength="100" placeholder="Mã hoặc mô tả" />
+                    </label>
+                    <label class="@Ui.Label" for="proposal-status">Trạng thái
+                        <select id="proposal-status" class="@Ui.Field" @bind="_status">
+                            <option value="">Tất cả</option>
+                            @foreach (var status in OperationsText.ProposalStatuses) { <option value="@status">@OperationsText.Label(status)</option> }
+                        </select>
+                    </label>
+                    <button type="submit" class="@Ui.Button">Áp dụng</button>
+                </fieldset>
+            </form>
+        </div>
+        @if (_loading)
+        {
+            <p role="status" class="p-5 text-sm">Đang tải đề xuất...</p>
+        }
+        else if (_page is { Items.Count: > 0 } list)
+        {
+            <div class="overflow-x-auto">
+                <table class="workspace-table min-w-[760px]">
+                    <thead>
+                        <tr><th scope="col">Mã</th><th scope="col">Mô tả</th><th scope="col" class="text-right">Ngân sách</th><th scope="col">Trạng thái</th><th scope="col">Thao tác</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in list.Items)
+                        {
+                            <tr @key="row.Id">
+                                <th scope="row" class="whitespace-nowrap font-semibold">@row.ProposalNumber<span class="block text-xs font-normal text-[#8A9089]">@OperationsText.Local(row.CreatedAt)</span></th>
+                                <td class="max-w-72 truncate">@(row.Description ?? "—")</td>
+                                <td class="text-right whitespace-nowrap">@OperationsText.Money(row.TotalBudget)</td>
+                                <td>
+                                    <span class="@OperationsText.Badge(row.Status)">@OperationsText.Label(row.Status)</span>
+                                    @if (row.Status == "Draft" && row.Reviews.Count > 0) { <span class="ml-1 text-[11px] text-amber-700">cần sửa</span> }
+                                </td>
+                                <td>
+                                    <div class="flex flex-wrap gap-2">
+                                        <button type="button" class="@Ui.Button" disabled="@Busy" @onclick="() => Show(row)">Xem</button>
+                                        @if (row.Status == "Draft")
+                                        {
+                                            <button type="button" class="@Ui.Button" disabled="@Busy" @onclick="() => StartEdit(row)">Sửa</button>
+                                            <button type="button" class="@Ui.Button" disabled="@Busy" @onclick="() => SubmitDraftAsync(row)">Gửi duyệt</button>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <Pager Page="list.Page" PageSize="list.PageSize" TotalCount="list.TotalCount" Noun="đề xuất" AriaLabel="Phân trang đề xuất" Disabled="Busy" OnPage="LoadAsync" />
+        }
+        else
+        {
+            <p role="status" class="p-5 text-sm text-[#69706A]">Chưa có đề xuất nào.</p>
+        }
+    </section>
+</div>
+
+@code {
+    private const int PageSize = 20;
+    private readonly CancellationTokenSource _lifetime = new();
+    private readonly ProposalModel _form = new();
+    private readonly PurchaseProposalRequestValidator _validator = new();
+    private OperationsValidation<PurchaseProposalRequest>? _validation;
+    private PagedResponse<PurchaseProposalResponse>? _page;
+    private List<EquipmentResponse> _equipment = [];
+    private PurchaseProposalResponse? _editing, _selected;
+    private string _search = "", _status = "";
+    private string? _notice, _error;
+    private bool _formOpen, _loading, _working, _submit = true;
+    private bool Busy => _loading || _working;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { _equipment = (await Api.GetEquipmentAsync(new(null, null, null, 1, 100), _lifetime.Token)).Items.ToList(); }
+        catch (AuthApiException error) { _error = error.Message; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        await LoadAsync(1);
+    }
+
+    private PurchaseProposalRequest CreateRequest() => new(_form.Description.Trim(),
+        _form.Items.Select(i => new PurchaseProposalItemRequest(i.ItemName.Trim(), i.Quantity, i.EstimatedUnitPrice,
+            int.TryParse(i.EquipmentId, out var id) ? id : null, string.IsNullOrWhiteSpace(i.Reason) ? null : i.Reason.Trim())).ToList(),
+        _submit);
+
+    private async Task LoadAsync(int page)
+    {
+        _loading = true;
+        try
+        {
+            _page = await Api.GetProposalsAsync(new(string.IsNullOrEmpty(_status) ? null : _status,
+                string.IsNullOrWhiteSpace(_search) ? null : _search.Trim(), page, PageSize), mine: true, _lifetime.Token);
+        }
+        catch (AuthApiException error) { _error = error.Message; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        finally { _loading = false; }
+    }
+
+    private void StartCreate()
+    {
+        _editing = _selected = null;
+        _form.Description = "";
+        _form.Items = [new()];
+        _formOpen = true;
+    }
+
+    private void StartEdit(PurchaseProposalResponse proposal)
+    {
+        _editing = proposal;
+        _selected = null;
+        _form.Description = proposal.Description ?? "";
+        _form.Items = proposal.Items.Select(i => new ItemModel
+        {
+            ItemName = i.ItemName, Quantity = i.Quantity, EstimatedUnitPrice = i.EstimatedUnitPrice,
+            EquipmentId = i.EquipmentId?.ToString() ?? "", Reason = i.Reason
+        }).ToList();
+        if (_form.Items.Count == 0) _form.Items.Add(new());
+        _formOpen = true;
+    }
+
+    private void Show(PurchaseProposalResponse proposal)
+    {
+        _formOpen = false;
+        _selected = proposal;
+    }
+
+    private Task SaveAsync() => RunAsync(async () =>
+    {
+        var saved = _editing is { } editing
+            ? await Api.UpdateProposalAsync(editing.Id, CreateRequest(), _lifetime.Token)
+            : await Api.CreateProposalAsync(CreateRequest(), _lifetime.Token);
+        _notice = saved.Status == "Submitted" ? $"Đã gửi đề xuất {saved.ProposalNumber} cho quản lý." : $"Đã lưu nháp {saved.ProposalNumber}.";
+        _formOpen = false;
+        _editing = null;
+        await LoadAsync(1);
+    });
+
+    private Task SubmitDraftAsync(PurchaseProposalResponse proposal) => RunAsync(async () =>
+    {
+        var saved = await Api.ProposalActionAsync(proposal.Id, "submit", ct: _lifetime.Token);
+        _notice = $"Đã gửi đề xuất {saved.ProposalNumber} cho quản lý.";
+        if (_editing?.Id == saved.Id) _formOpen = false;
+        await LoadAsync(_page?.Page ?? 1);
+    });
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        if (Busy) return;
+        _working = true;
+        _notice = _error = null;
+        try { await action(); }
+        catch (AuthApiException error)
+        {
+            _error = error.Message;
+            _validation?.ShowErrors(error.Errors);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        finally { _working = false; }
+    }
+
+    public void Dispose()
+    {
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+    }
+
+    private sealed class ProposalModel
+    {
+        public string Description { get; set; } = "";
+        public List<ItemModel> Items { get; set; } = [new()];
+    }
+
+    private sealed class ItemModel
+    {
+        public string ItemName { get; set; } = "";
+        public int Quantity { get; set; } = 1;
+        public decimal EstimatedUnitPrice { get; set; }
+        public string EquipmentId { get; set; } = "";
+        public string? Reason { get; set; }
+    }
+}
