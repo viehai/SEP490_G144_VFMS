@@ -42,7 +42,7 @@ public sealed class MembershipPurchaseRepository(VfmsDbContext context) : IMembe
     public Task<ApplicationRole?> GetMemberRoleAsync(CancellationToken ct) =>
         context.ApplicationRoles.SingleOrDefaultAsync(role => role.RoleName == nameof(UserRole.Member), ct);
 
-    public Task<Order?> FindOrderAsync(string orderNumber, string? purchaserId, bool forUpdate, CancellationToken ct)
+    public async Task<Order?> FindOrderAsync(string orderNumber, string? purchaserId, bool forUpdate, CancellationToken ct)
     {
         var orders = forUpdate && context.Database.IsSqlServer()
             ? context.Orders.FromSqlInterpolated($"SELECT * FROM [Orders] WITH (UPDLOCK, HOLDLOCK) WHERE [OrderNumber] = {orderNumber}")
@@ -56,21 +56,59 @@ public sealed class MembershipPurchaseRepository(VfmsDbContext context) : IMembe
             query = query.Include(order => order.Purchaser)
                 .Include(order => order.Items).ThenInclude(item => item.Package).ThenInclude(plan => plan.Components);
 
-        return query.Include(order => order.PaymentTransaction)!.ThenInclude(payment => payment!.Invoice)
+        var order = await query.Include(order => order.PaymentTransaction)!.ThenInclude(payment => payment!.Invoice)
             .AsSplitQuery().SingleOrDefaultAsync(ct);
+        if (order is not null)
+        {
+            var redemptions = context.VoucherRedemptions.IgnoreQueryFilters();
+            if (!forUpdate) redemptions = redemptions.AsNoTracking();
+            order.VoucherRedemption = await redemptions.SingleOrDefaultAsync(row => row.OrderId == order.Id, ct);
+        }
+        return order;
     }
 
     public Task<bool> SepayReferenceUsedAsync(string reference, CancellationToken ct) =>
         context.PaymentTransactions.IgnoreQueryFilters().AnyAsync(
             payment => payment.GatewayName == "SePay" && payment.GatewayTransactionReference == reference, ct);
 
-    public Task<List<Order>> LoadExpiredOrdersAsync(DateTime onlineCutoff, DateTime cashCutoff, CancellationToken ct) =>
-        context.Orders.Where(order => order.OrderStatus == OrderStatus.Pending &&
+    public Task<Voucher?> FindVoucherForUpdateAsync(string normalizedCode, CancellationToken ct)
+    {
+        // Voucher is always locked before the order during Apply. Do not join the mutable
+        // voucher from payment/order reads, which use the opposite order-first lifecycle lock.
+        var vouchers = context.Database.IsSqlServer()
+            ? context.Vouchers.FromSqlInterpolated($"SELECT * FROM [Vouchers] WITH (XLOCK, HOLDLOCK) WHERE UPPER(LTRIM(RTRIM([Code]))) = {normalizedCode}")
+            : context.Vouchers.Where(voucher => voucher.Code.Trim().ToUpper() == normalizedCode);
+        return vouchers.SingleOrDefaultAsync(voucher => !voucher.IsDeleted, ct);
+    }
+
+    public async Task<(int Confirmed, int Reserved)> CountVoucherCapacityAsync(int voucherId, CancellationToken ct)
+    {
+        // Retain expired reservations until JOB-01 releases them. Counting only redemption
+        // state avoids reading another order while its Apply call waits for the voucher lock.
+        var rows = context.Database.IsSqlServer()
+            ? context.VoucherRedemptions.FromSqlInterpolated($"SELECT * FROM [VoucherRedemptions] WITH (UPDLOCK, HOLDLOCK) WHERE [VoucherId] = {voucherId}")
+            : context.VoucherRedemptions.Where(row => row.VoucherId == voucherId);
+        var counts = await rows.IgnoreQueryFilters()
+            .Where(row => row.RedemptionStatus == VoucherRedemptionStatus.Confirmed || row.RedemptionStatus == VoucherRedemptionStatus.Reserved)
+            .GroupBy(row => row.RedemptionStatus)
+            .Select(group => new { Status = group.Key, Count = group.Count() }).ToListAsync(ct);
+        return (counts.SingleOrDefault(row => row.Status == VoucherRedemptionStatus.Confirmed)?.Count ?? 0,
+            counts.SingleOrDefault(row => row.Status == VoucherRedemptionStatus.Reserved)?.Count ?? 0);
+    }
+
+    public Task<List<Order>> LoadExpiredOrdersAsync(DateTime onlineCutoff, DateTime cashCutoff, CancellationToken ct)
+    {
+        var orders = context.Database.IsSqlServer()
+            ? context.Orders.FromSqlRaw("SELECT * FROM [Orders] WITH (UPDLOCK, HOLDLOCK)")
+            : context.Orders;
+        return orders.IgnoreQueryFilters().Where(order => !order.IsDeleted && order.OrderStatus == OrderStatus.Pending &&
+                !order.PaymentTransaction!.IsDeleted &&
                 order.PaymentTransaction!.PaymentStatus == PaymentStatus.Pending &&
                 ((order.Channel == OrderChannel.Online && order.CreatedAt <= onlineCutoff) ||
                  (order.Channel == OrderChannel.Counter && order.CreatedAt <= cashCutoff)))
             .OrderBy(order => order.CreatedAt).Take(100)
             .Include(order => order.PaymentTransaction).Include(order => order.VoucherRedemption).ToListAsync(ct);
+    }
 
     public Task<List<MemberMembership>> LoadCurrentMembershipsAsync(string[] userIds, DateOnly today, CancellationToken ct) =>
         context.MemberMemberships.AsNoTracking()
@@ -122,13 +160,18 @@ public sealed class MembershipPurchaseRepository(VfmsDbContext context) : IMembe
             .OrderByDescending(membership => membership.EndDate).ThenByDescending(membership => membership.Id)
             .ToListAsync(ct);
 
-    public Task<List<Order>> LoadRenewalOrdersAsync(int[] membershipIds, bool forUpdate, CancellationToken ct) =>
-        (forUpdate ? context.Orders : context.Orders.AsNoTracking())
+    public Task<List<Order>> LoadRenewalOrdersAsync(int[] membershipIds, bool forUpdate, CancellationToken ct)
+    {
+        var orders = forUpdate && context.Database.IsSqlServer()
+            ? context.Orders.FromSqlRaw("SELECT * FROM [Orders] WITH (UPDLOCK, HOLDLOCK)")
+            : context.Orders;
+        return (forUpdate ? orders : orders.AsNoTracking())
             .Where(order => (order.OrderStatus == OrderStatus.Pending || order.OrderStatus == OrderStatus.Paid) &&
                 order.Items.Any(item => item.RenewedFromMembershipId.HasValue &&
                     membershipIds.Contains(item.RenewedFromMembershipId.Value)))
-            .Include(order => order.Items).Include(order => order.PaymentTransaction)
+            .Include(order => order.Items).Include(order => order.PaymentTransaction).Include(order => order.VoucherRedemption)
             .AsSplitQuery().ToListAsync(ct);
+    }
 
     public Task<string?> FindRenewalPurchaserAsync(string orderNumber, CancellationToken ct) =>
         context.Orders.AsNoTracking()

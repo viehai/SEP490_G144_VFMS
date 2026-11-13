@@ -2902,15 +2902,23 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("VoucherCodeSnapshot")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
                     b.Property<int>("VoucherId")
                         .HasColumnType("int");
+
+                    b.Property<string>("VoucherNameSnapshot")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
 
                     b.HasKey("Id");
 
                     b.HasIndex("OrderId")
                         .IsUnique();
 
-                    b.HasIndex("VoucherId");
+                    b.HasIndex("VoucherId", "RedemptionStatus");
 
                     b.ToTable("VoucherRedemptions");
                 });

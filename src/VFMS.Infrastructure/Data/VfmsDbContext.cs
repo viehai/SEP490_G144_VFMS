@@ -364,6 +364,9 @@ public class VfmsDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.OrderId).IsUnique();  // One voucher per order
             entity.Property(e => e.DiscountAmount).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.VoucherCodeSnapshot).HasMaxLength(50);
+            entity.Property(e => e.VoucherNameSnapshot).HasMaxLength(256);
+            entity.HasIndex(e => new { e.VoucherId, e.RedemptionStatus });
             entity.Property(e => e.RedemptionStatus).HasConversion<string>().HasMaxLength(20);
 
             entity.HasOne(e => e.Voucher)

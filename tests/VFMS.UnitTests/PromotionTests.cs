@@ -407,6 +407,7 @@ public sealed class PromotionTests
         public Task<Voucher?> GetForUpdateAsync(int id, CancellationToken ct) =>
             Task.FromResult(Vouchers.SingleOrDefault(v => v.Id == id));
         public Task<int> GetUsedCountAsync(int id, CancellationToken ct) => Task.FromResult(UsedCount);
+        public Task<int> GetCommittedCapacityAsync(int id, CancellationToken ct) => Task.FromResult(UsedCount);
         public Task<bool> CodeExistsAsync(string normalizedCode, int? excludingId, CancellationToken ct) =>
             Task.FromResult(Vouchers.Any(v => v.Id != excludingId &&
                 string.Equals(v.Code.Trim(), normalizedCode, StringComparison.OrdinalIgnoreCase)));

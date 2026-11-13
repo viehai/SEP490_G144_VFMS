@@ -23,6 +23,7 @@ public interface IPromotionRepository : IAuditedRepository
     Task<PromotionReadModel?> GetAsync(int id, CancellationToken ct);
     Task<Voucher?> GetForUpdateAsync(int id, CancellationToken ct);
     Task<int> GetUsedCountAsync(int id, CancellationToken ct);
+    Task<int> GetCommittedCapacityAsync(int id, CancellationToken ct);
     Task<bool> CodeExistsAsync(string normalizedCode, int? excludingId, CancellationToken ct);
     Task ExecuteInSerializableTransactionAsync(Func<Task> work, CancellationToken ct);
 }

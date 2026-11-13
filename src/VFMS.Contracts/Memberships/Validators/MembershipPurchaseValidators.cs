@@ -36,3 +36,9 @@ public sealed class ConfirmMembershipCashRequestValidator : AbstractValidator<Co
     public ConfirmMembershipCashRequestValidator() =>
         RuleFor(x => x.AmountReceived).GreaterThan(0);
 }
+
+public sealed class ApplyMembershipVoucherRequestValidator : AbstractValidator<ApplyMembershipVoucherRequest>
+{
+    public ApplyMembershipVoucherRequestValidator() => RuleFor(request => request.VoucherCode)
+        .NotEmpty().WithMessage("Nhập mã voucher.").MaximumLength(50);
+}

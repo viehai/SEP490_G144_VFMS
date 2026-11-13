@@ -160,6 +160,8 @@ public sealed class MembershipDetailsTests
         public Task<Order?> FindOrderAsync(string orderNumber, string? purchaserId, bool forUpdate, CancellationToken ct) =>
             throw new NotSupportedException();
         public Task<bool> SepayReferenceUsedAsync(string reference, CancellationToken ct) => throw new NotSupportedException();
+        public Task<Voucher?> FindVoucherForUpdateAsync(string normalizedCode, CancellationToken ct) => throw new NotSupportedException();
+        public Task<(int Confirmed, int Reserved)> CountVoucherCapacityAsync(int voucherId, CancellationToken ct) => throw new NotSupportedException();
         public Task<List<Order>> LoadExpiredOrdersAsync(DateTime onlineCutoff, DateTime cashCutoff, CancellationToken ct) =>
             throw new NotSupportedException();
         public Task<List<MemberMembership>> LoadCurrentMembershipsAsync(string[] userIds, DateOnly today, CancellationToken ct) =>

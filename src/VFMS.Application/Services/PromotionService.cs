@@ -62,9 +62,9 @@ public sealed class PromotionService(
                 return NotFound();
 
             var usedCount = await repository.GetUsedCountAsync(id, ct);
-            if (request.MaxRedemptions is { } limit && limit < usedCount)
+            if (request.MaxRedemptions is { } limit && limit < await repository.GetCommittedCapacityAsync(id, ct))
                 return Result<PromotionResponse>.Failure(
-                    "Tổng lượt sử dụng không được thấp hơn số lượt đã sử dụng.", "PROMOTION_USAGE_LIMIT_TOO_LOW");
+                    "Tổng lượt sử dụng không được thấp hơn số lượt đã sử dụng hoặc đang được giữ cho thanh toán.", "PROMOTION_USAGE_LIMIT_TOO_LOW");
             if (await repository.CodeExistsAsync(NormalizeCode(request.Code!), id, ct))
                 return DuplicateCode();
 
@@ -127,10 +127,8 @@ public sealed class PromotionService(
     private static PromotionResponse ToResponse(PromotionReadModel promotion, DateTime now)
     {
         var enabled = IsEnabled(promotion.VoucherStatus);
-        var status = !enabled ? PromotionStatus.Disabled
-            : now >= promotion.EndAt || promotion.MaxRedemptions is { } limit && promotion.UsedCount >= limit
-                ? PromotionStatus.Expired
-                : now < promotion.StartAt ? PromotionStatus.Scheduled : PromotionStatus.Active;
+        var status = VoucherRules.EffectiveStatus(promotion.VoucherStatus, promotion.StartAt, promotion.EndAt,
+            promotion.MaxRedemptions, promotion.UsedCount, now);
         return new(promotion.Id, promotion.Name, promotion.Code,
             promotion.DiscountType == DiscountType.PERCENT ? PromotionDiscountType.Percentage : PromotionDiscountType.Fixed,
             promotion.DiscountValue, promotion.MinimumSpend, promotion.MaxDiscountAmount, promotion.MaxRedemptions,
@@ -175,8 +173,8 @@ public sealed class PromotionService(
         string Name, string Code, DiscountType DiscountType, decimal DiscountValue, decimal? MinimumSpend,
         decimal? MaxDiscountAmount, int? MaxRedemptions, DateTime StartAt, DateTime EndAt, bool IsEnabled);
 
-    private static bool IsEnabled(VoucherStatus status) => status != VoucherStatus.Inactive;
-    private static string NormalizeCode(string code) => code.Trim().ToUpperInvariant();
+    private static bool IsEnabled(VoucherStatus status) => VoucherRules.IsEnabled(status);
+    private static string NormalizeCode(string code) => VoucherRules.NormalizeCode(code);
     private static Result<PromotionResponse> NotFound() =>
         Result<PromotionResponse>.Failure("Không tìm thấy chương trình khuyến mãi.", "PROMOTION_NOT_FOUND", 404);
     private static Result<PromotionResponse> DuplicateCode() =>

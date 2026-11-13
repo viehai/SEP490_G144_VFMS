@@ -24,6 +24,24 @@ public sealed class MembershipPurchasesController(IMembershipPurchaseService ser
     [ProducesResponseType(typeof(MembershipPurchaseResponse), 200)]
     public async Task<IActionResult> Get(string orderNumber, CancellationToken ct) =>
         User.GetUserId() is { } userId ? this.ToActionResult(await service.GetAsync(userId, orderNumber, ct)) : Unauthorized();
+
+    [HttpPost("{orderNumber}/voucher")]
+    [ProducesResponseType(typeof(MembershipPurchaseResponse), 200)]
+    public async Task<IActionResult> ApplyVoucher(string orderNumber, ApplyMembershipVoucherRequest request, CancellationToken ct) =>
+        User.GetUserId() is { } userId
+            ? this.ToActionResult(await service.ApplyVoucherAsync(userId, orderNumber, request, ct)) : Unauthorized();
+
+    [HttpDelete("{orderNumber}/voucher")]
+    [ProducesResponseType(typeof(MembershipPurchaseResponse), 200)]
+    public async Task<IActionResult> RemoveVoucher(string orderNumber, CancellationToken ct) =>
+        User.GetUserId() is { } userId
+            ? this.ToActionResult(await service.RemoveVoucherAsync(userId, orderNumber, ct)) : Unauthorized();
+
+    [HttpPost("{orderNumber}/complete-no-charge")]
+    [ProducesResponseType(typeof(MembershipPurchaseResponse), 200)]
+    public async Task<IActionResult> CompleteNoCharge(string orderNumber, CancellationToken ct) =>
+        User.GetUserId() is { } userId
+            ? this.ToActionResult(await service.CompleteNoChargeAsync(userId, orderNumber, ct)) : Unauthorized();
 }
 
 [ApiController]

@@ -29,6 +29,10 @@ public sealed class PromotionRepository(VfmsDbContext context) : AuditedReposito
         Context.VoucherRedemptions.IgnoreQueryFilters()
             .CountAsync(r => r.VoucherId == id && r.RedemptionStatus == VoucherRedemptionStatus.Confirmed, ct);
 
+    public Task<int> GetCommittedCapacityAsync(int id, CancellationToken ct) =>
+        Context.VoucherRedemptions.IgnoreQueryFilters().CountAsync(r => r.VoucherId == id &&
+            (r.RedemptionStatus == VoucherRedemptionStatus.Confirmed || r.RedemptionStatus == VoucherRedemptionStatus.Reserved), ct);
+
     public Task<bool> CodeExistsAsync(string normalizedCode, int? excludingId, CancellationToken ct)
     {
         // Include hidden vouchers: their unique codes and transaction history remain reserved.

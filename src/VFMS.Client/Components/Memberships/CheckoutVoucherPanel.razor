@@ -1,0 +1,71 @@
+@using System.Globalization
+@using VFMS.Contracts.Memberships
+
+<section class="space-y-4" aria-labelledby="checkout-voucher-title" aria-busy="@(IsApplying || IsRemoving ? "true" : "false")">
+    <h3 id="checkout-voucher-title" class="text-sm font-bold text-vfms-text">Mã giảm giá</h3>
+    @if (Purchase.AppliedVoucher is { RedemptionStatus: not "Released" } voucher)
+    {
+        <div class="flex flex-col gap-3 rounded-lg border border-vfms-border bg-vfms-primary-soft p-4 sm:flex-row sm:items-start sm:justify-between">
+            <div class="min-w-0">
+                <p class="break-all font-mono text-sm font-bold text-vfms-primary">@voucher.Code</p>
+                <p class="mt-1 break-words text-sm text-vfms-text">@voucher.Name</p>
+                <p class="mt-1 text-xs text-vfms-text-secondary">@(voucher.RedemptionStatus == "Confirmed" ? "Đã sử dụng cho đơn hàng này." : "Đã giữ mã cho đơn hàng này; xác nhận sử dụng khi thanh toán thành công.")</p>
+            </div>
+            @if (CanManageVoucher)
+            {
+                <button type="button" class="@SecondaryButton self-start shrink-0" disabled="@IsBusy" @onclick="OnRemove">@(IsRemoving ? "Đang bỏ mã..." : "Bỏ mã")</button>
+            }
+        </div>
+    }
+    else if (CanManageVoucher)
+    {
+        <form @onsubmit="ApplyAsync" @onsubmit:preventDefault novalidate>
+            <fieldset disabled="@IsApplying" class="min-w-0">
+                <legend class="sr-only">Áp dụng mã giảm giá</legend>
+                <label for="checkout-voucher-code" class="block text-sm font-semibold text-vfms-text">Nhập mã giảm giá (tùy chọn)</label>
+                <div class="mt-2 flex min-w-0 flex-col gap-3 sm:flex-row">
+                    <input id="checkout-voucher-code" class="min-h-[44px] min-w-0 w-full flex-1 rounded-lg border border-vfms-border bg-vfms-surface px-3 py-2.5 text-base text-vfms-text outline-none focus:border-vfms-primary focus:ring-2 focus:ring-vfms-primary/20 sm:text-sm"
+                           @bind="_code" @bind:event="oninput" maxlength="50" autocomplete="off" spellcheck="false" aria-describedby="checkout-voucher-hint checkout-voucher-error" />
+                    <button type="submit" class="min-h-[44px] shrink-0 rounded-lg bg-vfms-primary px-5 py-2.5 text-sm font-semibold text-white hover:bg-vfms-primary-hover disabled:opacity-50"
+                            disabled="@(IsBusy || string.IsNullOrWhiteSpace(_code))">@(IsApplying ? "Đang áp dụng..." : "Áp dụng")</button>
+                </div>
+                <p id="checkout-voucher-hint" class="mt-2 text-xs leading-5 text-vfms-text-secondary">Mỗi đơn hàng chỉ áp dụng một mã giảm giá. Không bắt buộc nhập mã để thanh toán.</p>
+            </fieldset>
+        </form>
+    }
+    @if (Error is not null || _localError is not null)
+    {
+        <p id="checkout-voucher-error" role="alert" class="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900">@(Error ?? _localError)</p>
+    }
+    @if (Notice is not null)
+    {
+        <p role="status" class="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">@Notice</p>
+    }
+    <dl class="space-y-3 border-t border-vfms-border pt-4 text-sm">
+        <div class="flex flex-wrap items-baseline justify-between gap-2"><dt class="text-vfms-text-secondary">Tạm tính</dt><dd class="font-semibold text-vfms-text">@Money(Purchase.Subtotal)</dd></div>
+        <div class="flex flex-wrap items-baseline justify-between gap-2"><dt class="text-vfms-text-secondary">Giảm giá</dt><dd class="font-semibold text-vfms-primary">@(Purchase.DiscountAmount > 0 ? "−" : "")@Money(Purchase.DiscountAmount)</dd></div>
+        <div class="flex flex-wrap items-baseline justify-between gap-2 border-t border-vfms-border pt-3"><dt class="text-base font-semibold text-vfms-text">Tổng thanh toán</dt><dd class="font-heading text-2xl font-extrabold text-vfms-primary">@Money(Purchase.AmountDue)</dd></div>
+    </dl>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public MembershipPurchaseResponse Purchase { get; set; } = default!;
+    [Parameter] public bool CanManageVoucher { get; set; }
+    [Parameter] public bool IsBusy { get; set; }
+    [Parameter] public bool IsApplying { get; set; }
+    [Parameter] public bool IsRemoving { get; set; }
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public string? Notice { get; set; }
+    [Parameter] public EventCallback<string> OnApply { get; set; }
+    [Parameter] public EventCallback OnRemove { get; set; }
+    private string _code = "";
+    private string? _localError;
+    private const string SecondaryButton = "min-h-[44px] rounded-lg border border-vfms-border bg-vfms-surface px-3 py-2 text-sm font-semibold text-vfms-text hover:bg-vfms-muted disabled:opacity-50";
+    private static string Money(decimal value) => value.ToString("#,0", CultureInfo.GetCultureInfo("vi-VN")) + " ₫";
+    private async Task ApplyAsync()
+    {
+        if (IsBusy) return;
+        _localError = string.IsNullOrWhiteSpace(_code) ? "Vui lòng nhập mã giảm giá." : null;
+        if (_localError is null) await OnApply.InvokeAsync(_code);
+    }
+}

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using VFMS.Client.Auth;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Memberships;
@@ -55,10 +56,23 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
             FormattableString.Invariant($"api/membership-plans?page={page}&pageSize=9"), cancellationToken);
 
     public Task<MembershipPurchaseResponse> PurchaseAsync(MembershipPurchaseRequest request, CancellationToken cancellationToken = default) =>
-        SendAsync<MembershipPurchaseResponse>(HttpMethod.Post, PurchasesPath, cancellationToken, JsonContent.Create(request));
+        SendAsync<MembershipPurchaseResponse>(HttpMethod.Post, PurchasesPath, cancellationToken, JsonContent.Create(request), ReadPurchaseAsync);
 
     public Task<MembershipPurchaseResponse> GetPurchaseAsync(string orderNumber, CancellationToken cancellationToken = default) =>
-        SendAsync<MembershipPurchaseResponse>(HttpMethod.Get, $"{PurchasesPath}/{Uri.EscapeDataString(orderNumber)}", cancellationToken);
+        SendAsync<MembershipPurchaseResponse>(HttpMethod.Get, $"{PurchasesPath}/{Uri.EscapeDataString(orderNumber)}", cancellationToken, readResponse: ReadPurchaseAsync);
+
+    public Task<MembershipPurchaseResponse> ApplyMembershipVoucherAsync(string orderNumber,
+        ApplyMembershipVoucherRequest request, CancellationToken cancellationToken = default) =>
+        SendAsync<MembershipPurchaseResponse>(HttpMethod.Post,
+            $"{PurchasesPath}/{Uri.EscapeDataString(orderNumber)}/voucher", cancellationToken, JsonContent.Create(request), ReadPurchaseAsync);
+
+    public Task<MembershipPurchaseResponse> RemoveMembershipVoucherAsync(string orderNumber, CancellationToken cancellationToken = default) =>
+        SendAsync<MembershipPurchaseResponse>(HttpMethod.Delete,
+            $"{PurchasesPath}/{Uri.EscapeDataString(orderNumber)}/voucher", cancellationToken, readResponse: ReadPurchaseAsync);
+
+    public Task<MembershipPurchaseResponse> CompleteNoChargeMembershipPurchaseAsync(string orderNumber, CancellationToken cancellationToken = default) =>
+        SendAsync<MembershipPurchaseResponse>(HttpMethod.Post,
+            $"{PurchasesPath}/{Uri.EscapeDataString(orderNumber)}/complete-no-charge", cancellationToken, readResponse: ReadPurchaseAsync);
 
     public Task<IReadOnlyList<MembershipSummaryResponse>> GetMyMembershipsAsync(CancellationToken cancellationToken = default) =>
         SendAsync<IReadOnlyList<MembershipSummaryResponse>>(HttpMethod.Get, $"{MembershipsPath}/me", cancellationToken);
@@ -154,13 +168,31 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
         SendAsync<IReadOnlyList<MembershipRenewalOption>>(HttpMethod.Get, RenewalsPath, cancellationToken);
 
     public Task<MembershipPurchaseResponse> RenewAsync(RenewMembershipRequest request, CancellationToken cancellationToken = default) =>
-        SendAsync<MembershipPurchaseResponse>(HttpMethod.Post, RenewalsPath, cancellationToken, JsonContent.Create(request));
+        SendAsync<MembershipPurchaseResponse>(HttpMethod.Post, RenewalsPath, cancellationToken, JsonContent.Create(request), ReadPurchaseAsync);
 
     public Task<MembershipPurchaseResponse> ConfirmCashAsync(
         string orderNumber, ConfirmMembershipCashRequest request, CancellationToken cancellationToken = default) =>
         SendAsync<MembershipPurchaseResponse>(HttpMethod.Post,
             $"api/staff/membership-purchases/{Uri.EscapeDataString(orderNumber)}/confirm-cash", cancellationToken,
-            JsonContent.Create(request));
+            JsonContent.Create(request), ReadPurchaseAsync);
+
+    private static readonly JsonSerializerOptions PurchaseJsonOptions = new(JsonSerializerDefaults.Web);
+
+    private static async Task<MembershipPurchaseResponse> ReadPurchaseAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
+        var root = document.RootElement;
+        // Require financial/voucher fields explicitly so an older or incomplete response cannot silently show a full-price order.
+        if (root.ValueKind != JsonValueKind.Object ||
+            new[] { "subtotal", "amountDue", "discountAmount", "appliedVoucher" }.Any(field => !root.TryGetProperty(field, out _)))
+            throw new JsonException("The order financial summary is incomplete.");
+        if (root.GetProperty("appliedVoucher") is { ValueKind: not JsonValueKind.Null } voucher &&
+            (voucher.ValueKind != JsonValueKind.Object ||
+             new[] { "code", "name", "discountAmount", "redemptionStatus" }.Any(field => !voucher.TryGetProperty(field, out _)) ||
+             new[] { "code", "name", "redemptionStatus" }.Any(field => voucher.GetProperty(field).ValueKind != JsonValueKind.String)))
+            throw new JsonException("The applied voucher snapshot is incomplete.");
+        return root.Deserialize<MembershipPurchaseResponse>(PurchaseJsonOptions) ?? throw new JsonException("Expected order data.");
+    }
 
     private async Task<T> SendAsync<T>(
         HttpMethod method, string path, CancellationToken cancellationToken, HttpContent? content = null,

@@ -106,7 +106,7 @@ public sealed partial class MembershipPurchaseService(
         var status = order.OrderStatus;
         if (status == OrderStatus.Pending && clock.GetUtcNow() >= ExpiresAt(order))
             status = OrderStatus.Expired;
-        var qr = status == OrderStatus.Pending && payment.PaymentMethod == PaymentMethod.VietQR
+        var qr = status == OrderStatus.Pending && payment.PaymentMethod == PaymentMethod.VietQR && payment.AmountDue > 0
             ? gateway.CreateVietQr(order.OrderNumber, payment.AmountDue)
             : null;
         return Result<MembershipPurchaseResponse>.Success(ToResponse(order, status, qr));
@@ -139,6 +139,7 @@ public sealed partial class MembershipPurchaseService(
                 (OrderStatus.Pending, PaymentStatus.Pending) or (OrderStatus.Expired, PaymentStatus.Cancelled);
             var createdSecond = DateTimeOffset.FromUnixTimeSeconds(Utc(order.CreatedAt).ToUnixTimeSeconds());
             if (!awaitingSettlement ||
+                !HasSafeVoucherSettlement(order) ||
                 payment.AmountDue != transfer.Amount ||
                 transfer.TransferredAt < createdSecond ||
                 transfer.TransferredAt >= ExpiresAt(order) ||
@@ -171,7 +172,8 @@ public sealed partial class MembershipPurchaseService(
 
             var now = clock.GetUtcNow();
             if (order.OrderStatus != OrderStatus.Pending || payment.PaymentStatus != PaymentStatus.Pending ||
-                now >= ExpiresAt(order) || payment.AmountDue != amount)
+                now >= ExpiresAt(order) || amount <= 0 || payment.AmountDue != amount ||
+                !HasSafeVoucherSettlement(order))
                 return Result<MembershipPurchaseResponse>.Failure(
                     "Kiểm tra số tiền đã nhận và hạn thanh toán của đơn.", "CASH_PAYMENT_REJECTED", 409);
 
@@ -272,6 +274,11 @@ public sealed partial class MembershipPurchaseService(
         };
         order.OrderStatus = OrderStatus.Paid;
         order.CompletedAt = now.UtcDateTime;
+        if (order.VoucherRedemption is { RedemptionStatus: VoucherRedemptionStatus.Reserved } redemption)
+        {
+            redemption.RedemptionStatus = VoucherRedemptionStatus.Confirmed;
+            redemption.RedeemedAt = transferredAt.UtcDateTime;
+        }
         await repository.SaveChangesAsync(ct);
     }
 
@@ -295,17 +302,25 @@ public sealed partial class MembershipPurchaseService(
         var payment = order.PaymentTransaction!;
         var failed = status is OrderStatus.Expired or OrderStatus.Cancelled || payment.PaymentStatus == PaymentStatus.Failed;
         var onlineFailure = failed && payment.PaymentMethod == PaymentMethod.VietQR;
+        var subtotal = order.Items.Sum(item => item.UnitPriceSnapshot);
+        var redemption = order.VoucherRedemption;
+        var applied = redemption is { VoucherCodeSnapshot: { } code, VoucherNameSnapshot: { } name } &&
+            (redemption.RedemptionStatus != VoucherRedemptionStatus.Released ||
+                order.OrderStatus is OrderStatus.Expired or OrderStatus.Cancelled && redemption.DiscountAmount > 0)
+            ? new AppliedMembershipVoucherResponse(code, name, redemption.DiscountAmount, redemption.RedemptionStatus.ToString())
+            : null;
         return new(order.OrderNumber, status.ToString(),
             (status == OrderStatus.Expired ? PaymentStatus.Cancelled : payment.PaymentStatus).ToString(),
             payment.PaymentMethod.ToString(), Utc(order.CreatedAt), ExpiresAt(order), clock.GetUtcNow(),
-            order.Items.Sum(item => item.UnitPriceSnapshot), payment.AmountDue,
+            subtotal, payment.AmountDue,
             order.Items.OrderBy(item => item.Id).Select(item => new MembershipPurchaseItemResponse(item.PackageId,
                 item.PackageNameSnapshot, item.BeneficiaryUserId == order.PurchaserUserId, item.ActivationStartDate,
                 item.UnitPriceSnapshot)).ToArray(),
             qr, payment.Invoice?.InvoiceNumber,
             status == OrderStatus.Paid ? MembershipPurchaseMessages.PaidCode : onlineFailure ? MembershipPurchaseMessages.FailedCode : null,
             status == OrderStatus.Paid ? MembershipPurchaseMessages.Paid : onlineFailure ? MembershipPurchaseMessages.Failed
-                : failed ? "Đơn thanh toán tại quầy đã hết hiệu lực." : null);
+                : failed ? "Đơn thanh toán tại quầy đã hết hiệu lực." : null,
+            Math.Max(0, subtotal - payment.AmountDue), applied);
     }
 
     private static bool IsPurchasable(Package plan, DateOnly latestStart) =>
