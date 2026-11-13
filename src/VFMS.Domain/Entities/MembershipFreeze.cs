@@ -17,6 +17,10 @@ public class MembershipFreeze : BaseEntity
     public DateOnly? ActualStartDate { get; set; }
     public DateOnly? ActualEndDate { get; set; }
     public string? Reason { get; set; }
+    public Guid? SupportingDocumentId { get; set; }
+    public string? SupportingDocumentFileName { get; set; }
+    public string? SupportingDocumentContentType { get; set; }
+    public byte[]? SupportingDocumentContent { get; set; }
     public int? FreezePolicyId { get; set; }
     /// <summary>UC-16 policy values captured on submission or a Member edit.</summary>
     public string? AppliedPolicySnapshot { get; set; }

@@ -403,8 +403,12 @@ public class VfmsDbContext : DbContext
         modelBuilder.Entity<MembershipFreeze>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.RequestStatus, e.RequestedStartDate, e.Id });
+            entity.HasIndex(e => new { e.RequestStatus, e.RequestedEndDate, e.Id });
             entity.Property(e => e.RequestStatus).HasConversion<string>().HasMaxLength(50);
             entity.Property(e => e.Reason).HasMaxLength(4000);
+            entity.Property(e => e.SupportingDocumentFileName).HasMaxLength(256);
+            entity.Property(e => e.SupportingDocumentContentType).HasMaxLength(100);
             entity.Property(e => e.EarlyUnfreezeRequestStatus).HasConversion<string>().HasMaxLength(50);
             entity.Property(e => e.EarlyUnfreezeReviewNote).HasMaxLength(4000);
             entity.HasOne(e => e.EarlyUnfreezeReviewedByUser).WithMany()

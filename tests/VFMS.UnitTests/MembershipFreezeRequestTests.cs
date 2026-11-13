@@ -9,7 +9,7 @@ using VFMS.Domain.Enums;
 
 namespace VFMS.UnitTests;
 
-public sealed class MembershipFreezeRequestTests
+public sealed partial class MembershipFreezeRequestTests
 {
     private const string MemberId = "member";
     private const string OtherMemberId = "another-member";

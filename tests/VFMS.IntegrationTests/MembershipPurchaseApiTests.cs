@@ -63,9 +63,13 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
         builder.Services.AddMembershipFreezePolicyModule();
         builder.Services.AddMembershipFreezeRequestModule();
         builder.Services.AddMembershipFreezeReviewModule();
+        builder.Services.AddMembershipFreezeLifecycleModule();
         var worker = builder.Services.Single(service =>
             service.ServiceType == typeof(IHostedService) && service.ImplementationType == typeof(MembershipCommerceWorker));
         builder.Services.Remove(worker);
+        var freezeWorker = builder.Services.Single(service =>
+            service.ServiceType == typeof(IHostedService) && service.ImplementationType == typeof(MembershipFreezeTransitionWorker));
+        builder.Services.Remove(freezeWorker);
         builder.Services.AddAuthentication("Test").AddScheme<AuthenticationSchemeOptions, TestAuth>("Test", _ => { });
         builder.Services.AddAuthorization();
 

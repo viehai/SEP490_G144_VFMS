@@ -91,6 +91,9 @@
                                 </div>
                             }
                         </dl>
+                        <MembershipFreezeDocumentPanel RequestId="@request.FreezeRequestId" Document="@request.SupportingDocument"
+                                                       CanEdit="@request.CanEdit" Disabled="@ActionsDisabled"
+                                                       Changed="document => DocumentChanged(request.FreezeRequestId, document)" />
                         @if (request.EarlyUnfreezeRequestedAt is { } earlyRequestedAt)
                         {
                             <div class="space-y-2 border-t border-vfms-border pt-3 text-sm">

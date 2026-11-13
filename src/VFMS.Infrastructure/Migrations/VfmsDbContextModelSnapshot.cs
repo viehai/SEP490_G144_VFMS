@@ -1422,6 +1422,20 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<string>("ReviewedByUserId")
                         .HasColumnType("nvarchar(128)");
 
+                    b.Property<byte[]>("SupportingDocumentContent")
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<string>("SupportingDocumentContentType")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("SupportingDocumentFileName")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<Guid?>("SupportingDocumentId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
 
@@ -1436,6 +1450,10 @@ namespace VFMS.Infrastructure.Migrations
                     b.HasIndex("RequestedByUserId");
 
                     b.HasIndex("ReviewedByUserId");
+
+                    b.HasIndex("RequestStatus", "RequestedEndDate", "Id");
+
+                    b.HasIndex("RequestStatus", "RequestedStartDate", "Id");
 
                     b.ToTable("MembershipFreezes");
                 });

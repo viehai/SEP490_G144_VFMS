@@ -117,7 +117,8 @@
                 {
                     <p class="text-sm text-vfms-text-secondary">Yêu cầu này chưa có bản ghi chính sách tại thời điểm gửi.</p>
                 }
-                <p class="text-sm text-vfms-text-secondary">Không có tài liệu đính kèm.</p>
+                <MembershipFreezeDocumentPanel @key="detail.Request.FreezeRequestId" RequestId="@detail.Request.FreezeRequestId"
+                                               Document="@detail.SupportingDocument" Disabled="@Busy" />
             </div>
             @if (!string.IsNullOrWhiteSpace(detail.ReviewNote) || detail.ReviewedAt.HasValue)
             {

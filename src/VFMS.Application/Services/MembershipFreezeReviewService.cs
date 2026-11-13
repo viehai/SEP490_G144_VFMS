@@ -10,7 +10,8 @@ namespace VFMS.Application.Services;
 
 public sealed partial class MembershipFreezeReviewService(
     IMembershipFreezeReviewRepository repository, IMembershipFreezeRequestRepository requests,
-    IMembershipFreezePolicyRepository policies, IValidator<RejectMembershipFreezeRequest> validator, TimeProvider clock)
+    IMembershipFreezePolicyRepository policies, IValidator<RejectMembershipFreezeRequest> validator, TimeProvider clock,
+    IMembershipFreezeDocumentStore? documents = null)
     : IMembershipFreezeReviewService
 {
     public async Task<Result<PagedResponse<MembershipFreezeReviewSummaryResponse>>> ListAsync(
@@ -36,7 +37,7 @@ public sealed partial class MembershipFreezeReviewService(
         var membership = await requests.GetOwnedMembershipAsync(row.Membership.MemberUserId, row.Request.MemberMembershipId, false, ct);
         if (membership is null || row.Request.RequestedByUserId != membership.MemberUserId)
             return NotFound();
-        return Result<MembershipFreezeReviewDetailResponse>.Success(Detail(row with { Membership = membership }, early));
+        return Result<MembershipFreezeReviewDetailResponse>.Success(await DetailAsync(row with { Membership = membership }, early, ct));
     }
 
     public Task<Result<MembershipFreezeReviewDetailResponse>> ApproveAsync(
@@ -135,10 +136,18 @@ public sealed partial class MembershipFreezeReviewService(
             var audit = AuditedWriter.Audit(managerId, AuditActionType.Update, nameof(MembershipFreeze),
                 ipAddress, before, Describe(membership, freeze));
             await AuditedWriter.SaveChangedAsync(repository, freeze, audit, [notification], ct);
-            result = Result<MembershipFreezeReviewDetailResponse>.Success(Detail(
-                row with { Request = freeze, Membership = membership }, early));
+            result = Result<MembershipFreezeReviewDetailResponse>.Success(await DetailAsync(
+                row with { Request = freeze, Membership = membership }, early, ct));
         }, ct);
         return result;
+    }
+
+    private async Task<MembershipFreezeReviewDetailResponse> DetailAsync(
+        MembershipFreezeReviewReadModel row, bool early, CancellationToken ct)
+    {
+        var response = Detail(row, early);
+        return documents is not null && row.Request.SupportingDocumentId is { } id
+            ? response with { SupportingDocument = await documents.GetMetadataAsync(id, ct) } : response;
     }
 
     private MembershipFreezeReviewDetailResponse Detail(MembershipFreezeReviewReadModel row, bool early)

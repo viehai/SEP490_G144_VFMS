@@ -100,6 +100,29 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
         SendAsync<MembershipFreezeRequestResponse>(HttpMethod.Post,
             FormattableString.Invariant($"{FreezeRequestsPath}/{requestId}/early-unfreeze"), cancellationToken);
 
+    public Task<MembershipFreezeDocumentResponse> UploadFreezeDocumentAsync(
+        int requestId, Stream content, string fileName, string contentType, CancellationToken cancellationToken = default)
+    {
+        var upload = new MultipartFormDataContent();
+        var file = new StreamContent(content);
+        file.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+        upload.Add(file, "file", fileName);
+        return SendAsync<MembershipFreezeDocumentResponse>(HttpMethod.Post,
+            FormattableString.Invariant($"{FreezeRequestsPath}/{requestId}/document"), cancellationToken, upload);
+    }
+
+    public Task<bool> RemoveFreezeDocumentAsync(int requestId, CancellationToken cancellationToken = default) =>
+        SendAsync<bool>(HttpMethod.Delete,
+            FormattableString.Invariant($"{FreezeRequestsPath}/{requestId}/document"), cancellationToken);
+
+    public Task<MembershipFreezeDocumentDownload> DownloadFreezeDocumentAsync(int requestId, CancellationToken cancellationToken = default) =>
+        SendAsync<MembershipFreezeDocumentDownload>(HttpMethod.Get,
+            FormattableString.Invariant($"{FreezeRequestsPath}/{requestId}/document"), cancellationToken,
+            readResponse: async (response, ct) => new(await response.Content.ReadAsByteArrayAsync(ct),
+                (response.Content.Headers.ContentDisposition?.FileNameStar ??
+                    response.Content.Headers.ContentDisposition?.FileName ?? "document").Trim('"'),
+                response.Content.Headers.ContentType?.MediaType ?? "application/octet-stream"));
+
     public Task<PagedResponse<MembershipFreezeReviewSummaryResponse>> ListFreezeReviewsAsync(
         MembershipFreezeReviewListRequest request, CancellationToken cancellationToken = default)
     {
@@ -139,14 +162,19 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
             $"api/staff/membership-purchases/{Uri.EscapeDataString(orderNumber)}/confirm-cash", cancellationToken,
             JsonContent.Create(request));
 
-    private async Task<T> SendAsync<T>(HttpMethod method, string path, CancellationToken cancellationToken, HttpContent? content = null)
+    private async Task<T> SendAsync<T>(
+        HttpMethod method, string path, CancellationToken cancellationToken, HttpContent? content = null,
+        Func<HttpResponseMessage, CancellationToken, Task<T>>? readResponse = null)
     {
         using var request = new HttpRequestMessage(method, path) { Content = content };
         var token = await session.GetAccessTokenAsync()
             ?? throw new AuthApiException("Vui lòng đăng nhập để tiếp tục.", HttpStatusCode.Unauthorized);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        return await AuthApiClient.SendAsync<T>(http, request, cancellationToken);
+        return readResponse is null ? await AuthApiClient.SendAsync<T>(http, request, cancellationToken)
+            : await AuthApiClient.SendAsync(http, request, readResponse, cancellationToken);
     }
 
     public void Dispose() => http.Dispose();
 }
+
+public sealed record MembershipFreezeDocumentDownload(byte[] Content, string FileName, string ContentType);
