@@ -42,6 +42,9 @@ builder.Services.AddScoped<IUserAdministrationService, UserAdministrationService
 builder.Services.AddSystemAdministrationModule();
 builder.Services.AddEquipmentModule();
 builder.Services.AddSupplementModule();
+builder.Services.AddYogaModule();
+builder.Services.AddWorkoutModule(builder.Configuration);
+builder.Services.AddCheckInModule(builder.Configuration, builder.Environment);
 builder.Services.AddMembershipPlanModule();
 builder.Services.AddMembershipPurchaseModule(builder.Configuration);
 builder.Services.AddMembershipFreezePolicyModule();

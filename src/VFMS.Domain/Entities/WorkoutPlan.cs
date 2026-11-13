@@ -19,6 +19,8 @@ public class WorkoutPlan : BaseEntity
     public string? FitnessGoal { get; set; }
     public DateTime GeneratedAt { get; set; }
     public string? GeneratedByAiModel { get; set; }
+    /// <summary>Short nutrition advice for the goal (UC-49): from Gemini, or a standard text for fallback plans.</summary>
+    public string? NutritionAdvice { get; set; }
 
     // ── Navigation Properties ──────────────────────────────────
     public ApplicationUser Member { get; set; } = null!;

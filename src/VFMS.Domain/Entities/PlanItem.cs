@@ -9,6 +9,8 @@ public class PlanItem : BaseEntity
 {
     public int PlanId { get; set; }
     public int ExerciseId { get; set; }
+    /// <summary>Machine or equipment the member uses for this exercise (ERD PlanItem.EquipmentId, UC-59 swap).</summary>
+    public int? EquipmentId { get; set; }
     public int DayNumber { get; set; }
     public int OrderInDay { get; set; }
     public int? Sets { get; set; }
@@ -19,5 +21,8 @@ public class PlanItem : BaseEntity
     // ── Navigation Properties ──────────────────────────────────
     public WorkoutPlan WorkoutPlan { get; set; } = null!;
     public Exercise Exercise { get; set; } = null!;
+    public Equipment? Equipment { get; set; }
+    /// <summary>Daily progress logs (UC-50); "done this week" is derived from them.</summary>
+    public ICollection<WorkoutLog> Logs { get; set; } = [];
 }
 
