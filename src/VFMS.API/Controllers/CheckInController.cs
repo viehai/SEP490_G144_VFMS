@@ -54,12 +54,12 @@ public sealed class MemberQrController : ControllerBase
 }
 
 /// <summary>
-/// UC-44/UC-45 entrance and exit kiosk. The kiosk browser runs signed in as a Staff account: an anonymous
-/// face-match endpoint would let anyone probe biometrics or check other people in.
+/// UC-44/UC-45 entrance and exit kiosk. Staff and Manager can check anyone in or out. A Customer or Member
+/// can only scan themselves: an open face-match would let anyone probe biometrics or check other people in.
 /// </summary>
 [ApiController]
 [Route("api/kiosk")]
-[Authorize(Roles = "Staff,Manager")]
+[Authorize(Roles = "Staff,Manager,Customer,Member")]
 [Produces("application/json")]
 public sealed class KioskController : ControllerBase
 {
@@ -70,12 +70,21 @@ public sealed class KioskController : ControllerBase
     [HttpPost("check-in")]
     [RequestSizeLimit(16 * 1024)]
     public async Task<IActionResult> CheckIn([FromBody] KioskScanRequest request, CancellationToken cancellationToken) =>
-        this.ToActionResult(await _service.KioskCheckInAsync(request, cancellationToken));
+        Scope() is var (ok, self) && ok
+            ? this.ToActionResult(await _service.KioskCheckInAsync(request, self, cancellationToken))
+            : Unauthorized();
 
     [HttpPost("check-out")]
     [RequestSizeLimit(16 * 1024)]
     public async Task<IActionResult> CheckOut([FromBody] KioskScanRequest request, CancellationToken cancellationToken) =>
-        this.ToActionResult(await _service.KioskCheckOutAsync(request, cancellationToken));
+        Scope() is var (ok, self) && ok
+            ? this.ToActionResult(await _service.KioskCheckOutAsync(request, self, cancellationToken))
+            : Unauthorized();
+
+    /// <summary>Staff/Manager: no restriction. Others: limited to their own user ID, which must exist.</summary>
+    private (bool Ok, string? Self) Scope() =>
+        User.IsInRole("Staff") || User.IsInRole("Manager") ? (true, null)
+        : User.GetUserId() is { } id ? (true, id) : (false, null);
 }
 
 /// <summary>UC-48/UC-57 View Active Check-ins (Staff, Manager).</summary>

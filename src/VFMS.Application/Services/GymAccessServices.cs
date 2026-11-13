@@ -117,10 +117,10 @@ public sealed class CheckInService : ICheckInService
         _clock = clock;
     }
 
-    public async Task<Result<CheckInResultResponse>> KioskCheckInAsync(KioskScanRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result<CheckInResultResponse>> KioskCheckInAsync(KioskScanRequest request, string? selfUserId = null, CancellationToken cancellationToken = default)
     {
         var (userId, method) = await IdentifyAsync(request, cancellationToken);
-        if (userId is null)
+        if (userId is null || (selfUserId is not null && userId != selfUserId))
             return Result<CheckInResultResponse>.Failure(GymAccessMessages.Denied, GymAccessMessages.DeniedCode, 403);
         return await CheckInMemberAsync(userId, method, null, cancellationToken);
     }
@@ -146,10 +146,10 @@ public sealed class CheckInService : ICheckInService
     public Task<Result<CheckInResultResponse>> ManualCheckInAsync(string memberUserId, string staffUserId, CancellationToken cancellationToken = default) =>
         CheckInMemberAsync(memberUserId, CheckInMethod.ManualStaff, staffUserId, cancellationToken);
 
-    public async Task<Result<CheckOutResultResponse>> KioskCheckOutAsync(KioskScanRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result<CheckOutResultResponse>> KioskCheckOutAsync(KioskScanRequest request, string? selfUserId = null, CancellationToken cancellationToken = default)
     {
         var (userId, method) = await IdentifyAsync(request, cancellationToken);
-        if (userId is null)
+        if (userId is null || (selfUserId is not null && userId != selfUserId))
             return Result<CheckOutResultResponse>.Failure(GymAccessMessages.Denied, GymAccessMessages.DeniedCode, 403);
         var open = await _repository.GetOpenCheckInAsync(userId, cancellationToken);
         return open is null   // GBR-91: the member goes to the front desk (UC-47)

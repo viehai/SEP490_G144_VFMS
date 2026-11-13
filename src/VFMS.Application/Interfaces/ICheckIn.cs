@@ -42,12 +42,13 @@ public interface IMemberQrService
 /// <summary>UC-44 Self Check-In and UC-46 Manual Check-In.</summary>
 public interface ICheckInService
 {
-    Task<Result<CheckInResultResponse>> KioskCheckInAsync(KioskScanRequest request, CancellationToken cancellationToken = default);
+    /// <param name="selfUserId">Set when a Customer or Member scans: the face or QR must be their own. Null for Staff/Manager.</param>
+    Task<Result<CheckInResultResponse>> KioskCheckInAsync(KioskScanRequest request, string? selfUserId = null, CancellationToken cancellationToken = default);
     /// <summary>UC-46: members by name, phone or membership (order) number, with today's entry status.</summary>
     Task<Result<IReadOnlyList<FrontDeskMemberResponse>>> SearchMembersAsync(string? search, CancellationToken cancellationToken = default);
     Task<Result<CheckInResultResponse>> ManualCheckInAsync(string memberUserId, string staffUserId, CancellationToken cancellationToken = default);
     /// <summary>UC-45 Self Check-Out.</summary>
-    Task<Result<CheckOutResultResponse>> KioskCheckOutAsync(KioskScanRequest request, CancellationToken cancellationToken = default);
+    Task<Result<CheckOutResultResponse>> KioskCheckOutAsync(KioskScanRequest request, string? selfUserId = null, CancellationToken cancellationToken = default);
     /// <summary>UC-47 Manual Check-Out of one open visit.</summary>
     Task<Result<CheckOutResultResponse>> ManualCheckOutAsync(int checkInId, string staffUserId, CancellationToken cancellationToken = default);
 }

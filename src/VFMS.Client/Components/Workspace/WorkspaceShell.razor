@@ -90,9 +90,9 @@
     private string DashboardRoute => Variant switch { "admin" => "/admin/dashboard", "manager" => "/manager/dashboard", "pt" => "/pt/dashboard", _ => "/staff/dashboard" };
     private (string Href, string Label)[] FeatureLinks => Variant switch
     {
-        "manager" => [("/manager/yoga", "Quản lý Yoga"), ("/staff/check-ins", "Đang có mặt"), ("/staff/kiosk", "Kiosk check-in")],
+        "manager" => [("/manager/yoga", "Quản lý Yoga"), ("/staff/check-ins", "Đang có mặt"), ("/kiosk", "Kiosk check-in")],
         "pt" => [("/pt/yoga", "Lớp Yoga của tôi")],
-        "staff" => [("/staff/check-ins", "Đang có mặt"), ("/staff/kiosk", "Kiosk check-in")],
+        "staff" => [("/staff/check-ins", "Đang có mặt"), ("/kiosk", "Kiosk check-in")],
         _ => []
     };
     private string CurrentRoute => "/" + Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].Trim('/');

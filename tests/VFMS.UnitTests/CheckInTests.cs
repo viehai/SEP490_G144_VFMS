@@ -164,6 +164,20 @@ public sealed class CheckInTests
         Assert.EndsWith($"Please contact the front desk. Membership status: {shown}.", result.ErrorMessage);
     }
 
+    [Fact]
+    public async Task ACustomerCanOnlyScanThemselves()   // kiosk open to Customer/Member: no checking other people in
+    {
+        var (repo, service, qr) = Kiosk();
+        repo.Memberships.Add(Membership("m1", MembershipStatus.Active, -10, 20));
+
+        var other = await service.KioskCheckInAsync(await QrScan(qr, "m1"), selfUserId: "m2");
+        var self = await service.KioskCheckInAsync(await QrScan(qr, "m1"), selfUserId: "m1");
+
+        Assert.Equal(403, other.StatusCode);
+        Assert.Equal(201, self.StatusCode);
+        Assert.Equal(403, (await service.KioskCheckOutAsync(await QrScan(qr, "m1"), selfUserId: "m2")).StatusCode);
+    }
+
     [Theory]
     [InlineData(MembershipStatus.Frozen, -10, 20, 403)]
     [InlineData(MembershipStatus.Active, -40, -1, 403)]      // Active but past its end date = expired
