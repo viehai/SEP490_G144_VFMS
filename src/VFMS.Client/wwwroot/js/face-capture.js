@@ -35,11 +35,16 @@
         },
         async capture(video) {
             if (!window.faceapi || !stream) return null;
-            const result = await faceapi
-                .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.6 }))
-                .withFaceLandmarks()
-                .withFaceDescriptor();
-            return result ? Array.from(result.descriptor) : null;
+            // One frame often misses (blink, motion blur), so try for about 3 seconds before giving up.
+            for (let attempt = 0; attempt < 10; attempt++) {
+                const result = await faceapi
+                    .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.5 }))
+                    .withFaceLandmarks()
+                    .withFaceDescriptor();
+                if (result) return Array.from(result.descriptor);
+                await new Promise(r => setTimeout(r, 300));
+            }
+            return null;
         },
         stop() {
             if (stream) stream.getTracks().forEach(t => t.stop());

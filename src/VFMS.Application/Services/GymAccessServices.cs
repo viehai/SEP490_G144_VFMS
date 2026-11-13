@@ -157,6 +157,26 @@ public sealed class CheckInService : ICheckInService
             : await CheckOutAsync(open, method, null, cancellationToken);
     }
 
+    public async Task<Result<KioskScanResultResponse>> KioskScanAsync(KioskScanRequest request, string? selfUserId = null, CancellationToken cancellationToken = default)
+    {
+        // Identify once: a QR token is single-use, so the in/out decision must not redeem it twice.
+        var (userId, method) = await IdentifyAsync(request, cancellationToken);
+        if (userId is null || (selfUserId is not null && userId != selfUserId))
+            return Result<KioskScanResultResponse>.Failure(GymAccessMessages.Denied, GymAccessMessages.DeniedCode, 403);
+
+        if (await _repository.GetOpenCheckInAsync(userId, cancellationToken) is { } open)
+        {
+            var outcome = await CheckOutAsync(open, method, null, cancellationToken);
+            return outcome.IsSuccess
+                ? Result<KioskScanResultResponse>.Success(new KioskScanResultResponse("CheckOut", null, outcome.Data))
+                : Result<KioskScanResultResponse>.Failure(outcome.ErrorMessage!, outcome.ErrorCode!, outcome.StatusCode);
+        }
+        var entry = await CheckInMemberAsync(userId, method, null, cancellationToken);
+        return entry.IsSuccess
+            ? Result<KioskScanResultResponse>.Success(new KioskScanResultResponse("CheckIn", entry.Data, null), entry.StatusCode)
+            : Result<KioskScanResultResponse>.Failure(entry.ErrorMessage!, entry.ErrorCode!, entry.StatusCode);
+    }
+
     /// <summary>UC-47: Staff close an open visit from Active Check-ins, recorded as Manual with their ID.</summary>
     public async Task<Result<CheckOutResultResponse>> ManualCheckOutAsync(int checkInId, string staffUserId, CancellationToken cancellationToken = default)
     {

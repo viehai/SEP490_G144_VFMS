@@ -178,6 +178,23 @@ public sealed class CheckInTests
         Assert.Equal(403, (await service.KioskCheckOutAsync(await QrScan(qr, "m1"), selfUserId: "m2")).StatusCode);
     }
 
+    [Fact]
+    public async Task OneScanChecksInThenOut()   // kiosk decides the direction from whether the member is inside
+    {
+        var (repo, service, qr) = Kiosk();
+        repo.Memberships.Add(Membership("m1", MembershipStatus.Active, -10, 20));
+
+        var first = await service.KioskScanAsync(await QrScan(qr, "m1"));
+        var second = await service.KioskScanAsync(await QrScan(qr, "m1"));
+        var stranger = await service.KioskScanAsync(await QrScan(qr, "m1"), selfUserId: "m2");
+
+        Assert.Equal(("CheckIn", 201), (first.Data!.Action, first.StatusCode));
+        Assert.NotNull(first.Data.CheckIn);
+        Assert.Equal("CheckOut", second.Data!.Action);
+        Assert.NotNull(second.Data.CheckOut);
+        Assert.Equal(403, stranger.StatusCode);
+    }
+
     [Theory]
     [InlineData(MembershipStatus.Frozen, -10, 20, 403)]
     [InlineData(MembershipStatus.Active, -40, -1, 403)]      // Active but past its end date = expired

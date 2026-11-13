@@ -23,6 +23,9 @@ public sealed record CheckInResultResponse(
 public sealed record CheckOutResultResponse(
     int CheckInId, string MemberUserId, string MemberName, DateTime CheckinTime, DateTime CheckoutTime, int MinutesInside);
 
+/// <summary>One kiosk scan: Action is "CheckIn" (CheckIn set) or "CheckOut" (CheckOut set), decided by whether the member is inside.</summary>
+public sealed record KioskScanResultResponse(string Action, CheckInResultResponse? CheckIn, CheckOutResultResponse? CheckOut);
+
 // ── Front desk (UC-46, UC-47) ───────────────────────────────────
 
 /// <summary>A member found at the front desk. MembershipStatus is "Active" when they may enter today.</summary>

@@ -49,6 +49,8 @@ public interface ICheckInService
     Task<Result<CheckInResultResponse>> ManualCheckInAsync(string memberUserId, string staffUserId, CancellationToken cancellationToken = default);
     /// <summary>UC-45 Self Check-Out.</summary>
     Task<Result<CheckOutResultResponse>> KioskCheckOutAsync(KioskScanRequest request, string? selfUserId = null, CancellationToken cancellationToken = default);
+    /// <summary>UC-44/UC-45 in one scan: checks the member out when they are inside, otherwise checks them in.</summary>
+    Task<Result<KioskScanResultResponse>> KioskScanAsync(KioskScanRequest request, string? selfUserId = null, CancellationToken cancellationToken = default);
     /// <summary>UC-47 Manual Check-Out of one open visit.</summary>
     Task<Result<CheckOutResultResponse>> ManualCheckOutAsync(int checkInId, string staffUserId, CancellationToken cancellationToken = default);
 }

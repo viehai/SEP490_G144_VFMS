@@ -14,7 +14,7 @@
     <header class="border-b-2 border-black pb-7">
         <p class="font-['Montserrat'] mb-3 text-[10px] font-bold tracking-[.18em] text-neutral-500">VFMS / KIOSK</p>
         <h1 class="font-['Montserrat'] text-3xl font-extrabold uppercase tracking-tight sm:text-4xl">Kiosk check-in<span>.</span></h1>
-        <p class="mt-3 text-sm text-[#545454]">Hội viên đứng trước camera (FaceID) hoặc đưa mã QR để vào / ra phòng tập.</p>
+        <p class="mt-3 text-sm text-[#545454]">Quét khuôn mặt hoặc mã QR: lần quét khi đang ở ngoài là check-in, lần quét khi đang ở trong phòng tập là check-out.</p>
     </header>
 
     @if (_result is not null)
@@ -42,8 +42,7 @@
                 }
                 else
                 {
-                    <button type="button" disabled="@_busy" class="bg-black px-6 py-3 text-xs font-bold uppercase text-white rounded-none disabled:opacity-40" @onclick="() => ScanFace(true)">Check in</button>
-                    <button type="button" disabled="@_busy" class="border-2 border-black px-6 py-3 text-xs font-bold uppercase rounded-none disabled:opacity-40" @onclick="() => ScanFace(false)">Check out</button>
+                    <button type="button" disabled="@_busy" class="bg-black px-6 py-3 text-xs font-bold uppercase text-white rounded-none disabled:opacity-40" @onclick="ScanFace">@(_busy ? "Đang quét…" : "Quét khuôn mặt")</button>
                     <button type="button" class="px-4 py-3 text-xs font-bold uppercase underline" @onclick="StopCamera">Tắt camera</button>
                 }
             </div>
@@ -56,8 +55,7 @@
                 <input class="mt-1 w-full border border-[#CFCFCF] px-3 py-2 font-mono text-xs rounded-none" @bind="_qr" @bind:event="oninput" placeholder="Dán mã từ ứng dụng hội viên" />
             </label>
             <div class="flex flex-wrap gap-2">
-                <button type="button" disabled="@(_busy || string.IsNullOrWhiteSpace(_qr))" class="bg-black px-5 py-3 text-xs font-bold uppercase text-white rounded-none disabled:opacity-40" @onclick="() => Scan(true, new KioskScanRequest(null, _qr.Trim()))">Check in</button>
-                <button type="button" disabled="@(_busy || string.IsNullOrWhiteSpace(_qr))" class="border-2 border-black px-5 py-3 text-xs font-bold uppercase rounded-none disabled:opacity-40" @onclick="() => Scan(false, new KioskScanRequest(null, _qr.Trim()))">Check out</button>
+                <button type="button" disabled="@(_busy || string.IsNullOrWhiteSpace(_qr))" class="bg-black px-5 py-3 text-xs font-bold uppercase text-white rounded-none disabled:opacity-40" @onclick="() => Scan(new KioskScanRequest(null, _qr.Trim()))">Quét mã</button>
             </div>
             <p class="text-xs text-neutral-500">Mã QR dùng một lần và hết hạn sau 2 phút.</p>
         </section>
@@ -83,7 +81,7 @@
         finally { _busy = false; }
     }
 
-    private async Task ScanFace(bool checkIn)
+    private async Task ScanFace()
     {
         _busy = true;
         try
@@ -92,27 +90,23 @@
             if (descriptor is null)
                 Show(false, "Không phát hiện khuôn mặt. Hãy nhìn thẳng vào camera và thử lại.");
             else
-                await Scan(checkIn, new KioskScanRequest(descriptor, null));
+                await Scan(new KioskScanRequest(descriptor, null));
         }
         catch (JSException) { Show(false, "Không xử lý được ảnh. Vui lòng thử lại."); }
         finally { _busy = false; }
     }
 
-    private async Task Scan(bool checkIn, KioskScanRequest request)
+    /// <summary>The API decides the direction: inside → check out, outside → check in.</summary>
+    private async Task Scan(KioskScanRequest request)
     {
         _busy = true;
         try
         {
-            if (checkIn)
-            {
-                var r = await Api.PostAsync<CheckInResultResponse>("api/kiosk/check-in", request);
-                Show(true, r.CompletedPtSessionId is null ? r.Message : $"{r.Message} Buổi PT đã được ghi nhận hoàn thành.");
-            }
-            else
-            {
-                var r = await Api.PostAsync<CheckOutResultResponse>("api/kiosk/check-out", request);
-                Show(true, $"Tạm biệt, {r.MemberName}! Thời gian tập: {r.MinutesInside / 60}h {r.MinutesInside % 60}m.");
-            }
+            var r = await Api.PostAsync<KioskScanResultResponse>("api/kiosk/scan", request);
+            if (r.CheckIn is { } entry)
+                Show(true, $"CHECK-IN. {entry.Message}{(entry.CompletedPtSessionId is null ? "" : " Buổi PT đã được ghi nhận hoàn thành.")}");
+            else if (r.CheckOut is { } exit)
+                Show(true, $"CHECK-OUT. Tạm biệt, {exit.MemberName}! Thời gian tập: {exit.MinutesInside / 60}h {exit.MinutesInside % 60}m.");
             _qr = string.Empty;
         }
         catch (ApiException ex) { Show(false, ex.Message); }

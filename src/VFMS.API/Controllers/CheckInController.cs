@@ -81,6 +81,14 @@ public sealed class KioskController : ControllerBase
             ? this.ToActionResult(await _service.KioskCheckOutAsync(request, self, cancellationToken))
             : Unauthorized();
 
+    /// <summary>One scan: checks out when the member is inside, otherwise checks in.</summary>
+    [HttpPost("scan")]
+    [RequestSizeLimit(16 * 1024)]
+    public async Task<IActionResult> Scan([FromBody] KioskScanRequest request, CancellationToken cancellationToken) =>
+        Scope() is var (ok, self) && ok
+            ? this.ToActionResult(await _service.KioskScanAsync(request, self, cancellationToken))
+            : Unauthorized();
+
     /// <summary>Staff/Manager: no restriction. Others: limited to their own user ID, which must exist.</summary>
     private (bool Ok, string? Self) Scope() =>
         User.IsInRole("Staff") || User.IsInRole("Manager") ? (true, null)
