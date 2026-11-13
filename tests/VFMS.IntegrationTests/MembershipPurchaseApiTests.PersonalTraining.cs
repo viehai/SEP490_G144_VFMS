@@ -353,6 +353,106 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Equal(5, newContract.RemainingFreezeDays);
     }
 
+    [Fact]
+    public async Task EarlyResumeRechecksThePreviewAndPreservesOtherBookings()
+    {
+        var request = await PreparePTCheckout();
+        using var member = Client("member", "Member");
+        using var manager = Client("manager", "Manager");
+        using var otherMember = Client("gift", "Member");
+        using var order = await member.PostAsJsonAsync("/api/pt/purchases", request);
+        Assert.Equal(HttpStatusCode.Created, order.StatusCode);
+        var checkout = await IssueQr(member, (await order.Content.ReadFromJsonAsync<PTCheckoutResponse>())!);
+        var transferAt = new DateTimeOffset(checkout.ExpiresAt).AddMinutes(-14);
+        _clock.Now = transferAt.AddSeconds(1);
+        using var paid = await NotifyTransferAsync(checkout.VietQr!.TransferContent, checkout.AmountDue, 96, transferAt);
+        Assert.Equal(HttpStatusCode.OK, paid.StatusCode);
+
+        var contractPath = $"/api/pt/contracts/{checkout.ContractId}";
+        var original = (await member.GetFromJsonAsync<PTContractResponse[]>(contractPath))!.Single();
+        var start = original.Sessions[0].Date;
+        var newResumeDate = original.Sessions[1].Date;
+        var previousResumeDate = start.AddDays(7);
+        using var requested = await member.PostAsJsonAsync($"{contractPath}/freezes",
+            new PTFreezeRequest(start, previousResumeDate, "Travel"));
+        Assert.Equal(HttpStatusCode.Created, requested.StatusCode);
+        var freeze = (await requested.Content.ReadFromJsonAsync<PTFreezeResponse>())!;
+        using var approved = await manager.PostAsJsonAsync($"/api/pt/manager/freezes/{freeze.Id}/decision",
+            new PTFreezeDecision(true, null));
+        Assert.True(approved.IsSuccessStatusCode, await approved.Content.ReadAsStringAsync());
+        var path = $"/api/pt/freezes/{freeze.Id}/early-resume";
+        using var upcoming = await member.PostAsJsonAsync($"{path}/preview", new PTEarlyResumeRequest(newResumeDate));
+        Assert.Equal(HttpStatusCode.Conflict, upcoming.StatusCode);
+        _clock.Now = new DateTimeOffset(start.ToDateTime(new TimeOnly(8, 0)), TimeSpan.FromHours(7));
+
+        await using var scope = _app.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+        var memberRole = await db.ApplicationRoles.SingleAsync(r => r.RoleName == "Member");
+        db.ApplicationUserRoles.Add(new ApplicationUserRole { UserId = "gift", Role = memberRole });
+        await db.SaveChangesAsync();
+        using var forbidden = await otherMember.PostAsJsonAsync($"{path}/preview", new PTEarlyResumeRequest(newResumeDate));
+        Assert.Equal(HttpStatusCode.NotFound, forbidden.StatusCode);
+        using var preview = await member.PostAsJsonAsync($"{path}/preview", new PTEarlyResumeRequest(newResumeDate));
+        Assert.True(preview.IsSuccessStatusCode, await preview.Content.ReadAsStringAsync());
+        var proposal = (await preview.Content.ReadFromJsonAsync<PTEarlyResumePreview>())!;
+        var move = Assert.Single(proposal.Moves, x => x.Date == newResumeDate);
+        var days = newResumeDate.DayNumber - start.DayNumber;
+        Assert.Equal(days, proposal.ActualFrozenDays);
+
+        var membership = await db.MemberMemberships.SingleAsync();
+        var occupied = new PTSession
+        {
+            MemberUserId = "gift",
+            PTUserId = "buyer",
+            SessionDate = newResumeDate,
+            StartTime = original.Sessions[1].StartTime,
+            EndTime = original.Sessions[1].EndTime
+        };
+        db.PTPurchases.Add(new PTPurchase
+        {
+            MemberUserId = "gift",
+            PTUserId = "buyer",
+            MemberMembershipId = membership.Id,
+            StartDate = start,
+            EndDate = original.EndDate,
+            Sessions = [occupied]
+        });
+        await db.SaveChangesAsync();
+
+        using var stale = await member.PostAsJsonAsync($"{path}/confirm",
+            new PTEarlyResumeConfirmation(newResumeDate, previousResumeDate, proposal.Moves.ToArray()));
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+        var afterConflict = (await member.GetFromJsonAsync<PTContractResponse[]>(contractPath))!.Single();
+        Assert.Equal(original.EndDate.AddDays(7), afterConflict.EndDate);
+        Assert.Equal(original.ReservedCredits, afterConflict.ReservedCredits);
+
+        var alternate = move with { StartTime = new TimeOnly(12, 0) };
+        using var revised = await member.PostAsJsonAsync($"{path}/preview",
+            new PTEarlyResumeRequest(newResumeDate, [alternate]));
+        Assert.True(revised.IsSuccessStatusCode, await revised.Content.ReadAsStringAsync());
+        var revisedPlan = (await revised.Content.ReadFromJsonAsync<PTEarlyResumePreview>())!;
+        var confirmation = new PTEarlyResumeConfirmation(newResumeDate, previousResumeDate, revisedPlan.Moves.ToArray());
+        using var confirm = await member.PostAsJsonAsync($"{path}/confirm", confirmation);
+        Assert.True(confirm.IsSuccessStatusCode, await confirm.Content.ReadAsStringAsync());
+        using var repeated = await member.PostAsJsonAsync($"{path}/confirm", confirmation);
+        Assert.Equal(HttpStatusCode.Conflict, repeated.StatusCode);
+        var updated = (await confirm.Content.ReadFromJsonAsync<PTContractResponse>())!;
+        Assert.Equal("Frozen", updated.Status);
+        Assert.Equal(original.EndDate.AddDays(days), updated.EndDate);
+        Assert.Equal(original.RemainingFreezeDays - days, updated.RemainingFreezeDays);
+        Assert.Equal(original.ReservedCredits, updated.ReservedCredits);
+        Assert.Equal(original.UsedCredits, updated.UsedCredits);
+        Assert.Contains(updated.Sessions, s => s.Id == alternate.SessionId && s.Date == newResumeDate && s.StartTime == alternate.StartTime);
+        var otherBooking = await db.PTSessions.AsNoTracking().SingleAsync(s => s.Id == occupied.Id);
+        Assert.Equal(PTSessionStatus.Scheduled, otherBooking.SessionStatus);
+        Assert.Equal(occupied.StartTime, otherBooking.StartTime);
+        var recipients = await db.Notifications.Where(n => n.EntityId == freeze.Id && n.Title == "Tập lại PT sớm")
+            .OrderBy(n => n.RecipientUserId).Select(n => n.RecipientUserId).ToListAsync();
+        Assert.Equal(new[] { "buyer", "member" }, recipients);
+        _clock.Now = new DateTimeOffset(newResumeDate.ToDateTime(TimeOnly.MinValue), TimeSpan.FromHours(7));
+        Assert.Equal("Active", (await member.GetFromJsonAsync<PTContractResponse[]>(contractPath))!.Single().Status);
+    }
+
     [Theory]
     [InlineData(0, 5, 20)]
     [InlineData(13, 0, 20)]

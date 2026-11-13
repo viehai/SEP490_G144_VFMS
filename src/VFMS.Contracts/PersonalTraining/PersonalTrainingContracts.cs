@@ -44,4 +44,12 @@ public sealed record PTFreezeResponse(int Id, int ContractId, string MemberId, s
     DateOnly ResumeDate, string Status, string? Reason, string? ReviewNote,
     DateTime? ReviewedAt);
 public sealed record PTFreezePreview(DateOnly ExpiresOn, IReadOnlyList<PTCalendarSlot> Replacements);
+public sealed record PTEarlyResumeMove(int SessionId, DateOnly Date, TimeOnly StartTime);
+public sealed record PTEarlyResumeRequest(DateOnly ResumeDate, PTEarlyResumeMove[]? Moves = null);
+public sealed record PTEarlyResumeConfirmation(DateOnly ResumeDate, DateOnly CurrentResumeDate,
+    [Required] PTEarlyResumeMove[] Moves);
+public sealed record PTEarlyResumePreview(DateOnly CurrentResumeDate, DateOnly ResumeDate, DateOnly ExpiresOn,
+    int ActualFrozenDays, int RemainingFreezeDays, IReadOnlyList<PTEarlyResumeMove> Moves,
+    IReadOnlyList<PTSessionResponse> Sessions, IReadOnlyList<int> SessionsNeedingNewSlot,
+    IReadOnlyList<int> UnavailableOriginalSlots);
 public sealed record PTReviewRequest([Range(1, 5)] int Rating, [Required, StringLength(500, MinimumLength = 10)] string Comment);

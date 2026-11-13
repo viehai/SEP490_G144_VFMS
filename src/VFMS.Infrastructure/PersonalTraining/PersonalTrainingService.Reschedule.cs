@@ -161,7 +161,10 @@ public sealed partial class PersonalTrainingService
         Utc(date, start) > now && InHours(contract.PTUser.Gym, start, end) &&
         !contract.PTFreezes.Any(f => (Approved(f) || f.RequestStatus == PTFreezeRequestStatus.Pending) &&
             f.RequestedStartDate <= date && date < (f.ActualEndDate ?? f.RequestedEndDate)) &&
-        memberships.Any(m => m.EndDate >= date && !m.MembershipFreezes.Any(f =>
+        HasGymCoverageOn(memberships, date);
+
+    private static bool HasGymCoverageOn(IEnumerable<MemberMembership> memberships, DateOnly date) =>
+        memberships.Any(m => m.StartDate <= date && m.EndDate >= date && !m.MembershipFreezes.Any(f =>
             f.RequestStatus is FreezeRequestStatus.Approved or FreezeRequestStatus.Active or FreezeRequestStatus.Completed &&
             (f.ActualStartDate ?? f.RequestedStartDate) <= date && date < (f.ActualEndDate ?? f.RequestedEndDate)));
 

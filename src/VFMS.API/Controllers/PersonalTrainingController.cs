@@ -129,6 +129,16 @@ public sealed class PersonalTrainingController(PersonalTrainingService service) 
     [Authorize(Roles = "Member")]
     public Task<IActionResult> Freezes(CancellationToken ct) => AsUser(actor => service.Freezes(actor, false, ct));
 
+    [HttpPost("freezes/{id:int}/early-resume/preview")]
+    [Authorize(Roles = "Member")]
+    public Task<IActionResult> PreviewEarlyResume(int id, PTEarlyResumeRequest request, CancellationToken ct) =>
+        AsUser(actor => service.PreviewEarlyResume(actor, id, request, ct));
+
+    [HttpPost("freezes/{id:int}/early-resume/confirm")]
+    [Authorize(Roles = "Member")]
+    public Task<IActionResult> ConfirmEarlyResume(int id, PTEarlyResumeConfirmation request, CancellationToken ct) =>
+        AsUser(actor => service.ConfirmEarlyResume(actor, id, request, ct));
+
     [HttpGet("manager/freezes")]
     [Authorize(Roles = "Manager")]
     public Task<IActionResult> ManagerFreezes(CancellationToken ct) => AsUser(actor => service.Freezes(actor, true, ct));
