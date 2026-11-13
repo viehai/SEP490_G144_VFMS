@@ -9,6 +9,10 @@
         <nav class="workspace-nav">
             <NavLink href="@DashboardRoute" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">01</span> Tổng quan <span aria-hidden="true">↗</span></NavLink>
             <a href="@(DashboardRoute + "#quick-actions")" class="workspace-nav-link"><span aria-hidden="true">02</span> Truy cập nhanh <span aria-hidden="true">↗</span></a>
+            @foreach (var (href, label) in FeatureLinks)
+            {
+                <NavLink href="@href" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">◼</span> @label <span aria-hidden="true">↗</span></NavLink>
+            }
             <NavLink href="/profile" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">03</span> Hồ sơ cá nhân <span aria-hidden="true">↗</span></NavLink>
             <a href="/" class="workspace-nav-link"><span aria-hidden="true">04</span> Trang chủ <span aria-hidden="true">↗</span></a>
             @if (Variant == "manager")
@@ -84,6 +88,13 @@
     private string RoleName => Variant switch { "admin" => "ADMIN", "manager" => "MANAGER", "pt" => "PERSONAL TRAINER", _ => "STAFF" };
     private string RoleMark => Variant switch { "admin" => "AD", "manager" => "MG", "pt" => "PT", _ => "ST" };
     private string DashboardRoute => Variant switch { "admin" => "/admin/dashboard", "manager" => "/manager/dashboard", "pt" => "/pt/dashboard", _ => "/staff/dashboard" };
+    private (string Href, string Label)[] FeatureLinks => Variant switch
+    {
+        "manager" => [("/manager/yoga", "Quản lý Yoga"), ("/staff/check-ins", "Đang có mặt")],
+        "pt" => [("/pt/yoga", "Lớp Yoga của tôi")],
+        "staff" => [("/staff/check-ins", "Đang có mặt")],
+        _ => []
+    };
     private string CurrentRoute => "/" + Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].Trim('/');
     private void ChangePreview(ChangeEventArgs args)
     {

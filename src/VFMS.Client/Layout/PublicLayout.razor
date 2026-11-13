@@ -53,6 +53,24 @@
                             Báo hỏng
                         </NavLink>
                     }
+                    @if (auth.User.IsInRole("Member"))
+                    {
+                        <NavLink href="/yoga/schedule" Match="NavLinkMatch.Prefix" ActiveClass="text-[#5F6F52] underline underline-offset-4"
+                                 class="@MyMembershipsClass">
+                            Yoga
+                        </NavLink>
+                        <NavLink href="/workout" Match="NavLinkMatch.All" ActiveClass="text-[#5F6F52] underline underline-offset-4"
+                                 class="@MyMembershipsClass">
+                            Giáo án
+                        </NavLink>
+                    }
+                    @if (auth.User.IsInRole("Member") || auth.User.IsInRole("Customer"))
+                    {
+                        <NavLink href="/face-id" Match="NavLinkMatch.All" ActiveClass="text-[#5F6F52] underline underline-offset-4"
+                                 class="@MyMembershipsClass">
+                            FaceID
+                        </NavLink>
+                    }
                     <NavLink href="/profile" Match="NavLinkMatch.All" ActiveClass="text-[#5F6F52] underline underline-offset-4"
                              class="@ProfileLinkClass"
                              title="@auth.User.Identity?.Name" aria-label="Hồ sơ cá nhân">
