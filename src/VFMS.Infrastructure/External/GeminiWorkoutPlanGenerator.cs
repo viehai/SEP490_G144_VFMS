@@ -11,7 +11,7 @@ namespace VFMS.Infrastructure.External;
 public sealed class GeminiSettings
 {
     public string? ApiKey { get; set; }
-    public string Model { get; set; } = "gemini-2.0-flash";
+    public string Model { get; set; } = "gemini-3.5-flash-lite";
     public string BaseUrl { get; set; } = "https://generativelanguage.googleapis.com/v1beta/";
     public int TimeoutSeconds { get; set; } = 25;
 }
