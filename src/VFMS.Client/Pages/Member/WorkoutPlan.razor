@@ -57,17 +57,6 @@
             <button type="submit" disabled="@_busy" class="w-full bg-black px-6 py-3 font-['Montserrat'] text-xs font-bold uppercase text-white rounded-none disabled:opacity-50">
                 @(_busy ? "Đang xử lý…" : _consent ? "Lưu khảo sát & tạo giáo án" : "Lưu khảo sát")
             </button>
-
-            <div class="border-t border-[#CFCFCF] pt-4 space-y-3">
-                <button type="button" disabled="@(_busy || !_consent || !_surveyComplete)" @onclick="Generate"
-                        class="w-full border-2 border-black bg-white px-6 py-3 font-['Montserrat'] text-xs font-bold uppercase rounded-none hover:bg-black hover:text-white disabled:opacity-40">
-                    @(_busy ? "Đang tạo giáo án…" : "Tạo giáo án mới")
-                </button>
-                @if (!_surveyComplete)
-                {
-                    <p class="text-xs text-[#92400E]">Hãy lưu khảo sát đầy đủ trước khi tạo giáo án.</p>
-                }
-            </div>
         </form>
 
         <section class="space-y-4" aria-live="polite">
@@ -190,8 +179,6 @@
                 await GeneratePlan();
         });
     }
-
-    private Task Generate() => Busy(GeneratePlan);
 
     private async Task GeneratePlan()
     {
