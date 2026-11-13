@@ -27,7 +27,11 @@
 
     <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <section class="space-y-4 border-2 border-black bg-white p-6 rounded-none">
-            <h2 class="font-['Montserrat'] text-sm font-extrabold uppercase">FaceID</h2>
+            <h2 class="font-['Montserrat'] text-sm font-extrabold uppercase">Camera</h2>
+            @if (_scanning is not null)
+            {
+                <p class="text-xs font-semibold" role="status">@_scanning</p>
+            }
             <div class="relative aspect-[4/3] w-full max-w-xl overflow-hidden border-2 border-black bg-[#0A0A0A] rounded-none">
                 <video @ref="_video" class="h-full w-full -scale-x-100 object-cover" playsinline muted></video>
                 @if (!_cameraOn)
@@ -42,21 +46,18 @@
                 }
                 else
                 {
-                    <button type="button" disabled="@_busy" class="bg-black px-6 py-3 text-xs font-bold uppercase text-white rounded-none disabled:opacity-40" @onclick="ScanFace">@(_busy ? "Đang quét…" : "Quét khuôn mặt")</button>
+                    <button type="button" disabled="@_busy" class="bg-black px-6 py-3 text-xs font-bold uppercase text-white rounded-none disabled:opacity-40" @onclick="ScanFace">Quét khuôn mặt</button>
+                    <button type="button" disabled="@_busy" class="border-2 border-black px-6 py-3 text-xs font-bold uppercase rounded-none disabled:opacity-40" @onclick="ScanQr">Quét mã QR</button>
                     <button type="button" class="px-4 py-3 text-xs font-bold uppercase underline" @onclick="StopCamera">Tắt camera</button>
                 }
             </div>
             <p class="text-xs text-neutral-500">Ảnh chỉ được xử lý trên thiết bị; chỉ mẫu 128 số được gửi lên máy chủ.</p>
         </section>
 
-        <section class="space-y-4 border-2 border-black bg-white p-6 rounded-none">
-            <h2 class="font-['Montserrat'] text-sm font-extrabold uppercase">Mã QR</h2>
-            <label class="block text-xs font-semibold">Mã QR của hội viên
-                <input class="mt-1 w-full border border-[#CFCFCF] px-3 py-2 font-mono text-xs rounded-none" @bind="_qr" @bind:event="oninput" placeholder="Dán mã từ ứng dụng hội viên" />
-            </label>
-            <div class="flex flex-wrap gap-2">
-                <button type="button" disabled="@(_busy || string.IsNullOrWhiteSpace(_qr))" class="bg-black px-5 py-3 text-xs font-bold uppercase text-white rounded-none disabled:opacity-40" @onclick="() => Scan(new KioskScanRequest(null, _qr.Trim()))">Quét mã</button>
-            </div>
+        <section class="space-y-3 border-2 border-black bg-white p-6 text-sm rounded-none">
+            <h2 class="font-['Montserrat'] text-sm font-extrabold uppercase">Cách dùng</h2>
+            <p><b>FaceID:</b> nhìn thẳng vào camera rồi bấm Quét khuôn mặt.</p>
+            <p><b>Mã QR:</b> mở trang Mã QR của tôi trên điện thoại, đưa mã trước camera rồi bấm Quét mã QR.</p>
             <p class="text-xs text-neutral-500">Mã QR dùng một lần và hết hạn sau 2 phút.</p>
         </section>
     </div>
@@ -65,8 +66,7 @@
 @code {
     private ElementReference _video;
     private bool _cameraOn, _busy, _ok;
-    private string _qr = string.Empty;
-    private string? _result;
+    private string? _result, _scanning;
 
     private async Task StartCamera()
     {
@@ -81,9 +81,29 @@
         finally { _busy = false; }
     }
 
+    private async Task ScanQr()
+    {
+        _busy = true;
+        _scanning = "Đang tìm mã QR… đưa mã vào giữa khung hình.";
+        StateHasChanged();
+        try
+        {
+            await JS.InvokeVoidAsync("import", "./js/qr-code.js");
+            var token = await JS.InvokeAsync<string?>("vfmsQr.scan", _video, 10000);
+            if (string.IsNullOrWhiteSpace(token))
+                Show(false, "Không đọc được mã QR. Hãy đưa mã gần camera hơn và thử lại.");
+            else
+                await Scan(new KioskScanRequest(null, token.Trim()));
+        }
+        catch (JSException) { Show(false, "Không đọc được mã QR. Vui lòng thử lại."); }
+        finally { _busy = false; _scanning = null; }
+    }
+
     private async Task ScanFace()
     {
         _busy = true;
+        _scanning = "Đang nhận diện khuôn mặt…";
+        StateHasChanged();
         try
         {
             var descriptor = await JS.InvokeAsync<float[]?>("vfmsFace.capture", _video);
@@ -93,7 +113,7 @@
                 await Scan(new KioskScanRequest(descriptor, null));
         }
         catch (JSException) { Show(false, "Không xử lý được ảnh. Vui lòng thử lại."); }
-        finally { _busy = false; }
+        finally { _busy = false; _scanning = null; }
     }
 
     /// <summary>The API decides the direction: inside → check out, outside → check in.</summary>
@@ -107,7 +127,6 @@
                 Show(true, $"CHECK-IN. {entry.Message}{(entry.CompletedPtSessionId is null ? "" : " Buổi PT đã được ghi nhận hoàn thành.")}");
             else if (r.CheckOut is { } exit)
                 Show(true, $"CHECK-OUT. Tạm biệt, {exit.MemberName}! Thời gian tập: {exit.MinutesInside / 60}h {exit.MinutesInside % 60}m.");
-            _qr = string.Empty;
         }
         catch (ApiException ex) { Show(false, ex.Message); }
         finally { _busy = false; }
