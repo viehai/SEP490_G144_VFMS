@@ -1,9 +1,9 @@
 @page "/membership-purchases/{OrderNumber}"
 @layout PublicLayout
 @using Microsoft.AspNetCore.Authorization
-@using System.Diagnostics
 @using System.Globalization
 @using VFMS.Contracts.Memberships
+@using VFMS.Client.Components.Memberships
 @attribute [Authorize(Roles = "Customer,Member")]
 @inject MembershipPlanApiClient Plans
 @implements IDisposable
@@ -18,11 +18,11 @@
         <h1 class="font-['Montserrat',sans-serif] text-3xl font-extrabold text-[#383E43]">@(IsRenewal ? "Thanh toán gia hạn" : "Thanh toán gói tập")</h1>
     </div>
 
-    @if (_purchase is { } purchase)
+    @if (_checkout?.Purchase is { } purchase)
     {
         <section class="space-y-5 rounded-xl border border-[#D8DED2] bg-white p-6 shadow-sm sm:p-8" aria-label="Tóm tắt đơn hàng">
-            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[#D8DED2] pb-4">
-                <h2 class="font-['Montserrat',sans-serif] text-xl font-bold text-[#383E43]">Đơn hàng #@purchase.OrderNumber</h2>
+            <div class="flex flex-col gap-3 border-b border-[#D8DED2] pb-4 sm:flex-row sm:items-start sm:justify-between">
+                <h2 class="min-w-0 break-all font-['Montserrat',sans-serif] text-xl font-bold text-[#383E43]">Đơn hàng #@purchase.OrderNumber</h2>
                 <span class="rounded-md border border-[#D8DED2] bg-[#EEF1EA] px-3 py-1 text-xs font-semibold text-[#5F6F52]">
                     @(purchase.OrderStatus == MembershipPurchaseStatuses.Pending ? "Chờ thanh toán" : purchase.OrderStatus)
                 </span>
@@ -42,15 +42,29 @@
                     </li>
                 }
             </ul>
-            <div class="flex items-baseline justify-between pt-1">
-                <span class="text-base font-semibold text-[#69706A]">Tổng thanh toán</span>
-                <span class="font-['Montserrat',sans-serif] text-2xl font-extrabold text-[#5F6F52]">@Money(purchase.AmountDue)</span>
-            </div>
+            <CheckoutVoucherPanel Purchase="purchase" CanManageVoucher="_checkout.CanManageVoucher" IsBusy="_checkout.IsBusy"
+                                  IsApplying="_checkout.IsApplying" IsRemoving="_checkout.IsRemoving"
+                                  Error="@_checkout.VoucherError" Notice="@_checkout.VoucherNotice" OnApply="ApplyVoucherAsync" OnRemove="RemoveVoucherAsync" />
             @if (purchase.OrderStatus == MembershipPurchaseStatuses.Pending)
             {
                 <div class="rounded-xl border border-[#D8DED2] bg-[#F7F4EC]/60 p-5 space-y-4">
-                    <p role="status" class="text-sm font-semibold text-[#383E43]">Đang chờ xác nhận thanh toán qua hệ thống ngân hàng.</p>
-                    @if (purchase.VietQr is { } qr && Remaining > TimeSpan.Zero)
+                    @if (_checkout.IsApplying || _checkout.IsRemoving)
+                    {
+                        <p role="status" class="text-sm font-semibold text-vfms-text">Đang cập nhật mã giảm giá và thông tin thanh toán...</p>
+                    }
+                    else if (purchase.AmountDue == 0)
+                    {
+                        <p class="text-sm text-vfms-text">Mã giảm giá đã bao gồm toàn bộ giá trị đơn hàng. Xác nhận hoàn tất để kích hoạt gói tập.</p>
+                        <button type="button" disabled="@(_checkout.IsBusy || !_checkout.CanManageVoucher)" @onclick="CompleteNoChargeAsync"
+                                class="min-h-[44px] rounded-lg bg-vfms-primary px-5 py-2.5 text-sm font-semibold text-white hover:bg-vfms-primary-hover disabled:opacity-50">
+                            @(_checkout.IsCompletingNoCharge ? "Đang hoàn tất..." : "Hoàn tất đơn hàng miễn phí")
+                        </button>
+                    }
+                    else if (purchase.PaymentMethod == MembershipPaymentMethods.VietQr)
+                    {
+                        <p role="status" class="text-sm font-semibold text-[#383E43]">Đang chờ xác nhận thanh toán qua hệ thống ngân hàng.</p>
+                    }
+                    @if (!_checkout.IsApplying && !_checkout.IsRemoving && purchase.AmountDue > 0 && purchase.VietQr is { } qr && Remaining > TimeSpan.Zero)
                     {
                         <div class="flex flex-col items-center gap-4 sm:flex-row sm:items-start sm:gap-6">
                             <div class="rounded-xl border border-[#D8DED2] bg-white p-3 shadow-sm shrink-0">
@@ -65,11 +79,11 @@
                             </dl>
                         </div>
                     }
-                    @if (purchase.PaymentMethod == MembershipPaymentMethods.Cash)
+                    @if (purchase.AmountDue > 0 && purchase.PaymentMethod == MembershipPaymentMethods.Cash)
                     {
                         <p class="text-sm text-[#69706A]">Đưa mã đơn cho lễ tân và thanh toán tại quầy.</p>
                     }
-                    else if (purchase.VietQr is null && Remaining > TimeSpan.Zero)
+                    else if (purchase.AmountDue > 0 && purchase.VietQr is null && Remaining > TimeSpan.Zero)
                     {
                         <p role="alert" class="text-sm text-amber-800">Mã VietQR tạm thời không khả dụng.</p>
                     }
@@ -81,8 +95,8 @@
             }
             else
             {
-                <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-                    <p role="status" class="font-bold text-emerald-900">@purchase.Message</p>
+                <div class="rounded-xl border p-4 @(purchase.OrderStatus == MembershipPurchaseStatuses.Paid ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-red-200 bg-red-50 text-red-900")">
+                    <p role="status" class="font-bold">@purchase.Message</p>
                     @if (purchase.InvoiceNumber is { } invoice)
                     {
                         <p class="mt-1 text-xs text-emerald-800">Số hóa đơn: <strong>@invoice</strong></p>
@@ -91,118 +105,22 @@
             }
         </section>
     }
-    else if (_error is null)
+    else if (_checkout?.Error is null)
     {
         <div class="flex items-center gap-3 py-8 text-sm text-[#69706A]" role="status">
             <svg class="h-5 w-5 animate-spin text-[#5F6F52]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
             Đang tải trạng thái đơn hàng...
         </div>
     }
-    @if (_error is not null)
+    @if (_checkout?.Error is { } error)
     {
         <div class="rounded-xl border border-red-200 bg-red-50 p-4">
-            <p role="alert" class="text-sm text-red-800">@_error</p>
+            <p role="alert" class="text-sm text-red-800">@error</p>
         </div>
     }
-    @if (_purchase?.OrderStatus != MembershipPurchaseStatuses.Paid)
+    @if (_checkout?.Purchase?.OrderStatus != MembershipPurchaseStatuses.Paid)
     {
         <button type="button" class="rounded-lg border border-[#5F6F52] text-[#5F6F52] hover:bg-[#5F6F52] hover:text-white px-5 py-2.5 text-sm font-semibold transition disabled:opacity-50"
-                disabled="@_refreshing" @onclick="RefreshAsync">Cập nhật trạng thái</button>
+                disabled="@(_checkout?.IsBusy ?? true)" @onclick="RefreshAsync">Cập nhật trạng thái</button>
     }
 </section>
-
-@code {
-    [Parameter] public string OrderNumber { get; set; } = "";
-    [SupplyParameterFromQuery(Name = "renewal")] public bool IsRenewal { get; set; }
-
-    private CancellationTokenSource? _lifetime;
-    private MembershipPurchaseResponse? _purchase;
-    private string? _error;
-    private bool _refreshing;
-    private long _receivedAt;
-    private TimeSpan Remaining
-    {
-        get
-        {
-            if (_purchase is not { } purchase)
-                return TimeSpan.Zero;
-            var remaining = purchase.ExpiresAt - purchase.ServerTime - Stopwatch.GetElapsedTime(_receivedAt);
-            return remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero;
-        }
-    }
-
-    protected override async Task OnParametersSetAsync()
-    {
-        Dispose();
-        _purchase = null;
-        _error = null;
-        _refreshing = false;
-        var lifetime = _lifetime = new CancellationTokenSource();
-        await RefreshAsync();
-        if (!lifetime.IsCancellationRequested)
-            _ = PollAsync(lifetime.Token);
-    }
-
-    private async Task RefreshAsync()
-    {
-        if (_refreshing || _lifetime is null)
-            return;
-        var ct = _lifetime.Token;
-        _refreshing = true;
-        try
-        {
-            var purchase = await Plans.GetPurchaseAsync(OrderNumber, ct);
-            if (!ct.IsCancellationRequested)
-            {
-                _purchase = purchase;
-                _receivedAt = Stopwatch.GetTimestamp();
-                _error = null;
-            }
-        }
-        catch (AuthApiException ex) when (!ct.IsCancellationRequested)
-        {
-            _error = ex.Message;
-        }
-        catch (Exception ex) when (ct.IsCancellationRequested && ex is OperationCanceledException or AuthApiException)
-        {
-            // The user left this order.
-        }
-        finally
-        {
-            if (!ct.IsCancellationRequested)
-                _refreshing = false;
-        }
-    }
-
-    private async Task PollAsync(CancellationToken ct)
-    {
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
-        var seconds = 0;
-        try
-        {
-            while ((_purchase is null || _purchase.OrderStatus == MembershipPurchaseStatuses.Pending) &&
-                await timer.WaitForNextTickAsync(ct))
-            {
-                if (_purchase is null)
-                    continue;
-                if (++seconds % 3 == 0)
-                    await RefreshAsync();
-                if (!ct.IsCancellationRequested)
-                    await InvokeAsync(StateHasChanged);
-            }
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            // The user left this order.
-        }
-    }
-
-    private static string Money(decimal value) => $"{value.ToString("#,0", CultureInfo.GetCultureInfo("vi-VN"))} ₫";
-
-    public void Dispose()
-    {
-        _lifetime?.Cancel();
-        _lifetime?.Dispose();
-        _lifetime = null;
-    }
-}

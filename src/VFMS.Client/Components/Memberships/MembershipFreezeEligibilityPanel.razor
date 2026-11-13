@@ -13,6 +13,8 @@
             <p class="font-semibold">Đã gửi yêu cầu bảo lưu. Yêu cầu đang chờ duyệt.</p>
             <p><MembershipDate Date="@created.StartDate" /> đến <MembershipDate Date="@created.EndDate" /> · @created.RequestedDays ngày</p>
         </div>
+        <MembershipFreezeDocumentPanel RequestId="@created.FreezeRequestId" Document="@created.SupportingDocument"
+                                       CanEdit="@created.CanEdit" Changed="DocumentChanged" />
     }
     else if (_loading)
     {
@@ -92,6 +94,12 @@
         _created = request;
         _focusSuccess = true;
         await Submitted.InvokeAsync(request);
+    }
+
+    private void DocumentChanged(MembershipFreezeDocumentResponse? document)
+    {
+        if (_created is not null)
+            _created = _created with { SupportingDocument = document };
     }
 
     private void CancelLoad()

@@ -345,7 +345,7 @@ public class VfmsDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.Code).IsUnique();
-            entity.Property(e => e.Code).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Code).HasMaxLength(50).IsRequired().UseCollation("Latin1_General_100_CI_AS");
             entity.Property(e => e.Name).HasMaxLength(256).IsRequired();
             entity.Property(e => e.DiscountType).HasConversion<string>().HasMaxLength(10);
             entity.Property(e => e.DiscountValue).HasColumnType("decimal(18,2)");
@@ -365,6 +365,9 @@ public class VfmsDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.OrderId).IsUnique();  // One voucher per order
             entity.Property(e => e.DiscountAmount).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.VoucherCodeSnapshot).HasMaxLength(50);
+            entity.Property(e => e.VoucherNameSnapshot).HasMaxLength(256);
+            entity.HasIndex(e => new { e.VoucherId, e.RedemptionStatus });
             entity.Property(e => e.RedemptionStatus).HasConversion<string>().HasMaxLength(20);
 
             entity.HasOne(e => e.Voucher)
@@ -404,9 +407,16 @@ public class VfmsDbContext : DbContext
         modelBuilder.Entity<MembershipFreeze>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.RequestStatus, e.RequestedStartDate, e.Id });
+            entity.HasIndex(e => new { e.RequestStatus, e.RequestedEndDate, e.Id });
             entity.Property(e => e.RequestStatus).HasConversion<string>().HasMaxLength(50);
             entity.Property(e => e.Reason).HasMaxLength(4000);
+            entity.Property(e => e.SupportingDocumentFileName).HasMaxLength(256);
+            entity.Property(e => e.SupportingDocumentContentType).HasMaxLength(100);
             entity.Property(e => e.EarlyUnfreezeRequestStatus).HasConversion<string>().HasMaxLength(50);
+            entity.Property(e => e.EarlyUnfreezeReviewNote).HasMaxLength(4000);
+            entity.HasOne(e => e.EarlyUnfreezeReviewedByUser).WithMany()
+                .HasForeignKey(e => e.EarlyUnfreezeReviewedByUserId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(e => e.FreezePolicy).WithMany().HasForeignKey(e => e.FreezePolicyId)
                 .OnDelete(DeleteBehavior.Restrict);
 

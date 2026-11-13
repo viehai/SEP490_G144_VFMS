@@ -66,7 +66,7 @@ public sealed partial class MembershipFreezeRequestService
         return response with { Eligible = true };
     }
 
-    private static long ConsumedDays(MemberMembership membership)
+    internal static long ConsumedDays(MemberMembership membership)
     {
         var recorded = membership.MembershipFreezes
             .Where(request => request.RequestStatus is FreezeRequestStatus.Approved or FreezeRequestStatus.Active or FreezeRequestStatus.Completed)

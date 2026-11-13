@@ -13,4 +13,6 @@ public sealed record MembershipFreezeRequestResponse(
     int RequestedDays, string? Reason, DateTimeOffset SubmittedAt, string Status,
     string? ReviewNote, DateTimeOffset? ReviewedAt, DateTimeOffset? EarlyUnfreezeRequestedAt,
     string? EarlyUnfreezeStatus, bool CanEdit, bool CanCancel, bool CanRequestEarlyUnfreeze,
-    MembershipFreezePolicyResponse? AppliedPolicy);
+    MembershipFreezePolicyResponse? AppliedPolicy,
+    string? EarlyUnfreezeReviewNote = null, DateTimeOffset? EarlyUnfreezeReviewedAt = null,
+    MembershipFreezeDocumentResponse? SupportingDocument = null);

@@ -20,6 +20,7 @@ builder.Services.AddScoped(sp => new MembershipPlanApiClient(CreateApiHttpClient
 builder.Services.AddScoped(sp => new VfmsApiClient(CreateApiHttpClient(40), sp.GetRequiredService<AuthSession>()));
 builder.Services.AddScoped(sp => new SystemAdministrationApiClient(CreateApiHttpClient(), sp.GetRequiredService<AuthSession>()));
 builder.Services.AddScoped(sp => new OperationsApiClient(CreateApiHttpClient(), sp.GetRequiredService<AuthSession>()));
+builder.Services.AddScoped(sp => new PromotionApiClient(CreateApiHttpClient(), sp.GetRequiredService<AuthSession>()));
 
 await builder.Build().RunAsync();
 

@@ -98,7 +98,8 @@ public enum PaymentMethod
 {
     VietQR,
     Cash,
-    BankTransfer
+    BankTransfer,
+    NoCharge
 }
 
 public enum InvoiceStatus

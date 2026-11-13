@@ -1,0 +1,235 @@
+@page "/manager/membership-freeze-requests"
+@layout ManagerAdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using VFMS.Client.Components.Memberships
+@using VFMS.Client.Components.Operations
+@using VFMS.Contracts.Memberships
+@attribute [Authorize(Roles = "Manager")]
+
+<PageTitle>Duyệt yêu cầu bảo lưu | Victor Fitness</PageTitle>
+
+<div class="workspace-page space-y-6">
+    <PageHeader Overline="VFMS / MEMBERSHIPS" Title="Duyệt yêu cầu bảo lưu"
+                Description="Xem yêu cầu của hội viên và xét duyệt bảo lưu hoặc kết thúc bảo lưu sớm." />
+
+    @if (_notice is not null)
+    {
+        <p role="status" tabindex="-1" @ref="_noticeElement" class="@Ui.Notice">@_notice</p>
+    }
+    @if (_decisionError is not null)
+    {
+        <p role="alert" tabindex="-1" @ref="_decisionErrorElement" class="@Ui.Error">@_decisionError</p>
+    }
+    @if (_loadingDetail)
+    {
+        <p role="status" class="@Ui.Card">Đang tải chi tiết yêu cầu...</p>
+    }
+    else if (_detailError is not null)
+    {
+        <section class="@Ui.Card space-y-3">
+            <p role="alert" class="text-sm text-red-800">@_detailError</p>
+            <button type="button" class="@Ui.Button min-h-[44px]" disabled="@Busy" @onclick="RefreshDetailAsync">Tải lại chi tiết</button>
+        </section>
+    }
+    else if (_detail is { } detail)
+    {
+        <section class="@Ui.Card space-y-5" aria-labelledby="freeze-review-title">
+            <header class="flex flex-wrap items-start justify-between gap-3 border-b border-vfms-border pb-4">
+                <div>
+                    <p class="text-xs font-semibold text-vfms-primary">@TypeLabel(detail.Request.RequestType)</p>
+                    <h2 id="freeze-review-title" tabindex="-1" @ref="_detailHeading" class="mt-1 font-heading text-xl font-bold text-vfms-text">Yêu cầu #@detail.Request.FreezeRequestId</h2>
+                </div>
+                <div class="flex flex-wrap items-center gap-3">
+                    <MembershipFreezeStatusBadge Status="@detail.Request.Status" />
+                    <button type="button" class="@Ui.Button min-h-[44px]" disabled="@Busy" @onclick="RefreshDetailAsync">Cập nhật chi tiết</button>
+                    <button type="button" class="@Ui.Button min-h-[44px]" disabled="@Busy" @onclick="CloseDetail">Đóng</button>
+                </div>
+            </header>
+            <dl class="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                <div>
+                    <dt class="text-xs font-semibold text-vfms-text-secondary">Hội viên</dt>
+                    <dd class="mt-1 break-words font-semibold text-vfms-text">@detail.Request.MemberName</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-semibold text-vfms-text-secondary">Email</dt>
+                    <dd class="mt-1 break-all text-vfms-text">@detail.Request.MemberEmail</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-semibold text-vfms-text-secondary">Ngày gửi</dt>
+                    <dd class="mt-1 text-vfms-text"><time datetime="@IsoTimestamp(detail.Request.SubmittedAt)">@DisplayTimestamp(detail.Request.SubmittedAt)</time></dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-semibold text-vfms-text-secondary">@PeriodLabel(detail.Request.RequestType)</dt>
+                    <dd class="mt-1 font-semibold text-vfms-text"><MembershipDate Date="@detail.Request.StartDate" /><span class="mx-1">đến</span><MembershipDate Date="@detail.Request.EndDate" /></dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-semibold text-vfms-text-secondary">Thời hạn đề nghị</dt>
+                    <dd class="mt-1 text-vfms-text">@detail.Request.RequestedDays ngày</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-semibold text-vfms-text-secondary">Hạn ngạch còn lại</dt>
+                    <dd class="mt-1 font-semibold text-vfms-text">@(detail.RemainingQuota is { } remaining ? $"{remaining} ngày" : "Chưa xác định")</dd>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(detail.Reason))
+                {
+                    <div class="sm:col-span-2 lg:col-span-3">
+                        <dt class="text-xs font-semibold text-vfms-text-secondary">Lý do bảo lưu</dt>
+                        <dd class="mt-1 whitespace-pre-wrap break-words text-vfms-text">@detail.Reason</dd>
+                    </div>
+                }
+            </dl>
+            <div class="space-y-3 border-t border-vfms-border pt-4">
+                <div class="flex flex-wrap items-baseline justify-between gap-2">
+                    <h3 class="break-words font-heading text-base font-bold text-vfms-text">@detail.Membership.PlanName</h3>
+                    <MembershipStatusBadge Status="@detail.Membership.Status" />
+                </div>
+                <MembershipTermDetails Membership="@detail.Membership" />
+                @if (detail.AppliedExpiryExtensionDays is { } extension)
+                {
+                    <p class="text-sm text-vfms-text-secondary">Số ngày gia hạn đã ghi nhận cho lần bảo lưu này <strong class="text-vfms-text">@extension ngày</strong>.</p>
+                }
+                @if (detail.ActualFrozenDays is { } actual)
+                {
+                    <p class="text-sm text-vfms-text-secondary">Số ngày bảo lưu thực tế đến <MembershipDate Date="@detail.Today" /> <strong class="text-vfms-text">@actual ngày</strong>.</p>
+                }
+            </div>
+            <div class="space-y-3 border-t border-vfms-border pt-4">
+                <h3 class="font-heading text-base font-bold text-vfms-text">Chính sách tại thời điểm gửi</h3>
+                @if (detail.AppliedPolicy?.Policy is { } policy)
+                {
+                    <dl class="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                        <div><dt class="text-xs font-semibold text-vfms-text-secondary">Tối thiểu mỗi yêu cầu</dt><dd class="mt-1 text-vfms-text">@policy.MinimumFreezeDays ngày</dd></div>
+                        <div><dt class="text-xs font-semibold text-vfms-text-secondary">Tối đa mỗi yêu cầu</dt><dd class="mt-1 text-vfms-text">@policy.MaximumFreezeDays ngày</dd></div>
+                        <div><dt class="text-xs font-semibold text-vfms-text-secondary">Báo trước tối thiểu</dt><dd class="mt-1 text-vfms-text">@policy.MinimumRequestDays ngày</dd></div>
+                        <div><dt class="text-xs font-semibold text-vfms-text-secondary">Đã thanh toán tối thiểu</dt><dd class="mt-1 text-vfms-text">@policy.EligibilityPaidDays ngày</dd></div>
+                    </dl>
+                    @if (detail.AppliedPolicy.Quotas.Count > 0)
+                    {
+                        <ul class="list-none space-y-1 p-0 text-sm text-vfms-text-secondary">
+                            @foreach (var quota in detail.AppliedPolicy.Quotas)
+                            {
+                                <li>Kỳ hạn @quota.Duration @UnitLabel(quota.Unit) · hạn ngạch @quota.MaximumCumulativeFreezeDays ngày</li>
+                            }
+                        </ul>
+                    }
+                }
+                else
+                {
+                    <p class="text-sm text-vfms-text-secondary">Yêu cầu này chưa có bản ghi chính sách tại thời điểm gửi.</p>
+                }
+                <MembershipFreezeDocumentPanel @key="detail.Request.FreezeRequestId" RequestId="@detail.Request.FreezeRequestId"
+                                               Document="@detail.SupportingDocument" Disabled="@Busy" />
+            </div>
+            @if (!string.IsNullOrWhiteSpace(detail.ReviewNote) || detail.ReviewedAt.HasValue)
+            {
+                <div class="space-y-1 border-t border-vfms-border pt-4 text-sm text-vfms-text">
+                    <h3 class="font-heading text-base font-bold">Kết quả xét duyệt bảo lưu</h3>
+                    @if (detail.ReviewedAt is { } reviewedAt)
+                    {
+                        <p class="text-vfms-text-secondary">Xử lý <time datetime="@IsoTimestamp(reviewedAt)">@DisplayTimestamp(reviewedAt)</time></p>
+                    }
+                    <p class="whitespace-pre-wrap break-words">@detail.ReviewNote</p>
+                </div>
+            }
+            @if (!string.IsNullOrWhiteSpace(detail.EarlyUnfreezeReviewNote) || detail.EarlyUnfreezeReviewedAt.HasValue)
+            {
+                <div class="space-y-1 border-t border-vfms-border pt-4 text-sm text-vfms-text">
+                    <h3 class="font-heading text-base font-bold">Kết quả kết thúc bảo lưu sớm</h3>
+                    @if (detail.EarlyUnfreezeReviewedAt is { } earlyReviewedAt)
+                    {
+                        <p class="text-vfms-text-secondary">Xử lý <time datetime="@IsoTimestamp(earlyReviewedAt)">@DisplayTimestamp(earlyReviewedAt)</time></p>
+                    }
+                    <p class="whitespace-pre-wrap break-words">@detail.EarlyUnfreezeReviewNote</p>
+                </div>
+            }
+            @if (detail.ApprovalMessage is { } approvalMessage)
+            {
+                <p class="rounded-lg bg-vfms-muted p-3 text-sm text-vfms-text-secondary">@approvalMessage</p>
+            }
+            @if (detail.CanApprove || detail.CanReject)
+            {
+                <EditForm @key="_rejectForm" Model="_rejectForm" OnValidSubmit="RejectAsync" OnInvalidSubmit="InvalidReject" novalidate class="border-t border-vfms-border pt-4">
+                    <ContractValidation TRequest="RejectMembershipFreezeRequest" Validator="_rejectValidator" CreateRequest="CreateRejectRequest" @ref="_rejectValidation" />
+                    <fieldset disabled="@Busy" aria-busy="@(_working ? "true" : "false")" class="space-y-4">
+                        <legend class="sr-only">Xét duyệt yêu cầu</legend>
+                        @if (detail.CanReject)
+                        {
+                            <div>
+                                <label for="freeze-rejection-reason" class="block text-sm font-semibold text-vfms-text">Lý do từ chối</label>
+                                <InputTextArea id="freeze-rejection-reason" class="@(Ui.Field + " text-base sm:text-sm")" @bind-Value="_rejectForm.Reason" rows="3" maxlength="4000"
+                                               required aria-describedby="freeze-rejection-error" />
+                                <div id="freeze-rejection-error"><ValidationMessage For="@(() => _rejectForm.Reason)" /></div>
+                            </div>
+                        }
+                        <div class="flex flex-wrap gap-3">
+                            @if (detail.CanApprove)
+                            {
+                                <button type="button" class="@Ui.PrimaryButton min-h-[44px]" @onclick="ApproveAsync">@(_working ? "Đang xử lý..." : "Duyệt yêu cầu")</button>
+                            }
+                            @if (detail.CanReject)
+                            {
+                                <button type="submit" class="@Ui.DangerButton min-h-[44px]">@(_working ? "Đang xử lý..." : "Xác nhận từ chối")</button>
+                            }
+                        </div>
+                    </fieldset>
+                </EditForm>
+            }
+        </section>
+    }
+
+    <section class="@Ui.ListCard" aria-labelledby="freeze-review-queue-title" aria-busy="@(_loading ? "true" : "false")">
+        <div class="@Ui.ListHeader">
+            <h2 id="freeze-review-queue-title" class="mb-3 font-heading text-base font-bold text-vfms-text">Yêu cầu chờ duyệt</h2>
+            <form @onsubmit="ApplyFilterAsync" @onsubmit:preventDefault>
+                <fieldset disabled="@Busy" class="flex flex-wrap items-end gap-3">
+                    <label for="freeze-review-type" class="@Ui.Label">
+                        Loại yêu cầu
+                        <select id="freeze-review-type" class="@Ui.Field min-h-[44px]" @bind="_typeInput">
+                            <option value="">Tất cả</option>
+                            <option value="@MembershipFreezeReviewTypes.Freeze">Bảo lưu</option>
+                            <option value="@MembershipFreezeReviewTypes.EarlyUnfreeze">Kết thúc bảo lưu sớm</option>
+                        </select>
+                    </label>
+                    <button type="submit" class="@Ui.Button min-h-[44px]">Cập nhật danh sách</button>
+                </fieldset>
+            </form>
+        </div>
+        @if (_loading)
+        {
+            <p role="status" class="p-5 text-sm text-vfms-text-secondary">Đang tải yêu cầu chờ duyệt...</p>
+        }
+        else if (_queueError is not null)
+        {
+            <div class="space-y-2 p-5">
+                <p role="alert" class="text-sm text-red-800">@_queueError</p>
+                <button type="button" class="@Ui.Button min-h-[44px]" disabled="@Busy" @onclick="RetryQueueAsync">Thử lại</button>
+            </div>
+        }
+        else if (_page is { Items.Count: > 0 } page)
+        {
+            <div class="overflow-x-auto">
+                <table class="workspace-table min-w-[920px]">
+                    <thead><tr><th scope="col">Mã / Loại</th><th scope="col">Hội viên / Gói</th><th scope="col">Thời gian bảo lưu</th><th scope="col">Ngày gửi</th><th scope="col">Trạng thái</th><th scope="col">Chi tiết</th></tr></thead>
+                    <tbody>
+                        @foreach (var row in page.Items)
+                        {
+                            <tr @key="(row.FreezeRequestId, row.RequestType)">
+                                <th scope="row">#@row.FreezeRequestId <span class="mt-1 block text-xs font-normal">@TypeLabel(row.RequestType)</span></th>
+                                <td><span class="block font-semibold">@row.MemberName</span><span class="block text-xs text-vfms-text-secondary">@row.PlanName</span></td>
+                                <td><MembershipDate Date="@row.StartDate" /><span class="mx-1">đến</span><MembershipDate Date="@row.EndDate" /><span class="mt-1 block text-xs text-vfms-text-secondary">@row.RequestedDays ngày</span></td>
+                                <td><MembershipDate Date="@VietnamDate(row.SubmittedAt)" /></td>
+                                <td><MembershipFreezeStatusBadge Status="@row.Status" /></td>
+                                <td><button type="button" class="@Ui.Button min-h-[44px]" disabled="@Busy" @onclick="() => SelectAsync(row)">Xem yêu cầu</button></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <Pager Page="page.Page" PageSize="page.PageSize" TotalCount="page.TotalCount" Noun="yêu cầu" AriaLabel="Phân trang yêu cầu bảo lưu" Disabled="Busy" OnPage="LoadPageAsync" />
+        }
+        else
+        {
+            <p role="status" class="p-5 text-sm text-vfms-text-secondary">Không có yêu cầu chờ duyệt phù hợp.</p>
+        }
+    </section>
+</div>

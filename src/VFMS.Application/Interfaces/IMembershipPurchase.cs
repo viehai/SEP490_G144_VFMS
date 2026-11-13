@@ -8,6 +8,10 @@ public interface IMembershipPurchaseService
 {
     Task<Result<MembershipPurchaseResponse>> CreateAsync(string purchaserId, MembershipPurchaseRequest request, CancellationToken ct);
     Task<Result<MembershipPurchaseResponse>> GetAsync(string purchaserId, string orderNumber, CancellationToken ct);
+    Task<Result<MembershipPurchaseResponse>> ApplyVoucherAsync(
+        string purchaserId, string orderNumber, ApplyMembershipVoucherRequest request, CancellationToken ct);
+    Task<Result<MembershipPurchaseResponse>> RemoveVoucherAsync(string purchaserId, string orderNumber, CancellationToken ct);
+    Task<Result<MembershipPurchaseResponse>> CompleteNoChargeAsync(string purchaserId, string orderNumber, CancellationToken ct);
     Task<Result<IReadOnlyList<MembershipSummaryResponse>>> ListOwnedMembershipsAsync(string memberId, CancellationToken ct);
     Task<Result<MembershipDetailResponse>> GetOwnedMembershipAsync(string memberId, int membershipId, CancellationToken ct);
     Task<Result<IReadOnlyList<MembershipRenewalOption>>> ListRenewalsAsync(string memberId, CancellationToken ct);
@@ -37,6 +41,8 @@ public interface IMembershipPurchaseRepository
     Task<ApplicationRole?> GetMemberRoleAsync(CancellationToken ct);
     Task<Order?> FindOrderAsync(string orderNumber, string? purchaserId, bool forUpdate, CancellationToken ct);
     Task<bool> SepayReferenceUsedAsync(string reference, CancellationToken ct);
+    Task<Voucher?> FindVoucherForUpdateAsync(string normalizedCode, CancellationToken ct);
+    Task<(int Confirmed, int Reserved)> CountVoucherCapacityAsync(int voucherId, CancellationToken ct);
     Task<List<Order>> LoadExpiredOrdersAsync(DateTime onlineCutoff, DateTime cashCutoff, CancellationToken ct);
     Task<List<MemberMembership>> LoadCurrentMembershipsAsync(string[] userIds, DateOnly today, CancellationToken ct);
     Task<List<OwnedMembership>> ListOwnedMembershipsAsync(string memberId, CancellationToken ct);
