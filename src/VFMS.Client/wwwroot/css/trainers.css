@@ -1,0 +1,42 @@
+.trainer-page { color: #383e43; font-family: Inter, sans-serif; }
+.trainer-public { max-width: 76rem; margin-inline: auto; padding: 7.5rem 1.25rem 4rem; }
+.trainer-narrow { max-width: 54rem; }
+.trainer-page h1, .trainer-page h2, .trainer-page h3 { font-family: Montserrat, sans-serif; font-weight: 800; }
+.trainer-page h1 { font-size: clamp(1.9rem, 4vw, 3rem); line-height: 1.12; }
+.trainer-page h2 { font-size: 1.3rem; }
+.trainer-page h3 { font-size: 1rem; }
+.trainer-panel { padding: clamp(1rem, 3vw, 1.75rem); background: white; border: 1px solid #d8ded2; border-radius: 12px; }
+.trainer-stack { display: grid; gap: 1.25rem; align-content: start; }
+.trainer-anchor { scroll-margin-top: 6rem; }
+.trainer-grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); }
+.trainer-split { display: grid; gap: 1.25rem; align-items: start; }
+@media (min-width: 1050px) { .trainer-split { grid-template-columns: 1.05fr 1fr; } }
+.trainer-row { display: flex; flex-wrap: wrap; gap: .65rem 1rem; align-items: center; }
+.trainer-between { justify-content: space-between; }
+.trainer-muted { color: #69706a; }
+.trainer-copy { white-space: pre-wrap; overflow-wrap: anywhere; }
+.trainer-input { display: block; width: 100%; min-width: 0; margin-top: .35rem; padding: .58rem .7rem; background: #fff; border: 1px solid #c5cdbd; border-radius: 8px; font-weight: 400; }
+.trainer-page label { font-size: .9rem; font-weight: 600; }
+.trainer-certificate-links { display: grid; min-width: 0; gap: .65rem; }
+.trainer-certificate-links legend { padding: 0; margin-bottom: .35rem; font-size: .9rem; font-weight: 600; }
+.trainer-certificate-links p { font-size: .875rem; }
+.trainer-certificate-link { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: .5rem; }
+.trainer-certificate-link .trainer-input { min-height: 42px; margin: 0; }
+.trainer-button { display: inline-flex; width: fit-content; min-height: 42px; align-items: center; padding: .52rem .95rem; border: 1px solid #5f6f52; border-radius: 8px; color: #405038; font-size: .9rem; font-weight: 700; text-decoration: none; }
+.trainer-button:hover { background: #e8ede3; color: #405038; }
+.trainer-primary { background: #5f6f52; color: white; }
+.trainer-primary:hover { background: #4e5d44; color: white; }
+.trainer-button:disabled { opacity: .6; cursor: not-allowed; }
+.trainer-page :focus-visible { outline: 2px solid #5f6f52; outline-offset: 3px; }
+.trainer-link { color: #405038; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.trainer-status { display: inline-flex; padding: .23rem .55rem; border-radius: 6px; background: #e8ede3; color: #405038; font-size: .78rem; font-weight: 700; }
+.trainer-avatar { display: grid; place-items: center; width: 4rem; height: 4rem; flex: none; border-radius: 12px; background: #e8ede3; color: #405038; font-size: 1.15rem; font-weight: 800; object-fit: cover; }
+.trainer-feedback { padding: .75rem; border-radius: 8px; background: #eef1ea; color: #405038; }
+.trainer-error { background: #fef2f2; color: #991b1b; }
+.trainer-table { width: 100%; border-collapse: collapse; text-align: left; font-size: .9rem; }
+.trainer-table th, .trainer-table td { padding: .68rem .55rem; border-bottom: 1px solid #d8ded2; vertical-align: top; }
+.trainer-table th { color: #405038; }
+.trainer-scroll { overflow-x: auto; }
+.trainer-list { display: grid; gap: .65rem; padding: 0; list-style: none; }
+.trainer-list > li { border-bottom: 1px solid #d8ded2; padding-bottom: .55rem; }
+.trainer-page fieldset:disabled { opacity: .75; }

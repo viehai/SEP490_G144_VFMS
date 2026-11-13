@@ -1,0 +1,66 @@
+@page "/trainers/{Id:int}/my-pt-schedule"
+@layout PublicLayout
+@attribute [Authorize(Roles = "Member")]
+@using VFMS.Contracts.PersonalTraining
+@inject TrainerApiClient Api
+<PageTitle>Lịch PT của tôi | Victor Fitness</PageTitle>
+<section class="trainer-page trainer-public trainer-narrow trainer-stack">
+    <a class="trainer-link" href="@($"/trainers/{Id}")">← Hồ sơ huấn luyện viên</a>
+    <h1>Lịch PT của tôi</h1>
+    <TrainerFeedback Error="@_error" />
+    @if (_loading)
+    {
+        <p role="status">Đang tải lịch PT…</p>
+    }
+    else if (_contracts is { Length: 0 })
+    {
+        <p class="trainer-panel">Bạn chưa có lịch tập với huấn luyện viên này.</p>
+    }
+    else if (_contracts is { } contracts)
+    {
+        @foreach (var contract in contracts)
+        {
+            <section class="trainer-panel trainer-stack">
+                <div class="trainer-row trainer-between"><h2>@contract.PackageName</h2><TrainerStatus Status="@contract.Status" /></div>
+                @if (contract.Sessions.Count == 0)
+                {
+                    <p class="trainer-muted">Chưa có buổi tập.</p>
+                }
+                <ul class="trainer-list">
+                    @foreach (var slot in contract.Sessions)
+                    {
+                        <li class="trainer-row trainer-between">
+                            <span>@slot.Date.ToString("dd/MM/yyyy") · @slot.StartTime.ToString("HH:mm") – @slot.EndTime.ToString("HH:mm")</span>
+                            <TrainerStatus Status="@slot.Status" />
+                        </li>
+                    }
+                </ul>
+            </section>
+        }
+    }
+</section>
+@code {
+    [Parameter] public int Id { get; set; }
+    private PTContractResponse[]? _contracts;
+    private string? _error;
+    private bool _loading;
+    private int _requestVersion;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var version = ++_requestVersion;
+        _loading = true;
+        _error = null;
+        _contracts = null;
+        try
+        {
+            var trainer = await Api.DetailAsync(Id);
+            var contracts = await Api.ContractsAsync();
+            if (version == _requestVersion)
+                _contracts = contracts.Where(c => c.TrainerId == trainer.Profile.UserId &&
+                    c.Status is not ("PendingPayment" or "Expired")).ToArray();
+        }
+        catch (AuthApiException ex) { if (version == _requestVersion) _error = ex.Message; }
+        finally { if (version == _requestVersion) _loading = false; }
+    }
+}

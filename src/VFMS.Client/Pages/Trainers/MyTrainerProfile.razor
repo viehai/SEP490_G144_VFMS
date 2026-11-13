@@ -1,0 +1,207 @@
+@page "/pt/trainer-profile"
+@layout StaffPTLayout
+@attribute [Authorize(Roles = "PT")]
+@using VFMS.Contracts.Users
+@inject TrainerApiClient Api
+<PageTitle>Hồ sơ PT của tôi | Victor Fitness</PageTitle>
+
+<section class="trainer-page trainer-stack">
+    <h1>Hồ sơ PT của tôi</h1>
+    <TrainerFeedback Error="@_error" Message="@_message" />
+    @if (_loading) { <p role="status">Đang tải hồ sơ…</p> }
+    else if (_profile is { } detail)
+    {
+        <nav class="trainer-row" aria-label="Thao tác hồ sơ PT">
+            <a class="trainer-button" href="#pt-basic-profile">Sửa giới thiệu và ảnh</a>
+            <a class="trainer-button" href="#pt-credentials">Cập nhật chuyên môn và chứng chỉ</a>
+            <a class="trainer-button" href="#pt-credential-history">Lịch sử xét duyệt</a>
+        </nav>
+        <div class="trainer-split">
+            <section id="pt-basic-profile" class="trainer-panel trainer-stack trainer-anchor">
+                <div class="trainer-row">
+                    <TrainerAvatar Trainer="detail.Profile" />
+                    <div><h2>@detail.Profile.FullName</h2><p class="trainer-muted">@detail.Profile.Specialty · @detail.Profile.Level · @detail.Profile.ExperienceYears năm kinh nghiệm</p>
+                    <p class="trainer-muted">@(detail.Profile.AverageRating > 0 ? $"{detail.Profile.AverageRating:0.0} / 5 sao" : "Chưa có đánh giá")</p></div>
+                </div>
+                <form class="trainer-stack" @onsubmit="SaveAsync" @onsubmit:preventDefault>
+                    <fieldset class="trainer-stack" disabled="@_saving">
+                        <label>Giới thiệu<textarea class="trainer-input" rows="5" maxlength="4000" @bind="_bio"></textarea></label>
+                        <label>Đổi ảnh đại diện (JPG hoặc PNG, tối đa 5 MB)
+                            <InputFile @key="_avatarVersion" class="trainer-input" accept=".jpg,.jpeg,.png" OnChange="AvatarAsync" />
+                        </label>
+                        @if (_avatar is { } avatar) { <p>Tệp đã chọn: @avatar.FileName</p> }
+                        <button class="trainer-button trainer-primary">Lưu hồ sơ</button>
+                    </fieldset>
+                </form>
+                <h3>Chứng chỉ đã công bố</h3>
+                @if (detail.Certificates.Count == 0) { <p class="trainer-muted">Chưa có chứng chỉ công khai.</p> }
+                <ul class="trainer-list">
+                    @foreach (var certificate in detail.Certificates)
+                    {
+                        @if (Api.PublicAsset(certificate.DownloadUrl) is { } url)
+                        {
+                            <li><a href="@url" class="trainer-link" target="@(certificate.IsExternalLink ? "_blank" : null)" rel="noopener noreferrer">@certificate.FileName</a></li>
+                        }
+                    }
+                </ul>
+            </section>
+
+            <section id="pt-credentials" class="trainer-panel trainer-stack trainer-anchor">
+                <h2>Cập nhật chuyên môn và chứng chỉ</h2>
+                @if (_account is null)
+                {
+                    <p class="trainer-feedback trainer-error" role="alert">Không tải được thông tin tài khoản. Tải lại trang để gửi hồ sơ chứng chỉ.</p>
+                }
+                else if (_identity is null)
+                {
+                    <p class="trainer-feedback trainer-error" role="alert">Tài khoản cần có hồ sơ ứng tuyển đã tuyển để xác minh CCCD trước khi cập nhật chứng chỉ.</p>
+                }
+                else
+                {
+                    <p class="trainer-muted">Manager duyệt trước khi thay đổi được công bố.</p>
+                    <div class="trainer-row">
+                        <button type="button" class="trainer-button" aria-pressed="@(_editingCredentials && _replacement is null)"
+                                @onclick="() => OpenCredentials(null)">Thêm chứng chỉ mới</button>
+                        @foreach (var certificate in detail.Certificates.Where(item => item.Id != "legacy"))
+                        {
+                            <button type="button" class="trainer-button" aria-pressed="@(_editingCredentials && _replacement?.Id == certificate.Id)"
+                                    @onclick="() => OpenCredentials(certificate)">Thay @certificate.FileName</button>
+                        }
+                    </div>
+                    @if (_editingCredentials)
+                    {
+                        <TrainerApplicationForm @key="_credentialFormVersion" Profile="detail.Profile" Identity="_identity"
+                            Published="detail.Certificates" Replacement="_replacement"
+                            Email="@_account.Email" Phone="@_account.PhoneNumber" Submitted="ReloadHistoryAsync" />
+                    }
+                }
+            </section>
+        </div>
+
+        <section id="pt-credential-history" class="trainer-panel trainer-stack trainer-anchor">
+            <h2>Lịch sử yêu cầu cập nhật chứng chỉ</h2>
+            <TrainerFeedback Error="@_historyError" />
+            @if (_historyLoading) { <p role="status">Đang tải lịch sử…</p> }
+            else if (_history is { TotalCount: 0 }) { <p>Chưa có hồ sơ cập nhật chứng chỉ.</p> }
+            else if (_history is { } history)
+            {
+                <div class="trainer-scroll">
+                    <table class="trainer-table">
+                        <thead><tr><th>Mã theo dõi</th><th>Lần nộp</th><th>Trạng thái</th><th>Ghi chú xét duyệt</th></tr></thead>
+                        <tbody>
+                            @foreach (var item in history.Items)
+                            {
+                                <tr><td class="trainer-copy">@item.TrackingCode</td><td>@item.SubmissionAttempt</td><td><TrainerStatus Status="@item.Status" /></td><td class="trainer-copy">@item.ReviewNote</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <Pager Page="history.Page" PageSize="history.PageSize" TotalCount="history.TotalCount" Noun="hồ sơ" OnPage="HistoryAsync" />
+            }
+        </section>
+    }
+</section>
+@code {
+    private TrainerPublicDetail? _profile;
+    private UserProfileResponse? _account;
+    private TrainerApplicationResponse? _identity;
+    private PagedResponse<TrainerApplicationResponse>? _history;
+    private TrainerFileInput? _avatar;
+    private TrainerDocumentResponse? _replacement;
+    private bool _editingCredentials;
+    private int _credentialFormVersion;
+    private string _bio = "";
+    private int _avatarVersion;
+    private bool _loading = true, _saving, _historyLoading;
+    private string? _error, _message, _historyError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await LoadProfileAsync();
+            _account = await Api.AccountAsync();
+            var recruitment = await Api.ApplicationsAsync(new(Status: "Hired", ApplicationType: "Recruitment"), mine: true);
+            _identity = recruitment.Items.FirstOrDefault(item => item.HiredUserId == _account.UserId);
+        }
+        catch (AuthApiException ex) { _error = ex.Message; }
+        finally { _loading = false; }
+        if (_profile is not null)
+            await HistoryAsync(1);
+    }
+
+    private async Task LoadProfileAsync()
+    {
+        _profile = await Api.MineAsync();
+        _bio = _profile.Profile.Bio ?? "";
+    }
+
+    private Task ReloadHistoryAsync() => HistoryAsync(1);
+
+    private void OpenCredentials(TrainerDocumentResponse? replacement)
+    {
+        _replacement = replacement;
+        _editingCredentials = true;
+        _credentialFormVersion++;
+    }
+
+    private async Task HistoryAsync(int page)
+    {
+        if (_historyLoading) return;
+        _historyLoading = true;
+        _historyError = null;
+        try { _history = await Api.ApplicationsAsync(new(Page: page, ApplicationType: "ProfileUpdate"), mine: true); }
+        catch (AuthApiException ex) { _historyError = ex.Message; }
+        finally { _historyLoading = false; }
+    }
+
+    private async Task AvatarAsync(InputFileChangeEventArgs args)
+    {
+        _saving = true;
+        _error = _message = null;
+        _avatar = null;
+        try
+        {
+            await using var stream = args.File.OpenReadStream(5 * 1024 * 1024);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            var avatar = new TrainerFileInput(args.File.Name, buffer.ToArray());
+            if (TrainerFileRules.ContentType(avatar, avatar: true) is null)
+                _error = "Chọn ảnh JPG hoặc PNG hợp lệ.";
+            else
+                _avatar = avatar;
+        }
+        catch (Exception ex) when (ex is IOException or JSException)
+        {
+            _error = "Không đọc được ảnh. Dung lượng tối đa là 5 MB.";
+        }
+        finally
+        {
+            _avatarVersion++;
+            _saving = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_saving || _profile is not { } profile) return;
+        _error = _message = null;
+        var bio = _bio.Trim();
+        var request = new UpdateTrainerProfileRequest(bio == (profile.Profile.Bio ?? "") ? null : bio, _avatar);
+        if (!new TrainerProfileValidator().Validate(request).IsValid)
+        {
+            _error = "Nhập giới thiệu hợp lệ hoặc chọn ảnh đại diện mới.";
+            return;
+        }
+        _saving = true;
+        try
+        {
+            await Api.UpdateAsync(request);
+            _avatar = null;
+            _message = "Đã lưu hồ sơ PT.";
+            await LoadProfileAsync();
+        }
+        catch (AuthApiException ex) { _error = ex.Message; }
+        finally { _saving = false; }
+    }
+}

@@ -1,0 +1,11 @@
+<span class="trainer-status">@(Status switch
+    {
+        "Pending" => "Chờ duyệt", "UnderReview" => "Đang xem xét", "Interviewing" => "Đang phỏng vấn",
+        "Hired" => "Đã tuyển", "Approved" => "Đã duyệt", "Rejected" => "Từ chối",
+        "Booked" => "Đã đặt", "Available" => "Còn trống", "Past" => "Đã qua",
+        "Active" => "Đang hoạt động", "Frozen" => "Bảo lưu", "Completed" => "Hoàn thành",
+        "Scheduled" => "Đã lên lịch", "Cancelled" => "Đã hủy", "NoShow" => "Vắng mặt", _ => Status
+    })</span>
+@code {
+    [Parameter, EditorRequired] public string Status { get; set; } = "";
+}

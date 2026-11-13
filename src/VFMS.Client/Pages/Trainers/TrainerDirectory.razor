@@ -1,0 +1,101 @@
+@page "/trainers"
+@layout PublicLayout
+@inject TrainerApiClient Api
+<PageTitle>Huấn luyện viên | Victor Fitness</PageTitle>
+
+<section class="trainer-page trainer-public trainer-stack">
+    <header class="trainer-row trainer-between">
+        <div>
+            <h1>Huấn luyện viên cá nhân</h1>
+            <p class="trainer-muted mt-2">Tìm PT theo chuyên môn, xem chứng chỉ và lịch tập.</p>
+        </div>
+        <a href="/careers/trainer" class="trainer-button">Ứng tuyển PT</a>
+    </header>
+
+    <form class="trainer-panel trainer-stack" @onsubmit="SearchAsync" @onsubmit:preventDefault>
+        <div class="trainer-grid">
+            <label>Tên huấn luyện viên<input class="trainer-input" maxlength="200" @bind="_search" /></label>
+            <label>Chuyên môn<input class="trainer-input" maxlength="200" @bind="_specialty" /></label>
+            <label>Giới tính
+                <select class="trainer-input" @bind="_gender">
+                    <option value="">Tất cả</option><option value="Male">Nam</option><option value="Female">Nữ</option><option value="Other">Khác</option>
+                </select>
+            </label>
+            <label>Điểm tối thiểu
+                <select class="trainer-input" @bind="_rating">
+                    <option value="0">Tất cả</option><option value="3">3 sao</option><option value="4">4 sao</option><option value="5">5 sao</option>
+                </select>
+            </label>
+        </div>
+        <div class="trainer-row">
+            <button class="trainer-button trainer-primary" disabled="@_loading">Tìm huấn luyện viên</button>
+            <button type="button" class="trainer-button" disabled="@_loading" @onclick="ResetAsync">Xóa bộ lọc</button>
+        </div>
+    </form>
+
+    <TrainerFeedback Error="@_error" />
+    @if (_loading)
+    {
+        <p role="status">Đang tải huấn luyện viên…</p>
+    }
+    else if (_results is { TotalCount: 0 })
+    {
+        <p class="trainer-panel">Không tìm thấy huấn luyện viên phù hợp.</p>
+    }
+    else if (_results is { } result)
+    {
+        <div class="trainer-grid">
+            @foreach (var trainer in result.Items)
+            {
+                <article class="trainer-panel trainer-stack" @key="trainer.Id">
+                    <div class="trainer-row">
+                        <TrainerAvatar Trainer="trainer" />
+                        <div>
+                            <h2><a class="trainer-link" href="@($"/trainers/{trainer.Id}")">@trainer.FullName</a></h2>
+                            <p class="trainer-muted">@trainer.Specialty</p>
+                        </div>
+                    </div>
+                    <div class="trainer-row trainer-between">
+                        <span class="trainer-status">@trainer.Level</span>
+                        <span>@(trainer.AverageRating > 0 ? $"{trainer.AverageRating:0.0} / 5 sao" : "Chưa có đánh giá")</span>
+                    </div>
+                </article>
+            }
+        </div>
+        <Pager Page="result.Page" PageSize="result.PageSize" TotalCount="result.TotalCount" Noun="huấn luyện viên" OnPage="LoadAsync" />
+    }
+</section>
+
+@code {
+    private string _search = "", _specialty = "", _gender = "";
+    private int _rating;
+    private TrainerSearch _filter = new();
+    private PagedResponse<TrainerProfileResponse>? _results;
+    private bool _loading;
+    private string? _error;
+
+    protected override Task OnInitializedAsync() => LoadAsync(1);
+
+    private Task SearchAsync()
+    {
+        _filter = new(_search.Trim(), _specialty.Trim(), _gender, _rating == 0 ? null : _rating);
+        return LoadAsync(1);
+    }
+
+    private Task ResetAsync()
+    {
+        _search = _specialty = _gender = "";
+        _rating = 0;
+        return SearchAsync();
+    }
+
+    private async Task LoadAsync(int page)
+    {
+        if (_loading) return;
+        _loading = true;
+        _error = null;
+        try { _results = await Api.SearchAsync(_filter with { Page = page }); }
+        catch (AuthApiException ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+}

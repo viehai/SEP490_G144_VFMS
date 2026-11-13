@@ -1,0 +1,266 @@
+@page "/manager/trainer-applications"
+@layout ManagerAdminLayout
+@attribute [Authorize(Roles = "Manager")]
+@inject TrainerApiClient Api
+@inject IJSRuntime Js
+<PageTitle>Xét tuyển PT | Victor Fitness</PageTitle>
+
+<section class="trainer-page trainer-stack">
+    <header><h1>Hồ sơ huấn luyện viên</h1><p class="trainer-muted mt-2">Xét tuyển ứng viên và duyệt cập nhật chứng chỉ PT.</p></header>
+    <form class="trainer-panel trainer-stack" @onsubmit="FilterAsync" @onsubmit:preventDefault>
+        <fieldset class="trainer-grid" disabled="@Busy">
+            <label>Loại hồ sơ<select class="trainer-input" @bind="_type"><option value="">Tất cả</option><option value="Recruitment">Tuyển dụng</option><option value="ProfileUpdate">Cập nhật chứng chỉ</option></select></label>
+            <label>Trạng thái<select class="trainer-input" @bind="_status"><option value="">Tất cả</option><option value="Pending">Chờ duyệt</option><option value="Interviewing">Đang phỏng vấn</option><option value="Hired">Đã tuyển</option><option value="Approved">Đã duyệt</option><option value="Rejected">Từ chối</option></select></label>
+            <label>Chuyên môn<input class="trainer-input" maxlength="200" @bind="_specialty" /></label>
+            <label>Từ ngày<input type="date" class="trainer-input" @bind="_from" /></label>
+            <label>Đến ngày<input type="date" class="trainer-input" @bind="_to" /></label>
+            <button class="trainer-button trainer-primary self-end">Lọc hồ sơ</button>
+        </fieldset>
+    </form>
+    <TrainerFeedback Error="@_listError" />
+    <div class="trainer-split">
+        <div class="trainer-panel trainer-stack">
+            <h2>Danh sách hồ sơ</h2>
+            @if (_loading) { <p role="status">Đang tải hồ sơ…</p> }
+            else if (_list is { TotalCount: 0 }) { <p>Không có hồ sơ phù hợp.</p> }
+            else if (_list is { } list)
+            {
+                <div class="trainer-scroll">
+                    <table class="trainer-table">
+                        <thead><tr><th>Ứng viên</th><th>Loại</th><th>Trạng thái</th></tr></thead>
+                        <tbody>
+                            @foreach (var item in list.Items)
+                            {
+                                <tr @key="item.Id">
+                                    <td><button type="button" class="trainer-link text-left" disabled="@Busy" aria-pressed="@(_selected?.Id == item.Id)" @onclick="() => OpenAsync(item.Id)">@item.FullName</button><br /><small>@item.SubmittedAt.ToString("dd/MM/yyyy")</small></td>
+                                    <td>@TypeName(item.ApplicationType)</td>
+                                    <td><TrainerStatus Status="@item.Status" /></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <Pager Page="list.Page" PageSize="list.PageSize" TotalCount="list.TotalCount" Noun="hồ sơ" Disabled="@Busy" OnPage="LoadAsync" />
+            }
+        </div>
+
+        <div class="trainer-panel trainer-stack">
+            <TrainerFeedback Error="@_error" Message="@_message" />
+            @if (_opening) { <p role="status">Đang tải chi tiết…</p> }
+            else if (_selected is not { } app) { <p>Chọn một hồ sơ để xem chi tiết.</p> }
+            else
+            {
+                <div class="trainer-row trainer-between"><h2>@app.FullName</h2><TrainerStatus Status="@app.Status" /></div>
+                <dl class="trainer-grid">
+                    <div><dt>Mã theo dõi</dt><dd class="trainer-copy">@app.TrackingCode</dd></div>
+                    <div><dt>Email</dt><dd class="trainer-copy">@app.Email</dd></div>
+                    <div><dt>Số điện thoại</dt><dd>@app.PhoneNumber</dd></div>
+                    <div><dt>CCCD</dt><dd>@app.CitizenId</dd></div>
+                    <div><dt>Ngày sinh</dt><dd>@app.DateOfBirth?.ToString("dd/MM/yyyy")</dd></div>
+                    <div><dt>Giới tính</dt><dd>@(app.Gender switch { "Male" => "Nam", "Female" => "Nữ", _ => "Khác" })</dd></div>
+                    <div><dt>Chuyên môn</dt><dd>@app.Specialty · @app.ExperienceYears năm</dd></div>
+                    @if (app.HiredUserId is { } userId) { <div><dt>Tài khoản liên kết</dt><dd class="trainer-copy">@userId</dd></div> }
+                </dl>
+                <p class="trainer-copy">@app.Bio</p>
+                <div class="trainer-stack">
+                    <h3>Chứng chỉ đính kèm</h3>
+                    <ul class="trainer-list">
+                        @foreach (var file in app.Certificates)
+                        {
+                            <li>
+                                @if (file.IsExternalLink && TrainerFileRules.IsCertificateUrl(file.DownloadUrl))
+                                {
+                                    <a class="trainer-link" href="@file.DownloadUrl" target="_blank" rel="noopener noreferrer">Mở chứng chỉ tại @file.FileName</a>
+                                }
+                                else if (!file.IsExternalLink)
+                                {
+                                    <button type="button" class="trainer-link text-left" disabled="@Busy" @onclick="() => DownloadAsync(app.Id, file)">@file.FileName</button>
+                                }
+                            </li>
+                        }
+                    </ul>
+                </div>
+                <div class="trainer-stack">
+                    <h3>Lịch sử nộp hồ sơ</h3>
+                    <ul class="trainer-list">
+                        @foreach (var attempt in app.SubmissionHistory ?? [])
+                        {
+                            <li class="trainer-row trainer-between"><button type="button" class="trainer-link" disabled="@Busy" @onclick="() => OpenAsync(attempt.Id)">Lần @attempt.SubmissionAttempt · @attempt.SubmittedAt.ToString("dd/MM/yyyy HH:mm")</button><TrainerStatus Status="@attempt.Status" /></li>
+                        }
+                    </ul>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(app.InterviewNote)) { <div><h3>Ghi chú phỏng vấn</h3><p class="trainer-copy">@app.InterviewNote</p></div> }
+                @if (!string.IsNullOrWhiteSpace(app.ReviewNote)) { <div><h3>Ghi chú quyết định</h3><p class="trainer-copy">@app.ReviewNote</p></div> }
+                @if (Actions(app).Length > 0)
+                {
+                    <form class="trainer-stack" @onsubmit="ReviewAsync" @onsubmit:preventDefault>
+                        <fieldset class="trainer-stack" disabled="@Busy">
+                            <label>Quyết định<select class="trainer-input" required @bind="_action">
+                                <option value="">Chọn thao tác</option>
+                                @foreach (var action in Actions(app)) { <option value="@action">@ActionName(action)</option> }
+                            </select></label>
+                            @if (_action == "Hire")
+                            {
+                                <label>Cấp PT<select class="trainer-input" @bind="_level"><option>Junior</option><option>Senior</option><option>Master</option></select></label>
+                                @if (app.AccountMatch is { Status: "Matched" } match)
+                                {
+                                    <label>Tài khoản khớp theo email hoặc số điện thoại
+                                        <input class="trainer-input" value="@match.FullName" readonly />
+                                    </label>
+                                    <p class="trainer-muted trainer-copy">ID tài khoản: @match.UserId</p>
+                                }
+                                else if (app.AccountMatch?.Status == "None")
+                                {
+                                    <p class="trainer-muted">Hệ thống sẽ tạo tài khoản PT mới cho ứng viên.</p>
+                                }
+                                else
+                                {
+                                    <p class="trainer-feedback trainer-error" role="alert">@AccountMatchError(app)</p>
+                                }
+                                <label class="trainer-row"><input type="checkbox" required @bind="_verified" /> Đã xác minh danh tính ứng viên</label>
+                            }
+                            <label>Ghi chú<textarea class="trainer-input" rows="3" required maxlength="2000" @bind="_note"></textarea></label>
+                            <button class="trainer-button trainer-primary" disabled="@(_action == "Hire" && AccountMatchError(app) is not null)">Lưu quyết định</button>
+                        </fieldset>
+                    </form>
+                }
+                else if (app is { ApplicationType: "Recruitment", Status: "Hired" })
+                {
+                    <button type="button" class="trainer-button" disabled="@Busy" @onclick="ResendAsync">Gửi lại email thiết lập</button>
+                }
+            }
+        </div>
+    </div>
+</section>
+@code {
+    private PagedResponse<TrainerApplicationResponse>? _list;
+    private TrainerApplicationResponse? _selected;
+    private TrainerApplicationFilter _filter = new();
+    private string _type = "", _status = "", _specialty = "", _action = "", _note = "", _level = "Junior";
+    private DateOnly? _from, _to;
+    private bool _verified, _loading, _opening, _saving;
+    private string? _listError, _error, _message;
+    private bool Busy => _loading || _opening || _saving;
+
+    protected override Task OnInitializedAsync() => LoadAsync(1);
+
+    private Task FilterAsync()
+    {
+        if (Busy) return Task.CompletedTask;
+        if (_from > _to)
+        {
+            _listError = "Ngày bắt đầu phải trước hoặc bằng ngày kết thúc.";
+            return Task.CompletedTask;
+        }
+        _filter = new(_status, _specialty.Trim(),
+            _from?.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc).AddHours(-7),
+            _to?.ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc).AddHours(-7), ApplicationType: _type);
+        return LoadAsync(1);
+    }
+
+    private async Task LoadAsync(int page)
+    {
+        if (_loading) return;
+        _loading = true;
+        _listError = null;
+        try { _list = await Api.ApplicationsAsync(_filter with { Page = page }); }
+        catch (AuthApiException ex) { _listError = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task OpenAsync(int id)
+    {
+        if (Busy) return;
+        _opening = true;
+        _selected = null;
+        _error = _message = null;
+        ResetDecision();
+        try { _selected = await Api.ApplicationAsync(id); }
+        catch (AuthApiException ex) { _error = ex.Message; }
+        finally { _opening = false; }
+    }
+
+    private async Task ReviewAsync()
+    {
+        if (Busy || _selected is not { } app || !Actions(app).Contains(_action)) return;
+        _error = _message = null;
+        var hire = _action == "Hire";
+        if (hire && AccountMatchError(app) is { } matchError)
+        {
+            _error = matchError;
+            return;
+        }
+        var request = new ReviewTrainerApplicationRequest(_action, _note.Trim(), hire ? _level : null,
+            hire ? app.AccountMatch?.UserId : null, hire && _verified);
+        if (!new ReviewTrainerApplicationValidator().Validate(request).IsValid)
+        {
+            _error = "Nhập ghi chú và hoàn tất các thông tin bắt buộc.";
+            return;
+        }
+        _saving = true;
+        try
+        {
+            var reviewed = await Api.ReviewAsync(app.Id, request);
+            _selected = reviewed with { SubmissionHistory = app.SubmissionHistory };
+            _message = hire
+                ? "Đã tuyển. Hệ thống tự gửi email cho ứng viên qua hàng chờ."
+                : "Đã lưu quyết định.";
+            ResetDecision();
+            await LoadAsync(_list?.Page ?? 1);
+            try { _selected = await Api.ApplicationAsync(app.Id); }
+            catch (AuthApiException) { _error = "Đã lưu quyết định. Mở lại hồ sơ để tải chi tiết mới nhất."; }
+        }
+        catch (AuthApiException ex) { _error = ex.Message; }
+        finally { _saving = false; }
+    }
+
+    private async Task ResendAsync()
+    {
+        if (Busy || _selected is not { } app) return;
+        _error = _message = null;
+        _saving = true;
+        try { await Api.ResendAsync(app.Id); _message = "Đã đưa email vào hàng chờ gửi."; }
+        catch (AuthApiException ex) { _error = ex.Message; }
+        finally { _saving = false; }
+    }
+
+    private async Task DownloadAsync(int id, TrainerDocumentResponse file)
+    {
+        if (Busy) return;
+        _error = null;
+        _saving = true;
+        try { await Api.DownloadAsync(id, file, Js); }
+        catch (AuthApiException ex) { _error = ex.Message; }
+        catch (JSException) { _error = "Trình duyệt không thể lưu tệp chứng chỉ."; }
+        finally { _saving = false; }
+    }
+
+    private void ResetDecision()
+    {
+        _action = _note = "";
+        _level = "Junior";
+        _verified = false;
+    }
+
+    private static string[] Actions(TrainerApplicationResponse app) => (app.ApplicationType, app.Status) switch
+    {
+        ("ProfileUpdate", "Pending" or "UnderReview") => ["Approve", "Reject"],
+        ("Recruitment", "Pending") => ["Interview", "Reject"],
+        ("Recruitment", "Interviewing" or "UnderReview") => ["Interview", "Hire", "Reject"],
+        _ => []
+    };
+
+    private static string? AccountMatchError(TrainerApplicationResponse app) => app.AccountMatch?.Status switch
+    {
+        "Matched" or "None" => null,
+        "Ambiguous" => "Email hoặc số điện thoại khớp nhiều tài khoản. Xử lý xung đột tài khoản rồi mở lại hồ sơ.",
+        "Ineligible" => "Tài khoản khớp hiện không đủ điều kiện. Kiểm tra trạng thái tài khoản rồi mở lại hồ sơ.",
+        _ => "Chưa xác định được tài khoản. Mở lại hồ sơ để tải kết quả mới nhất."
+    };
+
+    private static string TypeName(string type) => type == "Recruitment" ? "Tuyển dụng" : "Cập nhật chứng chỉ";
+    private static string ActionName(string action) => action switch
+    {
+        "Interview" => "Ghi nhận phỏng vấn", "Hire" => "Tuyển ứng viên", "Approve" => "Duyệt chứng chỉ", _ => "Từ chối"
+    };
+}

@@ -3,6 +3,9 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using VFMS.Application.Interfaces;
 using VFMS.Application.Services;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Trainers;
@@ -66,7 +69,7 @@ internal sealed class TrainerTestDatabase : IAsyncDisposable
         Success(await Service.Submit(Request, null, default));
         var app = await Db.TrainerApplications.SingleAsync();
         Success(await Service.Review(app.Id, new("Interview", "Interview completed"), "manager", default));
-        Success(await Service.Review(app.Id, new("Hire", "Verified", "Junior", "Tier1", null, true), "manager", default));
+        Success(await Service.Review(app.Id, new("Hire", "Verified", "Junior", null, true), "manager", default));
         Db.ChangeTracker.Clear();
         return await Db.TrainerApplications.SingleAsync();
     }
@@ -98,6 +101,64 @@ internal sealed class TrainerTestDatabase : IAsyncDisposable
 public class TrainerWorkflowTests
 {
     [SqlTrainerFact]
+    public async Task TrainerSetupEmailUsesSharedEmailServiceAndFrontendUrl()
+    {
+        await using var fixture = new TrainerTestDatabase();
+        await fixture.Initialize();
+        var application = await fixture.Hire();
+        var token = await fixture.SetupToken(application.Id);
+
+        fixture.Configuration["PasswordReset:ResetUrl"] = "https://gym.example.test/auth/reset-password";
+        var email = new CapturedTrainerEmail();
+        var services = new ServiceCollection();
+        services.AddDbContext<VfmsDbContext>(options => options.UseSqlServer(fixture.Db.Database.GetConnectionString()));
+        services.AddSingleton<IDataProtectionProvider>(fixture.Protection);
+        services.AddSingleton<IEmailService>(email);
+        await using var provider = services.BuildServiceProvider();
+        using var worker = new TrainerEmailWorker(provider.GetRequiredService<IServiceScopeFactory>(),
+            fixture.Configuration, NullLogger<TrainerEmailWorker>.Instance);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await worker.StartAsync(default);
+        try
+        {
+            var message = await email.Delivery.Task.WaitAsync(timeout.Token);
+            Assert.Equal(TrainerTestDatabase.Request.Email, message.Recipient);
+            Assert.Equal("Set up your trainer account", message.Subject);
+            Assert.Contains($"https://gym.example.test/auth/trainer-setup?token={Uri.EscapeDataString(token)}", message.Body);
+
+            while (true)
+            {
+                var json = await fixture.Db.TrainerApplications.Where(x => x.Id == application.Id)
+                    .Select(x => x.EmailQueueJson).SingleAsync(timeout.Token);
+                var setup = JsonSerializer.Deserialize<List<TrainerQueuedEmail>>(json)!.Single(x => x.Subject == message.Subject);
+                if (setup.SentAt is not null)
+                {
+                    Assert.Empty(setup.ProtectedBody);
+                    break;
+                }
+                await Task.Delay(50, timeout.Token);
+            }
+        }
+        finally
+        {
+            await worker.StopAsync(default);
+        }
+    }
+
+    private sealed class CapturedTrainerEmail : IEmailService
+    {
+        public bool IsConfigured => true;
+        public TaskCompletionSource<(string Recipient, string Subject, string Body)> Delivery { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task SendAsync(string recipient, string subject, string textBody, CancellationToken cancellationToken = default)
+        {
+            Delivery.TrySetResult((recipient, subject, textBody));
+            return Task.CompletedTask;
+        }
+    }
+
+    [SqlTrainerFact]
     public async Task Verified_existing_account_can_update_with_current_email()
     {
         await using var fixture = new TrainerTestDatabase(); await fixture.Initialize();
@@ -119,8 +180,11 @@ public class TrainerWorkflowTests
         TrainerTestDatabase.Success(await service.Submit(request, null, default));
         var original = await db.TrainerApplications.SingleAsync();
         TrainerTestDatabase.Success(await service.Review(original.Id, new("Interview", "Identity checked"), "manager", default));
-        Assert.Equal("TRAINER_IDENTITY_CONFLICT", (await service.Review(original.Id, new("Hire", "Unselected account", "Senior", "Tier2", null, true), "manager", default)).ErrorCode);
-        TrainerTestDatabase.Success(await service.Review(original.Id, new("Hire", "Verified matching phone", "Senior", "Tier2", customer.UserId, true), "manager", default));
+        var detail = TrainerTestDatabase.Success(await service.Application(original.Id, "manager", default));
+        Assert.Equal(new TrainerAccountMatch("Matched", customer.UserId, customer.FullName), detail.AccountMatch);
+        Assert.Equal("TRAINER_IDENTITY_CONFLICT", (await service.Review(original.Id, new("Hire", "Stale match", "Senior", null, true), "manager", default)).ErrorCode);
+        TrainerTestDatabase.Success(await service.Review(original.Id,
+            new("Hire", "Verified matching phone", "Senior", detail.AccountMatch!.UserId, true), "manager", default));
         Assert.Equal(2, await db.ApplicationUsers.CountAsync());
         Assert.Equal(2, await db.ApplicationUserRoles.CountAsync(x => x.UserId == customer.UserId));
         var update = request with { ApplicationType = "ProfileUpdate", Email = customer.Email, Specialty = "Yoga" };
@@ -137,6 +201,56 @@ public class TrainerWorkflowTests
         Assert.Equal(passwordBefore, unchangedAccount.PasswordHash); Assert.Equal(customer.Email, unchangedAccount.Email);
         Assert.Null(unchangedAccount.PasswordSetupTokenHash); Assert.Equal(AccountStatus.Active, unchangedAccount.AccountStatus);
         Assert.Equal(2, await db.ApplicationUserRoles.CountAsync(x => x.UserId == customer.UserId));
+    }
+
+    [SqlTrainerFact]
+    public async Task RecruitmentCertificateLinkIsPrivateUntilHireAndAccountConflictsBlockHire()
+    {
+        await using var fixture = new TrainerTestDatabase();
+        await fixture.Initialize();
+        var db = fixture.Db;
+        var service = fixture.Service;
+        const string url = "https://certificates.example.test/verify/123";
+        var request = TrainerTestDatabase.Request with { Certificates = [], CertificateUrls = [url] };
+        TrainerTestDatabase.Success(await service.Submit(request, null, default));
+        var application = await db.TrainerApplications.SingleAsync();
+        var review = TrainerTestDatabase.Success(await service.Application(application.Id, "manager", default));
+        Assert.Equal("None", review.AccountMatch!.Status);
+        var evidence = Assert.Single(review.Certificates);
+        Assert.True(evidence.IsExternalLink);
+        Assert.Equal(url, evidence.DownloadUrl);
+        Assert.Equal(404, (await service.ApplicationDocument(application.Id, evidence.Id, null, default)).StatusCode);
+        Assert.Empty(TrainerTestDatabase.Success(await service.Search(new(), default)).Items);
+        TrainerTestDatabase.Success(await service.Review(application.Id, new("Interview", "Verified"), "manager", default));
+
+        var gymId = await db.Gyms.Select(g => g.Id).SingleAsync();
+        var emailMatch = new ApplicationUser
+        {
+            UserId = "email-match", GymId = gymId, Email = request.Email, PhoneNumber = "0900000020",
+            FullName = "Email Match", AccountStatus = AccountStatus.Active
+        };
+        var phoneMatch = new ApplicationUser
+        {
+            UserId = "phone-match", GymId = gymId, Email = "phone@example.test", PhoneNumber = request.PhoneNumber,
+            FullName = "Phone Match", AccountStatus = AccountStatus.Active
+        };
+        db.AddRange(emailMatch, phoneMatch);
+        await db.SaveChangesAsync();
+        Assert.Equal("Ambiguous", TrainerTestDatabase.Success(await service.Application(application.Id, "manager", default)).AccountMatch!.Status);
+        var blocked = await service.Review(application.Id, new("Hire", "Verified", "Senior", IdentityVerified: true), "manager", default);
+        Assert.Equal("TRAINER_IDENTITY_CONFLICT", blocked.ErrorCode);
+
+        db.Remove(await db.ApplicationUsers.SingleAsync(u => u.UserId == "phone-match"));
+        await db.SaveChangesAsync();
+        var match = TrainerTestDatabase.Success(await service.Application(application.Id, "manager", default)).AccountMatch!;
+        TrainerTestDatabase.Success(await service.Review(application.Id,
+            new("Hire", "Verified", "Senior", match.UserId, true), "manager", default));
+        var profile = await db.TrainerProfiles.SingleAsync();
+        Assert.Null(profile.CommissionTier);
+        var published = TrainerTestDatabase.Success(await service.Public(profile.Id, default));
+        Assert.False(published.IsOwnProfile);
+        Assert.True(TrainerTestDatabase.Success(await service.Public(profile.Id, default, match.UserId)).IsOwnProfile);
+        Assert.Equal(evidence, Assert.Single(published.Certificates));
     }
 
     [SqlTrainerFact]
@@ -159,6 +273,42 @@ public class TrainerWorkflowTests
     }
 
     [SqlTrainerFact]
+    public async Task RecruitmentUsesTheSameGmailIdentityForCooldownHistoryAndHiring()
+    {
+        await using var fixture = new TrainerTestDatabase();
+        await fixture.Initialize();
+        var db = fixture.Db;
+        var service = fixture.Service;
+        var request = TrainerTestDatabase.Request with { Email = "trainer.test@gmail.com" };
+        var alias = request with { Email = "trainertest@gmail.com", CitizenId = "000000000011", PhoneNumber = "0900000011" };
+        var gymId = await db.Gyms.Select(gym => gym.Id).SingleAsync();
+        db.Add(new ApplicationUser
+        {
+            UserId = "gmail-existing", GymId = gymId, Email = request.Email, PhoneNumber = "0900000020",
+            FullName = "Existing applicant", AccountStatus = AccountStatus.Active
+        });
+        await db.SaveChangesAsync();
+
+        TrainerTestDatabase.Success(await service.Submit(request, null, default));
+        Assert.Equal("RECRUITMENT_COOLDOWN", (await service.Submit(alias, null, default)).ErrorCode);
+        var original = await db.TrainerApplications.SingleAsync();
+        original.SubmittedAt = DateTime.UtcNow.AddMinutes(-10);
+        await db.SaveChangesAsync();
+
+        var receipt = TrainerTestDatabase.Success(await service.Submit(alias, null, default));
+        Assert.Equal(2, receipt.SubmissionAttempt);
+        var latest = await db.TrainerApplications.SingleAsync(item => item.TrackingCode == receipt.TrackingCode);
+        var detail = TrainerTestDatabase.Success(await service.Application(latest.Id, "manager", default));
+        Assert.Equal(new[] { latest.Id, original.Id }, detail.SubmissionHistory!.Select(item => item.Id));
+        Assert.Equal("gmail-existing", detail.AccountMatch!.UserId);
+
+        TrainerTestDatabase.Success(await service.Review(latest.Id, new("Interview", "Verified"), "manager", default));
+        TrainerTestDatabase.Success(await service.Review(latest.Id, new("Hire", "Verified", "Junior", detail.AccountMatch.UserId, true), "manager", default));
+        Assert.Equal(2, await db.ApplicationUsers.CountAsync());
+        Assert.Equal("gmail-existing", (await db.TrainerProfiles.SingleAsync()).PTUserId);
+    }
+
+    [SqlTrainerFact]
     public async Task Recruitment_setup_reissue_and_real_auth_rotation_preserve_single_use_tokens()
     {
         await using var fixture = new TrainerTestDatabase(); await fixture.Initialize();
@@ -174,10 +324,10 @@ public class TrainerWorkflowTests
         var file = JsonSerializer.Deserialize<List<TrainerStoredFile>>(app.CertificatesJson)!.Single();
         Assert.Equal(404, (await service.ApplicationDocument(app.Id, file.Id, null, default)).StatusCode);
         Assert.Equal(TrainerTestDatabase.Request.Certificates[0].Content, TrainerTestDatabase.Success(await service.ApplicationDocument(app.Id, file.Id, "manager", default)).Content);
-        Assert.Equal("TRAINER_INTERVIEW_REQUIRED", (await service.Review(app.Id, new("Hire", "Verified", "Junior", "Tier1", null, true), "manager", default)).ErrorCode);
+        Assert.Equal("TRAINER_INTERVIEW_REQUIRED", (await service.Review(app.Id, new("Hire", "Verified", "Junior", null, true), "manager", default)).ErrorCode);
         TrainerTestDatabase.Success(await service.Review(app.Id, new("Interview", "Interview completed"), "manager", default));
-        TrainerTestDatabase.Success(await service.Review(app.Id, new("Hire", "Verified", "Junior", "Tier1", null, true), "manager", default));
-        TrainerTestDatabase.Success(await service.Review(app.Id, new("Hire", "Retry", "Junior", "Tier1", null, true), "manager", default));
+        TrainerTestDatabase.Success(await service.Review(app.Id, new("Hire", "Verified", "Junior", null, true), "manager", default));
+        TrainerTestDatabase.Success(await service.Review(app.Id, new("Hire", "Retry", "Junior", null, true), "manager", default));
         Assert.Equal(2, await db.ApplicationUsers.CountAsync()); Assert.Equal(1, await db.TrainerProfiles.CountAsync());
         Assert.Empty(TrainerTestDatabase.Success(await service.Search(new(), default)).Items);
         var initialUser = await db.ApplicationUsers.SingleAsync(x => x.Email == TrainerTestDatabase.Request.Email);
@@ -189,7 +339,10 @@ public class TrainerWorkflowTests
         var user = await db.ApplicationUsers.SingleAsync(x => x.Email == TrainerTestDatabase.Request.Email);
         Assert.NotNull(user.PasswordSetupTokenHash); Assert.NotEqual(replacementToken, user.PasswordSetupTokenHash);
         Assert.InRange(user.PasswordSetupExpiresAt!.Value, DateTime.UtcNow.AddHours(47), DateTime.UtcNow.AddHours(49));
+        var managerPasswordBefore = await db.ApplicationUsers.Where(x => x.UserId == "manager").Select(x => x.PasswordHash).SingleAsync();
         TrainerTestDatabase.Success(await service.Setup(new(replacementToken, "TestPassword1!"), default));
+        Assert.Equal(managerPasswordBefore,
+            await db.ApplicationUsers.Where(x => x.UserId == "manager").Select(x => x.PasswordHash).SingleAsync());
         Assert.False((await service.Setup(new(replacementToken, "OtherPassword1!"), default)).IsSuccess);
         db.ChangeTracker.Clear(); user = await db.ApplicationUsers.SingleAsync(x => x.UserId == user.UserId);
         Assert.Null(user.PasswordSetupTokenHash); Assert.Null(user.PasswordSetupExpiresAt);

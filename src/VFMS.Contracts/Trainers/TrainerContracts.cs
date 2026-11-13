@@ -4,22 +4,23 @@ public sealed record TrainerFileInput(string FileName, byte[] Content, string? R
 public sealed record SubmitTrainerApplicationRequest(
     string FullName, string Email, string PhoneNumber, string CitizenId, DateOnly DateOfBirth,
     string Gender, string Specialty, int ExperienceYears, string Bio, bool Consent,
-    List<TrainerFileInput> Certificates, string ApplicationType = "Recruitment");
+    List<TrainerFileInput> Certificates, string ApplicationType = "Recruitment", List<string>? CertificateUrls = null);
 public sealed record TrainerApplicationReceipt(string TrackingCode, string Status, int SubmissionAttempt);
 public sealed record TrainerApplicationFilter(string? Status = null, string? Specialty = null,
     DateTime? From = null, DateTime? To = null, int Page = 1, int PageSize = 20, string? ApplicationType = null);
 public sealed record ReviewTrainerApplicationRequest(string Action, string Note, string? Level = null,
-    string? CommissionTier = null, string? ExistingUserId = null, bool IdentityVerified = false);
+    string? ExistingUserId = null, bool IdentityVerified = false);
 public sealed record UpdateTrainerProfileRequest(string? Bio = null, TrainerFileInput? Avatar = null);
 public sealed record TrainerSetupRequest(string Token, string Password);
 public sealed record TrainerSearch(string? Search = null, string? Specialty = null, string? Gender = null,
     decimal? MinimumRating = null, int Page = 1, int PageSize = 20);
-public sealed record TrainerDocumentResponse(string Id, string FileName, string ContentType, string DownloadUrl);
+public sealed record TrainerDocumentResponse(string Id, string FileName, string ContentType, string DownloadUrl, bool IsExternalLink = false);
+public sealed record TrainerAccountMatch(string Status, string? UserId = null, string? FullName = null);
 public sealed record TrainerApplicationResponse(int Id, string TrackingCode, string Status, string FullName,
     string Email, string PhoneNumber, string CitizenId, DateOnly? DateOfBirth, string Gender, string Specialty,
     int ExperienceYears, string Bio, DateTime SubmittedAt, int SubmissionAttempt, string? ReviewNote,
     string? HiredUserId, IReadOnlyList<TrainerDocumentResponse> Certificates, string ApplicationType = "Recruitment",
-    IReadOnlyList<TrainerSubmissionAttempt>? SubmissionHistory = null, string? InterviewNote = null);
+    IReadOnlyList<TrainerSubmissionAttempt>? SubmissionHistory = null, string? InterviewNote = null, TrainerAccountMatch? AccountMatch = null);
 public sealed record TrainerSubmissionAttempt(int Id, int SubmissionAttempt, DateTime SubmittedAt, string Status);
 public sealed record TrainerProfileResponse(int Id, string UserId, string FullName, string Level,
     string Specialty, string Gender, int ExperienceYears, string? Bio, string? AvatarUrl, decimal AverageRating)
@@ -30,5 +31,5 @@ public sealed record TrainerAvailabilityResponse(DateOnly Date, TimeOnly StartTi
 public sealed record TrainerReviewResponse(int Rating, string? Comment);
 public sealed record TrainerPublicDetail(TrainerProfileResponse Profile, IReadOnlyList<TrainerDocumentResponse> Certificates,
     IReadOnlyList<TrainerAvailabilityResponse> Availability, IReadOnlyList<TrainerReviewResponse> Reviews,
-    bool HasActivePTContract = false);
+    bool HasActivePTContract = false, bool IsOwnProfile = false);
 public sealed record TrainerFileResponse(string FileName, string ContentType, byte[] Content);

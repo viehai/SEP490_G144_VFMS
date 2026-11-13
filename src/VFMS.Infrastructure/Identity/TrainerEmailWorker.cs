@@ -1,13 +1,11 @@
 using System.Text.Json;
-using MailKit.Net.Smtp;
-using MailKit.Security;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using MimeKit;
+using VFMS.Application.Interfaces;
 using VFMS.Domain.Entities;
 using VFMS.Infrastructure.Data;
 
@@ -21,8 +19,7 @@ public sealed class TrainerEmailWorker(IServiceScopeFactory scopes, IConfigurati
         {
             try
             {
-                if (config.GetValue<bool>("TrainerMail:Enabled"))
-                    await Deliver(stoppingToken);
+                await Deliver(stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -35,7 +32,7 @@ public sealed class TrainerEmailWorker(IServiceScopeFactory scopes, IConfigurati
 
             try
             {
-                await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
+                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
             }
             catch (OperationCanceledException)
             {
@@ -46,6 +43,10 @@ public sealed class TrainerEmailWorker(IServiceScopeFactory scopes, IConfigurati
     private async Task Deliver(CancellationToken ct)
     {
         using var scope = scopes.CreateScope();
+        var email = scope.ServiceProvider.GetRequiredService<IEmailService>();
+        if (!email.IsConfigured)
+            return;
+
         var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
         var protector = scope.ServiceProvider.GetRequiredService<IDataProtectionProvider>().CreateProtector("VFMS.TrainerEmail.v1");
         await using var tx = await db.Database.BeginTransactionAsync(ct);
@@ -53,39 +54,38 @@ public sealed class TrainerEmailWorker(IServiceScopeFactory scopes, IConfigurati
         // Deliver one message per tick so the lock has a bounded SMTP workload.
         await db.Database.ExecuteSqlRawAsync("DECLARE @r int; EXEC @r=sys.sp_getapplock @Resource=N'VFMS.TrainerRecruitment', @LockMode='Exclusive', @LockOwner='Transaction', @LockTimeout=0; IF @r < 0 THROW 51001, 'Mail worker busy', 1;", ct);
         var now = DateTime.UtcNow;
-        var application = await db.TrainerApplications.FromSqlRaw("SELECT TOP (1) a.* FROM TrainerApplications a WHERE a.IsDeleted=0 AND EXISTS (SELECT 1 FROM OPENJSON(a.EmailQueueJson) WITH (SentAt datetime2 '$.SentAt', NextAttemptAt datetime2 '$.NextAttemptAt', IsDeleted bit '$.IsDeleted') e WHERE ISNULL(e.IsDeleted,0)=0 AND e.SentAt IS NULL AND e.NextAttemptAt <= SYSUTCDATETIME()) ORDER BY a.Id").FirstOrDefaultAsync(ct);
+        const string setupSubject = "Set up your trainer account";
+        var application = await db.TrainerApplications.FromSqlInterpolated($"""
+            SELECT TOP (1) a.*
+            FROM TrainerApplications a
+            CROSS APPLY (
+                SELECT MIN(CASE WHEN e.Subject = {setupSubject} THEN 0 ELSE 1 END) AS Priority
+                FROM OPENJSON(a.EmailQueueJson) WITH (
+                    Subject nvarchar(256) '$.Subject', SentAt datetime2 '$.SentAt',
+                    NextAttemptAt datetime2 '$.NextAttemptAt', IsDeleted bit '$.IsDeleted'
+                ) e
+                WHERE ISNULL(e.IsDeleted,0)=0 AND e.SentAt IS NULL AND e.NextAttemptAt <= {now}
+            ) ready
+            WHERE a.IsDeleted=0 AND ready.Priority IS NOT NULL
+            ORDER BY ready.Priority, a.Id
+            """).FirstOrDefaultAsync(ct);
         if (application == null)
         {
             await tx.CommitAsync(ct);
             return;
         }
         var emails = JsonSerializer.Deserialize<List<TrainerQueuedEmail>>(application.EmailQueueJson) ?? [];
-        var batch = emails.Where(x => !x.IsDeleted && x.SentAt == null && x.NextAttemptAt <= now).Take(1);
+        var batch = emails.Where(x => !x.IsDeleted && x.SentAt == null && x.NextAttemptAt <= now)
+            .OrderByDescending(x => x.Subject == setupSubject).Take(1);
         foreach (var item in batch)
         {
             try
             {
                 var body = protector.Unprotect(item.ProtectedBody);
                 if (body.StartsWith("SETUP:", StringComparison.Ordinal))
-                {
-                    var url = config["TrainerMail:SetupPageUrl"];
-                    if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != "https") throw new InvalidOperationException("Configure HTTPS setup page.");
-                    body = "Set up your trainer password within 48 hours: " + url + (url.Contains('?') ? "&" : "?") + "token=" + Uri.EscapeDataString(body[6..]);
-                }
-                var message = new MimeMessage
-                {
-                    Subject = item.Subject,
-                    MessageId = $"trainer-{item.Id}@vfms.local",
-                    Body = new TextPart("plain") { Text = body }
-                };
-                message.From.Add(MailboxAddress.Parse(config["TrainerMail:From"]!));
-                message.To.Add(MailboxAddress.Parse(item.Recipient));
-                using var smtp = new SmtpClient { Timeout = 15000 };
-                await smtp.ConnectAsync(config["TrainerMail:Host"] ?? throw new InvalidOperationException("SMTP host missing."), config.GetValue("TrainerMail:Port", 587), SecureSocketOptions.StartTls, ct);
-                var username = config["TrainerMail:Username"];
-                if (!string.IsNullOrEmpty(username)) await smtp.AuthenticateAsync(username, config["TrainerMail:Password"] ?? throw new InvalidOperationException("SMTP password missing."), ct);
-                await smtp.SendAsync(message, ct);
-                await smtp.DisconnectAsync(true, ct);
+                    body = "Set up your trainer password within 48 hours: " + SetupLink(body[6..]);
+
+                await email.SendAsync(item.Recipient, item.Subject, body, ct);
                 item.SentAt = DateTime.UtcNow;
                 item.ProtectedBody = string.Empty;
             }
@@ -103,5 +103,27 @@ public sealed class TrainerEmailWorker(IServiceScopeFactory scopes, IConfigurati
         application.EmailQueueJson = JsonSerializer.Serialize(emails);
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
+    }
+
+    private string SetupLink(string token)
+    {
+        var setupPage = config["TrainerMail:SetupPageUrl"];
+        var useResetUrl = string.IsNullOrWhiteSpace(setupPage);
+        var url = useResetUrl ? config["PasswordReset:ResetUrl"] : setupPage;
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
+            (uri.Scheme != Uri.UriSchemeHttps && !(uri.Scheme == Uri.UriSchemeHttp && uri.IsLoopback)) ||
+            uri.UserInfo.Length != 0)
+            throw new InvalidOperationException("Configure the trainer password setup page URL.");
+
+        var link = new UriBuilder(uri) { Fragment = string.Empty };
+        if (useResetUrl)
+        {
+            link.Path = "/auth/trainer-setup";
+            link.Query = string.Empty;
+        }
+        var existingQuery = link.Query.TrimStart('?');
+        var tokenQuery = "token=" + Uri.EscapeDataString(token);
+        link.Query = existingQuery.Length == 0 ? tokenQuery : existingQuery + "&" + tokenQuery;
+        return link.Uri.AbsoluteUri;
     }
 }

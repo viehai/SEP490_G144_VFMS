@@ -53,7 +53,9 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
 
     private static string Hash(string token) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
 
-    private async Task<string> SaveCertificates(IEnumerable<TrainerFileInput> files, CancellationToken ct)
+    private const string GmailSuffix = "@gmail.com";
+
+    private async Task<string> SaveCertificates(IEnumerable<TrainerFileInput> files, IEnumerable<string> urls, CancellationToken ct)
     {
         var saved = new List<TrainerStoredFile>();
         foreach (var file in files)
@@ -64,6 +66,12 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
             stored.IsAvatar = false;
             saved.Add(stored);
         }
+        saved.AddRange(urls.Select(url => new TrainerStoredFile
+        {
+            FileName = new Uri(url).Host,
+            ContentType = "text/uri-list",
+            ExternalUrl = url
+        }));
         return JsonSerializer.Serialize(saved);
     }
 
@@ -80,7 +88,8 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
 
     private static IReadOnlyList<TrainerDocumentResponse> Docs(string json, string path, bool publicOnly = false) =>
         Records<TrainerStoredFile>(json).Where(d => !d.IsDeleted && !d.IsAvatar && (!publicOnly || d.IsPublic))
-            .Select(d => new TrainerDocumentResponse(d.Id, d.FileName, d.ContentType, path + "/documents/" + Uri.EscapeDataString(d.Id))).ToList();
+            .Select(d => new TrainerDocumentResponse(d.Id, d.FileName, d.ContentType,
+                d.ExternalUrl ?? path + "/documents/" + Uri.EscapeDataString(d.Id), d.ExternalUrl is not null)).ToList();
 
     public Task<Result<TrainerApplicationReceipt>> Submit(SubmitTrainerApplicationRequest r, string? actor, CancellationToken ct) => store.Write(async () =>
     {
@@ -114,7 +123,7 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
         var applications = store.Query<TrainerApplication>().Where(x => x.ApplicationType == r.ApplicationType);
         var history = update
             ? applications.Where(x => x.ApplicantUserId == actor || x.HiredUserId == actor)
-            : applications.Where(x => x.Email.ToLower() == email || x.CitizenId == citizen);
+            : RecruitmentHistory(applications, email, citizen);
         if (update && await store.Count(history.Where(x =>
                 x.ApplicationStatus == TrainerApplicationStatus.Pending ||
                 x.ApplicationStatus == TrainerApplicationStatus.UnderReview ||
@@ -132,7 +141,7 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
         {
             ApplicantUserId = actor,
             ApplicationType = r.ApplicationType,
-            CertificatesJson = await SaveCertificates(r.Certificates, ct),
+            CertificatesJson = await SaveCertificates(r.Certificates, r.CertificateUrls ?? [], ct),
             FullName = r.FullName.Trim(),
             Email = email,
             PhoneNumber = r.PhoneNumber,
@@ -203,18 +212,56 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
         if (a == null)
             return Error<TrainerApplicationResponse>("TRAINER_NOT_FOUND", "Application not found.", 404);
 
-        var history = await store.List(store.Query<TrainerApplication>()
-            .Where(x => x.ApplicationType == a.ApplicationType &&
-                (x.Id == a.Id || x.Email.ToLower() == a.Email.ToLower() ||
-                 (a.CitizenId != "" && x.CitizenId == a.CitizenId)))
+        var applications = store.Query<TrainerApplication>().Where(x => x.ApplicationType == a.ApplicationType);
+        var email = a.Email.Trim().ToLowerInvariant();
+        var related = a.ApplicationType == "Recruitment"
+            ? RecruitmentHistory(applications, email, a.CitizenId, a.Id)
+            : applications.Where(x => x.Id == a.Id || x.Email.ToLower() == email ||
+                (a.CitizenId != "" && x.CitizenId == a.CitizenId));
+        var history = await store.List(related
             .OrderByDescending(x => x.SubmittedAt).ThenByDescending(x => x.Id)
             .Select(x => new TrainerSubmissionAttempt(x.Id, x.SubmissionAttempt, x.SubmittedAt, x.ApplicationStatus.ToString())), ct);
+        var accountMatch = a.ApplicationType == "Recruitment" &&
+            a.ApplicationStatus is TrainerApplicationStatus.Pending or TrainerApplicationStatus.UnderReview or TrainerApplicationStatus.Interviewing
+            ? DescribeAccountMatch(await FindMatchingAccounts(a, ct))
+            : null;
         return Result<TrainerApplicationResponse>.Success(ApplicationResponse(a) with
         {
             SubmissionHistory = history,
-            InterviewNote = a.InterviewNote
+            InterviewNote = a.InterviewNote,
+            AccountMatch = accountMatch
         });
     }
+
+    private static IQueryable<TrainerApplication> RecruitmentHistory(IQueryable<TrainerApplication> applications,
+        string email, string citizenId, int? applicationId = null)
+    {
+        var isGmail = email.EndsWith(GmailSuffix, StringComparison.Ordinal);
+        var identity = email.Replace(".", "");
+        return applications.Where(x => x.Id == applicationId || (citizenId != "" && x.CitizenId == citizenId) ||
+            x.Email.ToLower() == email || (isGmail && x.Email.ToLower().EndsWith(GmailSuffix) &&
+                x.Email.ToLower().Replace(".", "") == identity));
+    }
+
+    private Task<List<ApplicationUser>> FindMatchingAccounts(TrainerApplication application, CancellationToken ct)
+    {
+        var email = application.Email.Trim().ToLowerInvariant();
+        var isGmail = email.EndsWith(GmailSuffix, StringComparison.Ordinal);
+        var identity = email.Replace(".", "");
+        return store.List(store.Query<ApplicationUser>()
+            .Where(user => user.Email.ToLower() == email || user.PhoneNumber == application.PhoneNumber ||
+                (isGmail && user.Email.ToLower().EndsWith(GmailSuffix) && user.Email.ToLower().Replace(".", "") == identity))
+            .Take(2), ct);
+    }
+
+    private static TrainerAccountMatch DescribeAccountMatch(IReadOnlyList<ApplicationUser> matches) => matches.Count switch
+    {
+        0 => new("None"),
+        1 when matches[0].AccountStatus == AccountStatus.Active && !matches[0].IsBanned =>
+            new("Matched", matches[0].UserId, matches[0].FullName),
+        1 => new("Ineligible"),
+        _ => new("Ambiguous")
+    };
 
     public Task<Result<TrainerApplicationResponse>> Review(int id, ReviewTrainerApplicationRequest r, string actor, CancellationToken ct) => store.Write(async () =>
     {
@@ -266,15 +313,13 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
         if (r.Action == "Hire")
         {
             if (a.ApplicationStatus is not (TrainerApplicationStatus.Interviewing or TrainerApplicationStatus.UnderReview)) return Error<TrainerApplicationResponse>("TRAINER_INTERVIEW_REQUIRED", "Record the interview before hiring.");
-            var matches = await store.List(store.Query<ApplicationUser>().Where(x => x.Email.ToLower() == a.Email || x.PhoneNumber == a.PhoneNumber), ct);
-            ApplicationUser? user = null;
-            if (matches.Count > 0)
-            {
-                user = matches.SingleOrDefault(x => x.UserId == r.ExistingUserId);
-                if (matches.Count != 1 || user == null || user.AccountStatus != AccountStatus.Active || user.IsBanned)
-                    return Error<TrainerApplicationResponse>("TRAINER_IDENTITY_CONFLICT", "Verify and explicitly select the existing active account; resolve conflicting identities first.");
-            }
-            else if (r.ExistingUserId != null) return Error<TrainerApplicationResponse>("TRAINER_IDENTITY_CONFLICT", "Selected account does not match applicant identity.");
+            var matches = await FindMatchingAccounts(a, ct);
+            var accountMatch = DescribeAccountMatch(matches);
+            if (accountMatch.Status is "Ambiguous" or "Ineligible")
+                return Error<TrainerApplicationResponse>("TRAINER_IDENTITY_CONFLICT", "Resolve the account match before hiring.");
+            if (r.ExistingUserId != accountMatch.UserId)
+                return Error<TrainerApplicationResponse>("TRAINER_IDENTITY_CONFLICT", "The account match has changed. Reload the application and verify it again.");
+            var user = matches.SingleOrDefault();
             if (user != null && await store.Count(ActiveYogaAssignments.Where(c => c.InstructorUserId == user.UserId), ct) > 0)
                 return Error<TrainerApplicationResponse>("TRAINER_TEACHING_ROLE_CONFLICT",
                     "A Yoga instructor cannot be hired as a PT while assigned to Yoga classes.");
@@ -307,8 +352,7 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
                 CertificatesJson = PublishCertificates(a.CertificatesJson),
                 Gender = a.Gender,
                 ExperienceYears = a.ExperienceYears,
-                Level = Enum.Parse<TrainerLevel>(r.Level!),
-                CommissionTier = r.CommissionTier!.Trim()
+                Level = Enum.Parse<TrainerLevel>(r.Level!)
             };
             store.Add(profile);
             await store.Save(ct);
@@ -442,7 +486,7 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
                     f.ActualStartDate <= today && f.ActualEndDate > today)), ct) > 0;
         return Result<TrainerPublicDetail>.Success(new(p, certificates, availability,
             await store.List(store.Query<TrainerReview>().Where(x => x.TrainerUserId == p.UserId && x.IsVisible && x.ReviewStatus == TrainerReviewStatus.Approved).OrderByDescending(x => x.CreatedAt).Take(20).Select(x => new TrainerReviewResponse(x.Rating, x.Comment)), ct),
-            hasActiveContract));
+            hasActiveContract, actor == p.UserId));
     }
     public async Task<Result<TrainerPublicDetail>> Mine(string actor, CancellationToken ct)
     {
@@ -450,7 +494,7 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
         var p = await store.First(store.Query<TrainerProfile>().Where(x => x.PTUserId == actor), ct);
         return p == null
             ? Error<TrainerPublicDetail>("TRAINER_NOT_FOUND", "Profile not found.", 404)
-            : await Public(p.Id, ct);
+            : await Public(p.Id, ct, actor);
     }
     public Task<Result<bool>> Update(UpdateTrainerProfileRequest r, string actor, CancellationToken ct) => store.Write(async () =>
     {
@@ -516,7 +560,8 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
     }
     private async Task<Result<TrainerFileResponse>> ReadDocument(TrainerStoredFile? file, CancellationToken ct)
     {
-        if (file == null || file.IsDeleted) return Error<TrainerFileResponse>("TRAINER_NOT_FOUND", "Document not found.", 404);
+        if (file == null || file.IsDeleted || file.ExternalUrl is not null)
+            return Error<TrainerFileResponse>("TRAINER_NOT_FOUND", "Document not found.", 404);
         var content = await store.ReadFile(file, ct);
         return content == null ? Error<TrainerFileResponse>("TRAINER_NOT_FOUND", "Document not found.", 404)
             : Result<TrainerFileResponse>.Success(new(file.FileName, file.ContentType, content));

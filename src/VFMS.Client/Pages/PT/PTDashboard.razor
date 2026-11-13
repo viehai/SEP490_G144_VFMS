@@ -11,6 +11,9 @@
             <p class="mt-2 max-w-xl text-sm leading-relaxed text-[#69706A]">Tập trung vào hội viên, chủ động lịch huấn luyện và theo sát từng bước tiến.</p>
         </div>
         <div class="flex flex-wrap items-center gap-3">
+            <AuthorizeView Roles="PT">
+                <a href="/pt/trainer-profile" class="trainer-button trainer-primary">Quản lý hồ sơ PT</a>
+            </AuthorizeView>
             <span class="workspace-heading border border-[#D8DED2] bg-white px-3.5 py-2 text-[10px] font-bold rounded-lg text-[#383E43]">@_demoDate.ToString("dd / MM / yyyy")</span>
             <span class="border border-[#D8DED2] bg-[#EEF1EA] px-3.5 py-2 text-xs text-[#69706A] rounded-lg">Dữ liệu minh họa</span>
         </div>

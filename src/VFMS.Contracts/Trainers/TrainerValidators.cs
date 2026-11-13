@@ -4,6 +4,11 @@ namespace VFMS.Contracts.Trainers;
 
 public static class TrainerFileRules
 {
+    public static bool IsCertificateUrl(string? value) =>
+        value is { Length: > 0 and <= 2048 } && !value.Any(c => char.IsControl(c) || char.IsWhiteSpace(c)) &&
+        Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
+        uri.Scheme == Uri.UriSchemeHttps && uri.Host.Length > 0 && uri.UserInfo.Length == 0;
+
     public static string? ContentType(TrainerFileInput? f, bool avatar = false)
     {
         if (f?.Content is not { Length: > 0 and <= 5 * 1024 * 1024 } || string.IsNullOrWhiteSpace(f.FileName)
@@ -31,7 +36,12 @@ public sealed class SubmitTrainerApplicationValidator : AbstractValidator<Submit
         RuleFor(x => x.ExperienceYears).InclusiveBetween(0, 80);
         RuleFor(x => x.Bio).NotEmpty().MaximumLength(4000);
         RuleFor(x => x.Consent).Equal(true);
-        RuleFor(x => x.Certificates).NotNull().Must(x => x is { Count: >= 1 and <= 5 });
+        RuleFor(x => x.Certificates).NotNull();
+        RuleFor(x => x).Must(x => (x.Certificates?.Count ?? 0) + (x.CertificateUrls?.Count ?? 0) is >= 1 and <= 5)
+            .WithName("Certificates");
+        RuleFor(x => x.CertificateUrls).Must((request, urls) => urls is null || urls.Count == 0 ||
+            (request.ApplicationType == "Recruitment" && urls.Count <= 5 && urls.All(TrainerFileRules.IsCertificateUrl)))
+            .WithMessage("Only recruitment accepts HTTPS certificate links of up to 2,048 characters.");
         RuleForEach(x => x.Certificates).Must(x => TrainerFileRules.ContentType(x) != null)
             .WithMessage("Certificates must be PDF/JPEG/PNG with matching file signature and at most 5 MB.");
     }
@@ -45,7 +55,6 @@ public sealed class ReviewTrainerApplicationValidator : AbstractValidator<Review
         When(x => x.Action == "Hire", () =>
         {
             RuleFor(x => x.Level).Must(x => x is "Junior" or "Senior" or "Master");
-            RuleFor(x => x.CommissionTier).NotEmpty().MaximumLength(100);
             RuleFor(x => x.IdentityVerified).Equal(true);
         });
         RuleFor(x => x.ExistingUserId).MaximumLength(450);

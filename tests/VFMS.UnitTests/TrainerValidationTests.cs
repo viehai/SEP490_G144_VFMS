@@ -29,13 +29,21 @@ public class TrainerValidationTests
         var data = new byte[5 * 1024 * 1024 + 1]; "%PDF-"u8.CopyTo(data);
         Assert.Null(TrainerFileRules.ContentType(new("certificate.pdf", data)));
     }
+    [Theory]
+    [InlineData("https://certificates.example.test/verify/1", true)]
+    [InlineData("http://certificates.example.test/verify/1", false)]
+    [InlineData("javascript:alert(1)", false)]
+    [InlineData("https://user@certificates.example.test/verify/1", false)]
+    public void CertificateLinkRequiresAnAbsoluteHttpsUrlWithoutCredentials(string url, bool valid) =>
+        Assert.Equal(valid, TrainerFileRules.IsCertificateUrl(url));
+
     [Fact]
     public void Hire_requires_verified_identity_and_valid_level()
     {
         var validator = new ReviewTrainerApplicationValidator();
-        Assert.False(validator.Validate(new ReviewTrainerApplicationRequest("Hire", "Interview completed", "Master", "Tier1", null, false)).IsValid);
-        Assert.False(validator.Validate(new ReviewTrainerApplicationRequest("Hire", "Interview completed", "Unknown", "Tier1", null, true)).IsValid);
-        Assert.True(validator.Validate(new ReviewTrainerApplicationRequest("Hire", "Interview completed", "Master", "Tier1", null, true)).IsValid);
+        Assert.False(validator.Validate(new ReviewTrainerApplicationRequest("Hire", "Interview completed", "Master", null, false)).IsValid);
+        Assert.False(validator.Validate(new ReviewTrainerApplicationRequest("Hire", "Interview completed", "Unknown", null, true)).IsValid);
+        Assert.True(validator.Validate(new ReviewTrainerApplicationRequest("Hire", "Interview completed", "Master", IdentityVerified: true)).IsValid);
     }
     [Fact]
     public void Application_requires_consent_and_certificate()
