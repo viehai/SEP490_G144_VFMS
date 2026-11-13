@@ -18,6 +18,7 @@ builder.Services.AddScoped<AuthenticationStateProvider>(sp => sp.GetRequiredServ
 builder.Services.AddScoped(sp => new MembershipPlanApiClient(CreateApiHttpClient(), sp.GetRequiredService<AuthSession>()));
 builder.Services.AddScoped(sp => new SystemAdministrationApiClient(CreateApiHttpClient(), sp.GetRequiredService<AuthSession>()));
 builder.Services.AddScoped(sp => new OperationsApiClient(CreateApiHttpClient(), sp.GetRequiredService<AuthSession>()));
+builder.Services.AddScoped(sp => new PromotionApiClient(CreateApiHttpClient(), sp.GetRequiredService<AuthSession>()));
 
 await builder.Build().RunAsync();
 

@@ -2806,7 +2806,8 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
+                        .HasColumnType("nvarchar(50)")
+                        .UseCollation("Latin1_General_100_CI_AS");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");

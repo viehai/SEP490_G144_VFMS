@@ -199,8 +199,9 @@ public sealed class PasswordResetPersistenceTests : IAsyncLifetime
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
-            // Only this SQL Server-specific binary column needs a provider mapping in relational tests.
+            // Map SQL Server binary data and voucher collation to SQLite equivalents in relational tests.
             modelBuilder.Entity<FaceData>().Property(face => face.FaceNetEmbedding).HasColumnType("BLOB");
+            modelBuilder.Entity<Voucher>().Property(voucher => voucher.Code).UseCollation("NOCASE");
         }
     }
 }

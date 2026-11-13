@@ -344,7 +344,7 @@ public class VfmsDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.Code).IsUnique();
-            entity.Property(e => e.Code).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Code).HasMaxLength(50).IsRequired().UseCollation("Latin1_General_100_CI_AS");
             entity.Property(e => e.Name).HasMaxLength(256).IsRequired();
             entity.Property(e => e.DiscountType).HasConversion<string>().HasMaxLength(10);
             entity.Property(e => e.DiscountValue).HasColumnType("decimal(18,2)");
