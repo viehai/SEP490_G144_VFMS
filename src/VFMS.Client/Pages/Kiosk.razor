@@ -92,8 +92,8 @@
             var token = await JS.InvokeAsync<string?>("vfmsQr.scan", _video, 10000);
             if (string.IsNullOrWhiteSpace(token))
                 Show(false, "Không đọc được mã QR. Hãy đưa mã gần camera hơn và thử lại.");
-            else
-                await Scan(new KioskScanRequest(null, token.Trim()));
+            else if (!await Scan(new KioskScanRequest(null, token.Trim())))
+                _result += " Đã đọc được mã QR nhưng mã không hợp lệ: mã chỉ dùng một lần, hết hạn sau 2 phút và bị thay khi mở lại trang Mã QR của tôi. Hãy tạo mã mới rồi quét lại.";
         }
         catch (JSException) { Show(false, "Không đọc được mã QR. Vui lòng thử lại."); }
         finally { _busy = false; _scanning = null; }
@@ -117,7 +117,7 @@
     }
 
     /// <summary>The API decides the direction: inside → check out, outside → check in.</summary>
-    private async Task Scan(KioskScanRequest request)
+    private async Task<bool> Scan(KioskScanRequest request)
     {
         _busy = true;
         try
@@ -127,8 +127,9 @@
                 Show(true, $"CHECK-IN. {entry.Message}{(entry.CompletedPtSessionId is null ? "" : " Buổi PT đã được ghi nhận hoàn thành.")}");
             else if (r.CheckOut is { } exit)
                 Show(true, $"CHECK-OUT. Tạm biệt, {exit.MemberName}! Thời gian tập: {exit.MinutesInside / 60}h {exit.MinutesInside % 60}m.");
+            return true;
         }
-        catch (ApiException ex) { Show(false, ex.Message); }
+        catch (ApiException ex) { Show(false, ex.Message); return !(ex.ErrorCode == "ACCESS_DENIED" && !ex.Message.Contains("Membership status")); }   // plain MSG-36 = scan not recognised
         finally { _busy = false; }
     }
 
