@@ -30,19 +30,29 @@
                         <InputText id="eq-name" class="@Ui.Field" @bind-Value="_form.Name" maxlength="200" required />
                     </label>
                     <label class="@Ui.Label" for="eq-code">Mã thiết bị
-                        <InputText id="eq-code" class="@Ui.Field" @bind-Value="_form.Code" maxlength="50" />
+                        <InputText id="eq-code" class="@Ui.Field" @bind-Value="_form.Code" maxlength="50" placeholder="@CodeHint" />
+                        <span class="mt-1 block text-[11px] font-normal text-[#8A9089]">@CodeHelp</span>
                     </label>
                     <label class="@Ui.Label" for="eq-category">Danh mục
-                        <InputSelect id="eq-category" class="@Ui.Field" @bind-Value="_form.CategoryId">
-                            <option value="">Chưa phân loại</option>
-                            @foreach (var category in _categories) { <option value="@category.Id">@category.Name</option> }
+                        <InputSelect id="eq-category" class="@Ui.Field" @bind-Value="_form.CategoryId" required>
+                            <option value="">Chọn danh mục</option>
+                            @foreach (var category in _categories)
+                            {
+                                <option value="@category.Id">@category.Name@(category.CodePrefix is { } prefix ? $" ({prefix})" : "")</option>
+                            }
                         </InputSelect>
                     </label>
                     <label class="@Ui.Label" for="eq-brand">Hãng
-                        <InputText id="eq-brand" class="@Ui.Field" @bind-Value="_form.Brand" maxlength="100" />
+                        <InputSelect id="eq-brand" class="@Ui.Field" @bind-Value="_form.Brand" @bind-Value:after="BrandChanged">
+                            <option value="">Chọn hãng</option>
+                            @foreach (var brand in EquipmentCatalog.WithCurrent(EquipmentCatalog.BrandNames, _form.Brand)) { <option value="@brand">@brand</option> }
+                        </InputSelect>
                     </label>
                     <label class="@Ui.Label" for="eq-model">Model
-                        <InputText id="eq-model" class="@Ui.Field" @bind-Value="_form.Model" maxlength="100" />
+                        <InputSelect id="eq-model" class="@Ui.Field" @bind-Value="_form.Model" disabled="@string.IsNullOrEmpty(_form.Brand)">
+                            <option value="">@(string.IsNullOrEmpty(_form.Brand) ? "Chọn hãng trước" : "Chọn model")</option>
+                            @foreach (var model in EquipmentCatalog.WithCurrent(EquipmentCatalog.ModelsOf(_form.Brand), _form.Model)) { <option value="@model">@model</option> }
+                        </InputSelect>
                     </label>
                     <label class="@Ui.Label" for="eq-date">Ngày mua
                         <InputDate id="eq-date" class="@Ui.Field" @bind-Value="_form.PurchaseDate" />
@@ -166,6 +176,9 @@
                     <label class="@Ui.Label w-full sm:w-56" for="cat-name">Tên danh mục
                         <InputText id="cat-name" class="@Ui.Field" @bind-Value="_categoryForm.Name" maxlength="100" required />
                     </label>
+                    <label class="@Ui.Label w-32" for="cat-prefix">Tiền tố mã
+                        <InputText id="cat-prefix" class="@($"{Ui.Field} uppercase")" @bind-Value="_categoryForm.CodePrefix" maxlength="5" placeholder="VD: TM" required />
+                    </label>
                     <label class="@Ui.Label min-w-[220px] flex-1" for="cat-desc">Mô tả
                         <InputText id="cat-desc" class="@Ui.Field" @bind-Value="_categoryForm.Description" maxlength="500" />
                     </label>
@@ -189,6 +202,7 @@
                     <li @key="category.Id" class="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
                         <div>
                             <p class="text-sm font-semibold text-[#383E43]">@category.Name <span class="ml-1 text-xs font-normal text-[#8A9089]">@category.EquipmentCount thiết bị</span></p>
+                            <p class="text-xs text-[#69706A]">@(category.CodePrefix is { } prefix ? $"Tiền tố {prefix} · mã tiếp theo {category.NextCode}" : "Chưa có tiền tố mã, cần cập nhật trước khi thêm thiết bị")</p>
                             @if (!string.IsNullOrWhiteSpace(category.Description)) { <p class="text-xs text-[#69706A]">@category.Description</p> }
                         </div>
                         <div class="flex gap-2">
@@ -231,7 +245,27 @@
     private EquipmentRequest CreateRequest() => new(_form.Name.Trim(), _form.CategoryId, Blank(_form.Code), Blank(_form.Brand),
         Blank(_form.Model), _form.PurchaseDate, _form.PurchasePrice, Blank(_form.DescriptionUrl), Blank(_form.Note));
 
-    private EquipmentCategoryRequest CreateCategoryRequest() => new(_categoryForm.Name.Trim(), Blank(_categoryForm.Description));
+    private EquipmentCategoryRequest CreateCategoryRequest() =>
+        new(_categoryForm.Name.Trim(), Blank(_categoryForm.Description), Blank(_categoryForm.CodePrefix)?.ToUpperInvariant());
+
+    private EquipmentCategoryResponse? SelectedCategory => _categories.FirstOrDefault(c => c.Id == _form.CategoryId);
+
+    private string CodeHint => SelectedCategory switch
+    {
+        null => "Chọn danh mục trước",
+        { NextCode: { } next } => $"Để trống để tự tạo: {next}",
+        _ => "Danh mục chưa có tiền tố mã",
+    };
+
+    private string CodeHelp => SelectedCategory?.CodePrefix is { } prefix
+        ? $"Nhập tay theo dạng {prefix}-0001, hoặc để trống để hệ thống tự tạo."
+        : "Mã được tạo theo tiền tố của danh mục.";
+
+    private void BrandChanged()
+    {
+        if (!EquipmentCatalog.ModelsOf(_form.Brand).Contains(_form.Model ?? "", StringComparer.OrdinalIgnoreCase))
+            _form.Model = null;
+    }
 
     private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
@@ -298,7 +332,9 @@
         var saved = _editingId is { } id
             ? await Api.UpdateEquipmentAsync(id, CreateRequest(), _lifetime.Token)
             : await Api.CreateEquipmentAsync(CreateRequest(), _lifetime.Token);
-        _notice = _editingId is null ? $"Đã thêm thiết bị \"{saved.Name}\"." : $"Đã cập nhật thiết bị \"{saved.Name}\".";
+        _notice = _editingId is null
+            ? $"Đã thêm thiết bị \"{saved.Name}\" với mã {saved.Code}."
+            : $"Đã cập nhật thiết bị \"{saved.Name}\" ({saved.Code}).";
         CloseForm();
         await LoadCategoriesAsync();
         await LoadAsync(_page?.Page ?? 1);
@@ -342,6 +378,7 @@
         _editingCategoryId = category.Id;
         _categoryForm.Name = category.Name;
         _categoryForm.Description = category.Description;
+        _categoryForm.CodePrefix = category.CodePrefix;
     }
 
     private void CancelCategoryEdit()
@@ -349,6 +386,7 @@
         _editingCategoryId = null;
         _categoryForm.Name = "";
         _categoryForm.Description = null;
+        _categoryForm.CodePrefix = null;
     }
 
     private async Task RunAsync(Func<Task> action, Action<IReadOnlyDictionary<string, string[]>>? showErrors = null)
@@ -398,5 +436,6 @@
     {
         public string Name { get; set; } = "";
         public string? Description { get; set; }
+        public string? CodePrefix { get; set; }
     }
 }

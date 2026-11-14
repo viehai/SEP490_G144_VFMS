@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using MapsterMapper;
 using VFMS.Application.Interfaces;
 using VFMS.Contracts.Common;
@@ -28,9 +29,9 @@ public sealed class EquipmentService : IEquipmentService
     {
         var categories = await _repository.GetCategoriesAsync(cancellationToken);
         var counts = await _repository.CountEquipmentByCategoryAsync(cancellationToken);
-        IReadOnlyList<EquipmentCategoryResponse> items = categories
-            .Select(c => ToResponse(c, counts.GetValueOrDefault(c.Id)))
-            .ToArray();
+        var items = new List<EquipmentCategoryResponse>(categories.Count);
+        foreach (var c in categories)
+            items.Add(ToResponse(c, counts.GetValueOrDefault(c.Id), await NextCodeAsync(c.CodePrefix, cancellationToken)));
         return Result<IReadOnlyList<EquipmentCategoryResponse>>.Success(items);
     }
 
@@ -40,12 +41,16 @@ public sealed class EquipmentService : IEquipmentService
         var name = request.Name.Trim();
         if (await _repository.CategoryNameExistsAsync(name, null, cancellationToken))
             return CategoryExists();
+        var prefix = NormalizePrefix(request.CodePrefix);
+        if (await _repository.CategoryPrefixExistsAsync(prefix, null, cancellationToken))
+            return PrefixExists();
 
-        var category = new CatalogCategory { CategoryName = name, Description = Clean(request.Description) };
+        var category = new CatalogCategory { CategoryName = name, Description = Clean(request.Description), CodePrefix = prefix };
         var audit = AuditedWriter.Audit(actorUserId, AuditActionType.Create, CategoryEntity, ipAddress,
-            newValue: $"Name={name}");
+            newValue: $"Name={name}; CodePrefix={prefix}");
         await AuditedWriter.SaveNewAsync(_repository, category, audit, null, cancellationToken);
-        return Result<EquipmentCategoryResponse>.Success(ToResponse(category, 0), 201);
+        return Result<EquipmentCategoryResponse>.Success(
+            ToResponse(category, 0, await NextCodeAsync(prefix, cancellationToken)), 201);
     }
 
     public async Task<Result<EquipmentCategoryResponse>> UpdateCategoryAsync(
@@ -58,16 +63,22 @@ public sealed class EquipmentService : IEquipmentService
         var name = request.Name.Trim();
         if (await _repository.CategoryNameExistsAsync(name, id, cancellationToken))
             return CategoryExists();
+        var prefix = NormalizePrefix(request.CodePrefix);
+        if (await _repository.CategoryPrefixExistsAsync(prefix, id, cancellationToken))
+            return PrefixExists();
 
+        // Changing the prefix only affects codes generated from now on; existing codes are kept.
         var audit = AuditedWriter.Audit(actorUserId, AuditActionType.Update, CategoryEntity, ipAddress,
-            $"Name={category.CategoryName}; Description={category.Description}",
-            $"Name={name}; Description={Clean(request.Description)}");
+            $"Name={category.CategoryName}; Description={category.Description}; CodePrefix={category.CodePrefix}",
+            $"Name={name}; Description={Clean(request.Description)}; CodePrefix={prefix}");
         category.CategoryName = name;
         category.Description = Clean(request.Description);
+        category.CodePrefix = prefix;
         await AuditedWriter.SaveChangedAsync(_repository, category, audit, null, cancellationToken);
 
         var counts = await _repository.CountEquipmentByCategoryAsync(cancellationToken);
-        return Result<EquipmentCategoryResponse>.Success(ToResponse(category, counts.GetValueOrDefault(id)));
+        return Result<EquipmentCategoryResponse>.Success(
+            ToResponse(category, counts.GetValueOrDefault(id), await NextCodeAsync(prefix, cancellationToken)));
     }
 
     public async Task<Result<bool>> DeleteCategoryAsync(
@@ -116,16 +127,16 @@ public sealed class EquipmentService : IEquipmentService
     public async Task<Result<EquipmentResponse>> CreateEquipmentAsync(
         EquipmentRequest request, string actorUserId, string? ipAddress, CancellationToken cancellationToken = default)
     {
-        var check = await ValidateReferencesAsync(request, null, cancellationToken);
-        if (check is not null)
-            return check;
+        var (error, code) = await ResolveCodeAsync(request, null, cancellationToken);
+        if (error is not null)
+            return error;
 
         var gymId = await _repository.GetDefaultGymIdAsync(cancellationToken);
         if (gymId is null)
             return Result<EquipmentResponse>.Failure("No gym configured in the system.", "EQUIPMENT_NO_GYM", 500);
 
         var equipment = new Equipment { GymId = gymId.Value, EquipmentStatus = EquipmentStatus.Operational };
-        Apply(equipment, request);
+        Apply(equipment, request, code);
         var audit = AuditedWriter.Audit(actorUserId, AuditActionType.Create, EquipmentEntity, ipAddress,
             newValue: $"Name={equipment.EquipmentName}; Code={equipment.EquipmentCode}; Status={equipment.EquipmentStatus}");
         await AuditedWriter.SaveNewAsync(_repository, equipment, audit, null, cancellationToken);
@@ -141,12 +152,12 @@ public sealed class EquipmentService : IEquipmentService
         if (equipment is null)
             return EquipmentNotFound();
 
-        var check = await ValidateReferencesAsync(request, id, cancellationToken);
-        if (check is not null)
-            return check;
+        var (error, code) = await ResolveCodeAsync(request, equipment, cancellationToken);
+        if (error is not null)
+            return error;
 
         var before = Describe(equipment);
-        Apply(equipment, request);
+        Apply(equipment, request, code);
         var audit = AuditedWriter.Audit(actorUserId, AuditActionType.Update, EquipmentEntity, ipAddress, before, Describe(equipment));
         await AuditedWriter.SaveChangedAsync(_repository, equipment, audit, null, cancellationToken);
 
@@ -187,22 +198,50 @@ public sealed class EquipmentService : IEquipmentService
 
     // ── Helpers ──────────────────────────────────────────────────
 
-    private async Task<Result<EquipmentResponse>?> ValidateReferencesAsync(
-        EquipmentRequest request, int? equipmentId, CancellationToken cancellationToken)
+    /// <summary>
+    /// Works out the equipment code (UC-76). A blank code gets the next PREFIX-NNNN of the category; a typed code must
+    /// follow that format and be unused. A record whose category and code do not change keeps its code, so equipment
+    /// created before code prefixes existed can still be edited.
+    /// </summary>
+    private async Task<(Result<EquipmentResponse>? Error, string? Code)> ResolveCodeAsync(
+        EquipmentRequest request, Equipment? existing, CancellationToken cancellationToken)
     {
-        if (request.CategoryId is { } categoryId && await _repository.GetCategoryAsync(categoryId, cancellationToken) is null)
-            return Result<EquipmentResponse>.Failure("Equipment category was not found.", "EQUIPMENT_CATEGORY_NOT_FOUND");
-        var code = Clean(request.Code);
-        if (code is not null && await _repository.EquipmentCodeExistsAsync(code, equipmentId, cancellationToken))
-            return Result<EquipmentResponse>.Failure("Equipment with this code already exists.", "EQUIPMENT_CODE_EXISTS", 409);
-        return null;
+        var category = request.CategoryId is { } categoryId ? await _repository.GetCategoryAsync(categoryId, cancellationToken) : null;
+        if (category is null)
+            return (Result<EquipmentResponse>.Failure("Equipment category was not found.", "EQUIPMENT_CATEGORY_NOT_FOUND"), null);
+
+        var typed = Clean(request.Code)?.ToUpperInvariant();
+        if (existing is not null && existing.CatalogCategoryId == category.Id && typed is not null &&
+            string.Equals(typed, existing.EquipmentCode, StringComparison.OrdinalIgnoreCase))
+            return (null, existing.EquipmentCode);
+
+        if (category.CodePrefix is not { } prefix)
+            return (Result<EquipmentResponse>.Failure(
+                "This category has no code prefix. Set a code prefix on the category first.", "EQUIPMENT_CATEGORY_PREFIX_MISSING"), null);
+
+        if (typed is null)
+            return (null, FormatCode(prefix, await _repository.GetMaxCodeNumberAsync(prefix, cancellationToken) + 1));
+
+        if (!Regex.IsMatch(typed, "^" + Regex.Escape(prefix) + @"-\d{4}$"))
+            return (Result<EquipmentResponse>.Failure(
+                $"Equipment code must look like {prefix}-0001 for this category.", "EQUIPMENT_CODE_INVALID_FORMAT"), null);
+        if (await _repository.EquipmentCodeExistsAsync(typed, existing?.Id, cancellationToken))
+            return (Result<EquipmentResponse>.Failure("Equipment with this code already exists.", "EQUIPMENT_CODE_EXISTS", 409), null);
+        return (null, typed);
     }
 
-    private static void Apply(Equipment equipment, EquipmentRequest request)
+    private async Task<string?> NextCodeAsync(string? prefix, CancellationToken cancellationToken) =>
+        prefix is null ? null : FormatCode(prefix, await _repository.GetMaxCodeNumberAsync(prefix, cancellationToken) + 1);
+
+    internal static string FormatCode(string prefix, int number) => $"{prefix}-{number:D4}";
+
+    private static string NormalizePrefix(string? prefix) => (prefix ?? string.Empty).Trim().ToUpperInvariant();
+
+    private static void Apply(Equipment equipment, EquipmentRequest request, string? code)
     {
         equipment.EquipmentName = request.Name.Trim();
         equipment.CatalogCategoryId = request.CategoryId;
-        equipment.EquipmentCode = Clean(request.Code);
+        equipment.EquipmentCode = code;
         equipment.EquipmentBrand = Clean(request.Brand);
         equipment.EquipmentModel = Clean(request.Model);
         equipment.PurchaseDate = request.PurchaseDate;
@@ -221,8 +260,12 @@ public sealed class EquipmentService : IEquipmentService
 
     internal static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
-    private static EquipmentCategoryResponse ToResponse(CatalogCategory c, int count) =>
-        new(c.Id, c.CategoryName, c.Description, count);
+    private static EquipmentCategoryResponse ToResponse(CatalogCategory c, int count, string? nextCode) =>
+        new(c.Id, c.CategoryName, c.Description, count, c.CodePrefix, nextCode);
+
+    private static Result<EquipmentCategoryResponse> PrefixExists() =>
+        Result<EquipmentCategoryResponse>.Failure(
+            "Another category already uses this code prefix.", "EQUIPMENT_CATEGORY_PREFIX_EXISTS", 409);
 
     private static Result<EquipmentCategoryResponse> CategoryExists() =>
         Result<EquipmentCategoryResponse>.Failure("A category with this name already exists.", "EQUIPMENT_CATEGORY_EXISTS", 409);

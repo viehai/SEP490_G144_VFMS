@@ -3,9 +3,27 @@
 @inject OperationsApiClient Api
 @implements IDisposable
 
-@* UC-72 Handle Equipment Issues (Role = Staff) and UC-73 Manage Equipment Repairs (Role = Manager). *@
+@* UC-71 Report (Staff), UC-72 Handle Equipment Issues (Role = Staff) and UC-73 Manage Equipment Repairs (Role = Manager). *@
 
 <Alerts Notice="@_notice" Error="@_error" />
+
+@if (Role == "Staff")
+{
+    @if (_reporting)
+    {
+        <section class="@Ui.Card" aria-labelledby="staff-report-title">
+            <h2 id="staff-report-title" class="text-base font-bold text-[#383E43]">Báo sự cố thiết bị</h2>
+            <p class="mt-1 text-xs text-[#69706A]">Nhân viên phát hiện thiết bị có vấn đề khi kiểm tra hằng ngày có thể báo trực tiếp tại đây.</p>
+            <EquipmentIssueReportForm IdPrefix="staff-report" OnReported="ReportedAsync" OnCancel="() => _reporting = false" />
+        </section>
+    }
+    else
+    {
+        <div class="flex justify-end">
+            <button type="button" class="@Ui.PrimaryButton" @onclick="() => _reporting = true">+ Báo sự cố</button>
+        </div>
+    }
+}
 
 @if (_selected is { } issue)
 {
@@ -13,7 +31,7 @@
         <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
                 <h2 id="issue-detail-title" class="text-base font-bold text-[#383E43]">#@issue.Id · @issue.EquipmentName@(issue.EquipmentCode is { } code ? $" ({code})" : "")</h2>
-                <p class="mt-1 text-xs text-[#69706A]">Báo lúc @OperationsText.Local(issue.ReportedAt) bởi @(issue.ReportedByName ?? "hội viên")@(issue.HandledByName is { } handler ? $" · Người xử lý: {handler}" : "")</p>
+                <p class="mt-1 text-xs text-[#69706A]">Báo lúc @OperationsText.Local(issue.ReportedAt) bởi @(issue.ReportedByName ?? "người báo")@(issue.HandledByName is { } handler ? $" · Người xử lý: {handler}" : "")</p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
                 <span class="@OperationsText.Badge(issue.IncidentType)">@OperationsText.Label(issue.IncidentType)</span>
@@ -140,7 +158,7 @@
     private EquipmentIssueResponse? _selected;
     private string _status = "", _action = "", _note = "";
     private string? _notice, _error;
-    private bool _loading, _working;
+    private bool _loading, _working, _reporting;
     private bool Busy => _loading || _working;
     private bool NeedsNote => _selected is { } issue && Actions(issue).FirstOrDefault(a => a.Path == _action)?.NeedsNote == true;
 
@@ -221,6 +239,14 @@
         catch (AuthApiException error) { _error = error.Message; }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
         finally { _working = false; }
+    }
+
+    private async Task ReportedAsync(EquipmentIssueResponse saved)
+    {
+        _reporting = false;
+        _error = null;
+        _notice = $"Đã ghi nhận sự cố #{saved.Id} cho \"{saved.EquipmentName}\".";
+        await LoadAsync(1);
     }
 
     public void Dispose()

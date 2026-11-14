@@ -40,6 +40,18 @@
                             var item = _form.Items[index];
                             var number = index + 1;
                             <div @key="item" class="grid gap-3 rounded-lg border border-[#D8DED2] p-4 sm:grid-cols-6">
+                                <label class="@Ui.Label sm:col-span-3">Hãng thiết bị (không bắt buộc)
+                                    <select class="@Ui.Field" @bind="item.Brand" @bind:after="() => BrandChanged(item)">
+                                        <option value="">Không chọn (vật tư khác)</option>
+                                        @foreach (var brand in EquipmentCatalog.BrandNames) { <option value="@brand">@brand</option> }
+                                    </select>
+                                </label>
+                                <label class="@Ui.Label sm:col-span-3">Model
+                                    <select class="@Ui.Field" @bind="item.Model" @bind:after="() => ModelChanged(item)" disabled="@string.IsNullOrEmpty(item.Brand)">
+                                        <option value="">@(string.IsNullOrEmpty(item.Brand) ? "Chọn hãng trước" : "Chọn model")</option>
+                                        @foreach (var model in EquipmentCatalog.ModelsOf(item.Brand)) { <option value="@model">@model</option> }
+                                    </select>
+                                </label>
                                 <label class="@Ui.Label sm:col-span-2">Hạng mục @number
                                     <input class="@Ui.Field" @bind="item.ItemName" maxlength="200" required />
                                 </label>
@@ -279,5 +291,26 @@
         public decimal EstimatedUnitPrice { get; set; }
         public string EquipmentId { get; set; } = "";
         public string? Reason { get; set; }
+        // Picker only (not sent): choosing a brand and model fills ItemName, which stays editable.
+        public string Brand { get; set; } = "";
+        public string Model { get; set; } = "";
+        public string? AutoName { get; set; }
+    }
+
+    private static void BrandChanged(ItemModel item)
+    {
+        if (!EquipmentCatalog.ModelsOf(item.Brand).Contains(item.Model)) item.Model = "";
+        ModelChanged(item);
+    }
+
+    /// <summary>Fills the item name from brand and model unless the user already typed their own name.</summary>
+    private static void ModelChanged(ItemModel item)
+    {
+        var name = string.Join(" ", new[] { item.Brand, item.Model }.Where(v => !string.IsNullOrWhiteSpace(v)));
+        if (string.IsNullOrWhiteSpace(item.ItemName) || item.ItemName == item.AutoName)
+        {
+            item.ItemName = name;
+            item.AutoName = name;
+        }
     }
 }

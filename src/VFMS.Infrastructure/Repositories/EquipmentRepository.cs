@@ -71,6 +71,10 @@ public sealed class EquipmentRepository : AuditedRepositoryBase, IEquipmentRepos
         Context.CatalogCategories.AnyAsync(
             c => c.CategoryName.ToLower() == name.ToLower() && (excludingId == null || c.Id != excludingId), cancellationToken);
 
+    public Task<bool> CategoryPrefixExistsAsync(string prefix, int? excludingId, CancellationToken cancellationToken = default) =>
+        Context.CatalogCategories.AnyAsync(
+            c => c.CodePrefix != null && c.CodePrefix == prefix && (excludingId == null || c.Id != excludingId), cancellationToken);
+
     public Task<bool> CategoryInUseAsync(int id, CancellationToken cancellationToken = default) =>
         Context.Equipments.AnyAsync(e => e.CatalogCategoryId == id, cancellationToken);
 
@@ -98,6 +102,19 @@ public sealed class EquipmentRepository : AuditedRepositoryBase, IEquipmentRepos
 
     public Task<Equipment?> GetEquipmentAsync(int id, CancellationToken cancellationToken = default) =>
         Context.Equipments.Include(e => e.CatalogCategory).FirstOrDefaultAsync(e => e.Id == id, cancellationToken);
+
+    public async Task<int> GetMaxCodeNumberAsync(string prefix, CancellationToken cancellationToken = default)
+    {
+        var start = prefix + "-";
+        var codes = await Context.Equipments.IgnoreQueryFilters()
+            .Where(e => e.EquipmentCode != null && e.EquipmentCode.StartsWith(start))
+            .Select(e => e.EquipmentCode!)
+            .ToListAsync(cancellationToken);
+        return codes
+            .Select(code => int.TryParse(code[start.Length..], out var number) ? number : 0)
+            .DefaultIfEmpty(0)
+            .Max();
+    }
 
     public Task<bool> EquipmentCodeExistsAsync(string code, int? excludingId, CancellationToken cancellationToken = default) =>
         Context.Equipments.AnyAsync(

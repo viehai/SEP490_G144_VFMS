@@ -308,6 +308,10 @@ namespace VFMS.Infrastructure.Migrations
                         .HasMaxLength(150)
                         .HasColumnType("nvarchar(150)");
 
+                    b.Property<string>("CodePrefix")
+                        .HasMaxLength(5)
+                        .HasColumnType("nvarchar(5)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -322,6 +326,10 @@ namespace VFMS.Infrastructure.Migrations
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CodePrefix")
+                        .IsUnique()
+                        .HasFilter("[CodePrefix] IS NOT NULL AND [IsDeleted] = 0");
 
                     b.ToTable("CatalogCategories");
                 });

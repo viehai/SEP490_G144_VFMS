@@ -8,7 +8,7 @@ using VFMS.Domain.Enums;
 namespace VFMS.Application.Services;
 
 /// <summary>
-/// UC-71 Report Equipment Issue (Member), UC-72 Handle Equipment Issues (Staff), UC-73 Manage Equipment Repairs (Manager).
+/// UC-71 Report Equipment Issue (Member or Staff), UC-72 Handle Equipment Issues (Staff), UC-73 Manage Equipment Repairs (Manager).
 /// GBR-53 (registered, non-retired equipment), GBR-54 (definite outcome), GBR-55 (safe before Operational), GBR-56 (audit).
 /// </summary>
 /// <remarks>

@@ -881,6 +881,9 @@ public class VfmsDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.CategoryName).HasMaxLength(150).IsRequired();
             entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.CodePrefix).HasMaxLength(5);
+            entity.HasIndex(e => e.CodePrefix).IsUnique()
+                .HasFilter("[CodePrefix] IS NOT NULL AND [IsDeleted] = 0");
         });
 
         // ── Equipment ─────────────────────────────────────────────

@@ -13,6 +13,7 @@ public interface IEquipmentRepository : IAuditedRepository
     Task<CatalogCategory?> GetCategoryAsync(int id, CancellationToken cancellationToken = default);
     Task<bool> CategoryNameExistsAsync(string name, int? excludingId, CancellationToken cancellationToken = default);
     Task<bool> CategoryInUseAsync(int id, CancellationToken cancellationToken = default);
+    Task<bool> CategoryPrefixExistsAsync(string prefix, int? excludingId, CancellationToken cancellationToken = default);
 
     // Equipment
     Task<(IReadOnlyList<Equipment> Items, int TotalCount)> SearchEquipmentAsync(
@@ -20,6 +21,8 @@ public interface IEquipmentRepository : IAuditedRepository
         CancellationToken cancellationToken = default);
     Task<Equipment?> GetEquipmentAsync(int id, CancellationToken cancellationToken = default);
     Task<bool> EquipmentCodeExistsAsync(string code, int? excludingId, CancellationToken cancellationToken = default);
+    /// <summary>Highest number used in codes "PREFIX-NNNN" (deleted equipment included, so numbers are never reused); 0 when none.</summary>
+    Task<int> GetMaxCodeNumberAsync(string prefix, CancellationToken cancellationToken = default);
     Task<int?> GetDefaultGymIdAsync(CancellationToken cancellationToken = default);
 
     // Issues
