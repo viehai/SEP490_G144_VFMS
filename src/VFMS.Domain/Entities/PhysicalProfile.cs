@@ -19,6 +19,12 @@ public class PhysicalProfile : BaseEntity
     public string? EmergencyContactPhone { get; set; }
     public string? Gender { get; set; }
     public DateOnly? DateOfBirth { get; set; }
+    /// <summary>InBody body-fat percentage (optional, UC-49).</summary>
+    public decimal? BodyFatPercent { get; set; }
+    /// <summary>InBody skeletal muscle mass in kg (optional, UC-49).</summary>
+    public decimal? SkeletalMuscleMassKg { get; set; }
+    /// <summary>When the member last consented to AI processing of the survey (SRS 2.3 explicit PDPL consent).</summary>
+    public DateTime? AiConsentGrantedAt { get; set; }
 
     // ── Navigation Properties ──────────────────────────────────
     public ApplicationUser Member { get; set; } = null!;

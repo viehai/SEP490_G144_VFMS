@@ -1,0 +1,64 @@
+using Microsoft.EntityFrameworkCore;
+using VFMS.Application.Interfaces;
+using VFMS.Domain.Entities;
+using VFMS.Domain.Enums;
+using VFMS.Infrastructure.Data;
+
+namespace VFMS.Infrastructure.Repositories;
+
+public sealed class YogaBookingRepository : AuditedRepositoryBase, IYogaBookingRepository
+{
+    public YogaBookingRepository(VfmsDbContext context) : base(context) { }
+
+    public Task<YogaClass?> GetClassAsync(int classId, CancellationToken cancellationToken = default) =>
+        Context.YogaClasses
+            .Include(c => c.Schedules).ThenInclude(s => s.YogaStudio)
+            .Include(c => c.Bookings)
+            .AsSplitQuery()
+            .FirstOrDefaultAsync(c => c.Id == classId, cancellationToken);
+
+    public Task LockClassAsync(int classId, CancellationToken cancellationToken = default) =>
+        AppLockAsync($"yoga-class-{classId}", "This class is busy. Please try again.", cancellationToken);
+
+    public async Task<IReadOnlyList<MemberMembership>> GetMembershipsAsync(string userId, CancellationToken cancellationToken = default) =>
+        await Context.MemberMemberships.AsNoTracking().Include(m => m.PackageComponent)
+            .Where(m => m.MemberUserId == userId).ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<DateTime>> GetNoShowTimesAsync(string userId, DateTime sinceUtc, CancellationToken cancellationToken = default) =>
+        await Context.YogaAttendances
+            .Where(a => a.MemberUserId == userId && a.AttendanceStatus == YogaAttendanceStatus.NoShow && a.RecordedAt >= sinceUtc)
+            .Select(a => a.RecordedAt).ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<YogaWaitlist>> GetWaitlistAsync(int classId, CancellationToken cancellationToken = default) =>
+        await Context.YogaWaitlists
+            .Where(w => w.YogaClassSchedule.YogaClassId == classId && w.WaitlistStatus == YogaWaitlistStatus.Waiting)
+            .OrderBy(w => w.Position)
+            .ToListAsync(cancellationToken);
+
+    public Task<YogaBooking?> GetBookingAsync(int bookingId, CancellationToken cancellationToken = default) =>
+        Context.YogaBookings.FirstOrDefaultAsync(b => b.Id == bookingId, cancellationToken);
+
+    public Task<YogaClassSchedule?> GetSessionAsync(int sessionId, CancellationToken cancellationToken = default) =>
+        Context.YogaClassSchedules
+            .Include(s => s.YogaClass).ThenInclude(c => c.Bookings).ThenInclude(b => b.Member)
+            .Include(s => s.Attendances)
+            .AsSplitQuery()
+            .FirstOrDefaultAsync(s => s.Id == sessionId, cancellationToken);
+
+    public Task LockSessionAsync(int sessionId, CancellationToken cancellationToken = default) =>
+        AppLockAsync($"yoga-session-{sessionId}", "This session's attendance is being saved. Please try again.", cancellationToken);
+
+    public async Task<IReadOnlyList<YogaBooking>> GetMemberBookingsAsync(string userId, CancellationToken cancellationToken = default) =>
+        await Context.YogaBookings.AsNoTracking()
+            .Include(b => b.YogaClass).ThenInclude(c => c.Schedules).ThenInclude(s => s.YogaStudio)
+            .Include(b => b.Attendances)
+            .Where(b => b.MemberUserId == userId)
+            .AsSplitQuery()
+            .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<YogaWaitlist>> GetMemberWaitlistAsync(string userId, CancellationToken cancellationToken = default) =>
+        await Context.YogaWaitlists.AsNoTracking()
+            .Include(w => w.YogaClassSchedule).ThenInclude(s => s.YogaClass)
+            .Where(w => w.MemberUserId == userId && w.WaitlistStatus == YogaWaitlistStatus.Waiting)
+            .ToListAsync(cancellationToken);
+}

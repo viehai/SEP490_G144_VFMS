@@ -43,6 +43,18 @@ public abstract class AuditedRepositoryBase : IAuditedRepository
 
     public Task<bool> UserHasRoleAsync(string userId, string roleName, CancellationToken cancellationToken = default) =>
         Context.ApplicationUserRoles.AnyAsync(ur => ur.UserId == userId && ur.Role.RoleName == roleName, cancellationToken);
+
+    /// <summary>Exclusive SQL Server app lock held until the current transaction ends (check-then-insert races).</summary>
+    protected async Task AppLockAsync(string resource, string busyMessage, CancellationToken cancellationToken)
+    {
+        if (!Context.Database.IsSqlServer())
+            return;   // SQLite test databases have no app locks and run one request at a time.
+        var result = await Context.Database.SqlQuery<int>(
+                $"DECLARE @r int; EXEC @r = sp_getapplock @Resource = {resource}, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000; SELECT @r AS [Value]")
+            .ToListAsync(cancellationToken);
+        if (result.Count == 0 || result[0] < 0)
+            throw new TimeoutException(busyMessage);
+    }
 }
 
 public sealed class EquipmentRepository : AuditedRepositoryBase, IEquipmentRepository
