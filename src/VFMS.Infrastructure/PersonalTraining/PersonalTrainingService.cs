@@ -124,6 +124,44 @@ public sealed partial class PersonalTrainingService(VfmsDbContext db, TimeProvid
             NotifiedAt = Now
         });
 
+    public async Task ExpireInactiveTrainers(DateOnly today, CancellationToken ct)
+    {
+        var profiles = await db.TrainerProfiles.Where(p => p.IsActive).ToListAsync(ct);
+        var lastEnds = await db.PTPurchases.Where(p => p.Order != null && p.Order.OrderStatus == OrderStatus.Paid)
+            .GroupBy(p => p.PTUserId)
+            .Select(group => new { UserId = group.Key, LastEnd = group.Max(p => p.EndDate) })
+            .ToDictionaryAsync(x => x.UserId, x => x.LastEnd, ct);
+        var ptRoleId = await db.ApplicationRoles.Where(role => role.RoleName == nameof(UserRole.PT))
+            .Select(role => (int?)role.Id).SingleOrDefaultAsync(ct);
+        foreach (var profile in profiles)
+        {
+            if (profile.PendingAcceptingNewMembers is { } pending && profile.AcceptingNewMembersEffectiveDate <= today)
+            {
+                profile.AcceptingNewMembers = pending;
+                profile.PendingAcceptingNewMembers = null;
+                profile.AcceptingNewMembersEffectiveDate = null;
+            }
+            DateOnly? lastEnd = lastEnds.TryGetValue(profile.PTUserId, out var end) ? end : null;
+            if (!TrainerReadinessRules.HasExpired(profile.FirstReadyDate, lastEnd, today))
+                continue;
+            profile.IsActive = false;
+            profile.AcceptingNewMembers = false;
+            profile.PendingAcceptingNewMembers = null;
+            profile.AcceptingNewMembersEffectiveDate = null;
+            if (ptRoleId is { } roleId)
+            {
+                var assignment = await db.ApplicationUserRoles.SingleOrDefaultAsync(role =>
+                    role.UserId == profile.PTUserId && role.RoleId == roleId, ct);
+                if (assignment != null) db.ApplicationUserRoles.Remove(assignment);
+            }
+            Audit(profile.PTUserId, nameof(TrainerProfile), profile.Id, "PTInactivityExpired");
+            Notify(profile.PTUserId, "Quyền PT đã kết thúc",
+                "Đã quá 2 tháng kể từ khi hợp đồng PT gần nhất kết thúc hoặc từ ngày bắt đầu sẵn sàng nhận học viên.",
+                nameof(TrainerProfile), profile.Id);
+        }
+        await db.SaveChangesAsync(ct);
+    }
+
     public async Task ExpirePending(CancellationToken ct)
     {
         var now = Now;

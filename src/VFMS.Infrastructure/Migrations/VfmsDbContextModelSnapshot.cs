@@ -915,6 +915,9 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<bool>("IsAcceptingMembers")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("IsAcceptingTrainerApplications")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
@@ -2019,11 +2022,32 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.Property<string>("SessionStatus")
                         .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
 
                     b.Property<TimeOnly>("StartTime")
                         .HasColumnType("time");
+
+                    b.Property<string>("StatusBeforeTrainerAbsenceReport")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<bool?>("TrainerAbsenceApproved")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("TrainerAbsenceReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime?>("TrainerAbsenceReportedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("TrainerAbsenceReviewNote")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime?>("TrainerAbsenceReviewedAt")
+                        .HasColumnType("datetime2");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
@@ -3014,6 +3038,12 @@ namespace VFMS.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<bool>("AcceptingNewMembers")
+                        .HasColumnType("bit");
+
+                    b.Property<DateOnly?>("AcceptingNewMembersEffectiveDate")
+                        .HasColumnType("date");
+
                     b.Property<string>("AvatarJson")
                         .HasColumnType("nvarchar(max)");
 
@@ -3041,6 +3071,9 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<int>("ExperienceYears")
                         .HasColumnType("int");
 
+                    b.Property<DateOnly?>("FirstReadyDate")
+                        .HasColumnType("date");
+
                     b.Property<string>("Gender")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -3060,6 +3093,9 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<string>("PTUserId")
                         .IsRequired()
                         .HasColumnType("nvarchar(128)");
+
+                    b.Property<bool?>("PendingAcceptingNewMembers")
+                        .HasColumnType("bit");
 
                     b.Property<string>("Specialty")
                         .IsRequired()

@@ -31,7 +31,13 @@
             </nav>
             @if (_selected is { } selected)
             {
-                <ContractPanel @key="selected.Id" Contract="selected" TrainerName="@(selected.TrainerName ?? "Huấn luyện viên")" Changed="ReloadAsync" />
+                <div class="trainer-stack">
+                    <div class="trainer-row">
+                        <a class="trainer-button" href="@($"/my-pt-packages/{selected.Id}/reschedule")">Xin đổi lịch</a>
+                        <a class="trainer-button" href="@($"/my-pt-packages/{selected.Id}/freeze")">Bảo lưu PT</a>
+                    </div>
+                    <ContractPanel @key="selected.Id" Contract="selected" TrainerName="@(selected.TrainerName ?? "Huấn luyện viên")" Changed="ReloadAsync" />
+                </div>
             }
         </div>
     }

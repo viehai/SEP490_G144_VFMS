@@ -8,7 +8,7 @@ public sealed record PTSlotInput(DayOfWeek DayOfWeek, TimeOnly StartTime);
 public sealed record PTWeeklySlot(int TemplateId, DayOfWeek DayOfWeek, TimeOnly StartTime, TimeOnly EndTime,
     string? BlockedReason = null);
 public sealed record PTTeachingSlot(int Id, DateOnly Date, TimeOnly StartTime, TimeOnly EndTime,
-    string MemberName, string Status);
+    string MemberName, string Status, int ContractId = 0);
 public sealed record PTPublishRequest([Required, MaxLength(168)] PTSlotInput[] Slots);
 public sealed record PTOperatingHours(TimeOnly? OpenTime, TimeOnly? CloseTime);
 public sealed record PTCalendarSlot(int TemplateId, DateOnly Date, TimeOnly StartTime, TimeOnly EndTime, string Status);
@@ -39,14 +39,22 @@ public sealed record PTRescheduleDecision(bool Accept, DateOnly Date, TimeOnly S
 public sealed record PTRescheduleSlot(DateOnly Date, TimeOnly StartTime, TimeOnly EndTime, string Status);
 public sealed record PTMakeUpRequest(DateOnly Date, TimeOnly StartTime);
 public sealed record PTNoteRequest([Required, StringLength(2000)] string Note);
+public sealed record PTTrainerAbsenceReportRequest([Required, StringLength(1000, MinimumLength = 10)] string Reason);
+public sealed record PTTrainerAbsenceDecisionRequest(bool Approve,
+    [Required, StringLength(1000, MinimumLength = 10)] string Note, DateOnly? NewExpiryDate = null);
+public sealed record PTTrainerAbsenceReport(int SessionId, int ContractId, string MemberName, string TrainerName,
+    DateOnly Date, TimeOnly StartTime, string Reason, DateTime ReportedAt, string? ReviewNote, bool? Approved,
+    DateOnly ContractEndDate);
 public sealed record PTSessionResponse(int Id, DateOnly Date, TimeOnly StartTime, TimeOnly EndTime,
-    string Status, int CreditUnits, string? Note, DateTime? NoteUpdatedAt, PTProposalResponse? Proposal);
+    string Status, int CreditUnits, string? Note, DateTime? NoteUpdatedAt, PTProposalResponse? Proposal,
+    DateTime? TrainerAbsenceReportedAt = null, bool? TrainerAbsenceApproved = null,
+    string? TrainerAbsenceReviewNote = null);
 public sealed record PTContractResponse(int Id, string TrainerId, string MemberId, string? PackageName,
     string Status, DateOnly StartDate, DateOnly EndDate, int TotalCredits, int UsedCredits,
     int ReservedCredits, int AvailableCredits, int RemainingCredits,
     int FreezeMinimumDays, int FreezeMaxTotalDays, int RemainingFreezeDays,
     IReadOnlyList<PTSessionResponse> Sessions, string? OrderNumber = null, DateTime? PaymentExpiresAt = null,
-    string? TrainerName = null, bool HasPendingOrApprovedFreeze = false);
+    string? TrainerName = null, bool HasPendingOrApprovedFreeze = false, string? MemberName = null);
 public sealed record PTAssignedMember(int ContractId, string MemberId, string FullName, string? AvatarUrl,
     string Email, string Phone, int TotalCredits, int RemainingCredits, DateOnly ExpiresOn, DateOnly? LastTrainedOn);
 public sealed record PTFreezeRequest(DateOnly StartDate, DateOnly ResumeDate, [Required, StringLength(1000)] string Reason);

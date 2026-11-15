@@ -30,6 +30,12 @@ public class PTSession : BaseEntity
     public DateTime? ProposalEmailRetryAt { get; set; }
     public DateTime? NoteUpdatedAt { get; set; }
     public int? ReplacementForSessionId { get; set; }
+    public string? TrainerAbsenceReason { get; set; }
+    public DateTime? TrainerAbsenceReportedAt { get; set; }
+    public PTSessionStatus? StatusBeforeTrainerAbsenceReport { get; set; }
+    public DateTime? TrainerAbsenceReviewedAt { get; set; }
+    public string? TrainerAbsenceReviewNote { get; set; }
+    public bool? TrainerAbsenceApproved { get; set; }
 
     // ── Navigation Properties ──────────────────────────────────
     public PTPurchase PTPurchase { get; set; } = null!;

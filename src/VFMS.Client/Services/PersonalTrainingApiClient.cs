@@ -58,10 +58,19 @@ public sealed class PersonalTrainingApiClient(HttpClient http, AuthSession sessi
         Send<PTSessionResponse>(HttpMethod.Post, $"sessions/{id}/reschedule-request/decision", request);
     public Task<PTSessionResponse> ProposeAsync(int id, PTProposalRequest request) =>
         Send<PTSessionResponse>(HttpMethod.Post, $"sessions/{id}/proposal", request);
+    public Task<PTSessionResponse> ProposeMakeUpAsync(int id, PTMakeUpRequest request) =>
+        Send<PTSessionResponse>(HttpMethod.Post, $"sessions/{id}/make-up", request);
     public Task<PTSessionResponse> DecideProposalAsync(int id, PTProposalDecision request) =>
         Send<PTSessionResponse>(HttpMethod.Post, $"sessions/{id}/proposal/decision", request);
     public Task<PTSessionResponse> AttendanceAsync(int id, bool attended) =>
         Send<PTSessionResponse>(HttpMethod.Post, $"sessions/{id}/attendance", attended);
+    public Task<PTSessionResponse> ReportTrainerAbsenceAsync(int id, PTTrainerAbsenceReportRequest request) =>
+        Send<PTSessionResponse>(HttpMethod.Post, $"sessions/{id}/trainer-absence", request);
+    public Task<PagedResponse<PTTrainerAbsenceReport>> TrainerAbsenceReportsAsync(bool processed, int page) =>
+        Send<PagedResponse<PTTrainerAbsenceReport>>(HttpMethod.Get,
+            $"manager/trainer-absence-reports?processed={(processed ? "true" : "false")}&page={page}");
+    public Task<PTSessionResponse> DecideTrainerAbsenceAsync(int id, PTTrainerAbsenceDecisionRequest request) =>
+        Send<PTSessionResponse>(HttpMethod.Post, $"manager/trainer-absence-reports/{id}/decision", request);
     public Task<PTSessionResponse> NoteAsync(int id, PTNoteRequest request) =>
         Send<PTSessionResponse>(HttpMethod.Put, $"sessions/{id}/note", request);
     public Task<int> ReviewAsync(int id, PTReviewRequest request) =>

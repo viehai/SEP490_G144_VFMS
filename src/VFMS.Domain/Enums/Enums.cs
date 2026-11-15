@@ -169,7 +169,8 @@ public enum PTSessionStatus
     ReschedulePending,
     PendingFreeze,
     MakeUpPending,
-    RescheduleRequested
+    RescheduleRequested,
+    TrainerAbsentReported
 }
 
 public enum PTPurchaseStatus

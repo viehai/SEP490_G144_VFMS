@@ -53,6 +53,7 @@
                         <div>
                             <h2><a class="trainer-link" href="@($"/trainers/{trainer.Id}")">@trainer.FullName</a></h2>
                             <p class="trainer-muted">@trainer.Specialty</p>
+                            <p class="trainer-muted">@(trainer.IsAcceptingNewMembers ? "Sẵn sàng nhận học viên" : "Không nhận học viên mới")</p>
                         </div>
                     </div>
                     <div class="trainer-row trainer-between">

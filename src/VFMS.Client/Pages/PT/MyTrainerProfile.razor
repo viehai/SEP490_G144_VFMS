@@ -20,6 +20,18 @@
                     <div><h2>@detail.Profile.FullName</h2><p class="trainer-muted">@detail.Profile.Specialty · @detail.Profile.Level · @detail.Profile.ExperienceYears năm kinh nghiệm</p>
                     <p class="trainer-muted">@(detail.Profile.AverageRating > 0 ? $"{detail.Profile.AverageRating:0.0} / 5 sao" : "Chưa có đánh giá")</p></div>
                 </div>
+                <div class="trainer-row trainer-between">
+                    <div>
+                        <strong>@(detail.Profile.IsAcceptingNewMembers ? "Đang nhận học viên mới" : "Không nhận học viên mới")</strong>
+                        @if (detail.Profile.ScheduledAcceptance is { } scheduled && detail.Profile.ReadinessEffectiveDate is { } effective)
+                        {
+                            <p class="trainer-muted">Đã lên lịch @(scheduled ? "bật" : "tắt") từ 00:00 ngày @effective.ToString("dd/MM/yyyy").</p>
+                        }
+                    </div>
+                    <button type="button" class="trainer-button" disabled="@_saving" @onclick="ToggleReadinessAsync">
+                        @(detail.Profile.ScheduledAcceptance is not null ? "Hủy thay đổi" : detail.Profile.IsAcceptingNewMembers ? "Ngừng nhận học viên" : "Sẵn sàng nhận học viên")
+                    </button>
+                </div>
                 <form class="trainer-stack" @onsubmit="SaveAsync" @onsubmit:preventDefault>
                     <fieldset class="trainer-stack" disabled="@_saving">
                         <label>Giới thiệu<textarea class="trainer-input" rows="5" maxlength="4000" @bind="_bio"></textarea></label>
@@ -37,7 +49,7 @@
                     {
                         @if (Api.PublicAsset(certificate.DownloadUrl) is { } url)
                         {
-                            <li><a href="@url" class="trainer-link" target="@(certificate.IsExternalLink ? "_blank" : null)" rel="noopener noreferrer">@certificate.FileName</a></li>
+                            <li><a href="@url" class="trainer-link trainer-copy" target="@(certificate.IsExternalLink ? "_blank" : null)" rel="noopener noreferrer">@(certificate.IsExternalLink ? url : certificate.FileName)</a></li>
                         }
                     }
                 </ul>
@@ -197,6 +209,25 @@
             _avatar = null;
             _message = "Đã lưu hồ sơ PT.";
             await LoadProfileAsync();
+        }
+        catch (AuthApiException ex) { _error = ex.Message; }
+        finally { _saving = false; }
+    }
+
+    private async Task ToggleReadinessAsync()
+    {
+        if (_saving || _profile is not { } detail) return;
+        _saving = true;
+        _error = _message = null;
+        try
+        {
+            var target = detail.Profile.ScheduledAcceptance is not null
+                ? detail.Profile.IsAcceptingNewMembers : !detail.Profile.IsAcceptingNewMembers;
+            var status = await Api.SetReadinessAsync(target);
+            await LoadProfileAsync();
+            _message = status.EffectiveDate > DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7))
+                ? $"Thay đổi có hiệu lực từ 00:00 ngày {status.EffectiveDate:dd/MM/yyyy}."
+                : "Đã hủy thay đổi trạng thái nhận học viên.";
         }
         catch (AuthApiException ex) { _error = ex.Message; }
         finally { _saving = false; }

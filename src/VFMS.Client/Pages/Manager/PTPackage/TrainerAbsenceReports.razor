@@ -1,0 +1,78 @@
+@page "/manager/pt-trainer-absence-reports"
+@layout ManagerAdminLayout
+@attribute [Authorize(Roles = "Manager")]
+@inject PersonalTrainingApiClient Api
+@using VFMS.Contracts.Common
+@using VFMS.Client.Components.Operations
+
+<PageTitle>Báo cáo PT vắng mặt | Victor Fitness</PageTitle>
+<section class="trainer-page trainer-stack">
+    <h1>Báo cáo PT vắng mặt</h1>
+    <div class="trainer-row">
+        <button class="trainer-button" @onclick="() => SwitchAsync(false)">Đang chờ</button>
+        <button class="trainer-button" @onclick="() => SwitchAsync(true)">Đã xử lý</button>
+    </div>
+    <TrainerFeedback Error="@_error" Message="@_message" />
+    @if (_loading) { <p role="status">Đang tải báo cáo…</p> }
+    else if (!Visible.Any()) { <p class="trainer-panel">Không có báo cáo trong mục này.</p> }
+    @foreach (var report in Visible)
+    {
+        <article class="trainer-panel trainer-stack" @key="report.SessionId">
+            <h2>@report.MemberName · @report.TrainerName</h2>
+            <p>Hợp đồng #@report.ContractId · @Date(report.Date) · @Time(report.StartTime)</p>
+            <p>Lý do: @report.Reason</p>
+            @if (report.Approved is null)
+            {
+                <label>Ghi chú xử lý<textarea class="trainer-input" rows="3" minlength="10" maxlength="1000" @bind="_notes[report.SessionId]" disabled="@_busy"></textarea></label>
+                @if (report.ContractEndDate <= Today)
+                { <label>Hợp đồng đã hết hạn. Chọn ngày hết hạn mới để tập bù<input class="trainer-input" type="date" min="@Today.AddDays(1).ToString("yyyy-MM-dd")" @bind="_newExpiry[report.SessionId]" disabled="@_busy" /></label> }
+                <div class="trainer-row">
+                    <button class="trainer-button trainer-primary" disabled="@_busy" @onclick="() => DecideAsync(report.SessionId, true)">Chấp nhận, trả buổi</button>
+                    <button class="trainer-button" disabled="@_busy" @onclick="() => DecideAsync(report.SessionId, false)">Từ chối</button>
+                </div>
+            }
+            else { <p>@(report.Approved.Value ? "Đã chấp nhận" : "Đã từ chối") · @report.ReviewNote</p> }
+        </article>
+    }
+    @if (_reports is { } reports)
+    { <Pager Page="reports.Page" PageSize="reports.PageSize" TotalCount="reports.TotalCount" Noun="báo cáo" Disabled="_busy" OnPage="LoadAsync" /> }
+</section>
+
+@code {
+    private PagedResponse<PTTrainerAbsenceReport>? _reports;
+    private readonly Dictionary<int, string> _notes = [];
+    private readonly Dictionary<int, DateOnly> _newExpiry = [];
+    private bool _loading, _busy, _processed;
+    private string? _error, _message;
+    private IEnumerable<PTTrainerAbsenceReport> Visible => _reports?.Items ?? [];
+    protected override Task OnInitializedAsync() => LoadAsync(1);
+    private Task SwitchAsync(bool processed) { _processed = processed; return LoadAsync(1); }
+    private async Task LoadAsync(int page)
+    {
+        _loading = true;
+        try
+        {
+            _reports = await Api.TrainerAbsenceReportsAsync(_processed, page);
+            foreach (var item in _reports.Items) _notes.TryAdd(item.SessionId, "");
+            foreach (var item in _reports.Items) _newExpiry.TryAdd(item.SessionId, Today.AddDays(1));
+        }
+        catch (AuthApiException ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+    private async Task DecideAsync(int id, bool approve)
+    {
+        if (_busy) return;
+        if (!_notes.TryGetValue(id, out var note) || note.Trim().Length < 10)
+        { _error = "Nhập ghi chú xử lý từ 10 đến 1000 ký tự."; return; }
+        _busy = true;
+        _error = _message = null;
+        try
+        {
+            await Api.DecideTrainerAbsenceAsync(id, new(approve, note.Trim(), approve ? _newExpiry[id] : null));
+            _message = "Đã xử lý báo cáo.";
+            await LoadAsync(_reports?.Page ?? 1);
+        }
+        catch (AuthApiException ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+}

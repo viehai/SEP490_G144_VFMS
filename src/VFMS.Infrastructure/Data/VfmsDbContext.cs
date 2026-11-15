@@ -527,7 +527,10 @@ public class VfmsDbContext : DbContext
         modelBuilder.Entity<PTSession>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.Property(e => e.SessionStatus).HasConversion<string>().HasMaxLength(20);
+            entity.Property(e => e.SessionStatus).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.StatusBeforeTrainerAbsenceReport).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.TrainerAbsenceReason).HasMaxLength(1000);
+            entity.Property(e => e.TrainerAbsenceReviewNote).HasMaxLength(1000);
             entity.Property(e => e.CreditUnits).HasDefaultValue(1);
             entity.Property(e => e.ProposedAdjustmentType).HasConversion<string>().HasMaxLength(20);
             entity.HasIndex(e => new { e.PTUserId, e.SessionDate, e.StartTime });

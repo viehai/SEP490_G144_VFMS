@@ -1,0 +1,35 @@
+@page "/pt/assigned-members/{ContractId:int}"
+@layout StaffPTLayout
+@attribute [Authorize(Roles = "PT")]
+@inject PersonalTrainingApiClient Api
+@using VFMS.Client.Components.Operations
+
+<PageTitle>Chi tiết hợp đồng PT | Victor Fitness</PageTitle>
+<section class="trainer-page trainer-stack">
+    <a class="trainer-link" href="/pt/assigned-members">← Hội viên được phân công</a>
+    <h1>Lịch và tiến độ tập</h1>
+    <TrainerFeedback Error="@_error" />
+    @if (_loading) { <p role="status">Đang tải hợp đồng…</p> }
+    else if (_contract is { } contract)
+    {
+        <ContractPanel Contract="contract" IsTrainer="true" TrainerName="@contract.MemberName" Changed="LoadAsync" />
+    }
+</section>
+
+@code {
+    [Parameter] public int ContractId { get; set; }
+    private PTContractResponse? _contract;
+    private bool _loading;
+    private string? _error;
+
+    protected override Task OnParametersSetAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try { _contract = (await Api.ContractsAsync(ContractId)).SingleOrDefault(); }
+        catch (AuthApiException ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+}

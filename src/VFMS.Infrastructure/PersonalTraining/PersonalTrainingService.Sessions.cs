@@ -26,11 +26,11 @@ public sealed partial class PersonalTrainingService
         var now = Now;
         return Result<IReadOnlyList<PTTeachingSlot>>.Success(sessions.Select(row => new PTTeachingSlot(
             row.Session.Id, row.Session.SessionDate, row.Session.StartTime, row.Session.EndTime,
-            row.MemberName, SessionResponse(row.Session, now).Status)).ToArray());
+            row.MemberName, SessionResponse(row.Session, now).Status, row.Session.PTPurchaseId)).ToArray());
     }
 
     private IQueryable<PTPurchase> ContractsWithSessions => db.PTPurchases.Include(p => p.Sessions).Include(p => p.PTFreezes)
-        .Include(p => p.PTUser).ThenInclude(t => t.Gym).AsSplitQuery();
+        .Include(p => p.PTUser).ThenInclude(t => t.Gym).Include(p => p.Member).AsSplitQuery();
 
     private PTPurchaseStatus EffectiveStatus(PTPurchase p)
     {
@@ -56,14 +56,16 @@ public sealed partial class PersonalTrainingService
                 pending ? nameof(PTSessionStatus.MakeUpPending) : nameof(PTSessionStatus.Cancelled),
                 s.CreditUnits, s.Note, s.NoteUpdatedAt, pending
                     ? new(s.SessionDate, s.StartTime, s.EndTime, "MakeUp",
-                        DateTime.SpecifyKind(s.ProposalExpiresAt!.Value, DateTimeKind.Utc)) : null);
+                        DateTime.SpecifyKind(s.ProposalExpiresAt!.Value, DateTimeKind.Utc)) : null,
+                s.TrainerAbsenceReportedAt, s.TrainerAbsenceApproved, s.TrainerAbsenceReviewNote);
         }
         return new(s.Id, s.SessionDate, s.StartTime, s.EndTime,
             (awaitingChange && !proposed ? PTSessionStatus.Scheduled : s.SessionStatus).ToString(),
             s.CreditUnits, s.Note, s.NoteUpdatedAt, proposed
                 ? new(s.ProposedDate!.Value, s.ProposedStartTime!.Value, s.ProposedEndTime!.Value,
                     s.ProposedAdjustmentType!.Value.ToString(),
-                    DateTime.SpecifyKind(s.ProposalExpiresAt!.Value, DateTimeKind.Utc)) : null);
+                    DateTime.SpecifyKind(s.ProposalExpiresAt!.Value, DateTimeKind.Utc)) : null,
+            s.TrainerAbsenceReportedAt, s.TrainerAbsenceApproved, s.TrainerAbsenceReviewNote);
     }
 
     private PTContractResponse ContractResponse(PTPurchase p)
@@ -80,7 +82,8 @@ public sealed partial class PersonalTrainingService
             status == PTPurchaseStatus.PendingPayment ? p.Order?.OrderNumber : null,
             status == PTPurchaseStatus.PendingPayment && p.Order is { } order
                 ? DateTime.SpecifyKind(PaymentDeadline(order), DateTimeKind.Utc) : null,
-            p.PTUser.FullName, p.PTFreezes.Any(f => f.RequestStatus == PTFreezeRequestStatus.Pending || Approved(f)));
+            p.PTUser.FullName, p.PTFreezes.Any(f => f.RequestStatus == PTFreezeRequestStatus.Pending || Approved(f)),
+            p.Member.FullName);
     }
 
     public async Task<Result<IReadOnlyList<PTContractResponse>>> MyContracts(string actor, int? id, CancellationToken ct)
@@ -379,6 +382,95 @@ public sealed partial class PersonalTrainingService
         Audit(actor, nameof(PTSession), s.Id, target.ToString());
         await db.SaveChangesAsync(ct);
         return Result<PTSessionResponse>.Success(SessionResponse(s, now));
+    }, ct);
+
+    public Task<Result<PTSessionResponse>> ReportTrainerAbsence(string actor, int id,
+        PTTrainerAbsenceReportRequest request, CancellationToken ct) => Write(async () =>
+    {
+        if (await User(actor, UserRole.Member, ct) is null)
+            return Forbidden<PTSessionResponse>();
+        var session = await db.PTSessions.Include(s => s.PTPurchase)
+            .SingleOrDefaultAsync(s => s.Id == id && s.MemberUserId == actor, ct);
+        if (session is null)
+            return Missing<PTSessionResponse>();
+        if (session.TrainerAbsenceReportedAt is not null)
+            return Conflict<PTSessionResponse>("Buổi này đã được báo PT vắng mặt.");
+        if (Utc(session.SessionDate, session.EndTime) > Now ||
+            session.SessionStatus is not (PTSessionStatus.Scheduled or PTSessionStatus.Completed or PTSessionStatus.NoShow))
+            return Conflict<PTSessionResponse>("Chỉ báo PT vắng mặt cho buổi đã qua.");
+        if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Trim().Length is < 10 or > 1000)
+            return Invalid<PTSessionResponse>("Lý do phải từ 10 đến 1000 ký tự.");
+        session.StatusBeforeTrainerAbsenceReport = session.SessionStatus;
+        session.SessionStatus = PTSessionStatus.TrainerAbsentReported;
+        session.TrainerAbsenceReason = request.Reason.Trim();
+        session.TrainerAbsenceReportedAt = Now;
+        var contract = session.PTPurchase;
+        if (contract.Status == PTPurchaseStatus.Completed && Today <= contract.EndDate)
+        {
+            contract.Status = PTPurchaseStatus.Active;
+            contract.IsCompleted = false;
+        }
+        Audit(actor, nameof(PTSession), id, "TrainerAbsenceReported");
+        Notify(session.PTUserId, "Hội viên báo PT vắng mặt", "Hội viên đã gửi báo cáo vắng mặt cho buổi tập.", nameof(PTSession), id);
+        await db.SaveChangesAsync(ct);
+        return Result<PTSessionResponse>.Success(SessionResponse(session, Now));
+    }, ct);
+
+    public async Task<Result<PagedResponse<PTTrainerAbsenceReport>>> TrainerAbsenceReports(string actor,
+        bool processed, int page, CancellationToken ct)
+    {
+        if (await User(actor, UserRole.Manager, ct) is null)
+            return Forbidden<PagedResponse<PTTrainerAbsenceReport>>();
+        var query = db.PTSessions.AsNoTracking().Include(s => s.Member).Include(s => s.PTUser)
+            .Include(s => s.PTPurchase)
+            .Where(s => s.TrainerAbsenceReportedAt != null &&
+                (processed ? s.TrainerAbsenceReviewedAt != null : s.TrainerAbsenceReviewedAt == null))
+            .OrderByDescending(s => s.TrainerAbsenceReportedAt);
+        return await PageOf(query, page, s => new PTTrainerAbsenceReport(s.Id, s.PTPurchaseId,
+            s.Member.FullName, s.PTUser.FullName, s.SessionDate, s.StartTime, s.TrainerAbsenceReason!,
+            s.TrainerAbsenceReportedAt!.Value, s.TrainerAbsenceReviewNote, s.TrainerAbsenceApproved,
+            s.PTPurchase.EndDate), ct);
+    }
+
+    public Task<Result<PTSessionResponse>> DecideTrainerAbsence(string actor, int id,
+        PTTrainerAbsenceDecisionRequest request, CancellationToken ct) => Write(async () =>
+    {
+        if (await User(actor, UserRole.Manager, ct) is null)
+            return Forbidden<PTSessionResponse>();
+        var session = await db.PTSessions.Include(s => s.PTPurchase).ThenInclude(p => p.Sessions)
+            .SingleOrDefaultAsync(s => s.Id == id, ct);
+        if (session is null)
+            return Missing<PTSessionResponse>();
+        if (session.SessionStatus != PTSessionStatus.TrainerAbsentReported)
+            return Conflict<PTSessionResponse>("Báo cáo này đã được xử lý.");
+        if (string.IsNullOrWhiteSpace(request.Note) || request.Note.Trim().Length is < 10 or > 1000)
+            return Invalid<PTSessionResponse>("Ghi chú xử lý phải từ 10 đến 1000 ký tự.");
+        if (request.Approve && session.PTPurchase.EndDate <= Today &&
+            (request.NewExpiryDate is null || request.NewExpiryDate <= Today))
+            return Invalid<PTSessionResponse>("Chọn ngày hết hạn mới sau hôm nay để hội viên có thể tập bù.");
+        if (request.Approve && request.NewExpiryDate is { } newExpiry && newExpiry > session.PTPurchase.EndDate)
+            session.PTPurchase.EndDate = newExpiry;
+        session.TrainerAbsenceApproved = request.Approve;
+        session.TrainerAbsenceReviewNote = request.Note.Trim();
+        session.TrainerAbsenceReviewedAt = Now;
+        session.SessionStatus = request.Approve ? PTSessionStatus.Cancelled :
+            session.StatusBeforeTrainerAbsenceReport ?? PTSessionStatus.Scheduled;
+        if (request.Approve) session.CancelledAt = Now;
+        session.StatusBeforeTrainerAbsenceReport = null;
+        if (request.Approve)
+        {
+            session.PTPurchase.Status = PTPurchaseStatus.Active;
+            session.PTPurchase.IsCompleted = false;
+        }
+        if (!request.Approve)
+            SettleCredits(session.PTPurchase);
+        Audit(actor, nameof(PTSession), id, request.Approve ? "TrainerAbsenceApproved" : "TrainerAbsenceRejected");
+        var outcome = request.Approve ? "Báo cáo PT vắng mặt được chấp nhận; buổi tập được trả lại." :
+            "Báo cáo PT vắng mặt không được chấp nhận.";
+        Notify(session.MemberUserId, "Kết quả báo PT vắng mặt", outcome, nameof(PTSession), id);
+        Notify(session.PTUserId, "Kết quả báo PT vắng mặt", outcome, nameof(PTSession), id);
+        await db.SaveChangesAsync(ct);
+        return Result<PTSessionResponse>.Success(SessionResponse(session, Now));
     }, ct);
 
     public Task<Result<PTSessionResponse>> Note(string actor, int id, PTNoteRequest request, CancellationToken ct) => Write(async () =>

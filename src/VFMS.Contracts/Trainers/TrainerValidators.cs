@@ -33,17 +33,24 @@ public sealed class SubmitTrainerApplicationValidator : AbstractValidator<Submit
         RuleFor(x => x.DateOfBirth).Must(d => d < DateOnly.FromDateTime(DateTime.UtcNow) && d.Year >= 1900);
         RuleFor(x => x.Gender).Must(x => x is "Male" or "Female" or "Other");
         RuleFor(x => x.Specialty).NotEmpty().MaximumLength(200);
+        RuleFor(x => x.Specialty).Must(x => x is "PT" or "Yoga").When(x => x.ApplicationType == "Recruitment");
         RuleFor(x => x.ExperienceYears).InclusiveBetween(0, 80);
         RuleFor(x => x.Bio).NotEmpty().MaximumLength(4000);
         RuleFor(x => x.Consent).Equal(true);
         RuleFor(x => x.Certificates).NotNull();
-        RuleFor(x => x).Must(x => (x.Certificates?.Count ?? 0) + (x.CertificateUrls?.Count ?? 0) is >= 1 and <= 5)
+        RuleFor(x => x).Must(x => (x.Certificates?.Count ?? 0) + (x.CertificateUrls?.Count ?? 0) +
+            (x.CertificateLinks?.Count ?? 0) is >= 1 and <= 5)
             .WithName("Certificates");
         RuleFor(x => x.CertificateUrls).Must((request, urls) => urls is null || urls.Count == 0 ||
             (request.ApplicationType == "Recruitment" && urls.Count <= 5 && urls.All(TrainerFileRules.IsCertificateUrl)))
             .WithMessage("Only recruitment accepts HTTPS certificate links of up to 2,048 characters.");
         RuleForEach(x => x.Certificates).Must(x => TrainerFileRules.ContentType(x) != null)
             .WithMessage("Certificates must be PDF/JPEG/PNG with matching file signature and at most 5 MB.");
+        RuleForEach(x => x.CertificateLinks).Must(x => TrainerFileRules.IsCertificateUrl(x.Url))
+            .WithMessage("Certificate links must use valid HTTPS URLs.");
+        RuleFor(x => x.CertificateLinks).Must(links => links == null ||
+            links.Select(link => link.ReplacesCertificateId).Where(id => id != null).Distinct().Count() ==
+            links.Count(link => link.ReplacesCertificateId != null));
     }
 }
 public sealed class ReviewTrainerApplicationValidator : AbstractValidator<ReviewTrainerApplicationRequest>

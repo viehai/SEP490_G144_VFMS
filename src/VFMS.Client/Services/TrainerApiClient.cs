@@ -23,6 +23,13 @@ public sealed class TrainerApiClient(HttpClient http, AuthSession session) : IDi
     public Task<TrainerPublicDetail> DetailAsync(int id, int reviewPage = 1) =>
         Send<TrainerPublicDetail>(HttpMethod.Get, $"{Root}/{id}?reviewPage={reviewPage}", optionalAuth: true);
 
+    public Task<TrainerRecruitmentStatus> RecruitmentStatusAsync() =>
+        Send<TrainerRecruitmentStatus>(HttpMethod.Get, $"{Root}/recruitment-status");
+
+    public Task<TrainerRecruitmentStatus> SetRecruitmentStatusAsync(bool accepting) =>
+        Send<TrainerRecruitmentStatus>(HttpMethod.Put, $"{Root}/recruitment-status",
+            new SetTrainerRecruitmentStatusRequest(accepting), auth: true);
+
     public async Task<TrainerApplicationReceipt> SubmitAsync(SubmitTrainerApplicationRequest request)
     {
         try
@@ -74,6 +81,10 @@ public sealed class TrainerApiClient(HttpClient http, AuthSession session) : IDi
 
     public Task<bool> UpdateAsync(UpdateTrainerProfileRequest request) =>
         Send<bool>(HttpMethod.Put, $"{Root}/me", request, auth: true);
+
+    public Task<TrainerReadinessStatus> SetReadinessAsync(bool accepting) =>
+        Send<TrainerReadinessStatus>(HttpMethod.Put, $"{Root}/me/readiness",
+            new SetTrainerReadinessRequest(accepting), auth: true);
 
     public Task<PTPackageResponse[]> PackagesAsync() =>
         Send<PTPackageResponse[]>(HttpMethod.Get, "api/pt/packages");

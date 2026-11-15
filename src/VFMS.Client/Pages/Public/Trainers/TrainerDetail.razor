@@ -19,6 +19,7 @@
                 <div>
                     <h1>@detail.Profile.FullName</h1>
                     <p class="trainer-muted">@detail.Profile.Specialty · @detail.Profile.Level · @detail.Profile.ExperienceYears năm kinh nghiệm</p>
+                    <p class="trainer-muted">@(detail.Profile.IsAcceptingNewMembers ? "Sẵn sàng nhận học viên" : "Không nhận học viên mới")</p>
                 </div>
             </div>
             @if (!string.IsNullOrWhiteSpace(detail.Profile.Bio))
@@ -32,7 +33,10 @@
             else
             {
                 <div class="trainer-row">
-                    <a class="trainer-button trainer-primary" href="@($"/trainers/{Id}/packages")">Khám phá gói PT</a>
+                    @if (detail.Profile.Specialty != "Yoga" && detail.Profile.IsAcceptingNewMembers)
+                    {
+                        <a class="trainer-button trainer-primary" href="@($"/trainers/{Id}/packages")">Khám phá gói PT</a>
+                    }
                     @if (detail.HasActivePTContract)
                     {
                         <a class="trainer-button" href="@($"/trainers/{Id}/my-pt-schedule")">Xem lịch PT của tôi</a>
@@ -53,7 +57,7 @@
                     {
                         @if (Api.PublicAsset(file.DownloadUrl) is { } url)
                         {
-                            <li><a href="@url" class="trainer-link" target="@(file.IsExternalLink ? "_blank" : null)" rel="noopener noreferrer">@file.FileName</a></li>
+                            <li><a href="@url" class="trainer-link trainer-copy" target="@(file.IsExternalLink ? "_blank" : null)" rel="noopener noreferrer">@(file.IsExternalLink ? url : file.FileName)</a></li>
                         }
                     }
                 </ul>

@@ -28,6 +28,14 @@ public sealed class TrainersController(TrainerService service) : ControllerBase
     public async Task<IActionResult> Submit(SubmitTrainerApplicationRequest request, CancellationToken ct) =>
         this.ToActionResult(await service.Submit(request, User.GetUserId(), ct));
 
+    [HttpGet("recruitment-status"), AllowAnonymous]
+    public async Task<IActionResult> RecruitmentStatus(CancellationToken ct) =>
+        this.ToActionResult(await service.RecruitmentStatus(ct));
+
+    [HttpPut("recruitment-status"), Authorize(Roles = "Manager")]
+    public async Task<IActionResult> SetRecruitmentStatus(SetTrainerRecruitmentStatusRequest request, CancellationToken ct) =>
+        this.ToActionResult(await service.SetRecruitmentStatus(request.IsAcceptingApplications, Actor, ct));
+
     [HttpGet("applications"), Authorize(Roles = "Manager")]
     public async Task<IActionResult> Applications([FromQuery] TrainerApplicationFilter query, CancellationToken ct) =>
         this.ToActionResult(await service.Applications(query, Actor, ct));
@@ -54,6 +62,10 @@ public sealed class TrainersController(TrainerService service) : ControllerBase
     [HttpPut("me"), Authorize(Roles = "PT")]
     public async Task<IActionResult> Update(UpdateTrainerProfileRequest request, CancellationToken ct) =>
         this.ToActionResult(await service.Update(request, Actor, ct));
+
+    [HttpPut("me/readiness"), Authorize(Roles = "PT")]
+    public async Task<IActionResult> SetReadiness(SetTrainerReadinessRequest request, CancellationToken ct) =>
+        this.ToActionResult(await service.SetReadiness(request.IsAcceptingNewMembers, Actor, ct));
 
     [HttpGet("me/applications"), Authorize(Roles = "PT")]
     public async Task<IActionResult> MyApplications([FromQuery] TrainerApplicationFilter query, CancellationToken ct) =>

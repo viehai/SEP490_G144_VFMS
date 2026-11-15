@@ -165,6 +165,21 @@ public sealed class PersonalTrainingController(PersonalTrainingService service, 
     public Task<IActionResult> Attendance(int id, [FromBody] bool attended, CancellationToken ct) =>
         AsUser(actor => service.RecordAttendance(actor, id, attended, ct));
 
+    [HttpPost("sessions/{id:int}/trainer-absence")]
+    [Authorize(Roles = "Member")]
+    public Task<IActionResult> ReportTrainerAbsence(int id, PTTrainerAbsenceReportRequest request, CancellationToken ct) =>
+        AsUser(actor => service.ReportTrainerAbsence(actor, id, request, ct));
+
+    [HttpGet("manager/trainer-absence-reports")]
+    [Authorize(Roles = "Manager")]
+    public Task<IActionResult> TrainerAbsenceReports([FromQuery] bool processed, [FromQuery] int page,
+        CancellationToken ct) => AsUser(actor => service.TrainerAbsenceReports(actor, processed, page, ct));
+
+    [HttpPost("manager/trainer-absence-reports/{id:int}/decision")]
+    [Authorize(Roles = "Manager")]
+    public Task<IActionResult> DecideTrainerAbsence(int id, PTTrainerAbsenceDecisionRequest request, CancellationToken ct) =>
+        AsUser(actor => service.DecideTrainerAbsence(actor, id, request, ct));
+
     [HttpPut("sessions/{id:int}/note")]
     [Authorize(Roles = "PT")]
     public Task<IActionResult> Note(int id, PTNoteRequest request, CancellationToken ct) =>

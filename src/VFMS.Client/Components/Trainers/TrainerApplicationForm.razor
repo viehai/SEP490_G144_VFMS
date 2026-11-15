@@ -41,7 +41,11 @@ else
                             <option value="">Chọn giới tính</option><option value="Male">Nam</option><option value="Female">Nữ</option><option value="Other">Khác</option>
                         </select>
                     </label>
-                    <label>Chuyên môn<input class="trainer-input" required maxlength="200" @bind="_specialty" /></label>
+                    <label>Ứng tuyển vị trí
+                        <select class="trainer-input" required @bind="_specialty">
+                            <option value="">Chọn vị trí</option><option value="PT">PT</option><option value="Yoga">Yoga</option>
+                        </select>
+                    </label>
                     <label>Số năm kinh nghiệm<input class="trainer-input" type="number" min="0" max="80" required @bind="_experience" /></label>
                 </div>
                 <label>Giới thiệu chuyên môn<textarea class="trainer-input" rows="4" maxlength="4000" required @bind="_bio"></textarea></label>
@@ -73,8 +77,6 @@ else
                         }
                     </ul>
                 }
-                @if (!IsUpdate)
-                {
                     <fieldset class="trainer-certificate-links">
                         <legend>Link chứng chỉ</legend>
                         <p class="trainer-muted">Gửi từ 1 đến 5 chứng chỉ bằng tệp hoặc link HTTPS.</p>
@@ -85,6 +87,16 @@ else
                             <div class="trainer-certificate-link" @key="link">
                                 <input type="url" class="trainer-input" maxlength="2048" placeholder="https://…"
                                        aria-label="@label" @bind="link.Url" />
+                                @if (IsUpdate && Published.Count > 0)
+                                {
+                                    <select class="trainer-input" aria-label="@($"Thao tác với {label.ToLowerInvariant()}")" @bind="link.Replaces">
+                                        <option value="">Thêm chứng chỉ mới</option>
+                                        @foreach (var existing in Published.Where(doc => doc.Id != "legacy"))
+                                        {
+                                            <option value="@existing.Id">Thay @existing.FileName</option>
+                                        }
+                                    </select>
+                                }
                                 @if (index > 0)
                                 {
                                     <button type="button" class="trainer-button" aria-label="@($"Bỏ {label.ToLowerInvariant()}")"
@@ -95,7 +107,6 @@ else
                         <button type="button" class="trainer-button" disabled="@(_links.Count + _files.Count >= 5)"
                                 @onclick="() => _links.Add(new())">+ Thêm link</button>
                     </fieldset>
-                }
                 <TrainerFeedback Error="@_fileError" />
             </div>
             <label class="trainer-row"><input type="checkbox" required @bind="_consent" /> Tôi đồng ý cho VFMS xử lý thông tin và xác minh hồ sơ này.</label>
@@ -146,6 +157,8 @@ else
         _specialty = profile.Specialty;
         _experience = profile.ExperienceYears;
         _bio = string.IsNullOrWhiteSpace(profile.Bio) ? Identity?.Bio ?? "" : profile.Bio;
+        if (Replacement is { IsExternalLink: true } replacement)
+            _links[0].Replaces = replacement.Id;
     }
 
     private async Task SelectFilesAsync(InputFileChangeEventArgs args)
@@ -196,10 +209,13 @@ else
             _birthDate ?? default, _gender, _specialty.Trim(), _experience, _bio.Trim(), _consent,
             _files.Select(file => file.Input with { ReplacesCertificateId = string.IsNullOrEmpty(file.Replaces) ? null : file.Replaces }).ToList(),
             IsUpdate ? "ProfileUpdate" : "Recruitment",
-            IsUpdate ? null : _links.Select(link => link.Url.Trim()).Where(url => url.Length > 0).ToList());
+            IsUpdate ? null : _links.Select(link => link.Url.Trim()).Where(url => url.Length > 0).ToList(),
+            IsUpdate ? _links.Where(link => !string.IsNullOrWhiteSpace(link.Url)).Select(link =>
+                new TrainerCertificateLinkInput(link.Url.Trim(), string.IsNullOrEmpty(link.Replaces) ? null : link.Replaces)).ToList() : null);
         var issues = new SubmitTrainerApplicationValidator().Validate(request).Errors
             .Select(issue => FieldMessage(issue.PropertyName)).Distinct().ToList();
-        var targets = request.Certificates.Select(file => file.ReplacesCertificateId).OfType<string>().ToArray();
+        var targets = request.Certificates.Select(file => file.ReplacesCertificateId)
+            .Concat((request.CertificateLinks ?? []).Select(link => link.ReplacesCertificateId)).OfType<string>().ToArray();
         if (targets.Distinct().Count() != targets.Length)
             issues.Add("Mỗi chứng chỉ hiện tại chỉ được thay thế một lần trong cùng hồ sơ.");
         _validation = issues;
@@ -239,12 +255,14 @@ else
         "Bio" => "Nhập giới thiệu chuyên môn, tối đa 4.000 ký tự.",
         "Consent" => "Xác nhận đồng ý trước khi gửi.",
         "CertificateUrls" => "Dùng link chứng chỉ HTTPS hợp lệ, tối đa 2.048 ký tự mỗi link.",
+        "CertificateLinks" => "Dùng link chứng chỉ HTTPS hợp lệ, tối đa 2.048 ký tự mỗi link.",
         _ => "Gửi từ 1 đến 5 chứng chỉ hợp lệ."
     };
 
     private sealed class CertificateLink
     {
         public string Url { get; set; } = "";
+        public string Replaces { get; set; } = "";
     }
 
     private sealed class SelectedCertificate(TrainerFileInput input)

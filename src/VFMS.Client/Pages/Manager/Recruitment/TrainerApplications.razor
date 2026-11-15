@@ -6,12 +6,18 @@
 <PageTitle>Xét tuyển PT | Victor Fitness</PageTitle>
 
 <section class="trainer-page trainer-stack">
-    <header><h1>Hồ sơ huấn luyện viên</h1><p class="trainer-muted mt-2">Xét tuyển ứng viên và duyệt cập nhật chứng chỉ PT.</p></header>
+    <header><h1>Hồ sơ huấn luyện viên</h1><p class="trainer-muted mt-2">Xét tuyển ứng viên và duyệt cập nhật chứng chỉ.</p></header>
+    <div class="trainer-panel trainer-row trainer-between">
+        <span>Nhận hồ sơ ứng tuyển: <strong>@(_recruitmentStatus?.IsAcceptingApplications == true ? "Đang mở" : "Tạm dừng")</strong></span>
+        <button type="button" class="trainer-button" disabled="@(_recruitmentStatus is null || Busy)" @onclick="ToggleRecruitmentAsync">
+            @(_recruitmentStatus?.IsAcceptingApplications == true ? "Dừng nhận đơn" : "Mở nhận đơn")
+        </button>
+    </div>
     <form class="trainer-panel trainer-stack" @onsubmit="FilterAsync" @onsubmit:preventDefault>
         <fieldset class="trainer-grid" disabled="@Busy">
             <label>Loại hồ sơ<select class="trainer-input" @bind="_type"><option value="">Tất cả</option><option value="Recruitment">Tuyển dụng</option><option value="ProfileUpdate">Cập nhật chứng chỉ</option></select></label>
             <label>Trạng thái<select class="trainer-input" @bind="_status"><option value="">Tất cả</option><option value="Pending">Chờ duyệt</option><option value="Interviewing">Đang phỏng vấn</option><option value="Hired">Đã tuyển</option><option value="Approved">Đã duyệt</option><option value="Rejected">Từ chối</option></select></label>
-            <label>Chuyên môn<input class="trainer-input" maxlength="200" @bind="_specialty" /></label>
+            <label>Vị trí ứng tuyển<select class="trainer-input" @bind="_specialty"><option value="">Tất cả</option><option value="PT">PT</option><option value="Yoga">Yoga</option></select></label>
             <label>Từ ngày<input type="date" class="trainer-input" @bind="_from" /></label>
             <label>Đến ngày<input type="date" class="trainer-input" @bind="_to" /></label>
             <button class="trainer-button trainer-primary self-end">Lọc hồ sơ</button>
@@ -95,6 +101,23 @@
                 </div>
                 @if (!string.IsNullOrWhiteSpace(app.InterviewNote)) { <div><h3>Ghi chú phỏng vấn</h3><p class="trainer-copy">@app.InterviewNote</p></div> }
                 @if (!string.IsNullOrWhiteSpace(app.ReviewNote)) { <div><h3>Ghi chú quyết định</h3><p class="trainer-copy">@app.ReviewNote</p></div> }
+                @if (app.AccountMatch is { Status: "Ambiguous", Matches: { Count: > 0 } matches })
+                {
+                    <div class="trainer-stack">
+                        <h3>Tài khoản khớp với hồ sơ</h3>
+                        <p class="trainer-feedback trainer-error" role="alert">@AccountMatchError(app)</p>
+                        <ul class="trainer-list">
+                            @foreach (var match in matches)
+                            {
+                                <li class="trainer-copy">
+                                    <strong>@match.FullName</strong> · ID: @match.UserId<br />
+                                    Email: @match.Email @(match.EmailMatches ? "(khớp hồ sơ)" : "")<br />
+                                    Số điện thoại: @match.PhoneNumber @(match.PhoneMatches ? "(khớp hồ sơ)" : "")
+                                </li>
+                            }
+                        </ul>
+                    </div>
+                }
                 @if (Actions(app).Length > 0)
                 {
                     <form class="trainer-stack" @onsubmit="ReviewAsync" @onsubmit:preventDefault>
@@ -143,10 +166,26 @@
     private string _type = "", _status = "", _specialty = "", _action = "", _note = "", _level = "Junior";
     private DateOnly? _from, _to;
     private bool _verified, _loading, _opening, _saving;
+    private TrainerRecruitmentStatus? _recruitmentStatus;
     private string? _listError, _error, _message;
     private bool Busy => _loading || _opening || _saving;
 
-    protected override Task OnInitializedAsync() => LoadAsync(1);
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync(1);
+        try { _recruitmentStatus = await Api.RecruitmentStatusAsync(); }
+        catch (AuthApiException ex) { _listError = ex.Message; }
+    }
+
+    private async Task ToggleRecruitmentAsync()
+    {
+        if (Busy || _recruitmentStatus is null) return;
+        _saving = true;
+        _listError = null;
+        try { _recruitmentStatus = await Api.SetRecruitmentStatusAsync(!_recruitmentStatus.IsAcceptingApplications); }
+        catch (AuthApiException ex) { _listError = ex.Message; }
+        finally { _saving = false; }
+    }
 
     private Task FilterAsync()
     {

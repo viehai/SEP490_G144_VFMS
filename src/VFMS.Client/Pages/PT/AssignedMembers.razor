@@ -28,29 +28,25 @@
                 {
                     <tr @key="member.ContractId">
                         <td><div class="trainer-row">
-                            @if (Uri.TryCreate(member.AvatarUrl, UriKind.Absolute, out var avatar) && avatar.Scheme == "https")
-                            { <img src="@avatar.AbsoluteUri" class="trainer-avatar" alt="" loading="lazy" /> }
+                            @if (Uri.TryCreate(member.AvatarUrl, UriKind.Absolute, out var avatar) &&
+                                 avatar.Scheme is "https" or "http")
+                            { <img src="@avatar" class="trainer-avatar" alt="Ảnh của @member.FullName" loading="lazy" /> }
+                            else { <span class="trainer-avatar" aria-hidden="true">@member.FullName.FirstOrDefault()</span> }
                             <strong>@member.FullName</strong>
                         </div></td><td>@member.Email<br />@member.Phone</td>
                         <td>@member.RemainingCredits / @member.TotalCredits</td><td>@Date(member.ExpiresOn)</td>
                         <td>@(member.LastTrainedOn is { } trained ? Date(trained) : "Chưa tập")</td>
-                        <td><button class="trainer-link" disabled="@_busy" @onclick="() => OpenAsync(member)">Xem lịch và tiến độ</button></td>
+                        <td><a class="trainer-link" href="@($"/pt/assigned-members/{member.ContractId}")">Xem lịch và tiến độ</a></td>
                     </tr>
                 }
             </tbody>
         </table></div>
         <Pager Page="members.Page" PageSize="members.PageSize" TotalCount="members.TotalCount" Noun="hợp đồng" Disabled="_busy" OnPage="LoadPageAsync" />
     }
-    @if (_selected is { } selected)
-    {
-        <ContractPanel @key="selected.Id" Contract="selected" IsTrainer="true" TrainerName="@(_member?.FullName)" Changed="ReloadAsync" />
-    }
 </section>
 
 @code {
     private PagedResponse<PTAssignedMember>? _members;
-    private PTAssignedMember? _member;
-    private PTContractResponse? _selected;
     private bool _busy, _historical;
     private string _search = "";
     private string _appliedSearch = "";
@@ -76,32 +72,9 @@
         _busy = true;
         _error = null;
         _members = null;
-        _member = null;
-        _selected = null;
         try { _members = await Api.AssignedPageAsync(_appliedSearch, _historical, page); }
         catch (AuthApiException ex) { _error = ex.Message; }
         finally { _busy = false; }
     }
 
-    private async Task ReloadAsync()
-    {
-        if (_member is not { } member) return;
-        await OpenAsync(member);
-        try { _members = await Api.AssignedPageAsync(_appliedSearch, _historical, _members?.Page ?? 1); }
-        catch (AuthApiException ex) { _error = ex.Message; }
-    }
-
-    private async Task OpenAsync(PTAssignedMember member)
-    {
-        if (_busy) return;
-        _busy = true;
-        _error = null;
-        try
-        {
-            _selected = (await Api.ContractsAsync(member.ContractId)).SingleOrDefault();
-            _member = member;
-        }
-        catch (AuthApiException ex) { _error = ex.Message; }
-        finally { _busy = false; }
-    }
 }

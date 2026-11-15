@@ -13,6 +13,7 @@ using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
 using VFMS.Infrastructure.Data;
 using VFMS.Infrastructure.Identity;
+using VFMS.Infrastructure.PersonalTraining;
 using VFMS.Infrastructure.Repositories;
 
 namespace VFMS.IntegrationTests;
@@ -63,7 +64,7 @@ internal sealed class TrainerTestDatabase : IAsyncDisposable
     {
         Assert.True(result.IsSuccess, $"{result.ErrorCode}: {result.ErrorMessage}"); return result.Data!;
     }
-    public static SubmitTrainerApplicationRequest Request => new("Test Trainer", "trainer@example.test", "0900000010", "000000000010", new(2000, 1, 1), "Other", "Strength", 3, "Strength coach", true, [new("proof.pdf", "%PDF-1.7 synthetic"u8.ToArray())]);
+    public static SubmitTrainerApplicationRequest Request => new("Test Trainer", "trainer@example.test", "0900000010", "000000000010", new(2000, 1, 1), "Other", "PT", 3, "Strength coach", true, [new("proof.pdf", "%PDF-1.7 synthetic"u8.ToArray())]);
     public async Task<TrainerApplication> Hire()
     {
         Success(await Service.Submit(Request, null, default));
@@ -204,6 +205,92 @@ public class TrainerWorkflowTests
     }
 
     [SqlTrainerFact]
+    public async Task Inactive_PT_loses_only_PT_role_after_two_months_without_contract()
+    {
+        await using var fixture = new TrainerTestDatabase();
+        await fixture.Initialize();
+        var hired = await fixture.Hire();
+        TrainerTestDatabase.Success(await fixture.Service.Setup(
+            new(await fixture.SetupToken(hired.Id), "TestPassword1!"), default));
+        var db = fixture.Db;
+        var profile = await db.TrainerProfiles.SingleAsync();
+        profile.FirstReadyDate = new DateOnly(2026, 1, 1);
+        profile.AcceptingNewMembers = false;
+        await db.SaveChangesAsync();
+        var workerService = new PersonalTrainingService(db, TimeProvider.System, null!, null!, null!);
+        await workerService.ExpireInactiveTrainers(new DateOnly(2026, 3, 1), default);
+        Assert.False((await db.TrainerProfiles.SingleAsync()).IsActive);
+        Assert.DoesNotContain(await db.ApplicationUserRoles.Where(x => x.UserId == profile.PTUserId)
+            .Select(x => x.Role.RoleName).ToListAsync(), role => role == "PT");
+        Assert.Equal(AccountStatus.Active, (await db.ApplicationUsers.SingleAsync(x => x.UserId == profile.PTUserId)).AccountStatus);
+    }
+
+    [SqlTrainerFact]
+    public async Task PT_can_schedule_and_cancel_readiness_for_next_day()
+    {
+        await using var fixture = new TrainerTestDatabase();
+        await fixture.Initialize();
+        var hired = await fixture.Hire();
+        var service = fixture.Service;
+        TrainerTestDatabase.Success(await service.Setup(new(await fixture.SetupToken(hired.Id), "TestPassword1!"), default));
+        var userId = (await fixture.Db.TrainerProfiles.SingleAsync()).PTUserId;
+        var tomorrow = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7)).AddDays(1);
+        var scheduled = TrainerTestDatabase.Success(await service.SetReadiness(true, userId, default));
+        Assert.False(scheduled.IsAcceptingNow);
+        Assert.True(scheduled.ScheduledAcceptance);
+        Assert.Equal(tomorrow, scheduled.EffectiveDate);
+        var profile = TrainerTestDatabase.Success(await service.Mine(userId, default)).Profile;
+        Assert.False(profile.IsAcceptingNewMembers);
+        Assert.True(profile.ScheduledAcceptance);
+        TrainerTestDatabase.Success(await service.SetReadiness(false, userId, default));
+        Assert.Null((await fixture.Db.TrainerProfiles.SingleAsync()).FirstReadyDate);
+    }
+
+    [SqlTrainerFact]
+    public async Task Profile_update_can_replace_and_add_certificate_urls_after_manager_approval()
+    {
+        await using var fixture = new TrainerTestDatabase();
+        await fixture.Initialize();
+        var service = fixture.Service;
+        var hired = await fixture.Hire();
+        TrainerTestDatabase.Success(await service.Setup(new(await fixture.SetupToken(hired.Id), "TestPassword1!"), default));
+        var userId = (await fixture.Db.TrainerProfiles.SingleAsync()).PTUserId;
+        var before = TrainerTestDatabase.Success(await service.Mine(userId, default));
+        var oldId = Assert.Single(before.Certificates).Id;
+        var request = TrainerTestDatabase.Request with
+        {
+            ApplicationType = "ProfileUpdate", Certificates = [], CertificateUrls = null,
+            CertificateLinks = [new("https://certificates.example.test/revised", oldId),
+                new("https://certificates.example.test/additional")]
+        };
+        TrainerTestDatabase.Success(await service.Submit(request, userId, default));
+        var application = await fixture.Db.TrainerApplications.SingleAsync(x => x.ApplicationType == "ProfileUpdate");
+        Assert.DoesNotContain(TrainerTestDatabase.Success(await service.Public(before.Profile.Id, default)).Certificates,
+            certificate => certificate.IsExternalLink);
+        TrainerTestDatabase.Success(await service.Review(application.Id, new("Approve", "Verified links"), "manager", default));
+        var certificates = TrainerTestDatabase.Success(await service.Public(before.Profile.Id, default)).Certificates;
+        Assert.Equal(2, certificates.Count);
+        Assert.DoesNotContain(certificates, certificate => certificate.Id == oldId);
+        Assert.Contains(certificates, certificate => certificate.DownloadUrl == "https://certificates.example.test/revised");
+        Assert.Contains(certificates, certificate => certificate.DownloadUrl == "https://certificates.example.test/additional");
+    }
+
+    [SqlTrainerFact]
+    public async Task Manager_can_pause_and_resume_new_recruitment_submissions()
+    {
+        await using var fixture = new TrainerTestDatabase();
+        await fixture.Initialize();
+        var service = fixture.Service;
+        Assert.True(TrainerTestDatabase.Success(await service.RecruitmentStatus(default)).IsAcceptingApplications);
+        TrainerTestDatabase.Success(await service.SetRecruitmentStatus(false, "manager", default));
+        Assert.False(TrainerTestDatabase.Success(await service.RecruitmentStatus(default)).IsAcceptingApplications);
+        Assert.Equal("TRAINER_RECRUITMENT_CLOSED",
+            (await service.Submit(TrainerTestDatabase.Request, null, default)).ErrorCode);
+        TrainerTestDatabase.Success(await service.SetRecruitmentStatus(true, "manager", default));
+        TrainerTestDatabase.Success(await service.Submit(TrainerTestDatabase.Request, null, default));
+    }
+
+    [SqlTrainerFact]
     public async Task RecruitmentCertificateLinkIsPrivateUntilHireAndAccountConflictsBlockHire()
     {
         await using var fixture = new TrainerTestDatabase();
@@ -236,7 +323,28 @@ public class TrainerWorkflowTests
         };
         db.AddRange(emailMatch, phoneMatch);
         await db.SaveChangesAsync();
-        Assert.Equal("Ambiguous", TrainerTestDatabase.Success(await service.Application(application.Id, "manager", default)).AccountMatch!.Status);
+        var ambiguous = TrainerTestDatabase.Success(await service.Application(application.Id, "manager", default)).AccountMatch!;
+        Assert.Equal("Ambiguous", ambiguous.Status);
+        Assert.NotNull(ambiguous.Matches);
+        Assert.Collection(ambiguous.Matches!.OrderBy(match => match.UserId),
+            match =>
+            {
+                Assert.Equal("email-match", match.UserId);
+                Assert.Equal("Email Match", match.FullName);
+                Assert.Equal(request.Email, match.Email);
+                Assert.Equal("0900000020", match.PhoneNumber);
+                Assert.True(match.EmailMatches);
+                Assert.False(match.PhoneMatches);
+            },
+            match =>
+            {
+                Assert.Equal("phone-match", match.UserId);
+                Assert.Equal("Phone Match", match.FullName);
+                Assert.Equal("phone@example.test", match.Email);
+                Assert.Equal(request.PhoneNumber, match.PhoneNumber);
+                Assert.False(match.EmailMatches);
+                Assert.True(match.PhoneMatches);
+            });
         var blocked = await service.Review(application.Id, new("Hire", "Verified", "Senior", IdentityVerified: true), "manager", default);
         Assert.Equal("TRAINER_IDENTITY_CONFLICT", blocked.ErrorCode);
 
@@ -385,8 +493,8 @@ public class TrainerWorkflowTests
         var pending = await db.TrainerApplications.SingleAsync(x => x.ApplicationType == "ProfileUpdate");
         var pendingFile = JsonSerializer.Deserialize<List<TrainerStoredFile>>(pending.CertificatesJson)!.Single();
         var stillPublic = TrainerTestDatabase.Success(await service.Public(profile.Id, default));
-        Assert.Equal("Strength", stillPublic.Profile.Specialty); Assert.Equal(oldFile.Id, stillPublic.Certificates.Single().Id);
-        Assert.Single(TrainerTestDatabase.Success(await service.Search(new(Specialty: "Strength"), default)).Items);
+        Assert.Equal("PT", stillPublic.Profile.Specialty); Assert.Equal(oldFile.Id, stillPublic.Certificates.Single().Id);
+        Assert.Single(TrainerTestDatabase.Success(await service.Search(new(Specialty: "PT"), default)).Items);
         Assert.Equal(404, (await service.Document(profile.Id, pendingFile.Id, null, default)).StatusCode);
         Assert.Equal(404, (await service.ApplicationDocument(pending.Id, pendingFile.Id, null, default)).StatusCode);
         TrainerTestDatabase.Success(await service.ApplicationDocument(pending.Id, pendingFile.Id, userId, default));

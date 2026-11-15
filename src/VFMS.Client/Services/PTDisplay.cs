@@ -24,6 +24,7 @@ internal static class PTDisplay
         "PendingFreeze" => "Chờ duyệt bảo lưu", "Approved" => "Đã duyệt", "Rejected" => "Đã từ chối",
         "ReschedulePending" => "Chờ Member duyệt ca đôi", "RescheduleRequested" => "Chờ PT duyệt đổi lịch",
         "MakeUpPending" => "Chờ Member duyệt buổi bù", "CheckoutHold" => "Đang giữ chỗ",
+        "TrainerAbsentReported" => "Chờ xử lý báo PT vắng mặt",
         "Available" => "Còn trống", "Busy" or "Booked" => "Bận", "Unavailable" => "Không khả dụng",
         "Past" => "Đã qua", "Proposed" => "Dự kiến", _ => value
     };

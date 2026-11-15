@@ -42,6 +42,9 @@ public sealed partial class PersonalTrainingService
             p.PackageStatus == PackageStatus.Active, ct);
         if (profile is null || package is null || package.Components.Single().ApplicableTrainerLevel != profile.Level)
             return Invalid<Booking>("Gói PT hoặc cấp độ huấn luyện viên không hợp lệ.");
+        if (profile.Specialty == "Yoga" || !TrainerReadinessRules.IsAccepting(profile.AcceptingNewMembers,
+                profile.PendingAcceptingNewMembers, profile.AcceptingNewMembersEffectiveDate, today))
+            return Conflict<Booking>("Huấn luyện viên hiện không nhận học viên mới.");
         var terms = package.Components.Single();
         var pattern = await Templates(request.TrainerId).Where(x => request.TemplateIds.Contains(x.Id))
             .OrderBy(x => x.DayOfWeek).ToArrayAsync(ct);

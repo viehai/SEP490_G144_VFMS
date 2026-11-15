@@ -37,6 +37,7 @@
                         <strong>@session.MemberName</strong>
                         <span>@Time(slot.StartTime) – @Time(slot.EndTime)</span>
                         <span>@Status(session.Status)</span>
+                        <a class="trainer-link" href="@($"/pt/contracts/{session.ContractId}/sessions/{session.Id}")">Chi tiết ca</a>
                     </div>
                 </SlotContent>
             </PTWeeklyGrid>

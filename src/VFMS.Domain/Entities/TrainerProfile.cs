@@ -23,6 +23,10 @@ public class TrainerProfile : BaseEntity
     /// <summary>Commission tier identifier (configured upon hiring, GBR-04).</summary>
     public string? CommissionTier { get; set; }
     public bool IsActive { get; set; } = true;
+    public bool AcceptingNewMembers { get; set; }
+    public bool? PendingAcceptingNewMembers { get; set; }
+    public DateOnly? AcceptingNewMembersEffectiveDate { get; set; }
+    public DateOnly? FirstReadyDate { get; set; }
 
     // ── Navigation Properties ──────────────────────────────────
     public ApplicationUser PTUser { get; set; } = null!;

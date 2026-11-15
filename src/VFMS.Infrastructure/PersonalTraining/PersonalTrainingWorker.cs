@@ -8,6 +8,8 @@ namespace VFMS.Infrastructure.PersonalTraining;
 public sealed class PersonalTrainingWorker(IServiceScopeFactory scopes, ILogger<PersonalTrainingWorker> logger)
     : BackgroundService
 {
+    private DateOnly? lastTrainerSweep;
+
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(15));
@@ -19,6 +21,12 @@ public sealed class PersonalTrainingWorker(IServiceScopeFactory scopes, ILogger<
                 var service = scope.ServiceProvider.GetRequiredService<PersonalTrainingService>();
                 await service.ExpirePending(ct);
                 await service.SendPendingEmail(scope.ServiceProvider.GetRequiredService<IEmailService>(), ct);
+                var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7));
+                if (lastTrainerSweep != today)
+                {
+                    await service.ExpireInactiveTrainers(today, ct);
+                    lastTrainerSweep = today;
+                }
             }
             catch (Exception ex) when (!ct.IsCancellationRequested)
             {
