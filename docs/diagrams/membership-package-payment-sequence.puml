@@ -1,0 +1,219 @@
+@startuml sequence-2.1-initiate-vietqr-payment
+title Sequence 2.1 — Khởi tạo thanh toán gói tập bằng VietQR
+hide footbox
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 16
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow false
+skinparam maxMessageSize 190
+skinparam sequence {
+  ArrowColor #222222
+  LifeLineBorderColor #666666
+  LifeLineBackgroundColor white
+  ParticipantBorderColor #222222
+  ParticipantBackgroundColor white
+  ActorBorderColor #222222
+  ActorBackgroundColor white
+  ActivationBorderColor #333333
+  ActivationBackgroundColor #F0F0F0
+  GroupBorderColor #333333
+  GroupBackgroundColor white
+  NoteBorderColor #666666
+  NoteBackgroundColor #FAFAFA
+}
+
+actor Customer as customer
+boundary "Membership\nPlanCatalog" as catalog
+boundary "Membership\nCheckout" as checkout
+control "Membership\nPurchasesController" as controller
+control "Membership\nPurchaseService" as service
+participant "Membership\nPurchaseRepository" as repository <<repository>>
+database "VFMS Database" as db
+boundary "SepayVietQr\nGateway" as gateway
+
+' Successful initialization: authenticated buyer, valid request, pending order on first GET.
+' Interaction IDs map to the companion Markdown traceability table.
+' I01
+customer -> catalog: Chọn gói;\nchọn VietQR
+activate catalog
+' I02 — MembershipPlanApiClient is folded into the UI-to-HTTP boundary.
+catalog -> controller: POST /api/membership-purchases
+activate controller
+' I03
+controller -> service: CreateAsync(...)
+activate service
+' I04
+service -> repository: Load checkout data
+activate repository
+repository -> db: Query users,\nplans + terms
+activate db
+db -->> repository: Users + plans
+deactivate db
+repository -->> service: Checkout data
+deactivate repository
+' I05
+service -> service: Validate purchase;\nbuild Order + OrderItems
+' I06
+service -> service: SavePendingOrderAsync(...)
+activate service
+' I07 — Builds a URL locally; no outbound gateway request or redirect.
+service -> gateway: CreateVietQr(orderNumber, subtotal)
+activate gateway
+gateway -->> service: VietQR information
+deactivate gateway
+' I08
+service -> service: Build PaymentTransaction\nPending / VietQR / SePay
+' I09
+service -> repository: Persist pending\npurchase
+activate repository
+repository -> db: Insert pending\norder + payment
+activate db
+db -->> repository: Saved
+deactivate db
+repository -->> service: Saved
+deactivate repository
+deactivate service
+' I10 — Serializable transaction completes before the HTTP response.
+service -->> controller: Purchase result (201)\nPending / Pending
+deactivate service
+controller -->> catalog: HTTP 201 + purchase result
+deactivate controller
+' I11 — Navigation handoff between the two real Blazor UI components.
+catalog -> checkout: NavigateTo(...)\ncheckout route
+deactivate catalog
+activate checkout
+' I12 — Initial refresh only; periodic polling is outside this diagram.
+checkout -> controller: GET purchase\n(orderNumber)
+activate controller
+controller -> service: GetAsync(...)
+activate service
+' I13
+service -> repository: FindOrderAsync(...)\nforUpdate: false
+activate repository
+repository -> db: Query owned\npurchase state
+activate db
+db -->> repository: Order + payment
+deactivate db
+repository -->> service: Order + payment
+deactivate repository
+' I14 — Initial checkout read while Pending and AmountDue > 0.
+service -> gateway: CreateVietQr(orderNumber, AmountDue)
+activate gateway
+gateway -->> service: VietQR information
+deactivate gateway
+' I15
+service -->> controller: Purchase result\nVietQR + expiry
+deactivate service
+controller -->> checkout: HTTP 200 + result
+deactivate controller
+' I16
+checkout -->> customer: Hiển thị VietQR, số tiền,\nnội dung chuyển khoản, thời hạn
+deactivate checkout
+@enduml
+
+@startuml sequence-2.2-sepay-settlement
+title Sequence 2.2 — Xác nhận thanh toán SePay và kích hoạt Membership
+hide footbox
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 16
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow false
+skinparam maxMessageSize 210
+skinparam sequence {
+  ArrowColor #222222
+  LifeLineBorderColor #666666
+  LifeLineBackgroundColor white
+  ParticipantBorderColor #222222
+  ParticipantBackgroundColor white
+  ActorBorderColor #222222
+  ActorBackgroundColor white
+  ActivationBorderColor #333333
+  ActivationBackgroundColor #F0F0F0
+  GroupBorderColor #333333
+  GroupBackgroundColor white
+  NoteBorderColor #666666
+  NoteBackgroundColor #FAFAFA
+}
+
+actor "SePay" as sepay <<External System>>
+boundary "SepayWebhook\nController" as webhook
+control "Membership\nPurchaseService" as service
+boundary "SepayVietQr\nGateway" as gateway
+participant "Membership\nPurchaseRepository" as repository <<repository>>
+database "VFMS Database" as db
+
+' W01 — The bank transfer occurs outside VFMS before this interaction.
+sepay -> webhook: POST /api/v1/commerce/\npayment/webhook/sepay
+activate webhook
+' W02
+webhook -> service: ConfirmSepayAsync(...)
+activate service
+' W03
+service -> gateway: Verify(..., rawBody, now)
+activate gateway
+gateway -->> service: Result<SepayTransfer>
+deactivate gateway
+
+alt Verification failed
+  ' W04
+  service -->> webhook: Failure(errorCode, statusCode)
+  webhook -->> sepay: HTTP 401 / 400 / 503\nProblemDetails + code
+else Verification succeeded
+  ' W05 — Grouped reads and transaction/lock setup, not business validation.
+  service -> repository: Load authoritative payment state
+  activate repository
+  repository -> db: Query / lock\npayment state
+  activate db
+  db -->> repository: Order + payment\n+ items / voucher
+  deactivate db
+  repository -->> service: Authoritative payment state
+  deactivate repository
+
+  alt No matching payment
+    ' W06
+    service -->> webhook: OrderNotFound<T>()\nstatus 404
+    webhook -->> sepay: HTTP 404 + ProblemDetails
+  else Paid + same reference
+    ' W07 — Return before validation or fulfillment; no second fulfillment.
+    service -->> webhook: Success(true)
+    webhook -->> sepay: HTTP 200 {"success": true}
+  else Other matching payment
+    ' W08 — Conditional reference lookup is included; helpers are documented separately.
+    service -> service: Validate payment settlement
+
+    alt Settlement valid
+      ' W09 — Persistence below is inside FulfillAsync, not a second save after it.
+      service -> service: FulfillAsync(...)
+      activate service
+      note over service,db
+        Create MemberMembership: Active / Scheduled.
+        Payment + Order → Paid; create Invoice;
+        confirm reserved voucher, if present.
+      end note
+      ' W10 — Internal reads/locks and promotion are abstracted, see Markdown.
+      service -> repository: Persist settlement changes
+      activate repository
+      repository -> db: Save settlement\nchanges
+      activate db
+      db -->> repository: Saved
+      deactivate db
+      repository -->> service: Saved
+      deactivate repository
+      deactivate service
+      ' W11 — Includes completion of the transaction before returning.
+      service -->> webhook: Success(true)
+      webhook -->> sepay: HTTP 200 {"success": true}
+    else Settlement rejected
+      ' W12
+      service -->> webhook: Failure(MSG-24, 409)
+      webhook -->> sepay: HTTP 409 + ProblemDetails
+    end
+  end
+end
+deactivate service
+deactivate webhook
+@enduml

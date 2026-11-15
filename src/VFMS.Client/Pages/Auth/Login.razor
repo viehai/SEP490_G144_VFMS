@@ -1,10 +1,20 @@
 @page "/auth/login"
 @layout AuthLayout
+@using Microsoft.AspNetCore.Authorization
+@using System.Security.Claims
 @inject AuthSession Session
 @inject NavigationManager Navigation
+@inject IAuthorizationPolicyProvider AuthorizationPolicies
+@inject IAuthorizationService Authorization
 
 <PageTitle>Đăng nhập | Victor Fitness</PageTitle>
 
+@if (_checkingSession || _redirecting)
+{
+    <p class="auth-progress" role="status">Đang chuyển đến không gian làm việc của bạn...</p>
+}
+else
+{
 <AuthorizeView>
     <Authorizing><p role="status">Đang kiểm tra phiên đăng nhập...</p></Authorizing>
     <Authorized Context="auth">
@@ -47,6 +57,7 @@
         <p class="auth-switch">Chưa có tài khoản? <a href="/auth/register">Đăng ký ngay ↗</a></p>
     </NotAuthorized>
 </AuthorizeView>
+}
 
 @code {
     [SupplyParameterFromQuery(Name = "returnUrl")] public string? ReturnUrl { get; set; }
@@ -55,9 +66,18 @@
     private readonly LoginRequestValidator _validator = new();
     private ContractValidation<LoginRequest>? _validation;
     private bool _busy;
+    private bool _checkingSession = true;
+    private bool _redirecting;
     private string? _error;
 
     protected override void OnInitialized() => _model.Email = Email ?? string.Empty;
+    protected override async Task OnParametersSetAsync()
+    {
+        var state = await Session.GetAuthenticationStateAsync();
+        if (AuthNavigation.DefaultRoute(state.User) != "/")
+            await NavigateAsync(state.User);
+        _checkingSession = false;
+    }
     private LoginRequest CreateRequest() => new(_model.Email.Trim(), _model.Password, _model.RememberMe);
     private void InvalidSubmit() => _error = "Vui lòng kiểm tra lại thông tin đã nhập.";
 
@@ -70,7 +90,10 @@
         {
             await Session.SignInAsync(CreateRequest());
             _model.Password = string.Empty;
-            Navigation.NavigateTo(AuthNavigation.SafeReturnUrl(ReturnUrl));
+            var state = await Session.GetAuthenticationStateAsync();
+            if (state.User.Identity?.IsAuthenticated != true)
+                throw new AuthApiException("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+            await NavigateAsync(state.User);
         }
         catch (AuthApiException error)
         {
@@ -78,6 +101,13 @@
             _validation?.ShowErrors(error.Errors);
         }
         finally { _busy = false; }
+    }
+
+    private async Task NavigateAsync(ClaimsPrincipal user)
+    {
+        var destination = await AuthNavigation.LoginDestinationAsync(user, ReturnUrl, AuthorizationPolicies, Authorization);
+        _redirecting = true;
+        Navigation.NavigateTo(destination, replace: true);
     }
 
     private sealed class LoginModel
