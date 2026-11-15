@@ -9,6 +9,26 @@ namespace VFMS.Infrastructure.PersonalTraining;
 
 public sealed partial class PersonalTrainingService
 {
+    public async Task<Result<IReadOnlyList<PTTeachingSlot>>> TeachingSchedule(string actor, DateOnly from, CancellationToken ct)
+    {
+        if (await User(actor, UserRole.PT, ct) is null)
+            return Forbidden<IReadOnlyList<PTTeachingSlot>>();
+        if (from.DayOfWeek != DayOfWeek.Monday || from.DayNumber > DateOnly.MaxValue.DayNumber - 6)
+            return Invalid<IReadOnlyList<PTTeachingSlot>>("Chọn ngày thứ Hai bắt đầu tuần.");
+
+        var through = from.AddDays(6);
+        var sessions = await db.PTSessions.AsNoTracking()
+            .Where(s => s.PTUserId == actor && s.SessionDate >= from && s.SessionDate <= through &&
+                s.SessionStatus != PTSessionStatus.CheckoutHold && s.SessionStatus != PTSessionStatus.Cancelled &&
+                s.SessionStatus != PTSessionStatus.MakeUpPending)
+            .OrderBy(s => s.SessionDate).ThenBy(s => s.StartTime)
+            .Select(s => new { Session = s, MemberName = s.Member.FullName }).ToListAsync(ct);
+        var now = Now;
+        return Result<IReadOnlyList<PTTeachingSlot>>.Success(sessions.Select(row => new PTTeachingSlot(
+            row.Session.Id, row.Session.SessionDate, row.Session.StartTime, row.Session.EndTime,
+            row.MemberName, SessionResponse(row.Session, now).Status)).ToArray());
+    }
+
     private IQueryable<PTPurchase> ContractsWithSessions => db.PTPurchases.Include(p => p.Sessions).Include(p => p.PTFreezes)
         .Include(p => p.PTUser).ThenInclude(t => t.Gym).AsSplitQuery();
 
@@ -53,37 +73,85 @@ public sealed partial class PersonalTrainingService
         if (status == PTPurchaseStatus.PendingPayment)
             reserved = p.Sessions.Where(s => s.SessionStatus == PTSessionStatus.CheckoutHold).Sum(s => s.CreditUnits);
         return new(p.Id, p.PTUserId, p.MemberUserId, p.PackageNameSnapshot, status.ToString(), p.StartDate, p.EndDate,
-            p.TotalSessions, used, reserved, Math.Max(0, p.TotalSessions - used - reserved), Math.Max(0, p.TotalSessions - used),
+            p.TotalSessions, used, reserved, status == PTPurchaseStatus.Expired ? 0 : Math.Max(0, p.TotalSessions - used - reserved),
+            Math.Max(0, p.TotalSessions - used),
             p.FreezeMinimumDaysSnapshot, p.FreezeMaxTotalDaysSnapshot, RemainingFreezeDays(p),
-            p.Sessions.OrderBy(s => s.SessionDate).ThenBy(s => s.StartTime).Select(s => SessionResponse(s, Now)).ToArray());
+            p.Sessions.OrderBy(s => s.SessionDate).ThenBy(s => s.StartTime).Select(s => SessionResponse(s, Now)).ToArray(),
+            status == PTPurchaseStatus.PendingPayment ? p.Order?.OrderNumber : null,
+            status == PTPurchaseStatus.PendingPayment && p.Order is { } order
+                ? DateTime.SpecifyKind(PaymentDeadline(order), DateTimeKind.Utc) : null,
+            p.PTUser.FullName, p.PTFreezes.Any(f => f.RequestStatus == PTFreezeRequestStatus.Pending || Approved(f)));
     }
 
     public async Task<Result<IReadOnlyList<PTContractResponse>>> MyContracts(string actor, int? id, CancellationToken ct)
     {
         if (await User(actor, UserRole.Member, ct) is null && await User(actor, UserRole.PT, ct) is null)
             return Forbidden<IReadOnlyList<PTContractResponse>>();
-        var contracts = await ContractsWithSessions.AsNoTracking()
-            .Where(p => (p.MemberUserId == actor || p.PTUserId == actor && p.Status != PTPurchaseStatus.PendingPayment &&
-                p.Status != PTPurchaseStatus.Expired) && (id == null || p.Id == id))
+        var contracts = await VisibleContracts(actor).Where(p => id == null || p.Id == id)
             .OrderByDescending(p => p.Id).Take(100).ToListAsync(ct);
         return id != null && contracts.Count == 0 ? Missing<IReadOnlyList<PTContractResponse>>() :
             Result<IReadOnlyList<PTContractResponse>>.Success(contracts.Select(ContractResponse).ToArray());
+    }
+
+    private IQueryable<PTPurchase> VisibleContracts(string actor) => ContractsWithSessions.AsNoTracking().Include(p => p.Order)
+        .Where(p => p.MemberUserId == actor || p.PTUserId == actor && p.Status != PTPurchaseStatus.PendingPayment &&
+            (p.OrderId == null || p.Order!.OrderStatus == OrderStatus.Paid));
+
+    public async Task<Result<PagedResponse<PTContractResponse>>> ContractPage(string actor, int page, string? trainerId,
+        CancellationToken ct)
+    {
+        if (await User(actor, UserRole.Member, ct) is null)
+            return Forbidden<PagedResponse<PTContractResponse>>();
+        var query = VisibleContracts(actor).Where(p => p.MemberUserId == actor &&
+            (trainerId == null || p.PTUserId == trainerId));
+        return await PageOf(query.OrderByDescending(p => p.Id), page, ContractResponse, ct);
     }
 
     public async Task<Result<IReadOnlyList<PTAssignedMember>>> Assigned(string actor, string? search, CancellationToken ct)
     {
         if (await User(actor, UserRole.PT, ct) is null)
             return Forbidden<IReadOnlyList<PTAssignedMember>>();
-        var query = ContractsWithSessions.AsNoTracking().Include(p => p.Member)
-            .Where(p => p.PTUserId == actor && p.EndDate >= Today &&
-                (p.Status == PTPurchaseStatus.Active || p.Status == PTPurchaseStatus.Frozen) && !p.IsCompleted);
+        var query = AssignedContracts(actor, search, false);
+        var data = await query.Take(100).ToListAsync(ct);
+        return Result<IReadOnlyList<PTAssignedMember>>.Success(data.Select(AssignedResponse).ToArray());
+    }
+
+    public async Task<Result<PagedResponse<PTAssignedMember>>> AssignedPage(string actor, string? search, bool historical,
+        int page, CancellationToken ct)
+    {
+        if (await User(actor, UserRole.PT, ct) is null)
+            return Forbidden<PagedResponse<PTAssignedMember>>();
+        return await PageOf(AssignedContracts(actor, search, historical), page, AssignedResponse, ct);
+    }
+
+    private IQueryable<PTPurchase> AssignedContracts(string actor, string? search, bool historical)
+    {
+        var today = Today;
+        var query = VisibleContracts(actor).Include(p => p.Member).Where(p => p.PTUserId == actor &&
+            (p.Status == PTPurchaseStatus.Active || p.Status == PTPurchaseStatus.Frozen ||
+             p.Status == PTPurchaseStatus.Completed || p.Status == PTPurchaseStatus.Expired));
+        query = historical
+            ? query.Where(p => p.EndDate < today || p.IsCompleted || p.Status == PTPurchaseStatus.Completed || p.Status == PTPurchaseStatus.Expired)
+            : query.Where(p => p.EndDate >= today && !p.IsCompleted &&
+                (p.Status == PTPurchaseStatus.Active || p.Status == PTPurchaseStatus.Frozen));
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(p => p.Member.FullName.Contains(search));
-        var data = await query.OrderBy(p => p.Member.FullName).ThenBy(p => p.Id).Take(100).ToListAsync(ct);
-        return Result<IReadOnlyList<PTAssignedMember>>.Success(data.Select(p => new PTAssignedMember(p.Id, p.MemberUserId,
+        return query.OrderBy(p => p.Member.FullName).ThenByDescending(p => p.Id);
+    }
+
+    private static PTAssignedMember AssignedResponse(PTPurchase p) => new(p.Id, p.MemberUserId,
             p.Member.FullName, p.Member.AvatarUrl, p.Member.Email, p.Member.PhoneNumber, p.TotalSessions,
             p.TotalSessions - PersonalTrainingRules.Credits(p.Sessions).Used, p.EndDate,
-            p.Sessions.Where(s => s.SessionStatus == PTSessionStatus.Completed).Max(s => (DateOnly?)s.SessionDate))).ToArray());
+            p.Sessions.Where(s => s.SessionStatus == PTSessionStatus.Completed).Max(s => (DateOnly?)s.SessionDate));
+
+    private static async Task<Result<PagedResponse<TResponse>>> PageOf<T, TResponse>(IQueryable<T> query, int page,
+        Func<T, TResponse> map, CancellationToken ct)
+    {
+        const int pageSize = 20;
+        var total = await query.CountAsync(ct);
+        page = Math.Clamp(page, 1, Math.Max(1, (int)Math.Ceiling((double)total / pageSize)));
+        var rows = await query.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
+        return Result<PagedResponse<TResponse>>.Success(new(page, pageSize, total, rows.Select(map).ToArray()));
     }
 
     private Task<PTPurchase?> ContractForSession(string actor, int id, bool trainer, CancellationToken ct) =>
@@ -135,7 +203,7 @@ public sealed partial class PersonalTrainingService
                     (s.SessionStatus == PTSessionStatus.MakeUpPending
                         ? s.ProposalExpiresAt > now
                         : s.SessionStatus != PTSessionStatus.Cancelled)))
-                return Conflict<PTSessionResponse>("Buổi này không có credit được trả hoặc đã có buổi thay thế.");
+                return Conflict<PTSessionResponse>("Buổi này không có lượt tập được trả lại hoặc đã có buổi thay thế.");
 
             var session = new PTSession
             {
@@ -150,7 +218,7 @@ public sealed partial class PersonalTrainingService
             };
             if (!await CanAdjust(contract, session, session.SessionDate, session.StartTime, session.EndTime,
                 PTAdjustmentType.Reschedule, now, ct, isMakeUp: true))
-                return Conflict<PTSessionResponse>("Lịch hoặc credit không đủ điều kiện.");
+                return Conflict<PTSessionResponse>("Lịch không khả dụng hoặc không đủ số buổi.");
 
             session.ProposalExpiresAt = new[] { now.AddHours(24), Utc(session.SessionDate, session.StartTime) }.Min();
             contract.Sessions.Add(session);
@@ -184,7 +252,7 @@ public sealed partial class PersonalTrainingService
             return Invalid<PTSessionResponse>("Ca đôi kéo dài buổi 60 phút hiện tại.");
         var end = request.StartTime.AddHours(2);
         if (!await CanAdjust(p, s, request.Date, request.StartTime, end, type, now, ct))
-            return Conflict<PTSessionResponse>("Lịch hoặc credit không đủ điều kiện.");
+            return Conflict<PTSessionResponse>("Lịch không khả dụng hoặc không đủ số buổi.");
         s.ProposedDate = request.Date;
         s.ProposedStartTime = request.StartTime;
         s.ProposedEndTime = end;

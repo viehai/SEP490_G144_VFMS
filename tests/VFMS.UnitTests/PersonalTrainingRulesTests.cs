@@ -23,10 +23,10 @@ public sealed class PersonalTrainingRulesTests
     }
 
     [Fact]
-    public void Back_to_back_sessions_require_exactly_fifteen_minutes_of_buffer()
+    public void Back_to_back_sessions_can_share_an_endpoint()
     {
-        Assert.True(PersonalTrainingRules.Overlaps(new(18, 0), new(19, 0), new(19, 14), new(20, 14)));
-        Assert.False(PersonalTrainingRules.Overlaps(new(18, 0), new(19, 0), new(19, 15), new(20, 15)));
+        Assert.True(PersonalTrainingRules.Overlaps(new(18, 0), new(19, 0), new(18, 59), new(19, 59)));
+        Assert.False(PersonalTrainingRules.Overlaps(new(18, 0), new(19, 0), new(19, 0), new(20, 0)));
     }
 
     [Fact]

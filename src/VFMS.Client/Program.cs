@@ -20,6 +20,7 @@ builder.Services.AddScoped(sp => new SystemAdministrationApiClient(CreateApiHttp
 builder.Services.AddScoped(sp => new OperationsApiClient(CreateApiHttpClient(), sp.GetRequiredService<AuthSession>()));
 
 builder.Services.AddScoped(sp => new TrainerApiClient(CreateApiHttpClient(), sp.GetRequiredService<AuthSession>()));
+builder.Services.AddScoped(sp => new PersonalTrainingApiClient(CreateApiHttpClient(), sp.GetRequiredService<AuthSession>()));
 
 await builder.Build().RunAsync();
 

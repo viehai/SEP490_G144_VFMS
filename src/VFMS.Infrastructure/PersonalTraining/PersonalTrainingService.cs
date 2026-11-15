@@ -59,6 +59,8 @@ public sealed partial class PersonalTrainingService(VfmsDbContext db, TimeProvid
     private static bool InHours(Gym gym, TimeOnly start, TimeOnly end) =>
         gym.OpenTime is { } open && gym.CloseTime is { } close && start >= open && end <= close && end > start;
 
+    private static bool IsWholeHour(TimeOnly time) => time.Ticks % TimeSpan.TicksPerHour == 0;
+
     private IQueryable<MemberMembership> Coverage(string memberId) => db.MemberMemberships.Where(x =>
         x.MemberUserId == memberId && x.MembershipStatus == MembershipStatus.Active &&
         x.PackageComponent.ComponentType == ComponentType.GYM);

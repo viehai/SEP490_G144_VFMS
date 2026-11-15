@@ -1,6 +1,5 @@
 @page "/trainers/{Id:int}"
 @layout PublicLayout
-@using VFMS.Contracts.PersonalTraining
 @inject TrainerApiClient Api
 <PageTitle>@(_detail?.Profile.FullName ?? "Hồ sơ huấn luyện viên") | Victor Fitness</PageTitle>
 
@@ -32,9 +31,13 @@
             }
             else
             {
-                <a class="trainer-button trainer-primary" href="@(detail.HasActivePTContract ? $"/trainers/{Id}/my-pt-schedule" : "#pt-packages")">
-                    @(detail.HasActivePTContract ? "Xem lịch PT của tôi" : "Khám phá gói PT")
-                </a>
+                <div class="trainer-row">
+                    <a class="trainer-button trainer-primary" href="@($"/trainers/{Id}/packages")">Khám phá gói PT</a>
+                    @if (detail.HasActivePTContract)
+                    {
+                        <a class="trainer-button" href="@($"/trainers/{Id}/my-pt-schedule")">Xem lịch PT của tôi</a>
+                    }
+                </div>
             }
         </header>
 
@@ -70,63 +73,16 @@
                             <li><strong>@review.Rating / 5 sao</strong><p class="trainer-copy">@review.Comment</p></li>
                         }
                     </ul>
+                    @if (detail.ReviewTotal > 20)
+                    {
+                        <Pager Page="detail.ReviewPage" TotalCount="detail.ReviewTotal" Noun="đánh giá"
+                               Disabled="_loadingReviews" OnPage="LoadReviewsAsync" />
+                    }
                 }
             </section>
         </div>
 
-        <section class="trainer-panel trainer-stack">
-            <h2>Lịch khả dụng trong 14 ngày</h2>
-            @if (detail.Availability.Count == 0)
-            {
-                <p class="trainer-muted">Huấn luyện viên chưa công bố lịch.</p>
-            }
-            else
-            {
-                <div class="trainer-scroll">
-                    <table class="trainer-table">
-                        <thead><tr><th>Ngày</th><th>Ca tập</th><th>Trạng thái</th></tr></thead>
-                        <tbody>
-                            @foreach (var slot in detail.Availability)
-                            {
-                                <tr><td>@slot.Date.ToString("dd/MM/yyyy")</td><td>@slot.StartTime.ToString("HH:mm") – @slot.EndTime.ToString("HH:mm")</td><td><TrainerStatus Status="@slot.Status" /></td></tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
-            }
-        </section>
-        @if (!detail.IsOwnProfile)
-        {
-            <section id="pt-packages" class="trainer-panel trainer-stack" style="scroll-margin-top: 6rem">
-                <h2>Gói PT phù hợp</h2>
-                @if (_packages is null && _packageError is null)
-                {
-                    <p role="status">Đang tải gói PT…</p>
-                }
-                <TrainerFeedback Error="@_packageError" />
-                @if (_packages is { Length: 0 })
-                {
-                    <p class="trainer-muted">Chưa có gói đang mở bán cho cấp @detail.Profile.Level.</p>
-                }
-                else if (_packages is { } packages)
-                {
-                    <div class="trainer-grid">
-                        @foreach (var package in packages)
-                        {
-                            <article class="trainer-panel trainer-stack">
-                                <h3>@package.Name</h3>
-                                <p>@package.Credits buổi · @package.ValidityDays ngày</p>
-                                <strong>@package.Price.ToString("N0") đ</strong>
-                                @if (!string.IsNullOrWhiteSpace(package.Description))
-                                {
-                                    <p class="trainer-copy trainer-muted">@package.Description</p>
-                                }
-                            </article>
-                        }
-                    </div>
-                }
-            </section>
-        }
+        <TrainerWeeklyCalendar @key="detail.Profile.UserId" TrainerId="@detail.Profile.UserId" />
     }
     else
     {
@@ -137,33 +93,37 @@
 @code {
     [Parameter] public int Id { get; set; }
     private TrainerPublicDetail? _detail;
-    private PTPackageResponse[]? _packages;
     private bool _loading;
-    private string? _error, _packageError;
+    private bool _loadingReviews;
+    private string? _error;
     private int _requestVersion;
+
+    private async Task LoadReviewsAsync(int page)
+    {
+        var version = _requestVersion;
+        _loadingReviews = true;
+        _error = null;
+        try
+        {
+            var detail = await Api.DetailAsync(Id, page);
+            if (version == _requestVersion) _detail = detail;
+        }
+        catch (AuthApiException ex) { if (version == _requestVersion) _error = ex.Message; }
+        finally { if (version == _requestVersion) _loadingReviews = false; }
+    }
 
     protected override async Task OnParametersSetAsync()
     {
         var version = ++_requestVersion;
         _loading = true;
+        _loadingReviews = false;
         _detail = null;
-        _packages = null;
-        _error = _packageError = null;
+        _error = null;
         try
         {
             var detail = await Api.DetailAsync(Id);
             if (version != _requestVersion) return;
             _detail = detail;
-            _loading = false;
-            if (detail.IsOwnProfile) return;
-            StateHasChanged();
-            try
-            {
-                var packages = await Api.PackagesAsync();
-                if (version == _requestVersion)
-                    _packages = packages.Where(p => p.IsActive && p.TrainerLevel == detail.Profile.Level).ToArray();
-            }
-            catch (AuthApiException ex) { if (version == _requestVersion) _packageError = ex.Message; }
         }
         catch (AuthApiException ex) { if (version == _requestVersion) _error = ex.Message; }
         finally { if (version == _requestVersion) _loading = false; }

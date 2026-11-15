@@ -1,0 +1,21 @@
+@if (Slots.Count == 0)
+{
+    <p class="trainer-muted">Chưa có buổi trong lịch này.</p>
+}
+else
+{
+    <div class="trainer-scroll"><table class="trainer-table">
+        <thead><tr><th scope="col">Ngày</th><th scope="col">Khung giờ</th><th scope="col">Trạng thái</th></tr></thead>
+        <tbody>
+            @foreach (var slot in Slots)
+            {
+                <tr><td>@Day(slot.Date.DayOfWeek), @Date(slot.Date)</td>
+                    <td>@Time(slot.StartTime) – @Time(slot.EndTime)</td>
+                    <td><span class="trainer-status">@Status(slot.Status)</span></td></tr>
+            }
+        </tbody>
+    </table></div>
+}
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<PTCalendarSlot> Slots { get; set; } = [];
+}

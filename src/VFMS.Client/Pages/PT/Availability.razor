@@ -1,0 +1,145 @@
+@page "/pt/availability"
+@layout StaffPTLayout
+@attribute [Authorize(Roles = "PT")]
+@inject PersonalTrainingApiClient Api
+<PageTitle>Lịch tuần PT | Victor Fitness</PageTitle>
+
+<section class="trainer-page trainer-stack">
+    <header>
+        <h1>Lịch tuần PT</h1>
+        <p class="trainer-muted">Tích vào ô để mở ca 60 phút lặp lại hằng tuần.</p>
+    </header>
+    <TrainerFeedback Error="@_error" Message="@_message" />
+    @if (_loading)
+    {
+        <p role="status">Đang tải lịch…</p>
+    }
+    else if (_hours is { } hours)
+    {
+        <section class="trainer-panel trainer-stack">
+            @if (hours.OpenTime is { } open && hours.CloseTime is { } close && open < close)
+            {
+                <p>Giờ hoạt động <strong>@Time(open) – @Time(close)</strong></p>
+            }
+            @if (_standardHours.Count == 0)
+            {
+                <p class="trainer-muted">Giờ hoạt động hiện tại không có khung đủ 60 phút.</p>
+            }
+            <div class="trainer-row" role="group" aria-label="Chọn buổi trong ngày">
+                <button type="button" class="trainer-button" aria-pressed="@(!_afternoon)" @onclick="() => _afternoon = false">Sáng</button>
+                <button type="button" class="trainer-button" aria-pressed="@_afternoon" @onclick="() => _afternoon = true">Chiều</button>
+            </div>
+            @if (VisibleRows.Any())
+            {
+                <div class="trainer-scroll">
+                    <table class="trainer-table pt-week pt-availability">
+                        <caption class="sr-only">Mẫu lịch lặp theo tuần</caption>
+                        <thead><tr><th scope="col">Khung giờ</th>
+                            @foreach (var day in Days) { <th scope="col">@Day(day)</th> }
+                        </tr></thead>
+                        <tbody>
+                            @foreach (var start in VisibleRows)
+                            {
+                                <tr @key="start">
+                                    <th scope="row">@Time(start) – @Time(start.AddHours(1))</th>
+                                    @foreach (var day in Days)
+                                    {
+                                        var slot = new PTSlotInput(day, start);
+                                        var selected = _slots.Contains(slot);
+                                        <td>
+                                            @if (_standardHours.Contains(start) || selected)
+                                            {
+                                                <label class="pt-availability-cell">
+                                                    <input type="checkbox" checked="@selected"
+                                                           disabled="@(_saving || (!selected && OverlapsSelected(slot)))"
+                                                           @onchange="args => Toggle(slot, args.Value is true)" />
+                                                    <span class="sr-only">@Day(day), @Time(start) đến @Time(start.AddHours(1))</span>
+                                                </label>
+                                            }
+                                            else { <span aria-hidden="true">–</span> }
+                                        </td>
+                                    }
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else { <p class="trainer-muted">Không có khung giờ trong buổi này.</p> }
+            <div class="trainer-row trainer-between">
+                <span>@_slots.Count ca mỗi tuần</span>
+                <button class="trainer-button trainer-primary" type="button" disabled="@(_saving || _slots.SetEquals(_published))"
+                        @onclick="PublishAsync">@(_saving ? "Đang lưu…" : "Công bố lịch")</button>
+            </div>
+        </section>
+    }
+    else
+    {
+        <button class="trainer-button" @onclick="LoadAsync">Tải lại</button>
+    }
+</section>
+
+@code {
+    private static readonly DayOfWeek[] Days = Enum.GetValues<DayOfWeek>().OrderBy(DayIndex).ToArray();
+    private readonly HashSet<TimeOnly> _standardHours = [];
+    private HashSet<PTSlotInput> _slots = [];
+    private HashSet<PTSlotInput> _published = [];
+    private TimeOnly[] _rows = [];
+    private PTOperatingHours? _hours;
+    private bool _loading, _saving, _afternoon;
+    private IEnumerable<TimeOnly> VisibleRows => _rows.Where(start => (start.Hour >= 12) == _afternoon);
+    private string? _error, _message;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            var hours = await Api.OperatingHoursAsync();
+            _slots = (await Api.AvailabilityAsync()).ToHashSet();
+            _published = new(_slots);
+            _hours = hours;
+            _standardHours.Clear();
+            if (hours.OpenTime is { } open && hours.CloseTime is { } close)
+            {
+                const long step = TimeSpan.TicksPerHour;
+                var first = (open.Ticks + step - 1) / step * step;
+                for (var start = first; start + step <= close.Ticks; start += step)
+                    _standardHours.Add(new TimeOnly(start));
+            }
+            _rows = _standardHours.Concat(_published.Select(slot => slot.StartTime)).Distinct().Order().ToArray();
+        }
+        catch (AuthApiException ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private bool OverlapsSelected(PTSlotInput slot) => _slots.Any(existing => existing.DayOfWeek == slot.DayOfWeek &&
+        Math.Abs(existing.StartTime.Ticks - slot.StartTime.Ticks) < TimeSpan.TicksPerHour);
+
+    private void Toggle(PTSlotInput slot, bool selected)
+    {
+        if (_saving) return;
+        _message = _error = null;
+        if (!selected) _slots.Remove(slot);
+        else if (_standardHours.Contains(slot.StartTime) && !OverlapsSelected(slot)) _slots.Add(slot);
+    }
+
+    private async Task PublishAsync()
+    {
+        if (_saving || _slots.SetEquals(_published)) return;
+        _saving = true;
+        _error = _message = null;
+        try
+        {
+            await Api.PublishAsync(new(_slots.OrderBy(slot => DayIndex(slot.DayOfWeek)).ThenBy(slot => slot.StartTime).ToArray()));
+            _published = new(_slots);
+            _rows = _standardHours.Concat(_published.Select(slot => slot.StartTime)).Distinct().Order().ToArray();
+            _message = "Đã công bố lịch tuần.";
+        }
+        catch (AuthApiException ex) { _error = ex.Message; }
+        finally { _saving = false; }
+    }
+}

@@ -1,0 +1,128 @@
+@page "/manager/pt-freeze-requests"
+@layout ManagerAdminLayout
+@attribute [Authorize(Roles = "Manager")]
+@inject PersonalTrainingApiClient Api
+@using VFMS.Contracts.Common
+@using VFMS.Client.Components.Operations
+<PageTitle>Duyệt bảo lưu PT | Victor Fitness</PageTitle>
+
+<section class="trainer-page trainer-stack">
+    <header><h1>Duyệt bảo lưu PT</h1><p class="trainer-muted">Xem khoảng bảo lưu và lịch thay thế trước khi duyệt.</p></header>
+    <TrainerFeedback Error="@_error" Message="@_message" />
+    <div class="trainer-row" role="group" aria-label="Trạng thái xử lý đơn bảo lưu">
+        <button type="button" class="trainer-button" aria-pressed="@(!_processed ? "true" : "false")"
+                disabled="@_busy" @onclick="() => SwitchTabAsync(false)">Đơn chờ</button>
+        <button type="button" class="trainer-button" aria-pressed="@(_processed ? "true" : "false")"
+                disabled="@_busy" @onclick="() => SwitchTabAsync(true)">Đơn đã xử lý</button>
+    </div>
+    @if (_busy) { <p role="status">Đang xử lý…</p> }
+    @if (_requests is null && !_busy) { <button class="trainer-button" @onclick="LoadAsync">Tải lại</button> }
+    else if (_requests is { TotalCount: 0 }) { <p class="trainer-panel">@(_processed ? "Chưa có đơn đã xử lý." : "Không có yêu cầu đang chờ.")</p> }
+    else if (_requests is { } requests)
+    {
+        <div class="trainer-panel trainer-scroll"><table class="trainer-table">
+            <thead><tr><th>Hợp đồng</th><th>Hội viên</th><th>PT</th><th>Bắt đầu</th><th>Tập lại</th><th>Số ngày</th><th>Lý do</th><th>@(_processed ? "Kết quả" : "Thao tác")</th></tr></thead>
+            <tbody>@foreach (var item in requests.Items)
+            {
+                <tr @key="item.Id"><td>#@item.ContractId</td><td>@(item.MemberName ?? item.MemberId)</td><td>@(item.TrainerName ?? item.TrainerId)</td>
+                    <td>@Date(item.StartDate)</td><td>@Date(item.ResumeDate)</td><td>@(item.ResumeDate.DayNumber - item.StartDate.DayNumber)</td>
+                    <td class="trainer-copy">@item.Reason</td>
+                    <td>
+                        @if (_processed)
+                        {
+                            <div class="trainer-stack">
+                                <span class="trainer-status">@(item.Status == "Active" ? "Đang bảo lưu" : Status(item.Status))</span>
+                                @if (item.ReviewedAt is { } reviewedAt) { <small>@LocalTime(reviewedAt)</small> }
+                                @if (!string.IsNullOrWhiteSpace(item.ReviewNote)) { <span class="trainer-copy">@item.ReviewNote</span> }
+                            </div>
+                        }
+                        else
+                        {
+                            <button class="trainer-link" disabled="@_busy" @onclick="() => OpenAsync(item)">Xem xét</button>
+                        }
+                    </td>
+                </tr>
+            }</tbody>
+        </table></div>
+        <Pager Page="requests.Page" PageSize="requests.PageSize" TotalCount="requests.TotalCount" Noun="đơn" Disabled="_busy" OnPage="LoadPageAsync" />
+    }
+    @if (_selected is { } selected)
+    {
+        <section class="trainer-panel trainer-stack">
+            <h2>Yêu cầu #@selected.Id · Hợp đồng #@selected.ContractId</h2>
+            <p>@Date(selected.StartDate) đến trước @Date(selected.ResumeDate)</p>
+            <p class="trainer-copy">@selected.Reason</p>
+            @if (_preview is { } preview)
+            {
+                <p>Hạn hợp đồng sau khi duyệt: <strong>@Date(preview.ExpiresOn)</strong></p>
+                <SlotList Slots="preview.Replacements" />
+            }
+            <label>Lý do từ chối<textarea class="trainer-input" rows="3" maxlength="1000" @bind="_reason" @bind:event="oninput" disabled="@_busy"></textarea></label>
+            <div class="trainer-row">
+                <button class="trainer-button trainer-primary" disabled="@(_busy || _preview is null)" @onclick="() => DecideAsync(true)">Duyệt bảo lưu</button>
+                <button class="trainer-button" disabled="@(_busy || string.IsNullOrWhiteSpace(_reason))" @onclick="() => DecideAsync(false)">Từ chối</button>
+                <button class="trainer-button" disabled="@_busy" @onclick="() => _selected = null">Đóng</button>
+            </div>
+        </section>
+    }
+</section>
+
+@code {
+    private PagedResponse<PTFreezeResponse>? _requests;
+    private PTFreezeResponse? _selected;
+    private PTFreezePreview? _preview;
+    private string _reason = "";
+    private string? _error, _message;
+    private bool _busy, _processed;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private Task SwitchTabAsync(bool processed)
+    {
+        if (_busy || _processed == processed) return Task.CompletedTask;
+        _processed = processed;
+        _selected = null;
+        _preview = null;
+        return LoadAsync();
+    }
+
+    private Task LoadAsync() => LoadPageAsync(1);
+
+    private Task LoadPageAsync(int page) => RunAsync(async () =>
+    {
+        _selected = null;
+        _requests = null;
+        _requests = await Api.ManagerFreezePageAsync(_processed, page);
+    });
+
+    private Task OpenAsync(PTFreezeResponse request) => RunAsync(async () =>
+    {
+        _selected = request;
+        _preview = null;
+        _reason = "";
+        _preview = await Api.PreviewFreezeAsync(request.Id);
+    });
+
+    private Task DecideAsync(bool approve) => _selected is { } request && (approve ? _preview is not null : !string.IsNullOrWhiteSpace(_reason))
+        ? RunAsync(async () =>
+        {
+            await Api.DecideFreezeAsync(request.Id, new(approve, approve ? null : _reason.Trim()));
+            _selected = null;
+            _preview = null;
+            _message = approve ? "Đã duyệt bảo lưu PT." : "Đã từ chối bảo lưu PT.";
+            var page = _requests?.Page ?? 1;
+            _requests = null;
+            _requests = await Api.ManagerFreezePageAsync(false, page);
+        })
+        : Task.CompletedTask;
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        if (_busy) return;
+        _busy = true;
+        _message = _error = null;
+        try { await action(); }
+        catch (AuthApiException ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+}

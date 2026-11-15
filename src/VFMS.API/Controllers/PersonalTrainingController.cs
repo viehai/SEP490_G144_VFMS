@@ -12,8 +12,12 @@ namespace VFMS.API.Controllers;
 [Route("api/pt")]
 [Authorize]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
-public sealed class PersonalTrainingController(PersonalTrainingService service) : ControllerBase
+public sealed class PersonalTrainingController(PersonalTrainingService service, IWebHostEnvironment environment,
+    IConfiguration configuration) : ControllerBase
 {
+    private bool DemoPaymentEnabled =>
+        environment.IsDevelopment() && configuration.GetValue<bool>("PersonalTraining:EnableDemoPayment");
+
     private Task<IActionResult> AsUser<T>(Func<string, Task<Result<T>>> action) =>
         User.GetUserId() is { } actor ? Reply(action(actor)) : Task.FromResult<IActionResult>(Unauthorized());
 
@@ -24,9 +28,18 @@ public sealed class PersonalTrainingController(PersonalTrainingService service) 
     public Task<IActionResult> Calendar(string trainerId, [FromQuery, BindRequired] DateOnly from, CancellationToken ct) =>
         Reply(service.Calendar(trainerId, from, ct));
 
+    [HttpGet("trainers/{trainerId}/weekly-template")]
+    [AllowAnonymous]
+    public Task<IActionResult> WeeklyTemplate(string trainerId, CancellationToken ct) =>
+        Reply(service.WeeklyTemplate(trainerId, ct));
+
     [HttpGet("availability")]
     [Authorize(Roles = "PT")]
     public Task<IActionResult> Availability(CancellationToken ct) => AsUser(actor => service.Template(actor, ct));
+
+    [HttpGet("availability/operating-hours")]
+    [Authorize(Roles = "PT")]
+    public Task<IActionResult> OperatingHours(CancellationToken ct) => AsUser(actor => service.OperatingHours(actor, ct));
 
     [HttpPut("availability")]
     [Authorize(Roles = "PT")]
@@ -52,10 +65,25 @@ public sealed class PersonalTrainingController(PersonalTrainingService service) 
     public Task<IActionResult> UpdatePackage(int id, PTPackageRequest request, CancellationToken ct) =>
         AsUser(actor => service.SavePackage(actor, id, request, ct));
 
+    [HttpPatch("manager/packages/{id:int}/status")]
+    [Authorize(Roles = "Manager")]
+    public Task<IActionResult> UpdatePackageStatus(int id, PTPackageStatusRequest request, CancellationToken ct) =>
+        AsUser(actor => service.SetPackageSaleStatus(actor, id, request.IsActive!.Value, ct));
+
+    [HttpDelete("manager/packages/{id:int}")]
+    [Authorize(Roles = "Manager")]
+    public Task<IActionResult> DeletePackage(int id, CancellationToken ct) =>
+        AsUser(actor => service.DeletePackage(actor, id, ct));
+
     [HttpPost("schedule/preview")]
     [Authorize(Roles = "Member")]
     public Task<IActionResult> Preview(PTBookingRequest request, CancellationToken ct) =>
         AsUser(actor => service.Preview(actor, request, ct));
+
+    [HttpPost("schedule/booking-slots")]
+    [Authorize(Roles = "Member")]
+    public Task<IActionResult> BookingSlots(PTBookingSlotsRequest request, CancellationToken ct) =>
+        AsUser(actor => service.BookingSlots(actor, request, ct));
 
     [HttpPost("purchases")]
     [Authorize(Roles = "Member")]
@@ -67,14 +95,26 @@ public sealed class PersonalTrainingController(PersonalTrainingService service) 
     public Task<IActionResult> StartPayment(string orderNumber, PTPaymentRequest request, CancellationToken ct) =>
         AsUser(actor => service.StartPayment(actor, orderNumber, request, ct));
 
+    [HttpPost("purchases/{orderNumber}/demo-payment")]
+    [Authorize(Roles = "Member")]
+    public Task<IActionResult> ConfirmDemoPayment(string orderNumber, CancellationToken ct) =>
+        DemoPaymentEnabled
+            ? AsUser(actor => service.ConfirmDemoPayment(actor, orderNumber, ct))
+            : Task.FromResult<IActionResult>(NotFound());
+
     [HttpGet("purchases/{orderNumber}")]
     [Authorize(Roles = "Member")]
     public Task<IActionResult> CheckoutStatus(string orderNumber, CancellationToken ct) =>
-        AsUser(actor => service.CheckoutStatus(actor, orderNumber, ct));
+        AsUser(actor => service.CheckoutStatus(actor, orderNumber, ct, DemoPaymentEnabled));
 
     [HttpGet("contracts")]
     [Authorize(Roles = "Member,PT")]
     public Task<IActionResult> Contracts(CancellationToken ct) => AsUser(actor => service.MyContracts(actor, null, ct));
+
+    [HttpGet("contracts/page")]
+    [Authorize(Roles = "Member")]
+    public Task<IActionResult> ContractPage([FromQuery] int page, [FromQuery] string? trainerId, CancellationToken ct) =>
+        AsUser(actor => service.ContractPage(actor, page, trainerId, ct));
 
     [HttpGet("contracts/{id:int}")]
     [Authorize(Roles = "Member,PT")]
@@ -84,6 +124,16 @@ public sealed class PersonalTrainingController(PersonalTrainingService service) 
     [Authorize(Roles = "PT")]
     public Task<IActionResult> Assigned([FromQuery] string? search, CancellationToken ct) =>
         AsUser(actor => service.Assigned(actor, search, ct));
+
+    [HttpGet("assigned-members/page")]
+    [Authorize(Roles = "PT")]
+    public Task<IActionResult> AssignedPage([FromQuery] string? search, [FromQuery] bool historical, [FromQuery] int page,
+        CancellationToken ct) => AsUser(actor => service.AssignedPage(actor, search, historical, page, ct));
+
+    [HttpGet("teaching-schedule")]
+    [Authorize(Roles = "PT")]
+    public Task<IActionResult> TeachingSchedule([FromQuery, BindRequired] DateOnly from, CancellationToken ct) =>
+        AsUser(actor => service.TeachingSchedule(actor, from, ct));
 
     [HttpPost("sessions/{id:int}/proposal")]
     [Authorize(Roles = "PT")]
@@ -141,7 +191,18 @@ public sealed class PersonalTrainingController(PersonalTrainingService service) 
 
     [HttpGet("manager/freezes")]
     [Authorize(Roles = "Manager")]
-    public Task<IActionResult> ManagerFreezes(CancellationToken ct) => AsUser(actor => service.Freezes(actor, true, ct));
+    public Task<IActionResult> ManagerFreezes([FromQuery] bool processed, CancellationToken ct) =>
+        AsUser(actor => service.Freezes(actor, true, ct, processed));
+
+    [HttpGet("manager/freezes/page")]
+    [Authorize(Roles = "Manager")]
+    public Task<IActionResult> ManagerFreezePage([FromQuery] bool processed, [FromQuery] int page, CancellationToken ct) =>
+        AsUser(actor => service.FreezePage(actor, true, processed, page, null, ct));
+
+    [HttpGet("contracts/{id:int}/freezes")]
+    [Authorize(Roles = "Member")]
+    public Task<IActionResult> MemberFreezePage(int id, [FromQuery] int page, CancellationToken ct) =>
+        AsUser(actor => service.FreezePage(actor, false, false, page, id, ct));
 
     [HttpGet("manager/freezes/{id:int}/preview")]
     [Authorize(Roles = "Manager")]

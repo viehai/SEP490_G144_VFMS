@@ -74,14 +74,15 @@ public sealed partial class PersonalTrainingService
             return Invalid<EarlyResumePlan>("Mỗi buổi chỉ được chọn một ca thay thế.");
 
         var removedDays = currentResume.DayNumber - resumeDate.DayNumber;
-        var expiresOn = purchase.EndDate.AddDays(-removedDays);
+        var scheduledEnd = UsesScheduledEnd(purchase);
+        var expiresOn = scheduledEnd ? purchase.EndDate : purchase.EndDate.AddDays(-removedDays);
         var remaining = purchase.Sessions.Where(s => PersonalTrainingRules.Reserved(s.SessionStatus) &&
             Utc(s.SessionDate, s.StartTime) > now).ToArray();
         var originalSessions = purchase.Sessions
             .Where(s => s.SessionStatus == PTSessionStatus.Cancelled && !s.IsCreditForfeited &&
                 s.SessionDate >= resumeDate && s.SessionDate < currentResume)
             .ToDictionary(s => s.Id);
-        var needsNewSlot = remaining.Where(s => s.SessionDate < resumeDate || s.SessionDate > expiresOn)
+        var needsNewSlot = remaining.Where(s => s.SessionDate < resumeDate || (!scheduledEnd && s.SessionDate > expiresOn))
             .Select(s => s.Id).ToHashSet();
         var movable = remaining.Where(s => s.SessionStatus == PTSessionStatus.Scheduled &&
                 (needsNewSlot.Contains(s.Id) || s.ReplacementForSessionId is { } originalId &&
@@ -110,7 +111,7 @@ public sealed partial class PersonalTrainingService
         foreach (var move in candidates)
         {
             var end = move.StartTime.AddHours(movable[move.SessionId].CreditUnits);
-            if (move.Date >= resumeDate && move.Date <= expiresOn && Utc(move.Date, move.StartTime) > now &&
+            if (move.Date >= resumeDate && (scheduledEnd || move.Date <= expiresOn) && Utc(move.Date, move.StartTime) > now &&
                 InHours(purchase.PTUser.Gym, move.StartTime, end) && HasGymCoverageOn(memberships, move.Date) &&
                 templateIds.TryGetValue((move.Date.DayOfWeek, move.StartTime), out var templateId))
                 validSlots.Add(move.SessionId, new(templateId, move.Date, move.StartTime, end, "Available"));
@@ -151,6 +152,8 @@ public sealed partial class PersonalTrainingService
             projectedSessions.Any(s => !needsNewSlot.Contains(s.Id) && !HasGymCoverageOn(memberships, s.Date)))
             return Conflict<EarlyResumePlan>("Gói Gym phải bao phủ ngày tập lại và toàn bộ lịch PT đã điều chỉnh.");
 
+        if (scheduledEnd)
+            expiresOn = ScheduledEnd(purchase, projectedSessions.Select(s => s.Date));
         var preview = new PTEarlyResumePreview(currentResume, resumeDate, expiresOn,
             resumeDate.DayNumber - start.DayNumber, RemainingFreezeDays(purchase) + removedDays,
             replacements.Select(r => new PTEarlyResumeMove(r.Original.Id, r.Slot.Date, r.Slot.StartTime)).ToArray(),

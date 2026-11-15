@@ -35,17 +35,40 @@ public sealed partial class PersonalTrainingService
             f.ReviewNote, f.ReviewedAt);
     }
 
-    public async Task<Result<IReadOnlyList<PTFreezeResponse>>> Freezes(string actor, bool managerView, CancellationToken ct)
+    public async Task<Result<IReadOnlyList<PTFreezeResponse>>> Freezes(string actor, bool managerView, CancellationToken ct,
+        bool processed = false)
     {
         var user = await User(actor, managerView ? UserRole.Manager : UserRole.Member, ct);
         if (user is null)
             return Forbidden<IReadOnlyList<PTFreezeResponse>>();
         var requests = await db.PTFreezes.AsNoTracking().Include(f => f.PTPurchase)
             .Where(f => managerView
-                ? f.PTPurchase.PTUser.GymId == user.GymId && f.RequestStatus == PTFreezeRequestStatus.Pending
+                ? f.PTPurchase.PTUser.GymId == user.GymId && (f.RequestStatus != PTFreezeRequestStatus.Pending) == processed
                 : f.PTPurchase.MemberUserId == actor)
-            .OrderByDescending(f => f.Id).Take(100).ToListAsync(ct);
-        return Result<IReadOnlyList<PTFreezeResponse>>.Success(requests.Select(f => FreezeResponse(f, f.PTPurchase)).ToArray());
+            .OrderByDescending(f => f.Id).Take(100)
+            .Select(f => new { Freeze = f, Contract = f.PTPurchase, MemberName = f.PTPurchase.Member.FullName,
+                TrainerName = f.PTPurchase.PTUser.FullName }).ToListAsync(ct);
+        return Result<IReadOnlyList<PTFreezeResponse>>.Success(requests.Select(row =>
+            FreezeResponse(row.Freeze, row.Contract) with { MemberName = row.MemberName, TrainerName = row.TrainerName }).ToArray());
+    }
+
+    public async Task<Result<PagedResponse<PTFreezeResponse>>> FreezePage(string actor, bool managerView, bool processed,
+        int page, int? contractId, CancellationToken ct)
+    {
+        var user = await User(actor, managerView ? UserRole.Manager : UserRole.Member, ct);
+        if (user is null)
+            return Forbidden<PagedResponse<PTFreezeResponse>>();
+        var query = db.PTFreezes.AsNoTracking().Where(f => managerView
+            ? f.PTPurchase.PTUser.GymId == user.GymId && (f.RequestStatus != PTFreezeRequestStatus.Pending) == processed
+            : f.PTPurchase.MemberUserId == actor && f.PTPurchaseId == contractId);
+        return await PageOf(query.OrderByDescending(f => f.Id).Select(f => new
+        {
+            Freeze = f, Contract = f.PTPurchase, MemberName = f.PTPurchase.Member.FullName,
+            TrainerName = f.PTPurchase.PTUser.FullName
+        }), page, row => FreezeResponse(row.Freeze, row.Contract) with
+        {
+            MemberName = row.MemberName, TrainerName = row.TrainerName
+        }, ct);
     }
 
     public Task<Result<PTFreezeResponse>> RequestFreeze(string actor, int id, PTFreezeRequest input, CancellationToken ct) =>
@@ -101,24 +124,38 @@ public sealed partial class PersonalTrainingService
 
     private sealed record Replacement(PTSession Original, PTCalendarSlot Slot);
     private sealed record FreezeProjection(DateOnly End, IReadOnlyList<Replacement> Replacements);
+    private sealed record SessionBasedPattern(PTSlotInput[] Slots);
+
+    private static bool UsesScheduledEnd(PTPurchase purchase) => purchase.WeeklyPatternJson?.StartsWith('{') == true;
+
+    private static DateOnly ScheduledEnd(PTPurchase purchase, IEnumerable<DateOnly> dates) =>
+        dates.DefaultIfEmpty(purchase.StartDate).Max();
 
     private async Task<FreezeProjection?> ProjectFreeze(PTPurchase p, PTFreeze f, CancellationToken ct)
     {
         var days = f.RequestedEndDate.DayNumber - f.RequestedStartDate.DayNumber;
-        if (p.EndDate.DayNumber > DateOnly.MaxValue.DayNumber - days)
+        var scheduledEnd = UsesScheduledEnd(p);
+        if (!scheduledEnd && p.EndDate.DayNumber > DateOnly.MaxValue.DayNumber - days)
             return null;
-        var end = p.EndDate.AddDays(days);
+        var end = scheduledEnd ? p.EndDate : p.EndDate.AddDays(days);
+        var coverageEnd = await Coverage(p.MemberUserId).Where(m => m.StartDate <= Today)
+            .MaxAsync(m => (DateOnly?)m.EndDate, ct);
+        if (coverageEnd is null)
+            return null;
+        var searchEnd = scheduledEnd || coverageEnd.Value < end ? coverageEnd.Value : end;
         var start = f.RequestedEndDate > Today ? f.RequestedEndDate : Today;
         var affected = p.Sessions.Where(s => s.SessionStatus == PTSessionStatus.PendingFreeze &&
                 s.SessionDate >= f.RequestedStartDate && s.SessionDate < f.RequestedEndDate)
             .OrderBy(s => s.SessionDate).ThenBy(s => s.StartTime).ToArray();
         var result = new List<Replacement>();
-        var pattern = JsonSerializer.Deserialize<PTSlotInput[]>(p.WeeklyPatternJson ?? "[]")!;
+        var pattern = scheduledEnd
+            ? JsonSerializer.Deserialize<SessionBasedPattern>(p.WeeklyPatternJson!)!.Slots
+            : JsonSerializer.Deserialize<PTSlotInput[]>(p.WeeklyPatternJson ?? "[]")!;
         var recurring = pattern.Select(x => new PTAvailability { DayOfWeek = x.DayOfWeek, StartTime = x.StartTime });
         var otherWindows = p.PTFreezes.Where(x => x.Id != f.Id &&
             (Approved(x) || x.RequestStatus == PTFreezeRequestStatus.Pending)).ToArray();
         var now = Now;
-        foreach (var (date, slot) in PersonalTrainingRules.Occurrences(start, end, recurring, int.MaxValue))
+        foreach (var (date, slot) in PersonalTrainingRules.Occurrences(start, searchEnd, recurring, int.MaxValue))
         {
             if (result.Count == affected.Length)
                 break;
@@ -132,12 +169,12 @@ public sealed partial class PersonalTrainingService
                 continue;
             result.Add(new(original, candidate));
         }
-        var lastDate = result.Select(x => x.Slot.Date).Concat(p.Sessions.Where(s => PersonalTrainingRules.Reserved(s.SessionStatus) &&
-                !affected.Contains(s)).Select(s => s.SessionDate)).DefaultIfEmpty(Today).Max();
-        if (result.Count != affected.Length ||
-            !await Coverage(p.MemberUserId).AnyAsync(m => m.StartDate <= Today && m.EndDate >= lastDate, ct))
+        var lastDate = ScheduledEnd(p, result.Select(x => x.Slot.Date).Concat(p.Sessions.Where(s =>
+            (PersonalTrainingRules.Reserved(s.SessionStatus) || s.SessionStatus is PTSessionStatus.Completed or PTSessionStatus.NoShow) &&
+            !affected.Contains(s)).Select(s => s.SessionDate)));
+        if (result.Count != affected.Length || coverageEnd.Value < lastDate)
             return null;
-        return new(end, result);
+        return new(scheduledEnd ? lastDate : end, result);
     }
 
     public async Task<Result<PTFreezePreview>> PreviewFreeze(string actor, int id, CancellationToken ct)

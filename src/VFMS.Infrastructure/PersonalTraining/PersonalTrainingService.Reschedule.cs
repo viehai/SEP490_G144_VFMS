@@ -129,6 +129,10 @@ public sealed partial class PersonalTrainingService
                 session.StartTime = request.StartTime;
                 session.EndTime = end;
                 session.PTAvailabilityId = template;
+                if (UsesScheduledEnd(contract))
+                    contract.EndDate = ScheduledEnd(contract, contract.Sessions
+                        .Where(s => s.SessionStatus is not (PTSessionStatus.Cancelled or PTSessionStatus.MakeUpPending))
+                        .Select(s => s.SessionDate));
                 outcome = "RescheduleAccepted";
                 message = $"PT đã đồng ý đổi lịch sang {request.Date:dd/MM/yyyy} {request.StartTime:HH:mm}–{end:HH:mm}.";
             }
@@ -157,7 +161,7 @@ public sealed partial class PersonalTrainingService
 
     private bool RescheduleTimeEligible(PTPurchase contract, DateOnly date, TimeOnly start, TimeOnly end,
         DateTime now, List<MemberMembership> memberships) =>
-        date >= Today && date >= contract.StartDate && date <= contract.EndDate &&
+        date >= Today && date >= contract.StartDate && (UsesScheduledEnd(contract) || date <= contract.EndDate) &&
         Utc(date, start) > now && InHours(contract.PTUser.Gym, start, end) &&
         !contract.PTFreezes.Any(f => (Approved(f) || f.RequestStatus == PTFreezeRequestStatus.Pending) &&
             f.RequestedStartDate <= date && date < (f.ActualEndDate ?? f.RequestedEndDate)) &&
@@ -171,7 +175,8 @@ public sealed partial class PersonalTrainingService
     private async Task<int?> FindRescheduleTemplate(PTPurchase contract, PTSession session, DateOnly date,
         TimeOnly start, TimeOnly end, DateTime now, CancellationToken ct)
     {
-        if (EffectiveStatus(contract) != PTPurchaseStatus.Active || date < Today || date > contract.EndDate)
+        if (EffectiveStatus(contract) != PTPurchaseStatus.Active || date < Today ||
+            (!UsesScheduledEnd(contract) && date > contract.EndDate))
             return null;
         var memberships = await RescheduleCoverage(contract.MemberUserId, date, ct);
         if (!RescheduleTimeEligible(contract, date, start, end, now, memberships))

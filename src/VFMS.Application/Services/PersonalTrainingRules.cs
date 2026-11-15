@@ -22,8 +22,7 @@ public static class PersonalTrainingRules
     }
 
     public static bool Overlaps(TimeOnly start, TimeOnly end, TimeOnly otherStart, TimeOnly otherEnd) =>
-        start.Ticks < otherEnd.Ticks + TimeSpan.TicksPerMinute * 15 &&
-        otherStart.Ticks < end.Ticks + TimeSpan.TicksPerMinute * 15;
+        start < otherEnd && otherStart < end;
 
     public static bool Reserved(PTSessionStatus status) =>
         status is PTSessionStatus.Scheduled or PTSessionStatus.ReschedulePending or PTSessionStatus.RescheduleRequested

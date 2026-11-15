@@ -454,7 +454,7 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
             q = q.Where(x => x.AverageRating >= r.MinimumRating);
         return Result<PagedResponse<TrainerProfileResponse>>.Success(new(r.Page, r.PageSize, await store.Count(q, ct), await store.List(q.OrderBy(x => x.FullName).ThenBy(x => x.Id).Skip((r.Page - 1) * r.PageSize).Take(r.PageSize), ct)));
     }
-    public async Task<Result<TrainerPublicDetail>> Public(int id, CancellationToken ct, string? actor = null)
+    public async Task<Result<TrainerPublicDetail>> Public(int id, CancellationToken ct, string? actor = null, int reviewPage = 1)
     {
         var p = await store.First(PublicProfiles().Where(x => x.Id == id), ct);
         if (p == null)
@@ -484,9 +484,16 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
                 !x.PTFreezes.Any(f => (f.RequestStatus == PTFreezeRequestStatus.Approved ||
                     f.RequestStatus == PTFreezeRequestStatus.Active || f.RequestStatus == PTFreezeRequestStatus.Completed) &&
                     f.ActualStartDate <= today && f.ActualEndDate > today)), ct) > 0;
-        return Result<TrainerPublicDetail>.Success(new(p, certificates, availability,
-            await store.List(store.Query<TrainerReview>().Where(x => x.TrainerUserId == p.UserId && x.IsVisible && x.ReviewStatus == TrainerReviewStatus.Approved).OrderByDescending(x => x.CreatedAt).Take(20).Select(x => new TrainerReviewResponse(x.Rating, x.Comment)), ct),
-            hasActiveContract, actor == p.UserId));
+        const int pageSize = 20;
+        var reviews = store.Query<TrainerReview>().Where(x => x.TrainerUserId == p.UserId &&
+            x.IsVisible && x.ReviewStatus == TrainerReviewStatus.Approved);
+        var reviewTotal = await store.Count(reviews, ct);
+        reviewPage = Math.Clamp(reviewPage, 1, Math.Max(1, (int)Math.Ceiling((double)reviewTotal / pageSize)));
+        var page = await store.List(reviews.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id)
+            .Skip((reviewPage - 1) * pageSize).Take(pageSize)
+            .Select(x => new TrainerReviewResponse(x.Rating, x.Comment)), ct);
+        return Result<TrainerPublicDetail>.Success(new(p, certificates, availability, page,
+            hasActiveContract, actor == p.UserId, reviewPage, reviewTotal));
     }
     public async Task<Result<TrainerPublicDetail>> Mine(string actor, CancellationToken ct)
     {

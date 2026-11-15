@@ -21,7 +21,8 @@ public sealed partial class PersonalTrainingService
             var purchase = await db.PTPurchases.Include(p => p.Member).Include(p => p.Sessions)
                 .Include(p => p.Order).ThenInclude(o => o!.PaymentTransaction).ThenInclude(p => p!.Invoice)
                 .AsSplitQuery().OrderBy(p => p.Id).FirstOrDefaultAsync(p => p.OrderId != null &&
-                    p.Order!.OrderStatus == OrderStatus.Paid && p.ReceiptEmailSentAt == null &&
+                    p.Order!.OrderStatus == OrderStatus.Paid && p.Order.PaymentTransaction!.GatewayName != DemoGateway &&
+                    p.ReceiptEmailSentAt == null &&
                     (p.ReceiptEmailRetryAt == null || p.ReceiptEmailRetryAt <= now), ct);
             if (purchase is not null)
             {

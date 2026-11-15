@@ -1,0 +1,77 @@
+<div class="trainer-scroll" tabindex="0" role="region" aria-label="Bảng lịch tuần của PT">
+    <table class="trainer-table pt-week pt-public-calendar">
+        <thead>
+            <tr>
+                <th scope="col">Giờ</th>
+                @foreach (var day in Days)
+                {
+                    <th scope="col">
+                        @Day(day)
+                        @if (WeekMonday is { } monday && monday.DayNumber + DayIndex(day) <= DateOnly.MaxValue.DayNumber)
+                        {
+                            <span>(@monday.AddDays(DayIndex(day)).ToString("dd/MM"))</span>
+                        }
+                    </th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var start in Slots.Select(slot => slot.StartTime).Distinct().Order())
+            {
+                <tr @key="start">
+                    <th scope="row">@Time(start)</th>
+                    @foreach (var day in Days)
+                    {
+                        var cellSlots = Slots.Where(item => item.DayOfWeek == day && item.StartTime == start).ToArray();
+                        <td>
+                            @if (cellSlots.Length == 0)
+                            {
+                                <span class="trainer-muted" aria-label="Không có ca">—</span>
+                            }
+                            @foreach (var slot in cellSlots)
+                            {
+                                @if (SlotSelected.HasDelegate)
+                                {
+                                    <button type="button" class="trainer-button pt-slot-choice" disabled="@(Disabled ||
+                                                slot.BlockedReason is not null && !SelectedIds.Contains(slot.TemplateId))"
+                                            aria-pressed="@(SelectedIds.Contains(slot.TemplateId) ? "true" : "false")"
+                                            aria-label="@($"{Day(day)}, {Time(start)} đến {Time(slot.EndTime)}")"
+                                            @onclick="() => SlotSelected.InvokeAsync(slot)">
+                                        @Time(start) – @Time(slot.EndTime)
+                                    </button>
+                                    @if (slot.BlockedReason is { } reason)
+                                    {
+                                        <small class="block trainer-muted">@reason</small>
+                                    }
+                                }
+                                else if (SlotContent is { } content)
+                                {
+                                    @content(slot)
+                                }
+                                else
+                                {
+                                    <div class="pt-calendar-slot"><strong>@Time(start) – @Time(slot.EndTime)</strong></div>
+                                }
+                            }
+                        </td>
+                    }
+                </tr>
+            }
+            @if (Slots.Count == 0)
+            {
+                <tr><td colspan="8" class="trainer-muted">@(WeekMonday.HasValue ? "Không có buổi tập trong tuần này." : "PT chưa công bố ca tập.")</td></tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    private static readonly DayOfWeek[] Days = Enum.GetValues<DayOfWeek>().OrderBy(DayIndex).ToArray();
+
+    [Parameter, EditorRequired] public IReadOnlyList<PTWeeklySlot> Slots { get; set; } = [];
+    [Parameter] public DateOnly? WeekMonday { get; set; }
+    [Parameter] public IReadOnlyCollection<int> SelectedIds { get; set; } = [];
+    [Parameter] public EventCallback<PTWeeklySlot> SlotSelected { get; set; }
+    [Parameter] public RenderFragment<PTWeeklySlot>? SlotContent { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+}

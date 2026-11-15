@@ -20,8 +20,8 @@ public sealed class TrainerApiClient(HttpClient http, AuthSession session) : IDi
             ("MinimumRating", filter.MinimumRating?.ToString(CultureInfo.InvariantCulture)),
             ("Page", filter.Page.ToString(CultureInfo.InvariantCulture))));
 
-    public Task<TrainerPublicDetail> DetailAsync(int id) =>
-        Send<TrainerPublicDetail>(HttpMethod.Get, $"{Root}/{id}", optionalAuth: true);
+    public Task<TrainerPublicDetail> DetailAsync(int id, int reviewPage = 1) =>
+        Send<TrainerPublicDetail>(HttpMethod.Get, $"{Root}/{id}?reviewPage={reviewPage}", optionalAuth: true);
 
     public async Task<TrainerApplicationReceipt> SubmitAsync(SubmitTrainerApplicationRequest request)
     {

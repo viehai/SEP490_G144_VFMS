@@ -1,0 +1,83 @@
+@page "/my-pt-packages"
+@page "/trainers/{Id:int}/my-pt-schedule"
+@layout AccountLayout
+@attribute [Authorize(Roles = "Member")]
+@using VFMS.Client.Components.Operations
+@using VFMS.Contracts.Common
+@inject PersonalTrainingApiClient Api
+@inject TrainerApiClient Trainers
+<PageTitle>Gói và lịch PT của tôi | Victor Fitness</PageTitle>
+
+<section class="trainer-page trainer-stack">
+    <a class="trainer-link" href="/trainers">← Tìm huấn luyện viên</a>
+    <h1>@(Id.HasValue ? "Lịch PT của tôi" : "Gói PT của tôi")</h1>
+    <TrainerFeedback Error="@_error" />
+    @if (_loading) { <p role="status">Đang tải hợp đồng…</p> }
+    else if (_contracts is null && _selected is null) { <button class="trainer-button" @onclick="() => LoadAsync()">Tải lại</button> }
+    else if (_contracts is { TotalCount: 0 } && _selected is null) { <p class="trainer-panel">Chưa có hợp đồng PT để hiển thị.</p> }
+    else
+    {
+        <div class="pt-workspace">
+            <nav class="trainer-panel trainer-stack" aria-label="Hợp đồng PT">
+                @foreach (var item in _contracts?.Items ?? [])
+                {
+                    <button type="button" class="trainer-button pt-wide-choice" aria-pressed="@(item.Id == _selected?.Id ? "true" : "false")"
+                            disabled="@_loading" @onclick="() => _selected = item">@Label(item) · @Status(item.Status)</button>
+                }
+                @if (_contracts is { } page)
+                {
+                    <Pager Page="page.Page" PageSize="page.PageSize" TotalCount="page.TotalCount" Noun="hợp đồng" OnPage="LoadPageAsync" />
+                }
+            </nav>
+            @if (_selected is { } selected)
+            {
+                <ContractPanel @key="selected.Id" Contract="selected" TrainerName="@(selected.TrainerName ?? "Huấn luyện viên")" Changed="ReloadAsync" />
+            }
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter] public int? Id { get; set; }
+    [SupplyParameterFromQuery(Name = "contract")] public int? ContractId { get; set; }
+    private PagedResponse<PTContractResponse>? _contracts;
+    private PTContractResponse? _selected;
+    private bool _loading;
+    private int _loadVersion;
+    private string? _error;
+
+    protected override Task OnParametersSetAsync() => LoadAsync(selectedId: ContractId);
+    private Task ReloadAsync() => LoadAsync(_contracts?.Page ?? 1, _selected?.Id, showLoading: false);
+    private Task LoadPageAsync(int page) => LoadAsync(page);
+
+    private async Task LoadAsync(int page = 1, int? selectedId = null, bool showLoading = true)
+    {
+        var version = ++_loadVersion;
+        _loading = showLoading;
+        _error = null;
+        if (showLoading) { _contracts = null; _selected = null; }
+        try
+        {
+            var trainerId = Id is { } id ? (await Trainers.DetailAsync(id)).Profile.UserId : null;
+            var contracts = await Api.ContractPageAsync(page, trainerId);
+            var selected = contracts.Items.FirstOrDefault(item => item.Id == selectedId);
+            if (selected is null && selectedId is { } contractId)
+            {
+                try
+                {
+                    selected = (await Api.ContractsAsync(contractId)).FirstOrDefault(item =>
+                        trainerId is null || item.TrainerId == trainerId);
+                }
+                catch (AuthApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound) { }
+            }
+            if (version != _loadVersion) return;
+            _contracts = contracts;
+            _selected = selected ?? contracts.Items.FirstOrDefault();
+        }
+        catch (AuthApiException ex) when (version == _loadVersion) { _error = ex.Message; }
+        catch (AuthApiException) { }
+        finally { if (version == _loadVersion) _loading = false; }
+    }
+
+    private static string Label(PTContractResponse item) => item.PackageName ?? $"Hợp đồng #{item.Id}";
+}

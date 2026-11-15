@@ -32,13 +32,6 @@
                     {
                         <a href="/manager/membership-plans" class="@ManagerLinkClass" aria-label="Quản lý gói hội viên">Quản lý</a>
                     }
-                    @if (auth.User.IsInRole("Member"))
-                    {
-                        <NavLink href="/my-memberships" Match="NavLinkMatch.Prefix" ActiveClass="text-[#5F6F52] underline underline-offset-4"
-                                 class="@MyMembershipsClass">
-                            Gói của tôi
-                        </NavLink>
-                    }
                     @if (auth.User.IsInRole("Member") || auth.User.IsInRole("Customer"))
                     {
                         <NavLink href="/supplements" Match="NavLinkMatch.Prefix" ActiveClass="text-[#5F6F52] underline underline-offset-4"
@@ -53,9 +46,13 @@
                             Báo hỏng
                         </NavLink>
                     }
-                    <NavLink href="/profile" Match="NavLinkMatch.All" ActiveClass="text-[#5F6F52] underline underline-offset-4"
+                    @{
+                        var accountRoute = auth.User.IsInRole("PT") ? "/pt/trainer-profile" :
+                            auth.User.IsInRole("Member") ? "/my-memberships" : "/profile";
+                    }
+                    <NavLink href="@accountRoute" Match="NavLinkMatch.All" ActiveClass="text-[#5F6F52] underline underline-offset-4"
                              class="@ProfileLinkClass"
-                             title="@auth.User.Identity?.Name" aria-label="Hồ sơ cá nhân">
+                             title="@auth.User.Identity?.Name" aria-label="Khu vực tài khoản">
                         <span class="hidden xl:inline">Chào, @auth.User.Identity?.Name</span><span class="xl:hidden">HỒ SƠ</span>
                     </NavLink>
                     <LogoutButton Class="@LogoutBtnClass" />

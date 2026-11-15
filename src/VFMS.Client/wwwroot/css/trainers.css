@@ -40,3 +40,47 @@
 .trainer-list { display: grid; gap: .65rem; padding: 0; list-style: none; }
 .trainer-list > li { border-bottom: 1px solid #d8ded2; padding-bottom: .55rem; }
 .trainer-page fieldset:disabled { opacity: .75; }
+
+.pt-week th, .pt-week td { min-width: 8.5rem; }
+.pt-public-calendar { table-layout: fixed; min-width: 55rem; }
+.pt-public-calendar th, .pt-public-calendar td { min-width: 0; border: 1px solid #d8ded2; }
+.pt-public-calendar thead th { background: #eef1ea; text-align: center; }
+.pt-public-calendar th:first-child { width: 4.25rem; }
+.pt-public-calendar thead .pt-calendar-today { background: #d9e7d6; }
+.pt-public-calendar thead th span { white-space: nowrap; }
+.pt-calendar-slot { display: grid; gap: .18rem; padding: .45rem; border-radius: 6px; background: #e8ede3; color: #405038; }
+.pt-calendar-slot + .pt-calendar-slot { margin-top: .25rem; }
+.pt-calendar-slot[data-slot-status="Booked"], .pt-calendar-slot[data-slot-status="Past"] { background: #f1f1ee; color: #565c55; }
+.pt-calendar-slot span { font-size: .8rem; }
+.pt-plan-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); gap: 1.25rem; }
+.pt-plan-card { display: grid; align-content: start; grid-template-rows: auto auto auto 1fr auto; gap: 1rem; }
+.pt-plan-price { font-size: clamp(1.45rem, 4vw, 2rem); color: #405038; overflow-wrap: anywhere; }
+.pt-plan-action { width: 100%; justify-content: center; }
+.pt-plan-terms { grid-row: 5; border-top: 1px solid #d8ded2; padding-top: .75rem; }
+.pt-plan-terms div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .25rem .65rem; padding-block: .25rem; }
+.pt-plan-terms dd { font-weight: 700; }
+.pt-availability th, .pt-availability td { min-width: 6rem; border: 1px solid #d8ded2; text-align: center; vertical-align: middle; }
+.pt-availability th { background: #eef1ea; white-space: nowrap; }
+.pt-availability td { padding: 0; }
+.pt-availability-cell { display: grid; place-items: center; min-height: 2.75rem; cursor: pointer; }
+.pt-availability-cell:has(input:checked) { background: #e8ede3; }
+.pt-availability-cell:has(input:disabled) { cursor: default; }
+.pt-availability-cell input { width: 1rem; height: 1rem; accent-color: #5f6f52; }
+.pt-slot { padding-block: .35rem; display: grid; gap: .35rem; }
+.pt-slot-choice { width: 100%; justify-content: center; padding-inline: .35rem; white-space: nowrap; }
+.pt-public-calendar .pt-calendar-slot { white-space: nowrap; }
+.pt-public-calendar .pt-teaching-slot { white-space: normal; overflow-wrap: anywhere; }
+.pt-teaching-slot span { white-space: nowrap; }
+.pt-wide-choice { width: 100%; text-align: left; }
+.trainer-button[aria-pressed="true"] { background: #e8ede3; box-shadow: inset 0 0 0 1px #5f6f52; }
+.pt-slot-choice[aria-pressed="true"] { background: #405038; border-color: #405038; color: #fff; box-shadow: none; }
+.pt-workspace { display: grid; gap: 1.25rem; align-items: start; }
+@media (min-width: 850px) { .pt-workspace { grid-template-columns: minmax(13rem, 1fr) minmax(0, 3fr); } }
+.pt-session, .pt-suggestion { border: 1px solid #d8ded2; border-radius: 8px; padding: .85rem; min-width: 0; }
+.pt-suggestion > * + * { margin-top: .5rem; }
+.pt-options, .pt-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); gap: .55rem; }
+.pt-metrics > div { display: grid; padding: .6rem; border-radius: 8px; background: #eef1ea; }
+.pt-metrics strong { font-size: 1.15rem; }
+.pt-qr { width: min(100%, 18rem); height: auto; }
+.pt-facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .35rem .7rem; }
+.pt-facts dd { overflow-wrap: anywhere; }

@@ -2,6 +2,8 @@
 @layout StaffPTLayout
 @attribute [Authorize(Roles = "PT")]
 @using VFMS.Contracts.Users
+@using VFMS.Contracts.Common
+@using VFMS.Client.Components.Operations
 @inject TrainerApiClient Api
 <PageTitle>Hồ sơ PT của tôi | Victor Fitness</PageTitle>
 
@@ -11,11 +13,6 @@
     @if (_loading) { <p role="status">Đang tải hồ sơ…</p> }
     else if (_profile is { } detail)
     {
-        <nav class="trainer-row" aria-label="Thao tác hồ sơ PT">
-            <a class="trainer-button" href="#pt-basic-profile">Sửa giới thiệu và ảnh</a>
-            <a class="trainer-button" href="#pt-credentials">Cập nhật chuyên môn và chứng chỉ</a>
-            <a class="trainer-button" href="#pt-credential-history">Lịch sử xét duyệt</a>
-        </nav>
         <div class="trainer-split">
             <section id="pt-basic-profile" class="trainer-panel trainer-stack trainer-anchor">
                 <div class="trainer-row">

@@ -31,5 +31,5 @@ public sealed record TrainerAvailabilityResponse(DateOnly Date, TimeOnly StartTi
 public sealed record TrainerReviewResponse(int Rating, string? Comment);
 public sealed record TrainerPublicDetail(TrainerProfileResponse Profile, IReadOnlyList<TrainerDocumentResponse> Certificates,
     IReadOnlyList<TrainerAvailabilityResponse> Availability, IReadOnlyList<TrainerReviewResponse> Reviews,
-    bool HasActivePTContract = false, bool IsOwnProfile = false);
+    bool HasActivePTContract = false, bool IsOwnProfile = false, int ReviewPage = 1, int ReviewTotal = 0);
 public sealed record TrainerFileResponse(string FileName, string ContentType, byte[] Content);

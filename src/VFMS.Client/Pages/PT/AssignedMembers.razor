@@ -1,0 +1,107 @@
+@page "/pt/assigned-members"
+@layout StaffPTLayout
+@attribute [Authorize(Roles = "PT")]
+@inject PersonalTrainingApiClient Api
+@using VFMS.Contracts.Common
+@using VFMS.Client.Components.Operations
+<PageTitle>Hội viên được phân công | Victor Fitness</PageTitle>
+
+<section class="trainer-page trainer-stack">
+    <h1>Hội viên được phân công</h1>
+    <div class="trainer-row" role="group" aria-label="Nhóm hợp đồng PT">
+        <button type="button" class="trainer-button" disabled="@_busy" aria-pressed="@(!_historical ? "true" : "false")" @onclick="() => ChangeTabAsync(false)">Đang phụ trách</button>
+        <button type="button" class="trainer-button" disabled="@_busy" aria-pressed="@(_historical ? "true" : "false")" @onclick="() => ChangeTabAsync(true)">Đã kết thúc</button>
+    </div>
+    <form class="trainer-panel trainer-row" @onsubmit="SearchAsync" @onsubmit:preventDefault>
+        <label>Tên hội viên<input class="trainer-input" @bind="_search" maxlength="256" /></label>
+        <button class="trainer-button trainer-primary" disabled="@_busy">Tìm hội viên</button>
+    </form>
+    <TrainerFeedback Error="@_error" />
+    @if (_busy) { <p role="status">Đang tải dữ liệu…</p> }
+    @if (_members is { TotalCount: 0 }) { <p class="trainer-panel">Không tìm thấy hội viên phù hợp.</p> }
+    else if (_members is { } members)
+    {
+        <div class="trainer-panel trainer-scroll"><table class="trainer-table">
+            <thead><tr><th>Hội viên</th><th>Liên hệ</th><th>Buổi còn / tổng</th><th>Ngày kết thúc</th><th>Lần tập cuối</th><th>Hợp đồng</th></tr></thead>
+            <tbody>
+                @foreach (var member in members.Items)
+                {
+                    <tr @key="member.ContractId">
+                        <td><div class="trainer-row">
+                            @if (Uri.TryCreate(member.AvatarUrl, UriKind.Absolute, out var avatar) && avatar.Scheme == "https")
+                            { <img src="@avatar.AbsoluteUri" class="trainer-avatar" alt="" loading="lazy" /> }
+                            <strong>@member.FullName</strong>
+                        </div></td><td>@member.Email<br />@member.Phone</td>
+                        <td>@member.RemainingCredits / @member.TotalCredits</td><td>@Date(member.ExpiresOn)</td>
+                        <td>@(member.LastTrainedOn is { } trained ? Date(trained) : "Chưa tập")</td>
+                        <td><button class="trainer-link" disabled="@_busy" @onclick="() => OpenAsync(member)">Xem lịch và tiến độ</button></td>
+                    </tr>
+                }
+            </tbody>
+        </table></div>
+        <Pager Page="members.Page" PageSize="members.PageSize" TotalCount="members.TotalCount" Noun="hợp đồng" Disabled="_busy" OnPage="LoadPageAsync" />
+    }
+    @if (_selected is { } selected)
+    {
+        <ContractPanel @key="selected.Id" Contract="selected" IsTrainer="true" TrainerName="@(_member?.FullName)" Changed="ReloadAsync" />
+    }
+</section>
+
+@code {
+    private PagedResponse<PTAssignedMember>? _members;
+    private PTAssignedMember? _member;
+    private PTContractResponse? _selected;
+    private bool _busy, _historical;
+    private string _search = "";
+    private string _appliedSearch = "";
+    private string? _error;
+
+    protected override Task OnInitializedAsync() => SearchAsync();
+
+    private Task SearchAsync()
+    {
+        _appliedSearch = _search.Trim();
+        return LoadPageAsync(1);
+    }
+
+    private Task ChangeTabAsync(bool historical)
+    {
+        _historical = historical;
+        return LoadPageAsync(1);
+    }
+
+    private async Task LoadPageAsync(int page)
+    {
+        if (_busy) return;
+        _busy = true;
+        _error = null;
+        _members = null;
+        _member = null;
+        _selected = null;
+        try { _members = await Api.AssignedPageAsync(_appliedSearch, _historical, page); }
+        catch (AuthApiException ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task ReloadAsync()
+    {
+        if (_member is not { } member) return;
+        await OpenAsync(member);
+        try { _members = await Api.AssignedPageAsync(_appliedSearch, _historical, _members?.Page ?? 1); }
+        catch (AuthApiException ex) { _error = ex.Message; }
+    }
+
+    private async Task OpenAsync(PTAssignedMember member)
+    {
+        if (_busy) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            _selected = (await Api.ContractsAsync(member.ContractId)).SingleOrDefault();
+            _member = member;
+        }
+        catch (AuthApiException ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+}
