@@ -97,7 +97,9 @@ public sealed partial class PersonalTrainingService(VfmsDbContext db, TimeProvid
         db.YogaClassSchedules.Where(s => s.ScheduledDate >= from && s.ScheduledDate <= through &&
             (s.ScheduleStatus == YogaScheduleStatus.Scheduled || s.ScheduleStatus == YogaScheduleStatus.Ongoing) &&
             (s.YogaClass.InstructorUserId == trainerId || memberId != null &&
-                s.Bookings.Any(b => b.MemberUserId == memberId && b.BookingStatus == YogaBookingStatus.Confirmed)));
+                s.YogaClass.Bookings.Any(b => b.MemberUserId == memberId && b.BookingStatus == YogaBookingStatus.Confirmed &&
+                    (b.StartDate == null || b.StartDate <= s.ScheduledDate) &&
+                    (b.EndDate == null || b.EndDate >= s.ScheduledDate))));
 
     private void Audit(string? actor, string entity, int id, string value) =>
         db.AuditLogs.Add(new AuditLog

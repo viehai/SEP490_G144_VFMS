@@ -4,7 +4,7 @@ using VFMS.Domain.Enums;
 namespace VFMS.Domain.Entities;
 
 /// <summary>
-/// Application user account. Covers all roles: Customer, Member, PT, Staff, Manager, Admin.
+/// Application user account. Covers all roles: Customer, Member, PT, YogaInstructor, Staff, Manager, Admin.
 /// Accounts must never be hard-deleted (GBR-33). Use <see cref="AccountStatus"/> transitions instead.
 /// </summary>
 public class ApplicationUser : BaseEntity

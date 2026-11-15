@@ -22,6 +22,6 @@ public sealed record MembershipFreezeReviewDetailResponse(
     string? Reason, string? ReviewNote, DateTimeOffset? ReviewedAt, string? EarlyUnfreezeReviewNote,
     DateTimeOffset? EarlyUnfreezeReviewedAt, int? RemainingQuota, MembershipFreezePolicyResponse? AppliedPolicy,
     int? AppliedExpiryExtensionDays, DateOnly Today, int? ActualFrozenDays, bool CanApprove, bool CanReject,
-    string? ApprovalMessage);
+    string? ApprovalMessage, MembershipFreezeDocumentResponse? SupportingDocument = null);
 
 public sealed record RejectMembershipFreezeRequest(string? Reason);

@@ -11,7 +11,7 @@
         "manager/trainer-applications", "manager/pt-packages", "manager/pt-freeze-requests",
         "admin/business-reports", "admin/banned-words", "admin/audit-logs",
         "manager/equipment", "manager/equipment-issues", "manager/purchase-proposals",
-        "manager/supplement-products", "manager/supplement-orders"
+        "manager/supplement-products", "manager/supplement-orders", "manager/promotions"
     ];
 
     private bool IsPreview => !LivePages.Contains(Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].TrimEnd('/'),

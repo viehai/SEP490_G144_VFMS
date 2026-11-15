@@ -46,7 +46,13 @@ public sealed record MembershipPurchaseResponse(
     string OrderNumber, string OrderStatus, string PaymentStatus, string PaymentMethod,
     DateTimeOffset CreatedAt, DateTimeOffset ExpiresAt, DateTimeOffset ServerTime, decimal Subtotal, decimal AmountDue,
     IReadOnlyList<MembershipPurchaseItemResponse> Items, VietQrPaymentResponse? VietQr,
-    string? InvoiceNumber, string? MessageCode, string? Message);
+    string? InvoiceNumber, string? MessageCode, string? Message,
+    decimal DiscountAmount = 0, AppliedMembershipVoucherResponse? AppliedVoucher = null);
+
+public sealed record ApplyMembershipVoucherRequest(string? VoucherCode);
+
+public sealed record AppliedMembershipVoucherResponse(
+    string Code, string Name, decimal DiscountAmount, string RedemptionStatus);
 
 public sealed record ConfirmMembershipCashRequest(decimal AmountReceived);
 

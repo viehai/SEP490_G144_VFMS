@@ -1,5 +1,6 @@
 ﻿@inject NavigationManager Navigation
 
+<CascadingAuthenticationState>
 <Router AppAssembly="@typeof(App).Assembly">
     <Found Context="routeData">
         <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
@@ -28,6 +29,7 @@
         </LayoutView>
     </NotFound>
 </Router>
+</CascadingAuthenticationState>
 
 @code {
     private string LoginUrl => $"/auth/login?returnUrl={Uri.EscapeDataString("/" + Navigation.ToBaseRelativePath(Navigation.Uri))}";

@@ -176,7 +176,7 @@ public sealed class PasswordResetPersistenceTests : IAsyncLifetime
         Assert.Equal(Hash(RawToken()), (await db.ApplicationUsers.AsNoTracking().SingleAsync()).ResetTokenHash);
     }
 
-    private TestContext CreateContext() => new(_options);
+    private SqliteTestContext CreateContext() => new(_options);
     private PasswordResetService Service(VfmsDbContext db, TimeProvider? clock = null) => new(new PasswordResetRepository(db), _hasher, _email, new QueueFake(),
         new() { ResetUrl = "https://fitness.example/auth/reset-password" }, clock ?? TimeProvider.System);
     private string RawToken() => Regex.Match(_email.Body!, @"#token=([A-F0-9]{64})").Groups[1].Value;
@@ -193,14 +193,5 @@ public sealed class PasswordResetPersistenceTests : IAsyncLifetime
     {
         public DateTimeOffset Now = now;
         public override DateTimeOffset GetUtcNow() => Now;
-    }
-    private sealed class TestContext(DbContextOptions<VfmsDbContext> options) : VfmsDbContext(options)
-    {
-        protected override void OnModelCreating(ModelBuilder modelBuilder)
-        {
-            base.OnModelCreating(modelBuilder);
-            // Only this SQL Server-specific binary column needs a provider mapping in relational tests.
-            modelBuilder.Entity<FaceData>().Property(face => face.FaceNetEmbedding).HasColumnType("BLOB");
-        }
     }
 }

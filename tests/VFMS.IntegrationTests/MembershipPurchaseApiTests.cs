@@ -72,9 +72,14 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
         builder.Services.AddMembershipFreezePolicyModule();
         builder.Services.AddMembershipFreezeRequestModule();
         builder.Services.AddMembershipFreezeReviewModule();
+        builder.Services.AddMembershipFreezeLifecycleModule();
+        builder.Services.AddPromotionModule();
         var worker = builder.Services.Single(service =>
             service.ServiceType == typeof(IHostedService) && service.ImplementationType == typeof(MembershipCommerceWorker));
         builder.Services.Remove(worker);
+        var freezeWorker = builder.Services.Single(service =>
+            service.ServiceType == typeof(IHostedService) && service.ImplementationType == typeof(MembershipFreezeTransitionWorker));
+        builder.Services.Remove(freezeWorker);
         builder.Services.AddAuthentication("Test").AddScheme<AuthenticationSchemeOptions, TestAuth>("Test", _ => { });
         builder.Services.AddAuthorization();
 
@@ -523,6 +528,7 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
         {
             base.OnModelCreating(modelBuilder);
             modelBuilder.Entity<FaceData>().Property(face => face.FaceNetEmbedding).HasColumnType("BLOB");
+            modelBuilder.Entity<Voucher>().Property(voucher => voucher.Code).UseCollation("NOCASE");
         }
     }
 }

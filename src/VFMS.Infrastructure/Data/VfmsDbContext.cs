@@ -89,6 +89,7 @@ public class VfmsDbContext : DbContext
     public DbSet<WorkoutPlan> WorkoutPlans { get; set; }
     public DbSet<Exercise> Exercises { get; set; }
     public DbSet<PlanItem> PlanItems { get; set; }
+    public DbSet<WorkoutLog> WorkoutLogs { get; set; }
 
     // ─────────────────────────────────────────────────────────────
     //  Equipment & Procurement (Module 10)
@@ -356,7 +357,7 @@ public class VfmsDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.Code).IsUnique();
-            entity.Property(e => e.Code).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Code).HasMaxLength(50).IsRequired().UseCollation("Latin1_General_100_CI_AS");
             entity.Property(e => e.Name).HasMaxLength(256).IsRequired();
             entity.Property(e => e.DiscountType).HasConversion<string>().HasMaxLength(10);
             entity.Property(e => e.DiscountValue).HasColumnType("decimal(18,2)");
@@ -376,6 +377,9 @@ public class VfmsDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.OrderId).IsUnique();  // One voucher per order
             entity.Property(e => e.DiscountAmount).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.VoucherCodeSnapshot).HasMaxLength(50);
+            entity.Property(e => e.VoucherNameSnapshot).HasMaxLength(256);
+            entity.HasIndex(e => new { e.VoucherId, e.RedemptionStatus });
             entity.Property(e => e.RedemptionStatus).HasConversion<string>().HasMaxLength(20);
 
             entity.HasOne(e => e.Voucher)
@@ -415,8 +419,12 @@ public class VfmsDbContext : DbContext
         modelBuilder.Entity<MembershipFreeze>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.RequestStatus, e.RequestedStartDate, e.Id });
+            entity.HasIndex(e => new { e.RequestStatus, e.RequestedEndDate, e.Id });
             entity.Property(e => e.RequestStatus).HasConversion<string>().HasMaxLength(50);
             entity.Property(e => e.Reason).HasMaxLength(4000);
+            entity.Property(e => e.SupportingDocumentFileName).HasMaxLength(256);
+            entity.Property(e => e.SupportingDocumentContentType).HasMaxLength(100);
             entity.Property(e => e.EarlyUnfreezeRequestStatus).HasConversion<string>().HasMaxLength(50);
             entity.Property(e => e.EarlyUnfreezeReviewNote).HasMaxLength(4000);
             entity.HasOne(e => e.EarlyUnfreezeReviewedByUser).WithMany()
@@ -595,6 +603,7 @@ public class VfmsDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.ClassName).HasMaxLength(256).IsRequired();
             entity.Property(e => e.ClassStatus).HasConversion<string>().HasMaxLength(20);
+            entity.Property(e => e.DifficultyLevel).HasMaxLength(20).IsRequired();
 
             entity.HasOne(e => e.YogaClassType)
                 .WithMany(t => t.YogaClasses)
@@ -612,6 +621,10 @@ public class VfmsDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.ScheduleStatus).HasConversion<string>().HasMaxLength(50);
+            entity.HasOne<ApplicationUser>()
+                .WithMany()
+                .HasForeignKey(e => e.InstructorUserId)
+                .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasOne(e => e.YogaClass)
                 .WithMany(yc => yc.Schedules)
@@ -633,12 +646,22 @@ public class VfmsDbContext : DbContext
         modelBuilder.Entity<YogaBooking>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.HasIndex(e => new { e.YogaClassScheduleId, e.MemberUserId }).IsUnique();  // GBR-79
+            // GBR-79: one active enrolment per member per class; cancelled ones do not block rebooking.
+            entity.HasIndex(e => new { e.YogaClassId, e.MemberUserId }).IsUnique()
+                .HasFilter("[BookingStatus] = 'Confirmed'");
             entity.Property(e => e.BookingStatus).HasConversion<string>().HasMaxLength(20);
+            // One confirmed booking per mat per session (MSG-33).
+            entity.HasIndex(e => new { e.YogaClassId, e.MatNumber }).IsUnique()
+                .HasFilter("[MatNumber] IS NOT NULL AND [BookingStatus] = 'Confirmed'");
 
-            entity.HasOne(e => e.YogaClassSchedule)
-                .WithMany(s => s.Bookings)
-                .HasForeignKey(e => e.YogaClassScheduleId)
+            entity.HasOne(e => e.YogaClass)
+                .WithMany(c => c.Bookings)
+                .HasForeignKey(e => e.YogaClassId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.OrderItem)
+                .WithMany()
+                .HasForeignKey(e => e.OrderItemId)
                 .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasOne(e => e.Member)
@@ -682,8 +705,8 @@ public class VfmsDbContext : DbContext
                 .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasOne(e => e.YogaBooking)
-                .WithOne(b => b.Attendance)
-                .HasForeignKey<YogaAttendance>(e => e.YogaBookingId)
+                .WithMany(b => b.Attendances)
+                .HasForeignKey(e => e.YogaBookingId)
                 .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasOne(e => e.Member)
@@ -810,6 +833,8 @@ public class VfmsDbContext : DbContext
             entity.Property(e => e.CheckinMethod).HasConversion<string>().HasMaxLength(30);
             entity.Property(e => e.CheckoutMethod).HasConversion<string>().HasMaxLength(30);
             entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(20);
+            // One open visit per member: stops two kiosk scans at once from opening two visits.
+            entity.HasIndex(e => e.MemberUserId).IsUnique().HasFilter("[Status] = 'Active'");
 
             entity.HasOne(e => e.Member)
                 .WithMany(u => u.CheckIns)
@@ -824,6 +849,11 @@ public class VfmsDbContext : DbContext
             entity.HasOne(e => e.HandledByUser)
                 .WithMany()
                 .HasForeignKey(e => e.HandledByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.CheckedOutByUser)
+                .WithMany()
+                .HasForeignKey(e => e.CheckedOutByUserId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
@@ -858,6 +888,8 @@ public class VfmsDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.WeightKg).HasColumnType("decimal(5,2)");
             entity.Property(e => e.HeightCm).HasColumnType("decimal(5,2)");
+            entity.Property(e => e.BodyFatPercent).HasColumnType("decimal(5,2)");
+            entity.Property(e => e.SkeletalMuscleMassKg).HasColumnType("decimal(5,2)");
 
             entity.HasOne(e => e.Member)
                 .WithOne(u => u.PhysicalProfile)
@@ -870,6 +902,11 @@ public class VfmsDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.PlanStatus).HasConversion<string>().HasMaxLength(20);
+            entity.Property(e => e.NutritionAdvice).HasMaxLength(1000);
+            // GBR-94: at most one active personal plan per member, even under concurrent generation.
+            entity.HasIndex(e => e.MemberUserId).IsUnique()
+                .HasFilter("[PlanStatus] = 'Active' AND [IsTemplate] = 0 AND [IsDeleted] = 0")
+                .HasDatabaseName("IX_WorkoutPlans_MemberUserId_ActivePlan");
 
             entity.HasOne(e => e.Member)
                 .WithMany(u => u.WorkoutPlans)
@@ -903,6 +940,24 @@ public class VfmsDbContext : DbContext
                 .WithMany(ex => ex.PlanItems)
                 .HasForeignKey(e => e.ExerciseId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.Equipment)
+                .WithMany()
+                .HasForeignKey(e => e.EquipmentId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ── WorkoutLog ────────────────────────────────────────────
+        modelBuilder.Entity<WorkoutLog>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.WeightKg).HasColumnType("decimal(6,2)");
+            entity.HasIndex(e => new { e.PlanItemId, e.LoggedOn }).IsUnique();   // one log per exercise per day
+
+            entity.HasOne(e => e.PlanItem)
+                .WithMany(i => i.Logs)
+                .HasForeignKey(e => e.PlanItemId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         // ── CatalogCategory ───────────────────────────────────────
@@ -1248,17 +1303,12 @@ public class VfmsDbContext : DbContext
 
         TrainerModelConfiguration.Configure(modelBuilder);
 
-        // ── TrainerProfile → YogaClass ────────────────────────────
+        // ── TrainerProfile ────────────────────────────────────────
+        // One profile per trainer. YogaClass.InstructorUserId points at ApplicationUsers only: a Yoga Instructor
+        // created by an Admin has no TrainerProfile yet, so a second FK to TrainerProfiles broke every class insert.
         modelBuilder.Entity<TrainerProfile>()
             .HasIndex(tp => tp.PTUserId)
             .IsUnique();
-
-        modelBuilder.Entity<YogaClass>()
-            .HasOne<TrainerProfile>()
-            .WithMany(tp => tp.AssignedYogaClasses)
-            .HasForeignKey(yc => yc.InstructorUserId)
-            .HasPrincipalKey(tp => tp.PTUserId)
-            .OnDelete(DeleteBehavior.Restrict);
     }
 
     // ─────────────────────────────────────────────────────────────

@@ -1,5 +1,7 @@
 @page "/pt/dashboard"
 @layout StaffPTLayout
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "PT")]
 
 <PageTitle>PT Dashboard | Victor Fitness</PageTitle>
 
