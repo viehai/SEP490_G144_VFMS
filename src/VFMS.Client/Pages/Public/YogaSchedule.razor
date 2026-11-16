@@ -1,5 +1,6 @@
 @page "/yoga/schedule"
 @layout PublicLayout
+@using VFMS.Client.Components.Operations
 @using VFMS.Contracts.Yoga
 @inject VfmsApiClient Api
 
@@ -67,6 +68,11 @@
                                         <StatusBadge Status="Full" Label="Hết chỗ · Waitlist" />
                                     }
                                 </div>
+                                <AuthorizeView Roles="Member">
+                                    <button type="button" class="mt-3 @(s.FreeSeats > 0 ? Ui.PrimaryButton : Ui.Button)" @onclick="() => OpenBooking(s)">
+                                        @(s.FreeSeats > 0 ? "Đặt chỗ" : "Vào danh sách chờ (miễn phí)")
+                                    </button>
+                                </AuthorizeView>
                             </li>
                         }
                     </ul>
@@ -75,6 +81,126 @@
         </div>
     }
 </div>
+
+@* UC-38 Book Yoga Class & Reserve Mat. Booking is per class: one booking holds the mat for every session of the class. *@
+@if (_booking is { } b)
+{
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-[#252323]/50 p-4" role="dialog" aria-modal="true" aria-labelledby="book-title" @onkeydown="CloseOnEscape">
+        <div class="@Ui.Card w-full max-w-lg space-y-4">
+            <div>
+                <p class="text-[10px] font-bold tracking-[.18em] text-[#B83A3A]">@(b.FreeSeats > 0 ? "ĐẶT CHỖ" : "DANH SÁCH CHỜ")</p>
+                <h2 id="book-title" class="font-['Montserrat'] text-xl font-extrabold text-[#242424]">@b.ClassName</h2>
+                <p class="mt-1 text-xs text-[#6F6966]">@b.TypeName · @b.StudioName (tầng @b.FloorNumber) · @b.InstructorName</p>
+            </div>
+            <p class="rounded-lg border border-[#D8D1CD] bg-[#ECE8E4] px-3 py-2 text-xs text-[#242424]">Một lần đặt chỗ giữ thảm của bạn cho <b>mọi buổi</b> của lớp này. Hủy trong vòng 2 giờ trước buổi học sẽ tính là vắng mặt.</p>
+
+            @if (_bookingResult is { } result)
+            {
+                <p role="status" class="@Ui.Notice">@result</p>
+                <div class="flex justify-end gap-2">
+                    <a href="/yoga/my-bookings" class="@Ui.PrimaryButton">Lịch yoga của tôi</a>
+                    <button type="button" class="@Ui.Button" @onclick="CloseBooking">Đóng</button>
+                </div>
+            }
+            else
+            {
+                @if (b.FreeSeats > 0)
+                {
+                    <fieldset>
+                        <legend class="@Ui.Label">Chọn thảm (không bắt buộc)</legend>
+                        @if (_mats is null)
+                        {
+                            <p class="mt-2 text-xs text-[#6F6966]">Đang tải sơ đồ thảm…</p>
+                        }
+                        else
+                        {
+                            <div class="mt-2 grid grid-cols-6 gap-2 sm:grid-cols-8">
+                                @for (var n = 1; n <= _mats.MatCount; n++)
+                                {
+                                    var mat = n;
+                                    var taken = _mats.TakenMats.Contains(mat);
+                                    <button type="button" disabled="@taken" aria-pressed="@(_mat == mat)" aria-label="@($"Thảm {mat}{(taken ? ", đã có người" : "")}")"
+                                            class="@MatClass(taken, _mat == mat)" @onclick="() => _mat = _mat == mat ? null : mat">@mat</button>
+                                }
+                            </div>
+                            <p class="mt-2 text-xs text-[#6F6966]">@(_mat is { } chosen ? $"Đã chọn thảm {chosen}." : "Không chọn: hệ thống giữ thảm trống có số nhỏ nhất.")</p>
+                        }
+                    </fieldset>
+                }
+                else
+                {
+                    <p class="text-sm text-[#242424]">Lớp đã đủ chỗ. Bạn sẽ được vào danh sách chờ miễn phí và được báo khi có chỗ trống.</p>
+                }
+                <Alerts Error="@_bookingError" />
+                <div class="flex justify-end gap-2">
+                    <button type="button" class="@Ui.Button" @onclick="CloseBooking">Hủy</button>
+                    <button type="button" class="@Ui.PrimaryButton disabled:opacity-50" disabled="@_bookingBusy" @onclick="ConfirmBooking">
+                        @(_bookingBusy ? "Đang gửi…" : b.FreeSeats > 0 ? "Xác nhận đặt chỗ" : "Vào danh sách chờ")
+                    </button>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private YogaSessionResponse? _booking;
+    private YogaMatMapResponse? _mats;
+    private int? _mat;
+    private string? _bookingResult, _bookingError;
+    private bool _bookingBusy;
+
+    private async Task OpenBooking(YogaSessionResponse session)
+    {
+        _booking = session;
+        _mats = null;
+        _mat = null;
+        _bookingResult = _bookingError = null;
+        if (session.FreeSeats == 0) return;
+        try { _mats = await Api.GetAsync<YogaMatMapResponse>($"api/yoga/bookings/classes/{session.YogaClassId}/mats"); }
+        catch (ApiException ex) { _bookingError = ex.Message; }
+    }
+
+    private async Task ConfirmBooking()
+    {
+        if (_booking is null || _bookingBusy) return;
+        _bookingBusy = true;
+        _bookingError = null;
+        try
+        {
+            var r = await Api.PostAsync<YogaBookingResponse>("api/yoga/bookings", new YogaBookingRequest(_booking.YogaClassId, _mat));
+            _bookingResult = r.Status == "Waitlisted"
+                ? $"Bạn đang ở vị trí {r.WaitlistPosition} trong danh sách chờ của lớp {r.ClassName}."
+                : $"Đã đặt chỗ lớp {r.ClassName}{(r.MatNumber is { } mat ? $", thảm {mat}" : "")}.";
+            await Load();
+        }
+        catch (ApiException ex) { _bookingError = BookingError(ex); }
+        finally { _bookingBusy = false; }
+    }
+
+    private static string BookingError(ApiException ex) => ex.ErrorCode switch
+    {
+        "MEMBERSHIP_REQUIRED" => "Bạn cần gói hội viên còn hiệu lực có bao gồm yoga để đặt lớp này.",
+        "YOGA_BOOKING_SUSPENDED" => "Bạn tạm thời bị khóa đặt yoga vì vắng 3 buổi trong 30 ngày.",
+        "ALREADY_BOOKED" => "Bạn đã có lớp hoặc buổi tập khác trùng khung giờ này.",
+        "ALREADY_WAITLISTED" => "Bạn đã ở trong danh sách chờ của lớp này.",
+        "MAT_TAKEN" => "Thảm này vừa có người đặt. Hãy chọn thảm khác.",
+        "REGISTRATION_CLOSED" => "Lớp này đã đóng đăng ký.",
+        _ => ex.Message
+    };
+
+    private static string MatClass(bool taken, bool selected) =>
+        "h-9 rounded-lg border text-xs font-semibold transition " + (taken
+            ? "cursor-not-allowed border-[#D8D1CD] bg-[#ECE8E4] text-[#8C8581] line-through"
+            : selected ? "border-[#B83A3A] bg-[#B83A3A] text-white" : "border-[#C9C0BB] bg-[#F8F5F2] text-[#242424] hover:bg-[#F3E4E2]");
+
+    private void CloseBooking() => _booking = null;
+
+    private void CloseOnEscape(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") _booking = null;
+    }
+}
 
 @code {
     private DateOnly _from;

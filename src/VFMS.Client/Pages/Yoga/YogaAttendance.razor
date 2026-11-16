@@ -1,0 +1,215 @@
+@page "/pt/yoga/sessions/{SessionId:int}/attendance"
+@page "/staff/yoga/sessions/{SessionId:int}/attendance"
+@layout StaffPTLayout
+@attribute [Authorize(Roles = "YogaInstructor,Staff")]
+@using Microsoft.AspNetCore.Authorization
+@using VFMS.Client.Components.Operations
+@using VFMS.Contracts.Yoga
+@inject VfmsApiClient Api
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+@implements IAsyncDisposable
+
+<PageTitle>Điểm danh Yoga | Victor Fitness</PageTitle>
+
+@* UC-42 Take Yoga Attendance: the session's instructor or any Staff (GBR-86); a member's QR marks them Attended (GBR-88). *@
+<div class="workspace-page space-y-8 font-['Inter',sans-serif] text-[#242424]">
+    <PageHeader Overline="VFMS / YOGA / ĐIỂM DANH" Title="@(_roster?.ClassName ?? "Điểm danh")"
+                Description="@(_roster is null ? "" : $"Buổi {_roster.Date:dddd dd/MM/yyyy} lúc {_roster.StartTime:HH\\:mm}. Đánh dấu từng học viên rồi gửi danh sách.")">
+        <a href="@BackHref" class="text-sm font-semibold text-[#B83A3A] underline underline-offset-4">← Danh sách buổi học</a>
+    </PageHeader>
+
+    <Alerts Notice="@_notice" Error="@_error" />
+
+    @if (_loading)
+    {
+        <p role="status" class="text-sm text-[#6F6966]">Đang tải danh sách…</p>
+    }
+    else if (_roster is not null)
+    {
+        @if (_roster.SubmittedAt is { } submitted)
+        {
+            <div class="@Ui.Card flex flex-wrap items-center gap-3">
+                <StatusBadge Status="Completed" Label="Đã gửi" />
+                <p class="text-sm">Danh sách đã gửi lúc @GymTime(submitted).ToString("HH:mm dd/MM") và không thể sửa nữa.</p>
+                @if (_roster.SubmittedLate) { <StatusBadge Status="Overdue" Label="Gửi trễ" /> }
+            </div>
+        }
+
+        <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+            <section class="@Ui.ListCard" aria-labelledby="roster-title">
+                <div class="@Ui.ListHeader flex flex-wrap items-center justify-between gap-3">
+                    <h2 id="roster-title" class="workspace-heading text-base">Học viên (@_roster.Roster.Count)</h2>
+                    <p class="text-xs text-[#6F6966]">Đã đánh dấu @_marks.Count(m => m.Value is not null)/@_roster.Roster.Count</p>
+                </div>
+                @if (_roster.Roster.Count == 0)
+                {
+                    <p class="p-5 text-sm text-[#6F6966]">Không có học viên đặt chỗ trước giờ học. Buổi học vẫn diễn ra (GBR-87); gửi danh sách trống để đóng buổi.</p>
+                }
+                else
+                {
+                    <ul class="divide-y divide-[#D8D1CD]">
+                        @foreach (var entry in _roster.Roster)
+                        {
+                            var mark = _marks[entry.BookingId];
+                            <li @key="entry.BookingId" class="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
+                                <p class="text-sm"><span class="font-semibold">@entry.MemberName</span>@(entry.MatNumber is { } mat ? $" · thảm #{mat}" : "")</p>
+                                <div class="flex gap-2" role="group" aria-label="Điểm danh @entry.MemberName">
+                                    <button type="button" aria-pressed="@(mark == true)" disabled="@Closed" class="@Choice(mark == true, "emerald")" @onclick="() => _marks[entry.BookingId] = true">Có mặt</button>
+                                    <button type="button" aria-pressed="@(mark == false)" disabled="@Closed" class="@Choice(mark == false, "red")" @onclick="() => _marks[entry.BookingId] = false">Vắng</button>
+                                </div>
+                            </li>
+                        }
+                    </ul>
+                }
+                @if (!Closed)
+                {
+                    <div class="flex flex-wrap items-center justify-between gap-3 border-t border-[#D8D1CD] p-5">
+                        <p class="text-xs text-[#6F6966]">@(AllMarked ? "Đã đánh dấu đủ. Gửi trong 30 phút sau giờ bắt đầu; gửi muộn hơn sẽ được báo cho quản lý." : "Đánh dấu tất cả học viên trước khi gửi.")</p>
+                        <button type="button" class="@Ui.PrimaryButton disabled:opacity-50" disabled="@(_working || !AllMarked)" @onclick="Submit">@(_working ? "Đang gửi…" : "Gửi danh sách")</button>
+                    </div>
+                }
+            </section>
+
+            @if (!Closed)
+            {
+                <section class="@Ui.Card space-y-4" aria-labelledby="qr-title">
+                    <h2 id="qr-title" class="workspace-heading text-base">Quét mã QR</h2>
+                    <p class="text-xs text-[#6F6966]">Học viên mở trang Mã QR của tôi; quét mã sẽ đánh dấu Có mặt ngay.</p>
+                    <div class="relative aspect-[4/3] w-full overflow-hidden rounded-lg border border-[#D8D1CD] bg-[#2B2928]">
+                        <video @ref="_video" class="h-full w-full object-cover" playsinline muted></video>
+                        @if (!_cameraOn) { <p class="absolute inset-0 flex items-center justify-center p-4 text-center text-xs text-[#ECE8E4]">Camera đang tắt</p> }
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        @if (!_cameraOn)
+                        {
+                            <button type="button" class="@Ui.PrimaryButton" disabled="@_working" @onclick="StartCamera">Bật camera</button>
+                        }
+                        else
+                        {
+                            <button type="button" class="@Ui.PrimaryButton" disabled="@_working" @onclick="ScanQr">@(_working ? "Đang tìm mã…" : "Quét mã QR")</button>
+                            <button type="button" class="@Ui.Button" @onclick="StopCamera">Tắt camera</button>
+                        }
+                    </div>
+                </section>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public int SessionId { get; set; }
+
+    private YogaAttendanceRosterResponse? _roster;
+    private readonly Dictionary<int, bool?> _marks = [];
+    private ElementReference _video;
+    private string? _notice, _error;
+    private bool _loading = true, _working, _cameraOn;
+
+    private bool Closed => _roster?.SubmittedAt is not null;
+    private bool AllMarked => _marks.Values.All(m => m is not null);
+    private string BackHref => Navigation.ToBaseRelativePath(Navigation.Uri).StartsWith("pt/", StringComparison.OrdinalIgnoreCase) ? "/pt/yoga" : "/staff/yoga";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        try { Apply(await Api.GetAsync<YogaAttendanceRosterResponse>($"api/yoga/sessions/{SessionId}/attendance")); }
+        catch (ApiException ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    // Marks already saved (by an earlier QR scan or submit) stay; local unsaved choices are kept on refresh.
+    private void Apply(YogaAttendanceRosterResponse roster)
+    {
+        _roster = roster;
+        var local = new Dictionary<int, bool?>(_marks);
+        _marks.Clear();
+        foreach (var e in roster.Roster)
+            _marks[e.BookingId] = e.Mark switch { "Attended" => true, "No-show" => false, _ => local.GetValueOrDefault(e.BookingId) };
+        if (roster.Message is { Length: > 0 } message) _notice = message;
+    }
+
+    private async Task Submit()
+    {
+        if (_working || !AllMarked) return;
+        _working = true;
+        _notice = _error = null;
+        try
+        {
+            var marks = _marks.Select(m => new YogaAttendanceMark(m.Key, m.Value!.Value)).ToList();
+            Apply(await Api.PostAsync<YogaAttendanceRosterResponse>($"api/yoga/sessions/{SessionId}/attendance", new SubmitYogaAttendanceRequest(marks)));
+            _notice ??= "Đã gửi danh sách điểm danh.";
+            await StopCamera();
+        }
+        catch (ApiException ex) { _error = Translate(ex); }
+        finally { _working = false; }
+    }
+
+    private static string Translate(ApiException ex) => ex.ErrorCode switch
+    {
+        "ATTENDANCE_CLOSED" => "Buổi học này đã được điểm danh và không thể gửi lại.",
+        "SESSION_NOT_STARTED" => "Điểm danh mở từ 30 phút trước giờ bắt đầu buổi học.",
+        "ROSTER_INCOMPLETE" => "Hãy đánh dấu tất cả học viên trước khi gửi.",
+        _ => ex.Message
+    };
+
+    private async Task StartCamera()
+    {
+        _error = null;
+        try
+        {
+            await JS.InvokeVoidAsync("import", "./js/qr-code.js");
+            _cameraOn = await JS.InvokeAsync<bool>("vfmsQr.startCamera", _video);
+        }
+        catch (JSException) { _error = "Không mở được camera. Hãy cấp quyền camera và thử lại."; }
+    }
+
+    private async Task ScanQr()
+    {
+        _working = true;
+        _notice = _error = null;
+        StateHasChanged();
+        try
+        {
+            var token = await JS.InvokeAsync<string?>("vfmsQr.scan", _video, 10000);
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                _error = "Không đọc được mã QR. Hãy đưa mã gần camera hơn và thử lại.";
+                return;
+            }
+            var before = _roster!.Roster.Where(e => e.Mark == "Attended").Select(e => e.BookingId).ToHashSet();
+            Apply(await Api.PostAsync<YogaAttendanceRosterResponse>($"api/yoga/sessions/{SessionId}/attendance/qr", new YogaAttendanceQrRequest(token.Trim())));
+            var marked = _roster.Roster.FirstOrDefault(e => e.Mark == "Attended" && !before.Contains(e.BookingId));
+            _notice = marked is null ? "Học viên này đã được đánh dấu có mặt." : $"Đã đánh dấu {marked.MemberName} có mặt.";
+        }
+        catch (JSException) { _error = "Không đọc được mã QR. Vui lòng thử lại."; }
+        catch (ApiException ex)
+        {
+            _error = ex.ErrorCode switch
+            {
+                "ACCESS_DENIED" => "Mã QR không hợp lệ (đã dùng, hết hạn hoặc đã được thay) hoặc người này không đặt chỗ buổi học.",
+                _ => Translate(ex)
+            };
+        }
+        finally { _working = false; }
+    }
+
+    private async Task StopCamera()
+    {
+        if (!_cameraOn) return;
+        _cameraOn = false;
+        try { await JS.InvokeVoidAsync("vfmsQr.stopCamera"); } catch (JSException) { }
+    }
+
+    private static string Choice(bool selected, string tone) => selected
+        ? (tone == "emerald" ? "rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-[#16A34A]" : "rounded-lg border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-semibold text-[#DC2626]")
+        : "rounded-lg border border-[#C9C0BB] bg-[#F8F5F2] px-3 py-1.5 text-xs font-semibold text-[#6F6966] hover:bg-[#ECE8E4] disabled:opacity-50";
+
+    private static DateTime GymTime(DateTime utc) => DateTime.SpecifyKind(utc, DateTimeKind.Utc).AddHours(7);
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_cameraOn)
+            try { await JS.InvokeVoidAsync("vfmsQr.stopCamera"); } catch (JSException) { } catch (JSDisconnectedException) { }
+    }
+}

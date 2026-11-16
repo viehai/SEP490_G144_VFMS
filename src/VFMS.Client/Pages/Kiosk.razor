@@ -10,55 +10,55 @@
 <PageTitle>Kiosk check-in | Victor Fitness</PageTitle>
 
 @* Entrance/exit kiosk (UC-44, UC-45). Staff and Manager can scan anyone; a Customer or Member only themselves (the API enforces it). *@
-<div class="mx-auto max-w-6xl space-y-8 px-4 py-28 sm:px-6 font-['Inter',sans-serif] text-[#252525]">
-    <header class="border-b-2 border-black pb-7">
-        <p class="font-['Montserrat'] mb-3 text-[10px] font-bold tracking-[.18em] text-neutral-500">VFMS / KIOSK</p>
-        <h1 class="font-['Montserrat'] text-3xl font-extrabold uppercase tracking-tight sm:text-4xl">Kiosk check-in<span>.</span></h1>
-        <p class="mt-3 text-sm text-[#545454]">Quét khuôn mặt hoặc mã QR: lần quét khi đang ở ngoài là check-in, lần quét khi đang ở trong phòng tập là check-out.</p>
+<div class="mx-auto max-w-6xl space-y-8 px-4 py-28 sm:px-6 font-['Inter',sans-serif] text-[#242424]">
+    <header class="border-b border-[#D8D1CD] pb-7">
+        <p class="font-['Montserrat'] mb-3 text-[10px] font-bold tracking-[.18em] text-[#B83A3A]">VFMS / KIOSK</p>
+        <h1 class="font-['Montserrat'] text-3xl font-extrabold uppercase tracking-tight sm:text-4xl">Kiosk check-in<span class="text-[#B83A3A]">.</span></h1>
+        <p class="mt-3 text-sm text-[#6F6966]">Quét khuôn mặt hoặc mã QR: lần quét khi đang ở ngoài là check-in, lần quét khi đang ở trong phòng tập là check-out.</p>
     </header>
 
     @if (_result is not null)
     {
-        <div class="border-2 p-6 rounded-none @(_ok ? "border-emerald-700 bg-emerald-50" : "border-red-700 bg-red-50")" role="status">
+        <div class="border p-6 rounded-xl @(_ok ? "border-emerald-700 bg-emerald-50" : "border-red-700 bg-red-50")" role="status">
             <p class="font-['Montserrat'] text-lg font-extrabold uppercase @(_ok ? "text-emerald-800" : "text-red-800")">@(_ok ? "Mở cổng" : "Từ chối")</p>
             <p class="mt-2 text-sm">@_result</p>
         </div>
     }
 
     <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <section class="space-y-4 border-2 border-black bg-white p-6 rounded-none">
+        <section class="space-y-4 border border-[#D8D1CD] bg-[#F8F5F2] p-6 rounded-xl">
             <h2 class="font-['Montserrat'] text-sm font-extrabold uppercase">Camera</h2>
             @if (_scanning is not null)
             {
                 <p class="text-xs font-semibold" role="status">@_scanning</p>
             }
-            <div class="relative aspect-[4/3] w-full max-w-xl overflow-hidden border-2 border-black bg-[#0A0A0A] rounded-none">
+            <div class="relative aspect-[4/3] w-full max-w-xl overflow-hidden border border-[#D8D1CD] bg-[#2B2928] rounded-lg">
                 <video @ref="_video" class="h-full w-full -scale-x-100 object-cover" playsinline muted></video>
                 @if (!_cameraOn)
                 {
-                    <p class="absolute inset-0 flex items-center justify-center p-6 text-center text-xs text-neutral-300">Camera đang tắt</p>
+                    <p class="absolute inset-0 flex items-center justify-center p-6 text-center text-xs text-[#ECE8E4]">Camera đang tắt</p>
                 }
             </div>
             <div class="flex flex-wrap gap-2">
                 @if (!_cameraOn)
                 {
-                    <button type="button" disabled="@_busy" class="bg-black px-6 py-3 text-xs font-bold uppercase text-white rounded-none disabled:opacity-40" @onclick="StartCamera">Bật camera</button>
+                    <button type="button" disabled="@_busy" class="bg-[#B83A3A] hover:bg-[#9F3030] px-6 py-3 text-xs font-bold uppercase text-white rounded-lg disabled:opacity-40" @onclick="StartCamera">Bật camera</button>
                 }
                 else
                 {
-                    <button type="button" disabled="@_busy" class="bg-black px-6 py-3 text-xs font-bold uppercase text-white rounded-none disabled:opacity-40" @onclick="ScanFace">Quét khuôn mặt</button>
-                    <button type="button" disabled="@_busy" class="border-2 border-black px-6 py-3 text-xs font-bold uppercase rounded-none disabled:opacity-40" @onclick="ScanQr">Quét mã QR</button>
+                    <button type="button" disabled="@_busy" class="bg-[#B83A3A] hover:bg-[#9F3030] px-6 py-3 text-xs font-bold uppercase text-white rounded-lg disabled:opacity-40" @onclick="ScanFace">Quét khuôn mặt</button>
+                    <button type="button" disabled="@_busy" class="border border-[#D8D1CD] px-6 py-3 text-xs font-bold uppercase rounded-lg disabled:opacity-40" @onclick="ScanQr">Quét mã QR</button>
                     <button type="button" class="px-4 py-3 text-xs font-bold uppercase underline" @onclick="StopCamera">Tắt camera</button>
                 }
             </div>
-            <p class="text-xs text-neutral-500">Ảnh chỉ được xử lý trên thiết bị; chỉ mẫu 128 số được gửi lên máy chủ.</p>
+            <p class="text-xs text-[#6F6966]">Ảnh chỉ được xử lý trên thiết bị; chỉ mẫu 128 số được gửi lên máy chủ.</p>
         </section>
 
-        <section class="space-y-3 border-2 border-black bg-white p-6 text-sm rounded-none">
+        <section class="space-y-3 border border-[#D8D1CD] bg-[#F8F5F2] p-6 text-sm rounded-xl">
             <h2 class="font-['Montserrat'] text-sm font-extrabold uppercase">Cách dùng</h2>
             <p><b>FaceID:</b> nhìn thẳng vào camera rồi bấm Quét khuôn mặt.</p>
             <p><b>Mã QR:</b> mở trang Mã QR của tôi trên điện thoại, đưa mã trước camera rồi bấm Quét mã QR.</p>
-            <p class="text-xs text-neutral-500">Mã QR dùng một lần và hết hạn sau 2 phút.</p>
+            <p class="text-xs text-[#6F6966]">Mã QR dùng một lần và hết hạn sau 2 phút.</p>
         </section>
     </div>
 </div>

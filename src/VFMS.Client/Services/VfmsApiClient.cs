@@ -71,7 +71,8 @@ public sealed class VfmsApiClient(HttpClient http, AuthSession session)
             var root = document.RootElement;
             if (root.ValueKind == JsonValueKind.Object)
             {
-                code = root.TryGetProperty("errorCode", out var c) ? c.GetString() : null;
+                // ToActionResult puts the code in the ProblemDetails "code" extension; "errorCode" is the older shape.
+                code = root.TryGetProperty("code", out var c) || root.TryGetProperty("errorCode", out c) ? c.GetString() : null;
                 if (root.TryGetProperty("errorMessage", out var m) && m.GetString() is { Length: > 0 } text)
                     message = text;
                 else if (root.TryGetProperty("detail", out m) && m.GetString() is { Length: > 0 } detail)

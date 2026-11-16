@@ -1,8 +1,6 @@
 # How to test dev/haiduc: check-in, yoga, workout plans
 
-Branch `dev/haiduc`. These features have screens; the rest is API only (test it in Swagger):
-- **Screens:** kiosk check-in/out (Face ID and QR), My QR, Face ID registration, who is inside, yoga setup and schedules, workout plan.
-- **API only:** front-desk manual check-in/out, yoga booking, cancellation, my bookings and attendance.
+Branch `dev/haiduc`. Every feature below has a screen, in the shared Soft Black / Muted Red / Warm Neutral style (`VFMS_FRONTEND_GUIDELINES.md` §6). Swagger is only needed for the extra checks marked **API**.
 
 ## 1. Run it
 
@@ -81,15 +79,14 @@ Things that look like errors but are the rules:
 - `/face-id` (Customer, Member): consent, camera capture, delete.
 - The profile page's **TIỆN ÍCH HỘI VIÊN** box links to these pages, the kiosk, the yoga schedule and the workout plan.
 
-### Staff pages
+### Front desk: `/staff/check-ins` (Staff, Manager)
 
-`/staff/check-ins` (Staff, Manager) shows who is inside, the occupancy and the peak flag. You can search by name, phone or order number.
+1. **Check-in thủ công:** search by name, phone (`0900000004`) or order number, then press **Check-in**. The button is off for members without an active membership; a member already inside shows "Đang trong phòng tập".
+2. **Đang có mặt:** who is inside, the occupancy, today's check-ins and the peak flag. **Check-out** on a row asks once, then records the staff member who did it.
+3. A second check-in within 15 minutes of the last one is refused (anti-passback).
 
-### API only (Swagger, as Staff)
+### API (Swagger)
 
-- **Search the front desk:** `GET /api/check-ins/members?search=` with a name, a phone (`0900000004`) or an order number.
-- **Manual check-in:** `POST /api/check-ins/manual` with `{ "memberUserId": "b7a2e8b5-..." }`. The 15-minute anti-passback rule applies here too.
-- **Manual check-out:** `POST /api/check-ins/{id}/check-out`, where `id` comes from `GET /api/check-ins/active`. The staff member who does it is recorded.
 - **Kiosk endpoints:**
   - `POST /api/kiosk/scan` checks in or out on its own.
   - `POST /api/kiosk/check-in` and `POST /api/kiosk/check-out` still exist.
@@ -116,24 +113,23 @@ How to tell which plan you got:
 |---|---|---|
 | `/manager/yoga` | Manager | Studios (create, edit, deactivate), class types, classes (create, publish, cancel), sessions |
 | `/yoga/schedule` | anyone | The week's published sessions with free mats, instructor filter, next/previous week ("Hatha Morning" is from 19/11) |
-| `/pt/yoga` | YogaInstructor | This week's assigned sessions with booked members |
+| `/pt/yoga` | YogaInstructor | This week's assigned sessions with booked members, and **Điểm danh** per session |
+| `/yoga/my-bookings` | Member | Upcoming (with cancel), past (Có mặt / Vắng) and waitlist tabs |
+| `/staff/yoga` | Staff | The day's sessions; **Điểm danh** opens the roster |
 
-**API only (Swagger):**
-- **Book (Member):**
-  - `GET /api/yoga/bookings/classes/1/mats` lists the mats.
-  - `POST /api/yoga/bookings` with `{ "yogaClassId": 1, "matNumber": 5 }`.
-  - A clash in the same time slot gives 409 ALREADY_BOOKED.
-  - A full class puts the member on the waitlist. To test it, use a class with maxParticipants 1 and a second member.
-- **My bookings:** `GET /api/yoga/bookings/mine` shows upcoming, past (attended or no-show) and the waitlist.
-- **Cancel:** `POST /api/yoga/bookings/{id}/cancel` with `{}`.
-  - Under 2 hours before the session it returns 409 LATE_CANCELLATION_CONFIRM.
-  - Send `{ "confirmLateCancellation": true }` to cancel anyway. It counts as a no-show, and 3 no-shows suspend booking.
-- **Attendance (YogaInstructor or Staff):**
-  - `GET /api/yoga/sessions/{id}/attendance` shows the roster.
-  - `POST .../attendance/qr` with `{ "qrToken": "<member my-qr token>" }` marks one member.
-  - `POST .../attendance` with `{ "marks": [ { "bookingId": 1, "attended": true } ] }` submits. Every booking must be marked.
-  - Writes open 30 minutes before the start, and a second submit gives 409 ATTENDANCE_CLOSED.
-  - A submit more than 30 minutes after the start is flagged late; the Manager sees it in `GET /api/yoga/classes/{id}/sessions`.
+**Book (Member, on `/yoga/schedule`):**
+- Each session shows **Đặt chỗ**, or **Vào danh sách chờ (miễn phí)** when the class is full.
+- A booking is **per class**: one booking holds the mat for every session of that class. Pick a mat or leave it to the system.
+- A clash in the same time slot is refused ("trùng khung giờ"). To test the waitlist, use a class with maxParticipants 1 and a second member.
+
+**Cancel (Member, on `/yoga/my-bookings`):**
+- More than 2 hours before the next session it cancels after one confirm.
+- Within 2 hours a warning explains it counts as a no-show (3 in 30 days suspend booking for 7 days). **Giữ chỗ** keeps it; **Vẫn hủy** cancels.
+
+**Attendance (YogaInstructor on `/pt/yoga`, Staff on `/staff/yoga`):**
+- Mark each member **Có mặt** or **Vắng**; **Gửi danh sách** stays off until everyone is marked. After submitting, the roster is locked.
+- **Quét mã QR** opens the camera and marks the member whose `/my-qr` code is shown.
+- Attendance opens 30 minutes before the start. A submit more than 30 minutes after the start is flagged "trễ"; the Manager sees it on the class's sessions.
 
 To make a session "now" for attendance tests (the API needs 7+ days' notice for sessions of a published class):
 ```sql

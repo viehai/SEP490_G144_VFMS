@@ -1,35 +1,31 @@
 @page "/pt/yoga"
 @layout StaffPTLayout
+@attribute [Authorize(Roles = "YogaInstructor")]
+@using Microsoft.AspNetCore.Authorization
+@using VFMS.Client.Components.Operations
 @using VFMS.Contracts.Yoga
 @inject VfmsApiClient Api
 
 <PageTitle>Lớp Yoga được phân công | Victor Fitness</PageTitle>
 
-<div class="workspace-page space-y-8 font-['Inter',sans-serif] text-[#252525]">
-    <header class="flex flex-col justify-between gap-5 border-b-2 border-black pb-7 md:flex-row md:items-end">
-        <div>
-            <p class="workspace-heading mb-3 text-[10px] font-bold tracking-[.18em] text-[#71717A]">VFMS / YOGA</p>
-            <h1 class="workspace-heading text-3xl font-extrabold uppercase tracking-tight sm:text-4xl">Lớp được phân công<span>.</span></h1>
-            <p class="mt-3 text-sm text-[#545454]">Lịch dạy, phòng tập và danh sách học viên đã đặt chỗ.</p>
-        </div>
+<div class="workspace-page space-y-8 font-['Inter',sans-serif] text-[#242424]">
+    <PageHeader Overline="VFMS / YOGA" Title="Lớp được phân công" Description="Lịch dạy, phòng tập, học viên đã đặt chỗ và điểm danh.">
         <div class="flex items-center gap-2">
-            <button type="button" class="border-2 border-black px-4 py-2 text-xs font-bold rounded-none" @onclick="() => Move(-7)" aria-label="Tuần trước">←</button>
+            <button type="button" class="@Ui.Button" @onclick="() => Move(-7)" aria-label="Tuần trước">←</button>
             <span class="text-sm font-semibold">@_from.ToString("dd/MM") – @_from.AddDays(6).ToString("dd/MM/yyyy")</span>
-            <button type="button" class="border-2 border-black px-4 py-2 text-xs font-bold rounded-none" @onclick="() => Move(7)" aria-label="Tuần sau">→</button>
+            <button type="button" class="@Ui.Button" @onclick="() => Move(7)" aria-label="Tuần sau">→</button>
         </div>
-    </header>
+    </PageHeader>
 
-    @if (_error is not null)
+    <Alerts Error="@_error" />
+
+    @if (_loading)
     {
-        <p role="alert" class="border-2 border-[#EF4444] bg-red-50 px-4 py-3 text-sm text-[#B91C1C] rounded-none">@_error</p>
+        <p role="status" class="text-sm text-[#6F6966]">Đang tải…</p>
     }
-    else if (_loading)
+    else if (_items.Count == 0 && _error is null)
     {
-        <p class="text-sm text-[#545454]">Đang tải…</p>
-    }
-    else if (_items.Count == 0)
-    {
-        <p class="border-2 border-black bg-white px-5 py-6 text-sm rounded-none">No matching records found.</p>
+        <p class="@Ui.Card text-sm text-[#6F6966]">Tuần này bạn không có buổi dạy nào.</p>
     }
     else
     {
@@ -37,25 +33,33 @@
             @foreach (var item in _items)
             {
                 var s = item.Session;
-                <article class="border-2 border-black bg-white rounded-none">
-                    <div class="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+                <article @key="s.Id" class="@Ui.ListCard">
+                    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[#D8D1CD] bg-[#ECE8E4] px-5 py-4">
                         <div>
-                            <p class="workspace-heading text-sm font-extrabold uppercase">@s.ClassName</p>
-                            <p class="text-xs text-[#545454]">@s.ScheduledDate.ToString("dddd dd/MM") · @s.StartTime.ToString("HH:mm")–@s.EndTime.ToString("HH:mm") · @s.StudioName (tầng @s.FloorNumber)</p>
+                            <p class="workspace-heading text-sm">@s.ClassName</p>
+                            <p class="text-xs text-[#6F6966]">@s.ScheduledDate.ToString("dddd dd/MM") · @s.StartTime.ToString("HH:mm")–@s.EndTime.ToString("HH:mm") · @s.StudioName (tầng @s.FloorNumber)</p>
                         </div>
-                        <div class="flex items-center gap-2"><span class="text-xs font-semibold">@s.ConfirmedBookings/@s.MaxParticipants</span><StatusBadge Status="@s.Status" /></div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span class="text-xs font-semibold">@s.ConfirmedBookings/@s.MaxParticipants chỗ</span>
+                            <StatusBadge Status="@s.Status" />
+                            @if (s.AttendanceSubmittedAt is not null)
+                            {
+                                <StatusBadge Status="Completed" Label="@(s.AttendanceSubmittedLate ? "Đã điểm danh · trễ" : "Đã điểm danh")" />
+                            }
+                            <a href="/pt/yoga/sessions/@s.Id/attendance" class="@Ui.Button">Điểm danh</a>
+                        </div>
                     </div>
-                    <div class="border-t border-[#CFCFCF] px-5 py-3">
+                    <div class="px-5 py-4">
                         @if (item.Roster.Count == 0)
                         {
-                            <p class="text-xs text-[#545454]">Chưa có học viên đặt chỗ.</p>
+                            <p class="text-xs text-[#6F6966]">Chưa có học viên đặt chỗ.</p>
                         }
                         else
                         {
                             <ul class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                                 @foreach (var r in item.Roster)
                                 {
-                                    <li class="flex items-center justify-between border border-[#CFCFCF] px-3 py-2 text-sm rounded-none">
+                                    <li @key="r.BookingId" class="flex items-center justify-between gap-2 rounded-lg border border-[#D8D1CD] px-3 py-2 text-sm">
                                         <span>@(r.MatNumber is { } mat ? $"#{mat} · " : "")@r.MemberName</span><StatusBadge Status="@r.BookingStatus" />
                                     </li>
                                 }
