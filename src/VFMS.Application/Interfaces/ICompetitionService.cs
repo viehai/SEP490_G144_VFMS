@@ -49,6 +49,10 @@ public interface ICompetitionService
     Task<Result<CompetitionResponse>> CancelAsync(
         int id, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default);
 
+    /// <summary>Manager ends a started competition early.</summary>
+    Task<Result<CompetitionResponse>> CompleteAsync(
+        int id, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default);
+
     // ── Participants (UC-60) ─────────────────────────────────────
 
     Task<Result<PagedResponse<CompetitionParticipantResponse>>> GetParticipantsAsync(

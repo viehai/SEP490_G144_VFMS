@@ -140,7 +140,7 @@ public sealed class CompetitionApiTests
         Assert.Null(unrankedEntries![0].Rank);
         Assert.Equal(95.5m, unrankedEntries[0].Score);
 
-        // The competition must be Completed before a result can be confirmed (JOB-05 advances the status).
+        // A Manager must complete the competition before confirming a result.
         await SetCompetitionStatusAsync(app, competitionId, CompetitionStatus.Completed);
 
         // Staff records the preliminary score and rank (UC-61).
@@ -196,6 +196,61 @@ public sealed class CompetitionApiTests
         var confirmed = await PostJsonAsync(client, "/api/competitions/results/confirm",
             new ConfirmCompetitionResultRequest(joinId, 10m, 1), manager);
         Assert.Equal(HttpStatusCode.Conflict, confirmed.StatusCode);
+    }
+
+    [Fact]
+    public async Task ManagerCanEndAStartedCompetitionEarlyButNotBeforeItStarts()
+    {
+        await using var app = await StartAsync();
+        using var client = app.GetTestClient();
+        await SeedGymAsync(app);
+        var manager = await SeedUserAsync(app, "Manager Complete", "manager.complete@example.com", "Manager");
+        var now = DateTime.UtcNow;
+
+        var started = await CreateCompetitionAsync(client, manager, "Early Finish Cup",
+            now.AddDays(-4), now.AddDays(-2), now.AddHours(-1), now.AddDays(1));
+        var startedId = await ReadIdAsync(started);
+        await SetCompetitionStatusAsync(app, startedId, CompetitionStatus.Published);
+
+        var completed = await PostAsync(client, $"/api/competitions/{startedId}/complete", manager);
+        Assert.Equal(HttpStatusCode.OK, completed.StatusCode);
+        Assert.Equal("Completed", (await ReadJsonAsync(completed)).GetProperty("status").GetString());
+
+        var upcoming = await CreateCompetitionAsync(client, manager, "Upcoming Finish Cup",
+            now.AddDays(-4), now.AddMinutes(30), now.AddHours(1), now.AddDays(1));
+        var upcomingId = await ReadIdAsync(upcoming);
+        await PostAsync(client, $"/api/competitions/{upcomingId}/publish", manager);
+
+        var rejected = await PostAsync(client, $"/api/competitions/{upcomingId}/complete", manager);
+        Assert.Equal(HttpStatusCode.Conflict, rejected.StatusCode);
+    }
+
+    [Fact]
+    public async Task ManagerCanCancelACompetitionThatHasAlreadyStarted()
+    {
+        await using var app = await StartAsync();
+        using var client = app.GetTestClient();
+        await SeedGymAsync(app);
+        var manager = await SeedUserAsync(app, "Manager Cancel Active", "manager.cancel.active@example.com", "Manager");
+        var now = DateTime.UtcNow;
+
+        var created = await CreateCompetitionAsync(client, manager, "Cancel Active Cup",
+            now.AddDays(-4), now.AddDays(-2), now.AddHours(-1), now.AddDays(1));
+        var competitionId = await ReadIdAsync(created);
+        await SetCompetitionStatusAsync(app, competitionId, CompetitionStatus.Ongoing);
+
+        var cancelled = await PostAsync(client, $"/api/competitions/{competitionId}/cancel", manager);
+        Assert.Equal(HttpStatusCode.OK, cancelled.StatusCode);
+        Assert.Equal("Cancelled", (await ReadJsonAsync(cancelled)).GetProperty("status").GetString());
+
+        var upcoming = await CreateCompetitionAsync(client, manager, "Cancel Published Cup",
+            now.AddDays(-4), now.AddMinutes(30), now.AddHours(1), now.AddDays(1));
+        var upcomingId = await ReadIdAsync(upcoming);
+        Assert.Equal(HttpStatusCode.OK, (await PostAsync(client, $"/api/competitions/{upcomingId}/publish", manager)).StatusCode);
+
+        var cancelledBeforeStart = await PostAsync(client, $"/api/competitions/{upcomingId}/cancel", manager);
+        Assert.Equal(HttpStatusCode.OK, cancelledBeforeStart.StatusCode);
+        Assert.Equal("Cancelled", (await ReadJsonAsync(cancelledBeforeStart)).GetProperty("status").GetString());
     }
 
     [Fact]
