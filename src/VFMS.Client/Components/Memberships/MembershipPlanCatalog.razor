@@ -89,7 +89,11 @@ else
                     <option value="@MembershipPaymentMethods.Cash">Tiền mặt tại quầy</option>
                 </select>
             </label>
-            <button type="submit" class="bg-[#5F6F52] hover:bg-[#4E5D44] px-6 py-3 font-heading text-xs font-bold uppercase tracking-wider text-white rounded-lg transition-colors">
+            <p id="membership-voucher-next-step" class="text-sm leading-relaxed text-[#69706A]">
+                <span class="font-semibold text-[#383E43]">Có mã giảm giá?</span>
+                Bạn có thể nhập và áp dụng mã ở bước thanh toán tiếp theo, trước khi chuyển khoản hoặc thanh toán tại quầy.
+            </p>
+            <button type="submit" aria-describedby="membership-voucher-next-step" class="bg-[#5F6F52] hover:bg-[#4E5D44] px-6 py-3 font-heading text-xs font-bold uppercase tracking-wider text-white rounded-lg transition-colors">
                 @(_submitting ? "Đang tạo đơn..." : "Tạo đơn thanh toán")
             </button>
         </fieldset>

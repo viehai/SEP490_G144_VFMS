@@ -33,7 +33,14 @@ public sealed class AuthApiClient(HttpClient http) : IDisposable
         return await SendAsync<TResponse>(http, messageRequest, cancellationToken);
     }
 
+    internal static Task<TResponse> SendAsync<TResponse>(HttpClient http, HttpRequestMessage messageRequest,
+        CancellationToken cancellationToken) =>
+        SendAsync<TResponse>(http, messageRequest, async (response, ct) =>
+            await response.Content.ReadFromJsonAsync<TResponse>(cancellationToken: ct)
+                ?? throw new AuthApiException("Máy chủ chưa trả về dữ liệu. Vui lòng thử lại."), cancellationToken);
+
     internal static async Task<TResponse> SendAsync<TResponse>(HttpClient http, HttpRequestMessage messageRequest,
+        Func<HttpResponseMessage, CancellationToken, Task<TResponse>> readResponse,
         CancellationToken cancellationToken)
     {
         try
@@ -41,8 +48,7 @@ public sealed class AuthApiClient(HttpClient http) : IDisposable
             using var response = await http.SendAsync(messageRequest, cancellationToken);
             if (response.IsSuccessStatusCode)
             {
-                return await response.Content.ReadFromJsonAsync<TResponse>(cancellationToken: cancellationToken)
-                    ?? throw new AuthApiException("Máy chủ chưa trả về dữ liệu. Vui lòng thử lại.");
+                return await readResponse(response, cancellationToken);
             }
 
             var message = response.StatusCode switch

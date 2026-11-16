@@ -61,6 +61,8 @@ public sealed partial class MembershipPurchaseService
 
             if (pending is not null)
             {
+                if (pending.PaymentTransaction!.AmountDue == 0)
+                    return Result<MembershipPurchaseResponse>.Success(ToResponse(pending, OrderStatus.Pending));
                 var qr = gateway.CreateVietQr(pending.OrderNumber, pending.PaymentTransaction!.AmountDue);
                 return qr is null
                     ? Result<MembershipPurchaseResponse>.Failure("Thanh toán VietQR chưa được cấu hình.", "PAYMENT_UNAVAILABLE", 503)
@@ -152,6 +154,8 @@ public sealed partial class MembershipPurchaseService
         {
             replacement.OrderStatus = OrderStatus.Cancelled;
             replacement.PaymentTransaction!.PaymentStatus = PaymentStatus.Cancelled;
+            if (replacement.VoucherRedemption is { RedemptionStatus: VoucherRedemptionStatus.Reserved } redemption)
+                redemption.RedemptionStatus = VoucherRedemptionStatus.Released;
         }
 
         return true;

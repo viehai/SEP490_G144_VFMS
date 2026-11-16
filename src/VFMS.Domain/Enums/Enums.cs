@@ -98,7 +98,8 @@ public enum PaymentMethod
 {
     VietQR,
     Cash,
-    BankTransfer
+    BankTransfer,
+    NoCharge
 }
 
 public enum InvoiceStatus
@@ -189,7 +190,9 @@ public enum YogaClassStatus
     Draft,
     Published,
     Cancelled,
-    Completed
+    Completed,
+    Open,
+    Full
 }
 
 public enum YogaScheduleStatus
@@ -441,6 +444,8 @@ public enum NotificationType
     FreezeApproval,
     PTSessionReminder,
     YogaBookingConfirmed,
+    YogaSessionChanged,
+    YogaSessionCancelled,
     PaymentConfirmed,
     EquipmentIssueUpdate,
     CompetitionResult,

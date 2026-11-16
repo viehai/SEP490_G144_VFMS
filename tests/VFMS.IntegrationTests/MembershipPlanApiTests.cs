@@ -628,6 +628,7 @@ public sealed class MembershipPlanApiTests : IAsyncLifetime
         {
             base.OnModelCreating(modelBuilder);
             modelBuilder.Entity<FaceData>().Property(face => face.FaceNetEmbedding).HasColumnType("BLOB");
+            modelBuilder.Entity<Voucher>().Property(voucher => voucher.Code).UseCollation("NOCASE");
         }
     }
 
