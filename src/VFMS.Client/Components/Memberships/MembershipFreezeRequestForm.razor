@@ -76,7 +76,7 @@
                     </button>
                     @if (ExistingRequest is not null)
                     {
-                        <button type="button" class="min-h-[44px] rounded-lg border border-vfms-border bg-white px-4 py-2 text-sm font-semibold text-vfms-text hover:bg-vfms-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary"
+                        <button type="button" class="min-h-[44px] rounded-lg border border-vfms-border bg-vfms-surface px-4 py-2 text-sm font-semibold text-vfms-text hover:bg-vfms-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary"
                                 @onclick="CancelEditingAsync">Đóng chỉnh sửa</button>
                     }
                 </div>
@@ -92,7 +92,7 @@
     [Parameter] public EventCallback<MembershipFreezeRequestResponse> Saved { get; set; }
     [Parameter] public EventCallback CancelEditing { get; set; }
 
-    private const string Field = "mt-1 block min-h-[44px] w-full rounded-lg border border-vfms-border bg-white px-3 py-2 text-base text-vfms-text focus:border-vfms-primary focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-vfms-primary sm:text-sm";
+    private const string Field = "mt-1 block min-h-[44px] w-full rounded-lg border border-vfms-border bg-vfms-surface px-3 py-2 text-base text-vfms-text focus:border-vfms-primary focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-vfms-primary sm:text-sm";
     private readonly CancellationTokenSource _lifetime = new();
     private readonly MembershipFreezeRequestValidator _validator = new();
     private RequestForm _model = new();

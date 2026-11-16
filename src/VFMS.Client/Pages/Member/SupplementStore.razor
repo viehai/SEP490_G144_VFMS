@@ -12,12 +12,12 @@
 <PageTitle>Thực phẩm bổ sung | Victor Fitness</PageTitle>
 
 <section class="mx-auto max-w-6xl space-y-6 px-5 pb-16 pt-28" aria-labelledby="store-title">
-    <header class="flex flex-wrap items-end justify-between gap-4 border-b border-[#D8DED2] pb-5">
+    <header class="flex flex-wrap items-end justify-between gap-4 border-b border-[#D8D1CD] pb-5">
         <div class="space-y-2">
-            <h1 id="store-title" class="font-['Montserrat',sans-serif] text-3xl font-black text-[#383E43]">Thực phẩm bổ sung</h1>
-            <p class="text-sm text-[#69706A]">Đặt trước, nhận tại quầy hoặc giao tận nơi và thanh toán khi nhận hàng.</p>
+            <h1 id="store-title" class="font-['Montserrat',sans-serif] text-3xl font-black text-[#242424]">Thực phẩm bổ sung</h1>
+            <p class="text-sm text-[#6F6966]">Đặt trước, nhận tại quầy hoặc giao tận nơi và thanh toán khi nhận hàng.</p>
         </div>
-        <a href="/my-supplement-orders" class="text-sm font-semibold text-[#5F6F52] underline underline-offset-4">Đơn hàng của tôi →</a>
+        <a href="/my-supplement-orders" class="text-sm font-semibold text-[#B83A3A] underline underline-offset-4">Đơn hàng của tôi →</a>
     </header>
 
     <Alerts Notice="@_notice" Error="@_error" />
@@ -48,23 +48,23 @@
 
             @if (_loading)
             {
-                <p role="status" class="py-8 text-sm text-[#69706A]">Đang tải sản phẩm...</p>
+                <p role="status" class="py-8 text-sm text-[#6F6966]">Đang tải sản phẩm...</p>
             }
             else if (_page is { Items.Count: > 0 } list)
             {
                 <ul class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                     @foreach (var product in list.Items)
                     {
-                        <li @key="product.Id" class="flex flex-col overflow-hidden rounded-xl border border-[#D8DED2] bg-white shadow-sm">
-                            <div class="aspect-square bg-[#EEF1EA]">
+                        <li @key="product.Id" class="flex flex-col overflow-hidden rounded-xl border border-[#D8D1CD] bg-[#F8F5F2] shadow-sm">
+                            <div class="aspect-square bg-[#ECE8E4]">
                                 @if (product.ImageUrl is { } image) { <img src="@image" alt="@product.Name" class="h-full w-full object-cover" loading="lazy" /> }
                             </div>
                             <div class="flex flex-1 flex-col gap-2 p-4">
-                                <p class="text-[11px] font-bold tracking-wider text-[#8A9089]">@((product.Category ?? "Khác").ToUpperInvariant())</p>
-                                <h2 class="font-['Montserrat',sans-serif] text-sm font-bold text-[#383E43]">@product.Name</h2>
-                                @if (!string.IsNullOrWhiteSpace(product.Description)) { <p class="line-clamp-3 text-xs text-[#69706A]">@product.Description</p> }
+                                <p class="text-[11px] font-bold tracking-wider text-[#8C8581]">@((product.Category ?? "Khác").ToUpperInvariant())</p>
+                                <h2 class="font-['Montserrat',sans-serif] text-sm font-bold text-[#242424]">@product.Name</h2>
+                                @if (!string.IsNullOrWhiteSpace(product.Description)) { <p class="line-clamp-3 text-xs text-[#6F6966]">@product.Description</p> }
                                 <div class="mt-auto flex items-center justify-between gap-2 pt-2">
-                                    <span class="text-base font-extrabold text-[#5F6F52]">@OperationsText.Money(product.UnitPrice)</span>
+                                    <span class="text-base font-extrabold text-[#B83A3A]">@OperationsText.Money(product.UnitPrice)</span>
                                     @if (product.CanOrder)
                                     {
                                         <button type="button" class="@Ui.PrimaryButton px-3 py-1.5 text-xs" aria-label="Thêm @product.Name vào giỏ" @onclick="() => Add(product)">Thêm vào giỏ</button>
@@ -78,45 +78,45 @@
                         </li>
                     }
                 </ul>
-                <div class="overflow-hidden rounded-xl border border-[#D8DED2] bg-white">
+                <div class="overflow-hidden rounded-xl border border-[#D8D1CD] bg-[#F8F5F2]">
                     <Pager Page="list.Page" PageSize="list.PageSize" TotalCount="list.TotalCount" Noun="sản phẩm" AriaLabel="Phân trang sản phẩm" Disabled="_loading" OnPage="LoadAsync" />
                 </div>
             }
             else
             {
-                <p role="status" class="py-8 text-sm text-[#69706A]">Không có sản phẩm phù hợp.</p>
+                <p role="status" class="py-8 text-sm text-[#6F6966]">Không có sản phẩm phù hợp.</p>
             }
         </div>
 
         <aside class="@Ui.Card h-fit space-y-4 lg:sticky lg:top-28" aria-labelledby="cart-title">
-            <h2 id="cart-title" class="text-base font-bold text-[#383E43]">Giỏ hàng (@_cart.Sum(line => line.Quantity))</h2>
+            <h2 id="cart-title" class="text-base font-bold text-[#242424]">Giỏ hàng (@_cart.Sum(line => line.Quantity))</h2>
             @if (_cart.Count == 0)
             {
-                <p class="text-sm text-[#69706A]">Chưa có sản phẩm nào.</p>
+                <p class="text-sm text-[#6F6966]">Chưa có sản phẩm nào.</p>
             }
             else
             {
-                <ul class="divide-y divide-[#EEF1EA]">
+                <ul class="divide-y divide-[#ECE8E4]">
                     @foreach (var line in _cart)
                     {
                         <li @key="line.Product.Id" class="flex items-center gap-2 py-2">
                             <div class="min-w-0 flex-1">
                                 <p class="truncate text-sm font-semibold">@line.Product.Name</p>
-                                <p class="text-xs text-[#69706A]">@OperationsText.Money(line.Product.UnitPrice * line.Quantity)</p>
+                                <p class="text-xs text-[#6F6966]">@OperationsText.Money(line.Product.UnitPrice * line.Quantity)</p>
                             </div>
-                            <input type="number" class="w-16 rounded-lg border border-[#D8DED2] px-2 py-1 text-sm" min="1" max="999" aria-label="Số lượng @line.Product.Name"
+                            <input type="number" class="w-16 rounded-lg border border-[#D8D1CD] bg-[#F8F5F2] px-2 py-1 text-sm text-[#242424]" min="1" max="999" aria-label="Số lượng @line.Product.Name"
                                    value="@line.Quantity" @onchange="args => SetQuantity(line, args.Value?.ToString())" />
                             <button type="button" class="text-xs font-semibold text-red-700 hover:underline" aria-label="Bỏ @line.Product.Name" @onclick="() => _cart.Remove(line)">Bỏ</button>
                         </li>
                     }
                 </ul>
-                <p class="flex justify-between text-sm"><span>Tạm tính</span><strong class="text-[#5F6F52]">@OperationsText.Money(_cart.Sum(line => line.Product.UnitPrice * line.Quantity))</strong></p>
+                <p class="flex justify-between text-sm"><span>Tạm tính</span><strong class="text-[#B83A3A]">@OperationsText.Money(_cart.Sum(line => line.Product.UnitPrice * line.Quantity))</strong></p>
 
                 <EditForm Model="_checkout" OnValidSubmit="PlaceAsync" novalidate>
                     <OperationsValidation TRequest="PlaceSupplementOrderRequest" Validator="_validator" CreateRequest="CreateRequest" @ref="_validation" />
                     <ValidationSummary />
                     <fieldset disabled="@_working" class="space-y-3">
-                        <legend class="text-xs font-semibold text-[#383E43]">Hình thức nhận hàng</legend>
+                        <legend class="text-xs font-semibold text-[#242424]">Hình thức nhận hàng</legend>
                         <InputRadioGroup @bind-Value="_checkout.FulfillmentType">
                             @foreach (var type in OperationsText.FulfillmentTypes)
                             {

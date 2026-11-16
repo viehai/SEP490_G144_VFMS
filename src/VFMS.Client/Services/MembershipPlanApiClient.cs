@@ -14,6 +14,7 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
     private const string PurchasesPath = "api/membership-purchases";
     private const string RenewalsPath = "api/membership-renewals";
     private const string MembershipsPath = "api/memberships";
+    private const string TransactionsPath = "api/membership-transactions";
     private const string FreezePolicyPath = "api/manager/membership-freeze-policy";
     private const string FreezeRequestsPath = "api/membership-freeze-requests";
     private const string FreezeReviewsPath = "api/manager/membership-freeze-requests";
@@ -80,6 +81,34 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
     public Task<MembershipDetailResponse> GetMembershipDetailAsync(int membershipId, CancellationToken cancellationToken = default) =>
         SendAsync<MembershipDetailResponse>(HttpMethod.Get,
             FormattableString.Invariant($"{MembershipsPath}/{membershipId}"), cancellationToken);
+
+    public Task<PagedResponse<MembershipTransactionSummaryResponse>> ListTransactionsAsync(
+        int page, int pageSize = 10, CancellationToken cancellationToken = default) =>
+        SendAsync<PagedResponse<MembershipTransactionSummaryResponse>>(HttpMethod.Get,
+            FormattableString.Invariant($"{TransactionsPath}?page={page}&pageSize={pageSize}"), cancellationToken);
+
+    public Task<MembershipTransactionDetailResponse> GetTransactionAsync(int orderId, CancellationToken cancellationToken = default) =>
+        SendAsync<MembershipTransactionDetailResponse>(HttpMethod.Get,
+            FormattableString.Invariant($"{TransactionsPath}/{orderId}"), cancellationToken);
+
+    public Task<MembershipInvoicePdfDownload> DownloadInvoicePdfAsync(int orderId, CancellationToken cancellationToken = default) =>
+        SendAsync<MembershipInvoicePdfDownload>(HttpMethod.Get,
+            FormattableString.Invariant($"{TransactionsPath}/{orderId}/invoice/pdf"), cancellationToken,
+            readResponse: async (response, ct) =>
+            {
+                if (!string.Equals(response.Content.Headers.ContentType?.MediaType, "application/pdf", StringComparison.OrdinalIgnoreCase))
+                    throw new AuthApiException("Máy chủ chưa trả về hóa đơn PDF hợp lệ. Vui lòng thử lại sau.");
+                var content = await response.Content.ReadAsByteArrayAsync(ct);
+                if (content.Length < 5 || !content.AsSpan(0, 5).SequenceEqual("%PDF-"u8))
+                    throw new AuthApiException("Máy chủ chưa trả về hóa đơn PDF hợp lệ. Vui lòng thử lại sau.");
+                var fileName = (response.Content.Headers.ContentDisposition?.FileNameStar ??
+                    response.Content.Headers.ContentDisposition?.FileName ?? "").Trim('"');
+                if (fileName.Length is 0 or > 128 || !fileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) ||
+                    fileName.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not '-' and not '_' and not '.') ||
+                    fileName.Contains("..", StringComparison.Ordinal))
+                    fileName = FormattableString.Invariant($"VFMS-Invoice-{orderId}.pdf");
+                return new(content, fileName, "application/pdf");
+            });
 
     public Task<MembershipFreezeEligibilityResponse> GetFreezeEligibilityAsync(
         int membershipId, int? excludeRequestId = null, CancellationToken cancellationToken = default)
@@ -210,3 +239,5 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
 }
 
 public sealed record MembershipFreezeDocumentDownload(byte[] Content, string FileName, string ContentType);
+
+public sealed record MembershipInvoicePdfDownload(byte[] Content, string FileName, string ContentType);

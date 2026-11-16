@@ -13,11 +13,11 @@
 <PageTitle>Quản lý gói hội viên | Victor Fitness</PageTitle>
 
 <div class="workspace-page space-y-6">
-    <header class="flex flex-wrap items-end justify-between gap-4 border-b border-[#D8DED2] pb-6">
+    <header class="flex flex-wrap items-end justify-between gap-4 border-b border-[#D8D1CD] pb-6">
         <div>
-            <p class="mb-2 text-xs font-bold tracking-wider text-[#5F6F52]">VFMS / MEMBERSHIPS</p>
-            <h1 class="text-3xl font-extrabold tracking-tight text-[#383E43] sm:text-4xl">Quản lý gói hội viên<span class="text-[#5F6F52]">.</span></h1>
-            <p class="mt-2 text-sm text-[#69706A]">Quản lý thông tin gói tập, trạng thái mở bán và số lượt đăng ký đang hoạt động.</p>
+            <p class="mb-2 text-xs font-bold tracking-wider text-[#B83A3A]">VFMS / MEMBERSHIPS</p>
+            <h1 class="text-3xl font-extrabold tracking-tight text-[#242424] sm:text-4xl">Quản lý gói hội viên<span class="text-[#B83A3A]">.</span></h1>
+            <p class="mt-2 text-sm text-[#6F6966]">Quản lý thông tin gói tập, trạng thái mở bán và số lượt đăng ký đang hoạt động.</p>
         </div>
         <button type="button" class="@PrimaryButton" disabled="@ListDisabled" @onclick="OpenCreate">Thêm gói mới</button>
     </header>
@@ -33,37 +33,37 @@
 
     @if (_form is { } form)
     {
-        <section class="rounded-xl border border-[#D8DED2] bg-white p-5 sm:p-6 shadow-sm" aria-labelledby="membership-plan-editor">
-            <h2 id="membership-plan-editor" class="text-base font-bold text-[#383E43] border-b border-[#D8DED2] pb-3" tabindex="-1" @ref="_panelHeading">@(_selected is null ? "Thêm gói hội viên" : "Chỉnh sửa gói hội viên")</h2>
+        <section class="rounded-xl border border-[#D8D1CD] bg-[#F8F5F2] p-5 sm:p-6 shadow-sm" aria-labelledby="membership-plan-editor">
+            <h2 id="membership-plan-editor" class="text-base font-bold text-[#242424] border-b border-[#D8D1CD] pb-3" tabindex="-1" @ref="_panelHeading">@(_selected is null ? "Thêm gói hội viên" : "Chỉnh sửa gói hội viên")</h2>
             <EditForm @key="form" Model="form" OnValidSubmit="SaveAsync" class="mt-4" novalidate>
                 <ContractValidation TRequest="MembershipPlanRequest" Validator="_validator" CreateRequest="CreateRequest" @ref="_validation" />
                 <ValidationSummary />
                 <fieldset disabled="@_working" class="mt-4 grid gap-4 sm:grid-cols-2">
-                    <label class="text-sm font-semibold text-[#383E43]" for="plan-name">
+                    <label class="text-sm font-semibold text-[#242424]" for="plan-name">
                         Tên gói
                         <InputText id="plan-name" class="@Field" @bind-Value="form.Name" maxlength="256" required />
                     </label>
-                    <label class="text-sm font-semibold text-[#383E43]" for="plan-status">
+                    <label class="text-sm font-semibold text-[#242424]" for="plan-status">
                         Trạng thái
                         <InputSelect id="plan-status" class="@Field" @bind-Value="form.Status">
                             <option value="@Active">Đang mở bán</option>
                             <option value="@Inactive">Ngừng bán</option>
                         </InputSelect>
                     </label>
-                    <label class="text-sm font-semibold text-[#383E43]" for="plan-duration">
+                    <label class="text-sm font-semibold text-[#242424]" for="plan-duration">
                         Thời hạn (ngày)
                         <InputNumber id="plan-duration" class="@Field" @bind-Value="form.DurationInDays" min="1" step="1" required ParsingErrorMessage="Thời hạn phải là số ngày nguyên."
                                      aria-describedby="@(_selected is { DurationInMonths: > 0, DurationInDays: not null } ? "plan-duration-hint" : null)" />
                         @if (_selected is { DurationInMonths: > 0, DurationInDays: not null } legacy)
                         {
-                            <span id="plan-duration-hint" class="mt-1 block text-xs font-normal text-[#69706A]">Số ngày được quy đổi từ @legacy.DurationInMonths tháng. Hệ thống giữ kỳ hạn theo tháng nếu bạn giữ nguyên số ngày này.</span>
+                            <span id="plan-duration-hint" class="mt-1 block text-xs font-normal text-[#6F6966]">Số ngày được quy đổi từ @legacy.DurationInMonths tháng. Hệ thống giữ kỳ hạn theo tháng nếu bạn giữ nguyên số ngày này.</span>
                         }
                     </label>
-                    <label class="text-sm font-semibold text-[#383E43]" for="plan-price">
+                    <label class="text-sm font-semibold text-[#242424]" for="plan-price">
                         Giá (₫)
                         <InputNumber id="plan-price" class="@Field" @bind-Value="form.Price" min="0" step="0.01" required ParsingErrorMessage="Giá phải là một số hợp lệ." />
                     </label>
-                    <label class="text-sm font-semibold text-[#383E43] sm:col-span-2" for="plan-description">
+                    <label class="text-sm font-semibold text-[#242424] sm:col-span-2" for="plan-description">
                         Mô tả
                         <InputTextArea id="plan-description" class="@Field" @bind-Value="form.Description" rows="3" maxlength="4000" />
                     </label>
@@ -77,14 +77,14 @@
     }
     else if (_selected is { } plan)
     {
-        <section class="rounded-xl border border-[#D8DED2] bg-white p-5 sm:p-6 shadow-sm" aria-labelledby="membership-plan-details">
-            <h2 id="membership-plan-details" class="break-words text-base font-bold text-[#383E43] border-b border-[#D8DED2] pb-3" tabindex="-1" @ref="_panelHeading">@plan.Name</h2>
+        <section class="rounded-xl border border-[#D8D1CD] bg-[#F8F5F2] p-5 sm:p-6 shadow-sm" aria-labelledby="membership-plan-details">
+            <h2 id="membership-plan-details" class="break-words text-base font-bold text-[#242424] border-b border-[#D8D1CD] pb-3" tabindex="-1" @ref="_panelHeading">@plan.Name</h2>
             <dl class="mt-4 grid gap-4 text-sm sm:grid-cols-2">
-                <div><dt class="font-semibold text-[#69706A]">Thời hạn</dt><dd class="font-bold text-[#383E43]">@Duration(plan)</dd></div>
-                <div><dt class="font-semibold text-[#69706A]">Giá</dt><dd class="font-bold text-[#5F6F52]">@Money(plan.Price)</dd></div>
-                <div><dt class="font-semibold text-[#69706A]">Trạng thái</dt><dd class="font-semibold text-[#383E43]">@StatusLabel(plan.Status)</dd></div>
-                <div><dt class="font-semibold text-[#69706A]">Lượt đăng ký đang hoạt động</dt><dd class="font-bold text-[#383E43]">@plan.SubscriberCount</dd></div>
-                <div class="sm:col-span-2"><dt class="font-semibold text-[#69706A]">Mô tả</dt><dd class="whitespace-pre-wrap break-words text-[#383E43]">@(plan.Description ?? "—")</dd></div>
+                <div><dt class="font-semibold text-[#6F6966]">Thời hạn</dt><dd class="font-bold text-[#242424]">@Duration(plan)</dd></div>
+                <div><dt class="font-semibold text-[#6F6966]">Giá</dt><dd class="font-bold text-[#B83A3A]">@Money(plan.Price)</dd></div>
+                <div><dt class="font-semibold text-[#6F6966]">Trạng thái</dt><dd class="font-semibold text-[#242424]">@StatusLabel(plan.Status)</dd></div>
+                <div><dt class="font-semibold text-[#6F6966]">Lượt đăng ký đang hoạt động</dt><dd class="font-bold text-[#242424]">@plan.SubscriberCount</dd></div>
+                <div class="sm:col-span-2"><dt class="font-semibold text-[#6F6966]">Mô tả</dt><dd class="whitespace-pre-wrap break-words text-[#242424]">@(plan.Description ?? "—")</dd></div>
             </dl>
             <div class="mt-5 flex flex-wrap gap-3 pt-2">
                 <button type="button" class="@PrimaryButton" @onclick="OpenEdit">Chỉnh sửa</button>
@@ -93,16 +93,16 @@
         </section>
     }
 
-    <section class="rounded-xl border border-[#D8DED2] bg-white shadow-sm overflow-hidden" aria-labelledby="membership-plan-list" aria-busy="@(_loading || _working)">
-        <div class="border-b border-[#D8DED2] p-5 bg-[#EEF1EA]/40">
-            <h2 id="membership-plan-list" class="mb-3 text-sm font-bold text-[#383E43]">Danh mục gói hội viên</h2>
+    <section class="rounded-xl border border-[#D8D1CD] bg-[#F8F5F2] shadow-sm overflow-hidden" aria-labelledby="membership-plan-list" aria-busy="@(_loading || _working)">
+        <div class="border-b border-[#D8D1CD] p-5 bg-[#ECE8E4]/40">
+            <h2 id="membership-plan-list" class="mb-3 text-sm font-bold text-[#242424]">Danh mục gói hội viên</h2>
             <form @onsubmit="ApplyFiltersAsync" @onsubmit:preventDefault>
                 <fieldset disabled="@ListDisabled" class="flex flex-wrap items-end gap-3">
-                    <label class="w-full text-xs font-semibold text-[#383E43] sm:w-64" for="plan-search">
+                    <label class="w-full text-xs font-semibold text-[#242424] sm:w-64" for="plan-search">
                         Tìm theo tên
                         <input id="plan-search" type="search" @bind="_searchInput" class="@Field" maxlength="256" />
                     </label>
-                    <label class="text-xs font-semibold text-[#383E43]" for="plan-filter-status">
+                    <label class="text-xs font-semibold text-[#242424]" for="plan-filter-status">
                         Trạng thái
                         <select id="plan-filter-status" @bind="_statusInput" class="@Field">
                             <option value="">Tất cả</option>
@@ -117,8 +117,8 @@
 
         @if (_loading)
         {
-            <div class="flex items-center gap-3 p-6 text-sm text-[#69706A]" role="status">
-                <svg class="h-5 w-5 animate-spin text-[#5F6F52]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
+            <div class="flex items-center gap-3 p-6 text-sm text-[#6F6966]" role="status">
+                <svg class="h-5 w-5 animate-spin text-[#B83A3A]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
                 Đang tải danh sách gói hội viên...
             </div>
         }
@@ -142,9 +142,9 @@
                             <tr @key="row.Id">
                                 <th scope="row" class="max-w-56 break-words">@row.Name</th>
                                 <td>@Duration(row)</td>
-                                <td class="whitespace-nowrap font-semibold text-[#5F6F52]">@Money(row.Price)</td>
+                                <td class="whitespace-nowrap font-semibold text-[#B83A3A]">@Money(row.Price)</td>
                                 <td>@row.SubscriberCount</td>
-                                <td><span class="inline-block whitespace-nowrap rounded-md border px-2.5 py-1 text-[11px] font-semibold @(IsActive(row.Status) ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-[#D8DED2] bg-[#EEF1EA] text-[#69706A]")">@StatusLabel(row.Status)</span></td>
+                                <td><span class="inline-block whitespace-nowrap rounded-md border px-2.5 py-1 text-[11px] font-semibold @(IsActive(row.Status) ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-[#D8D1CD] bg-[#ECE8E4] text-[#6F6966]")">@StatusLabel(row.Status)</span></td>
                                 <td>
                                     <div class="flex flex-wrap gap-2">
                                         <button type="button" class="@Button" disabled="@ListDisabled" aria-label="Xem hoặc sửa @row.Name" @onclick="() => OpenDetailsAsync(row.Id)">Xem / Sửa</button>
@@ -157,7 +157,7 @@
                     </tbody>
                 </table>
             </div>
-            <nav aria-label="Phân trang gói hội viên" class="flex flex-wrap items-center justify-between gap-3 border-t border-[#D8DED2] p-4 text-xs font-medium text-[#69706A]">
+            <nav aria-label="Phân trang gói hội viên" class="flex flex-wrap items-center justify-between gap-3 border-t border-[#D8D1CD] p-4 text-xs font-medium text-[#6F6966]">
                 <p>Trang @list.Page / @PageCount(list) · @list.TotalCount gói</p>
                 <div class="flex gap-2">
                     <button type="button" class="@Button" disabled="@(ListDisabled || list.Page <= 1)" @onclick="() => ChangePageAsync(list.Page - 1)">Trang trước</button>
@@ -167,7 +167,7 @@
         }
         else
         {
-            <p role="status" class="p-6 text-sm text-[#69706A]">Không tìm thấy gói hội viên phù hợp.</p>
+            <p role="status" class="p-6 text-sm text-[#6F6966]">Không tìm thấy gói hội viên phù hợp.</p>
         }
     </section>
 </div>
@@ -175,9 +175,9 @@
 @code {
     private const string Active = MembershipPlanStatuses.Active;
     private const string Inactive = MembershipPlanStatuses.Inactive;
-    private const string Field = "mt-1 block w-full rounded-lg border border-[#D8DED2] bg-white px-3 py-2 text-sm font-normal text-[#383E43] focus:border-[#5F6F52] focus:ring-2 focus:ring-[#5F6F52]/20 outline-none";
-    private const string Button = "rounded-lg border border-[#D8DED2] bg-white px-3 py-1.5 text-xs font-semibold text-[#383E43] hover:bg-[#EEF1EA] transition";
-    private const string PrimaryButton = "rounded-lg bg-[#5F6F52] px-4 py-2 text-sm font-semibold text-white hover:bg-[#4E5D44] transition shadow-sm";
+    private const string Field = "mt-1 block w-full rounded-lg border border-[#D8D1CD] bg-[#F8F5F2] px-3 py-2 text-sm font-normal text-[#242424] focus:border-[#B83A3A] focus:ring-2 focus:ring-[#B83A3A]/20 outline-none";
+    private const string Button = "rounded-lg border border-[#C9C0BB] bg-[#F8F5F2] px-3 py-1.5 text-xs font-semibold text-[#242424] hover:bg-[#F3EDEA] transition";
+    private const string PrimaryButton = "rounded-lg bg-[#B83A3A] px-4 py-2 text-sm font-semibold text-white hover:bg-[#9F3030] active:bg-[#7F2929] transition shadow-sm";
     private static readonly NumberFormatInfo CurrencyFormat = new() { NumberGroupSeparator = ".", NumberDecimalSeparator = "," };
 
     private readonly CancellationTokenSource _lifetime = new();

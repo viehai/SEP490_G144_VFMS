@@ -1,5 +1,5 @@
 @* Status colours from the frontend guidelines; always paired with text. *@
-<span class="inline-block whitespace-nowrap border px-2 py-1 text-[10px] font-bold uppercase rounded-none @Tone">@(Label ?? Status)</span>
+<span class="inline-block whitespace-nowrap border px-2.5 py-1 text-[10px] font-bold uppercase rounded-full @Tone">@(Label ?? Status)</span>
 
 @code {
     [Parameter, EditorRequired] public string Status { get; set; } = string.Empty;
@@ -8,11 +8,11 @@
     private string Tone => Status switch
     {
         "Active" or "Approved" or "Confirmed" or "Completed" or "Paid" or "Available" or "Open" or "Attended" or "Scheduled"
-            => "border-[#10B981] bg-emerald-50 text-[#047857]",
+            => "border-emerald-200 bg-emerald-50 text-[#16A34A]",
         "Pending" or "Processing" or "Frozen" or "Waitlisted" or "Draft" or "Full" or "Ongoing"
-            => "border-[#F59E0B] bg-amber-50 text-[#92400E]",
+            => "border-amber-200 bg-amber-50 text-[#D97706]",
         "Rejected" or "Expired" or "NoShow" or "Overdue" or "Locked" or "Escalated"
-            => "border-[#EF4444] bg-red-50 text-[#B91C1C]",
-        _ => "border-[#4B5563] bg-neutral-100 text-[#4B5563]"
+            => "border-red-200 bg-red-50 text-[#DC2626]",
+        _ => "border-[#D8D1CD] bg-[#ECE8E4] text-[#6B7280]"
     };
 }

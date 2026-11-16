@@ -10,21 +10,21 @@
 
 <section class="workspace-page space-y-5" aria-labelledby="cash-receipt-title">
     <div>
-        <h1 id="cash-receipt-title" class="text-2xl font-bold text-[#383E43]">Xác nhận tiền mặt mua gói tập</h1>
-        <p class="mt-1 text-sm text-[#69706A]">Nhập mã đơn và số tiền thực tế đã nhận tại quầy.</p>
+        <h1 id="cash-receipt-title" class="text-2xl font-bold text-[#242424]">Xác nhận tiền mặt mua gói tập</h1>
+        <p class="mt-1 text-sm text-[#6F6966]">Nhập mã đơn và số tiền thực tế đã nhận tại quầy.</p>
     </div>
     <form @onsubmit="ConfirmAsync" @onsubmit:preventDefault>
-        <fieldset disabled="@_submitting" class="max-w-md space-y-4 rounded-xl border border-[#D8DED2] bg-white p-6 shadow-sm">
-            <label class="block text-sm font-semibold text-[#383E43]">
+        <fieldset disabled="@_submitting" class="max-w-md space-y-4 rounded-xl border border-[#D8D1CD] bg-[#F8F5F2] p-6 shadow-sm">
+            <label class="block text-sm font-semibold text-[#242424]">
                 Mã đơn
-                <input class="mt-1 block w-full rounded-lg border border-[#D8DED2] bg-white px-3.5 py-2.5 text-sm text-[#383E43] outline-none transition focus:border-[#5F6F52] focus:ring-2 focus:ring-[#5F6F52]/20" @bind="_orderNumber" required maxlength="50" placeholder="VD: ORD-123456" />
+                <input class="mt-1 block w-full rounded-lg border border-[#D8D1CD] bg-[#F8F5F2] px-3.5 py-2.5 text-sm text-[#242424] outline-none transition focus:border-[#B83A3A] focus:ring-2 focus:ring-[#B83A3A]/20" @bind="_orderNumber" required maxlength="50" placeholder="VD: ORD-123456" />
             </label>
-            <label class="block text-sm font-semibold text-[#383E43]">
+            <label class="block text-sm font-semibold text-[#242424]">
                 Số tiền đã nhận (₫)
-                <input type="number" class="mt-1 block w-full rounded-lg border border-[#D8DED2] bg-white px-3.5 py-2.5 text-sm text-[#383E43] outline-none transition focus:border-[#5F6F52] focus:ring-2 focus:ring-[#5F6F52]/20" @bind="_amount" required min="1" step="1" placeholder="Nhập số tiền..." />
+                <input type="number" class="mt-1 block w-full rounded-lg border border-[#D8D1CD] bg-[#F8F5F2] px-3.5 py-2.5 text-sm text-[#242424] outline-none transition focus:border-[#B83A3A] focus:ring-2 focus:ring-[#B83A3A]/20" @bind="_amount" required min="1" step="1" placeholder="Nhập số tiền..." />
             </label>
             <div class="pt-2">
-                <button type="submit" class="w-full rounded-lg bg-[#5F6F52] hover:bg-[#4E5D44] px-5 py-2.5 text-sm font-semibold text-white transition shadow-sm disabled:opacity-50">
+                <button type="submit" class="w-full rounded-lg bg-[#B83A3A] hover:bg-[#9F3030] active:bg-[#7F2929] px-5 py-2.5 text-sm font-semibold text-white transition shadow-sm disabled:opacity-50">
                     @(_submitting ? "Đang xác nhận..." : "Xác nhận đã nhận tiền")
                 </button>
             </div>
