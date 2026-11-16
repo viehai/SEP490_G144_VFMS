@@ -144,6 +144,11 @@ The roster only lists bookings made before the session starts.
 
 ## 6. Known gaps
 
+- **One integration test from dev/viehai fails on SQLite.** `MembershipPurchaseApiTests.InvoicePdfPreservesMaximumPersistedDecimalPrecisionWithLongHistoricalItemName` comes from dev/viehai (commit 0642777, invoice PDF export) and tests that feature at the largest `decimal(18,2)` amount. The test's own SQLite database can't hold that many digits (`9999999999999999.99` comes back as `10000000000000000`), so it fails on main too. It isn't caused by this branch. Expected result: Unit 453, Client 277 and Integration 395 pass, with that 1 failing and 5 skipped. To run the rest without it:
+  ```powershell
+  dotnet test tests/VFMS.IntegrationTests --filter "FullyQualifiedName!~InvoicePdfPreservesMaximumPersistedDecimalPrecision"
+  ```
+
 - **No yoga membership through the API.** Plans made through `POST /api/manager/membership-plans` only get a GYM component, so a real member can't book yoga. To give a member yoga for testing:
   ```sql
   DECLARE @pkg int = (SELECT PackageId FROM PackageComponents WHERE Id = (SELECT PackageComponentId FROM MemberMemberships WHERE Id = <gymMembershipId>));
