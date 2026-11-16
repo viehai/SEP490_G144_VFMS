@@ -123,6 +123,23 @@ public sealed class CompetitionApiTests
         Assert.Equal(HttpStatusCode.Created, registered.StatusCode);
         var joinId = await ReadIdAsync(registered);
 
+        var emptyLeaderboard = await GetAsync(client, $"/api/competitions/{competitionId}/leaderboard", member);
+        Assert.Equal(HttpStatusCode.OK, emptyLeaderboard.StatusCode);
+        var emptyEntries = JsonSerializer.Deserialize<List<CompetitionLeaderboardEntry>>(
+            await emptyLeaderboard.Content.ReadAsStringAsync(), new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.Empty(emptyEntries!);
+
+        var preliminary = await PostJsonAsync(client, $"/api/competitions/participants/{joinId}/result",
+            new RecordCompetitionResultRequest(95.5m, null, "Awaiting rank"), staff);
+        Assert.Equal(HttpStatusCode.OK, preliminary.StatusCode);
+
+        var unrankedLeaderboard = await GetAsync(client, $"/api/competitions/{competitionId}/leaderboard", member);
+        var unrankedEntries = JsonSerializer.Deserialize<List<CompetitionLeaderboardEntry>>(
+            await unrankedLeaderboard.Content.ReadAsStringAsync(), new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.Single(unrankedEntries!);
+        Assert.Null(unrankedEntries![0].Rank);
+        Assert.Equal(95.5m, unrankedEntries[0].Score);
+
         // The competition must be Completed before a result can be confirmed (JOB-05 advances the status).
         await SetCompetitionStatusAsync(app, competitionId, CompetitionStatus.Completed);
 

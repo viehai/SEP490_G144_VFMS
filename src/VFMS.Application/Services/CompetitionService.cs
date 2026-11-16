@@ -80,21 +80,20 @@ public sealed class CompetitionService : ICompetitionService
         var (_, total) = await _repository.SearchParticipantsAsync(id, null, null, 1, 100, cancellationToken);
         var participants = await _repository.SearchParticipantsAsync(id, null, null, 1, Math.Max(total, 1), cancellationToken);
         var entries = participants.Items
-            .Where(j => j.Status != CompetitionJoinStatus.Disqualified)
-            .Select((j, index) => new
+            .Where(join => join.Status != CompetitionJoinStatus.Disqualified &&
+                           (join.Rank.HasValue || join.Score.HasValue))
+            .OrderBy(join => join.Rank is null)
+            .ThenBy(join => join.Rank)
+            .ThenByDescending(join => join.Score ?? decimal.MinValue)
+            .Select(join =>
             {
-                Join = j,
-                Rank = j.Rank ?? index + 1
-            })
-            .OrderBy(x => x.Rank)
-            .ThenByDescending(x => x.Join.Score ?? decimal.MinValue)
-            .Select(x =>
-            {
-                var prize = competition.Prizes.FirstOrDefault(p => p.Rank == x.Rank);
+                var prize = join.Rank is { } rank
+                    ? competition.Prizes.FirstOrDefault(p => p.Rank == rank)
+                    : null;
                 return new CompetitionLeaderboardEntry(
-                    x.Join.Id, x.Rank, x.Join.MemberUserId,
-                    x.Join.Member?.FullName ?? string.Empty, x.Join.Score, x.Join.Status.ToString(),
-                    prize?.PrizeName, prize?.Voucher?.Code, x.Join.Note);
+                    join.Id, join.Rank, join.MemberUserId,
+                    join.Member?.FullName ?? string.Empty, join.Score, join.Status.ToString(),
+                    prize?.PrizeName, prize?.Voucher?.Code, join.Note);
             })
             .ToArray();
         return Result<IReadOnlyList<CompetitionLeaderboardEntry>>.Success(entries);
