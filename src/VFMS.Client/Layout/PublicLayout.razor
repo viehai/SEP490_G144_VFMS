@@ -3,10 +3,10 @@
 @inject NavigationManager Navigation
 @implements IAsyncDisposable
 
-<div class="min-h-screen flex flex-col bg-white text-[#252525] font-['Inter',sans-serif] w-full max-w-full overflow-x-hidden">
+<div class="min-h-screen flex flex-col bg-[#F2EFEC] text-[#242424] font-['Inter',sans-serif] w-full max-w-full overflow-x-hidden">
     
     <!-- ============================================================== -->
-    <!-- PUBLIC NAVBAR (Sage Green text, Frosted Warm Ivory on scroll)    -->
+    <!-- PUBLIC NAVBAR (Charcoal text, Frosted Warm Neutral on scroll)  -->
     <!-- ============================================================== -->
     <header id="vfms-navbar" @ref="_navbar" class="public-navbar">
         
@@ -34,30 +34,30 @@
                     }
                     @if (auth.User.IsInRole("Member"))
                     {
-                        <NavLink href="/my-memberships" Match="NavLinkMatch.Prefix" ActiveClass="text-[#5F6F52] underline underline-offset-4"
+                        <NavLink href="/my-memberships" Match="NavLinkMatch.Prefix" ActiveClass="text-[#B83A3A] underline underline-offset-4"
                                  class="@MyMembershipsClass">
                             Gói của tôi
                         </NavLink>
                     }
                     @if (auth.User.IsInRole("Member") || auth.User.IsInRole("Customer"))
                     {
-                        <NavLink href="/my-transactions" Match="NavLinkMatch.Prefix" ActiveClass="text-[#5F6F52] underline underline-offset-4"
+                        <NavLink href="/my-transactions" Match="NavLinkMatch.Prefix" ActiveClass="text-[#B83A3A] underline underline-offset-4"
                                  class="@MyMembershipsClass" title="Lịch sử giao dịch">
                             Giao dịch
                         </NavLink>
-                        <NavLink href="/supplements" Match="NavLinkMatch.Prefix" ActiveClass="text-[#5F6F52] underline underline-offset-4"
+                        <NavLink href="/supplements" Match="NavLinkMatch.Prefix" ActiveClass="text-[#B83A3A] underline underline-offset-4"
                                  class="@MyMembershipsClass">
                             Cửa hàng
                         </NavLink>
                     }
                     @if (auth.User.IsInRole("Member"))
                     {
-                        <NavLink href="/equipment-issues" Match="NavLinkMatch.All" ActiveClass="text-[#5F6F52] underline underline-offset-4"
+                        <NavLink href="/equipment-issues" Match="NavLinkMatch.All" ActiveClass="text-[#B83A3A] underline underline-offset-4"
                                  class="@MyMembershipsClass">
                             Báo hỏng
                         </NavLink>
                     }
-                    <NavLink href="/profile" Match="NavLinkMatch.All" ActiveClass="text-[#5F6F52] underline underline-offset-4"
+                    <NavLink href="/profile" Match="NavLinkMatch.All" ActiveClass="text-[#B83A3A] underline underline-offset-4"
                              class="@ProfileLinkClass"
                              title="@auth.User.Identity?.Name" aria-label="Hồ sơ cá nhân">
                         <span class="hidden xl:inline">Chào, @auth.User.Identity?.Name</span><span class="xl:hidden">HỒ SƠ</span>
@@ -83,29 +83,29 @@
         @Body
     </main>
 
-    <!-- Footer: Dark Olive — một trong số ít vị trí được phép dùng dark surface -->
-    <footer class="w-full bg-[#3F493A] text-white pt-16 pb-12 border-t border-[#4E5D44]">
+    <!-- Footer: Soft Black / Charcoal -->
+    <footer class="w-full bg-[#252323] text-[#F8F5F2] pt-16 pb-12 border-t border-[#2B2928]">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-10 pb-12 border-b border-[#4E5D44]/60">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-10 pb-12 border-b border-white/10">
                 <!-- Brand Info -->
                 <div class="space-y-4">
                     <div class="flex items-center gap-2">
                         <img src="/brand/logo-remove.png" alt="Victor Fitness" class="h-10 object-contain" />
                     </div>
-                    <p class="text-sm text-[#C8D5C0] font-['Inter',sans-serif] leading-relaxed">
+                    <p class="text-sm text-[#D8D1CD] font-['Inter',sans-serif] leading-relaxed">
                         Hệ thống quản lý phòng gym và huấn luyện thể lực chuyên nghiệp. Kỷ luật — Khoa học — Kết quả.
                     </p>
-                    <p class="text-xs text-[#8A9089] font-mono">
+                    <p class="text-xs text-[#8C8581] font-mono">
                         VFMS v2.0 · .NET 8 &amp; Tailwind CSS
                     </p>
                 </div>
 
                 <!-- Column 1 -->
                 <div>
-                    <h5 class="font-['Montserrat',sans-serif] text-xs font-bold uppercase tracking-wider text-[#E8EDE3] mb-4">
+                    <h5 class="font-['Montserrat',sans-serif] text-xs font-bold uppercase tracking-wider text-[#F8F5F2] mb-4">
                         DỊCH VỤ &amp; TẬP LUYỆN
                     </h5>
-                    <ul class="space-y-2.5 text-sm text-[#A8B9A0] font-['Inter',sans-serif]">
+                    <ul class="space-y-2.5 text-sm text-[#D8D1CD] font-['Inter',sans-serif]">
                         <li><a href="#" class="hover:text-white transition-colors">Gói Hội Viên Classic &amp; VIP</a></li>
                         <li><a href="#" class="hover:text-white transition-colors">Huấn Luyện Viên Cá Nhân (PT 1-1)</a></li>
                         <li><a href="#" class="hover:text-white transition-colors">Lớp Yoga &amp; Pilates Studio</a></li>
@@ -116,10 +116,10 @@
 
                 <!-- Column 2 -->
                 <div>
-                    <h5 class="font-['Montserrat',sans-serif] text-xs font-bold uppercase tracking-wider text-[#E8EDE3] mb-4">
+                    <h5 class="font-['Montserrat',sans-serif] text-xs font-bold uppercase tracking-wider text-[#F8F5F2] mb-4">
                         QUY ĐỊNH &amp; CHÍNH SÁCH
                     </h5>
-                    <ul class="space-y-2.5 text-sm text-[#A8B9A0] font-['Inter',sans-serif]">
+                    <ul class="space-y-2.5 text-sm text-[#D8D1CD] font-['Inter',sans-serif]">
                         <li><a href="#" class="hover:text-white transition-colors">Chính Sách Bảo Lưu Thẻ (Freeze)</a></li>
                         <li><a href="#" class="hover:text-white transition-colors">Nội Quy Phòng Tập VFMS</a></li>
                         <li><a href="#" class="hover:text-white transition-colors">Quy Định Đặt Lớp &amp; Hủy Lớp</a></li>
@@ -130,15 +130,15 @@
 
                 <!-- Column 3 -->
                 <div>
-                    <h5 class="font-['Montserrat',sans-serif] text-xs font-bold uppercase tracking-wider text-[#E8EDE3] mb-4">
+                    <h5 class="font-['Montserrat',sans-serif] text-xs font-bold uppercase tracking-wider text-[#F8F5F2] mb-4">
                         ĐĂNG KÝ BẢN TIN THỂ LỰC
                     </h5>
-                    <p class="text-sm text-[#A8B9A0] mb-4 leading-relaxed">
+                    <p class="text-sm text-[#D8D1CD] mb-4 leading-relaxed">
                         Nhận giáo án luyện tập, thực đơn dinh dưỡng và thông báo ưu đãi độc quyền.
                     </p>
-                    <div class="flex rounded-lg overflow-hidden border border-[#5F6F52]">
-                        <input type="email" placeholder="Email của bạn..." class="w-full bg-[#2E3A2A] text-white border-0 px-3 py-2.5 text-sm font-['Inter',sans-serif] focus:outline-none placeholder:text-[#8A9089]" />
-                        <button class="bg-[#5F6F52] hover:bg-[#4E5D44] text-white px-4 py-2 font-['Montserrat',sans-serif] font-bold text-xs uppercase tracking-wider transition-colors whitespace-nowrap">
+                    <div class="flex rounded-lg overflow-hidden border border-[#B83A3A]">
+                        <input type="email" placeholder="Email của bạn..." class="w-full bg-[#2B2928] text-white border-0 px-3 py-2.5 text-sm font-['Inter',sans-serif] focus:outline-none placeholder:text-[#8C8581]" />
+                        <button class="bg-[#B83A3A] hover:bg-[#9F3030] text-white px-4 py-2 font-['Montserrat',sans-serif] font-bold text-xs uppercase tracking-wider transition-colors whitespace-nowrap">
                             GỬI
                         </button>
                     </div>
@@ -146,13 +146,13 @@
             </div>
 
             <!-- Bottom Copyright -->
-            <div class="pt-8 flex flex-col sm:flex-row items-center justify-between text-xs text-[#8A9089] font-['Inter',sans-serif]">
+            <div class="pt-8 flex flex-col sm:flex-row items-center justify-between text-xs text-[#8C8581] font-['Inter',sans-serif]">
                 <p>© @DateTime.Now.Year VFMS · V-FITNESS MANAGEMENT SYSTEM</p>
-                <div class="flex gap-4 mt-4 sm:mt-0 font-['Montserrat',sans-serif] text-[10px] tracking-wider uppercase text-[#A8B9A0]">
+                <div class="flex gap-4 mt-4 sm:mt-0 font-['Montserrat',sans-serif] text-[10px] tracking-wider uppercase text-[#D8D1CD]">
                     <a href="#" class="hover:text-white transition-colors">ĐIỀU KHOẢN SỬ DỤNG</a>
-                    <span class="text-[#5F6F52]">•</span>
+                    <span class="text-[#B83A3A]">•</span>
                     <a href="#" class="hover:text-white transition-colors">CHÍNH SÁCH BẢO MẬT</a>
-                    <span class="text-[#5F6F52]">•</span>
+                    <span class="text-[#B83A3A]">•</span>
                     <a href="#" class="hover:text-white transition-colors">HỆ THỐNG KIOSK</a>
                 </div>
             </div>
@@ -167,13 +167,13 @@
     private readonly string _navigationId = Guid.NewGuid().ToString("N");
     private bool _disposed;
     private bool IsHome => string.IsNullOrEmpty(Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].Trim('/'));
-    private string NavLinkCls => "text-[#383E43] hover:text-[#5F6F52] font-bold transition-colors";
-    private string ManagerLinkClass => "text-[10px] font-bold uppercase text-[#383E43] hover:text-[#5F6F52] transition-colors";
-    private string MyMembershipsClass => "max-w-12 whitespace-normal text-center text-[10px] font-bold uppercase leading-tight text-[#383E43] hover:text-[#5F6F52] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 sm:max-w-none sm:whitespace-nowrap sm:text-[11px]";
-    private string ProfileLinkClass => "inline-block max-w-40 truncate font-['Montserrat',sans-serif] text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-[#383E43] hover:text-[#5F6F52] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4";
-    private string LogoutBtnClass => "bg-[#5F6F52] hover:bg-[#4E5D44] text-white font-['Montserrat',sans-serif] font-bold text-[11px] xl:text-xs uppercase tracking-wider px-3.5 py-2 rounded-lg transition-colors shadow-sm disabled:opacity-60";
-    private string LoginLinkClass => "hidden sm:inline-block font-['Montserrat',sans-serif] text-[11px] xl:text-xs font-bold uppercase tracking-wider text-[#383E43] hover:text-[#5F6F52] px-3 py-1.5 transition-colors";
-    private string RegisterLinkClass => "bg-[#5F6F52] hover:bg-[#4E5D44] text-white font-['Montserrat',sans-serif] font-bold text-[11px] xl:text-xs uppercase tracking-wider px-4 py-2 transition-all duration-200 rounded-lg shadow-sm";
+    private string NavLinkCls => "text-[#242424] hover:text-[#B83A3A] font-bold transition-colors";
+    private string ManagerLinkClass => "text-[10px] font-bold uppercase text-[#242424] hover:text-[#B83A3A] transition-colors";
+    private string MyMembershipsClass => "max-w-12 whitespace-normal text-center text-[10px] font-bold uppercase leading-tight text-[#242424] hover:text-[#B83A3A] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 sm:max-w-none sm:whitespace-nowrap sm:text-[11px]";
+    private string ProfileLinkClass => "inline-block max-w-40 truncate font-['Montserrat',sans-serif] text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-[#242424] hover:text-[#B83A3A] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4";
+    private string LogoutBtnClass => "bg-[#B83A3A] hover:bg-[#9F3030] text-white font-['Montserrat',sans-serif] font-bold text-[11px] xl:text-xs uppercase tracking-wider px-3.5 py-2 rounded-lg transition-colors shadow-sm disabled:opacity-60";
+    private string LoginLinkClass => "hidden sm:inline-block font-['Montserrat',sans-serif] text-[11px] xl:text-xs font-bold uppercase tracking-wider text-[#242424] hover:text-[#B83A3A] px-3 py-1.5 transition-colors";
+    private string RegisterLinkClass => "bg-[#B83A3A] hover:bg-[#9F3030] text-white font-['Montserrat',sans-serif] font-bold text-[11px] xl:text-xs uppercase tracking-wider px-4 py-2 transition-all duration-200 rounded-lg shadow-sm";
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {

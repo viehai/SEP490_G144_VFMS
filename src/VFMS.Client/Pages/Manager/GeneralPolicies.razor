@@ -10,15 +10,15 @@
 <PageTitle>Chính sách chung | Victor Fitness</PageTitle>
 
 <div class="workspace-page space-y-6">
-    <header class="flex flex-wrap items-end justify-between gap-4 border-b border-[#D8DED2] pb-6">
+    <header class="flex flex-wrap items-end justify-between gap-4 border-b border-[#D8D1CD] pb-6">
         <div>
-            <p class="mb-2 text-xs font-bold tracking-wider text-[#5F6F52]">VFMS / SYSTEM CONFIGURATION</p>
-            <h1 class="text-3xl font-extrabold tracking-tight text-[#383E43] sm:text-4xl">Chính sách chung<span class="text-[#5F6F52]">.</span></h1>
-            <p class="mt-2 text-sm text-[#69706A]">Thông tin phòng tập, giờ mở cửa và trạng thái nhận hội viên mới.</p>
+            <p class="mb-2 text-xs font-bold tracking-wider text-[#B83A3A]">VFMS / SYSTEM CONFIGURATION</p>
+            <h1 class="text-3xl font-extrabold tracking-tight text-[#242424] sm:text-4xl">Chính sách chung<span class="text-[#B83A3A]">.</span></h1>
+            <p class="mt-2 text-sm text-[#6F6966]">Thông tin phòng tập, giờ mở cửa và trạng thái nhận hội viên mới.</p>
         </div>
         @if (_settings is not null)
         {
-            <p class="text-xs text-[#69706A]">Cập nhật: @_settings.UpdatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</p>
+            <p class="text-xs text-[#6F6966]">Cập nhật: @_settings.UpdatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</p>
         }
     </header>
 
@@ -37,41 +37,41 @@
     }
     else if (_settings is not null)
     {
-        <section class="rounded-xl border border-[#D8DED2] bg-white p-5 sm:p-6 shadow-sm" aria-labelledby="gym-settings-title">
-            <h2 id="gym-settings-title" class="text-base font-bold text-[#383E43]">Thông tin phòng tập</h2>
+        <section class="rounded-xl border border-[#D8D1CD] bg-[#F8F5F2] p-5 sm:p-6 shadow-sm" aria-labelledby="gym-settings-title">
+            <h2 id="gym-settings-title" class="text-base font-bold text-[#242424]">Thông tin phòng tập</h2>
             @if (!_canEdit)
             {
-                <p class="mt-2 text-xs text-[#69706A]">Chỉ Manager được chỉnh sửa.</p>
+                <p class="mt-2 text-xs text-[#6F6966]">Chỉ Manager được chỉnh sửa.</p>
             }
             <EditForm Model="_model" OnValidSubmit="SaveAsync" class="mt-4" novalidate>
                 <ContractValidation TRequest="GymSettingsRequest" Validator="_validator" CreateRequest="CreateRequest" @ref="_validation" />
                 <ValidationSummary />
                 <fieldset disabled="@(_working || !_canEdit)" class="mt-4 grid gap-4 sm:grid-cols-2">
-                    <label class="text-xs font-semibold text-[#383E43] sm:col-span-2" for="gym-name">
+                    <label class="text-xs font-semibold text-[#242424] sm:col-span-2" for="gym-name">
                         Tên phòng tập
                         <InputText id="gym-name" class="@Field" @bind-Value="_model.GymName" maxlength="256" required />
                     </label>
-                    <label class="text-xs font-semibold text-[#383E43] sm:col-span-2" for="gym-address">
+                    <label class="text-xs font-semibold text-[#242424] sm:col-span-2" for="gym-address">
                         Địa chỉ
                         <InputText id="gym-address" class="@Field" @bind-Value="_model.Address" maxlength="500" />
                     </label>
-                    <label class="text-xs font-semibold text-[#383E43]" for="gym-phone">
+                    <label class="text-xs font-semibold text-[#242424]" for="gym-phone">
                         Số điện thoại
                         <InputText id="gym-phone" class="@Field" @bind-Value="_model.PhoneNumber" maxlength="20" />
                     </label>
-                    <label class="text-xs font-semibold text-[#383E43]" for="gym-email">
+                    <label class="text-xs font-semibold text-[#242424]" for="gym-email">
                         Email
                         <InputText id="gym-email" class="@Field" @bind-Value="_model.Email" maxlength="256" />
                     </label>
-                    <label class="text-xs font-semibold text-[#383E43]" for="gym-open">
+                    <label class="text-xs font-semibold text-[#242424]" for="gym-open">
                         Giờ mở cửa
                         <InputDate id="gym-open" Type="InputDateType.Time" class="@Field" @bind-Value="_model.OpenTime" />
                     </label>
-                    <label class="text-xs font-semibold text-[#383E43]" for="gym-close">
+                    <label class="text-xs font-semibold text-[#242424]" for="gym-close">
                         Giờ đóng cửa
                         <InputDate id="gym-close" Type="InputDateType.Time" class="@Field" @bind-Value="_model.CloseTime" />
                     </label>
-                    <label class="flex items-center gap-3 text-sm font-semibold text-[#383E43] sm:col-span-2">
+                    <label class="flex items-center gap-3 text-sm font-semibold text-[#242424] sm:col-span-2">
                         <InputCheckbox @bind-Value="_model.IsAcceptingMembers" /> Đang nhận hội viên mới
                     </label>
                     @if (_canEdit)
@@ -88,9 +88,9 @@
 </div>
 
 @code {
-    private const string Field = "mt-1 block w-full rounded-lg border border-[#D8DED2] bg-white px-3 py-2 text-sm font-normal text-[#383E43] focus:border-[#5F6F52] focus:ring-2 focus:ring-[#5F6F52]/20 outline-none";
-    private const string Button = "rounded-lg border border-[#D8DED2] bg-white px-3 py-1.5 text-xs font-semibold text-[#383E43] hover:bg-[#EEF1EA] transition";
-    private const string PrimaryButton = "rounded-lg bg-[#5F6F52] px-4 py-2 text-sm font-semibold text-white hover:bg-[#4E5D44] transition shadow-sm";
+    private const string Field = "mt-1 block w-full rounded-lg border border-[#D8D1CD] bg-[#F8F5F2] px-3 py-2 text-sm font-normal text-[#242424] focus:border-[#B83A3A] focus:ring-2 focus:ring-[#B83A3A]/20 outline-none";
+    private const string Button = "rounded-lg border border-[#C9C0BB] bg-[#F8F5F2] px-3 py-1.5 text-xs font-semibold text-[#242424] hover:bg-[#F3EDEA] transition";
+    private const string PrimaryButton = "rounded-lg bg-[#B83A3A] px-4 py-2 text-sm font-semibold text-white hover:bg-[#9F3030] active:bg-[#7F2929] transition shadow-sm";
 
     [CascadingParameter] private Task<AuthenticationState> AuthState { get; set; } = default!;
     private readonly CancellationTokenSource _lifetime = new();

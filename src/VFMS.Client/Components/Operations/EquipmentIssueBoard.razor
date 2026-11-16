@@ -12,8 +12,8 @@
     <section class="@Ui.Card" aria-labelledby="issue-detail-title">
         <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
-                <h2 id="issue-detail-title" class="text-base font-bold text-[#383E43]">#@issue.Id · @issue.EquipmentName@(issue.EquipmentCode is { } code ? $" ({code})" : "")</h2>
-                <p class="mt-1 text-xs text-[#69706A]">Báo lúc @OperationsText.Local(issue.ReportedAt) bởi @(issue.ReportedByName ?? "hội viên")@(issue.HandledByName is { } handler ? $" · Người xử lý: {handler}" : "")</p>
+                <h2 id="issue-detail-title" class="text-base font-bold text-[#242424]">#@issue.Id · @issue.EquipmentName@(issue.EquipmentCode is { } code ? $" ({code})" : "")</h2>
+                <p class="mt-1 text-xs text-[#6F6966]">Báo lúc @OperationsText.Local(issue.ReportedAt) bởi @(issue.ReportedByName ?? "hội viên")@(issue.HandledByName is { } handler ? $" · Người xử lý: {handler}" : "")</p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
                 <span class="@OperationsText.Badge(issue.IncidentType)">@OperationsText.Label(issue.IncidentType)</span>
@@ -24,10 +24,10 @@
         </div>
         <div class="mt-4 grid gap-4 lg:grid-cols-2">
             <div class="space-y-3">
-                <p class="rounded-lg border border-[#D8DED2] bg-[#F7F4EC] p-4 text-sm whitespace-pre-wrap">@issue.Description</p>
+                <p class="rounded-lg border border-[#D8D1CD] bg-[#F2EFEC] p-4 text-sm whitespace-pre-wrap">@issue.Description</p>
                 @if (issue.ImageUrl is { } image)
                 {
-                    <a href="@image" target="_blank" rel="noopener noreferrer" class="text-sm font-semibold text-[#5F6F52] underline underline-offset-4">Xem ảnh đính kèm ↗</a>
+                    <a href="@image" target="_blank" rel="noopener noreferrer" class="text-sm font-semibold text-[#B83A3A] underline underline-offset-4">Xem ảnh đính kèm ↗</a>
                 }
                 @if (issue.ResolutionNote is { } resolution)
                 {
@@ -36,8 +36,8 @@
                 @if (issue.SafetyConfirmations.Count > 0)
                 {
                     <div>
-                        <p class="mb-1 text-xs font-bold text-[#383E43]">Lịch sử xác nhận</p>
-                        <ul class="space-y-1 text-xs text-[#69706A]">
+                        <p class="mb-1 text-xs font-bold text-[#242424]">Lịch sử xác nhận</p>
+                        <ul class="space-y-1 text-xs text-[#6F6966]">
                             @foreach (var confirmation in issue.SafetyConfirmations.OrderByDescending(c => c.ConfirmedAt))
                             {
                                 <li>@OperationsText.Local(confirmation.ConfirmedAt) · @(confirmation.ConfirmedByName ?? "—"): @confirmation.Note</li>
@@ -72,7 +72,7 @@
                 }
                 else
                 {
-                    <p class="text-sm text-[#69706A]">@(Role == "Manager" && issue.Status is "Reported" or "InProgress" && !IsRepair(issue) ? "Sự cố đang do nhân viên xử lý." : "Không có thao tác nào cho trạng thái này.")</p>
+                    <p class="text-sm text-[#6F6966]">@(Role == "Manager" && issue.Status is "Reported" or "InProgress" && !IsRepair(issue) ? "Sự cố đang do nhân viên xử lý." : "Không có thao tác nào cho trạng thái này.")</p>
                 }
             </div>
         </div>
@@ -81,7 +81,7 @@
 
 <section class="@Ui.ListCard" aria-labelledby="issue-list-title" aria-busy="@_loading">
     <div class="@Ui.ListHeader">
-        <h2 id="issue-list-title" class="mb-3 text-sm font-bold text-[#383E43]">Báo cáo sự cố</h2>
+        <h2 id="issue-list-title" class="mb-3 text-sm font-bold text-[#242424]">Báo cáo sự cố</h2>
         <form @onsubmit="() => LoadAsync(1)" @onsubmit:preventDefault>
             <fieldset disabled="@Busy" class="flex flex-wrap items-end gap-3">
                 <label class="@Ui.Label" for="issue-status">Trạng thái
@@ -110,10 +110,10 @@
                     {
                         <tr @key="row.Id">
                             <th scope="row" class="whitespace-nowrap font-normal">@OperationsText.Local(row.ReportedAt)</th>
-                            <td class="font-semibold">@row.EquipmentName<span class="block text-xs font-normal text-[#8A9089]">@OperationsText.Label(row.EquipmentStatus)</span></td>
+                            <td class="font-semibold">@row.EquipmentName<span class="block text-xs font-normal text-[#8C8581]">@OperationsText.Label(row.EquipmentStatus)</span></td>
                             <td><span class="@OperationsText.Badge(row.IncidentType)">@OperationsText.Label(row.IncidentType)</span></td>
                             <td>@(row.ReportedByName ?? "—")</td>
-                            <td><span class="@OperationsText.Badge(row.Status)">@OperationsText.Label(row.Status)</span>@if (IsRepair(row)) { <span class="ml-1 text-[11px] text-[#69706A]">sửa chữa</span> }</td>
+                            <td><span class="@OperationsText.Badge(row.Status)">@OperationsText.Label(row.Status)</span>@if (IsRepair(row)) { <span class="ml-1 text-[11px] text-[#6F6966]">sửa chữa</span> }</td>
                             <td><button type="button" class="@Ui.Button" disabled="@Busy" @onclick="() => Select(row)">@(Actions(row).Count > 0 ? "Xử lý" : "Xem")</button></td>
                         </tr>
                     }
@@ -124,7 +124,7 @@
     }
     else
     {
-        <p role="status" class="p-5 text-sm text-[#69706A]">Không có báo cáo sự cố phù hợp.</p>
+        <p role="status" class="p-5 text-sm text-[#6F6966]">Không có báo cáo sự cố phù hợp.</p>
     }
 </section>
 
