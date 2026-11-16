@@ -5,7 +5,7 @@
     <aside class="workspace-sidebar" aria-label="Điều hướng không gian làm việc">
         <a href="/" class="workspace-logo"><img src="/brand/logo-remove.png" alt="Victor Fitness - Trang chủ" class="brightness-0" /></a>
         <div class="workspace-sidebar-label">V-FITNESS MANAGEMENT</div>
-        <div class="workspace-role"><span aria-hidden="true">@DisplayRoleMark</span><div><strong>@DisplayRoleName</strong><small>KHÔNG GIAN LÀM VIỆC</small></div></div>
+        <div class="workspace-role"><span aria-hidden="true">@RoleMark</span><div><strong>@RoleName</strong><small>KHÔNG GIAN LÀM VIỆC</small></div></div>
         <p class="workspace-sidebar-label workspace-sidebar-label--menu">ĐIỀU HƯỚNG</p>
         <nav class="workspace-nav">
             <NavLink href="@DashboardRoute" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">01</span> Tổng quan <span aria-hidden="true">↗</span></NavLink>
@@ -15,7 +15,7 @@
                 <NavLink href="@href" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">◼</span> @label <span aria-hidden="true">↗</span></NavLink>
             }
             <NavLink href="/profile" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">03</span> Hồ sơ cá nhân <span aria-hidden="true">↗</span></NavLink>
-            @if (IsManagerOrAdmin)
+            @if (Variant is "manager" or "admin")
             {
                 <NavLink href="/manager/competitions" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">04</span> Quản lý cuộc thi <span aria-hidden="true">↗</span></NavLink>
             }

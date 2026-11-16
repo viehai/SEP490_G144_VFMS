@@ -2025,6 +2025,9 @@ namespace VFMS.Infrastructure.MySql.Migrations
                     b.Property<int?>("DurationMinutes")
                         .HasColumnType("int");
 
+                    b.Property<int?>("EquipmentId")
+                        .HasColumnType("int");
+
                     b.Property<int>("ExerciseId")
                         .HasColumnType("int");
 
@@ -2050,6 +2053,8 @@ namespace VFMS.Infrastructure.MySql.Migrations
                         .HasColumnType("datetime(6)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("EquipmentId");
 
                     b.HasIndex("ExerciseId");
 
@@ -2821,8 +2826,16 @@ namespace VFMS.Infrastructure.MySql.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<string>("VoucherCodeSnapshot")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
                     b.Property<int>("VoucherId")
                         .HasColumnType("int");
+
+                    b.Property<string>("VoucherNameSnapshot")
+                        .HasMaxLength(256)
+                        .HasColumnType("varchar(256)");
 
                     b.HasKey("Id");
 
@@ -2870,6 +2883,10 @@ namespace VFMS.Infrastructure.MySql.Migrations
                     b.Property<string>("Name")
                         .HasColumnType("longtext");
 
+                    b.Property<string>("NutritionAdvice")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
                     b.Property<int?>("PhysicalProfileId")
                         .HasColumnType("int");
 
@@ -2888,6 +2905,49 @@ namespace VFMS.Infrastructure.MySql.Migrations
                     b.HasIndex("PhysicalProfileId");
 
                     b.ToTable("WorkoutPlans");
+                });
+
+            modelBuilder.Entity("VFMS.Domain.Entities.WorkoutLog", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int?>("DurationMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<DateOnly>("LoggedOn")
+                        .HasColumnType("date");
+
+                    b.Property<int>("PlanItemId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("RepsDone")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("SetsDone")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<decimal?>("WeightKg")
+                        .HasColumnType("decimal(6,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlanItemId", "LoggedOn")
+                        .IsUnique();
+
+                    b.ToTable("WorkoutLogs");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.YogaAttendance", b =>
@@ -3840,6 +3900,11 @@ namespace VFMS.Infrastructure.MySql.Migrations
 
             modelBuilder.Entity("VFMS.Domain.Entities.PlanItem", b =>
                 {
+                    b.HasOne("VFMS.Domain.Entities.Equipment", "Equipment")
+                        .WithMany()
+                        .HasForeignKey("EquipmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("VFMS.Domain.Entities.Exercise", "Exercise")
                         .WithMany("PlanItems")
                         .HasForeignKey("ExerciseId")
@@ -3854,7 +3919,22 @@ namespace VFMS.Infrastructure.MySql.Migrations
 
                     b.Navigation("Exercise");
 
+                    b.Navigation("Equipment");
+
                     b.Navigation("WorkoutPlan");
+
+                    b.Navigation("Logs");
+                });
+
+            modelBuilder.Entity("VFMS.Domain.Entities.WorkoutLog", b =>
+                {
+                    b.HasOne("VFMS.Domain.Entities.PlanItem", "PlanItem")
+                        .WithMany("Logs")
+                        .HasForeignKey("PlanItemId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PlanItem");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.PurchaseProposal", b =>
