@@ -120,7 +120,7 @@ How to tell which plan you got:
 | Page | Sign in as | Try |
 |---|---|---|
 | `/manager/yoga` | Manager | Studios (create, edit, deactivate), class types, classes (create, publish, cancel), sessions |
-| `/yoga/schedule` | anyone | The week's published sessions with free mats, instructor filter, next/previous week ("Hatha Morning" is from 19/11) |
+| `/yoga/schedule` | anyone | A week timetable (days across, start times down; a day-by-day list on phones) with free mats, filters and next/previous week |
 | `/pt/yoga` | YogaInstructor | This week's assigned sessions with booked members, and **Điểm danh** per session |
 | `/yoga/my-bookings` | Member | Upcoming (with cancel), past (Có mặt / Vắng) and waitlist tabs |
 | `/staff/yoga` | Staff | The day's sessions; **Điểm danh** opens the roster |
@@ -128,7 +128,9 @@ How to tell which plan you got:
 **Book (Member, on `/yoga/schedule`):**
 - Each session shows **Đặt chỗ**, or **Vào danh sách chờ (miễn phí)** when the class is full.
 - A booking is **per class**: one booking holds the mat for every session of that class. Pick a mat or leave it to the system.
-- A clash in the same time slot is refused ("trùng khung giờ"). To test the waitlist, use a class with maxParticipants 1 and a second member.
+- For a signed-in Member, sessions of a class they already booked or are waitlisted for are tinted red and show **Đã đặt · thảm N** or **Đang chờ · #N**, with a link to `/yoga/my-bookings` instead of a booking button (GBR-79: one booking per class). The API refuses a second booking anyway (`ALREADY_BOOKED`).
+- There is no time-clash check between different classes; only the same class is refused.
+- To test the waitlist, use a class with maxParticipants 1 and a second member.
 
 **Cancel (Member, on `/yoga/my-bookings`):**
 - More than 2 hours before the next session it cancels after one confirm.
@@ -155,7 +157,7 @@ The roster only lists bookings made before the session starts.
   dotnet test tests/VFMS.IntegrationTests --filter "FullyQualifiedName!~InvoicePdfPreservesMaximumPersistedDecimalPrecision"
   ```
 
-- **No yoga membership through the API.** Plans made through `POST /api/manager/membership-plans` only get a GYM component, so a real member can't book yoga. To give a member yoga for testing:
+- **No yoga membership through the API.** Plans made through `POST /api/manager/membership-plans` only get a GYM component (`MembershipPlanService`, dev/viehai), so a real member can't book yoga. The SQL below adds the YOGA part inside the member's gym package, so `/my-memberships` then shows two cards both named after the gym plan (e.g. "Gym 1 Month"); the second one says **Dịch vụ: Yoga**. To give a member yoga for testing:
   ```sql
   DECLARE @pkg int = (SELECT PackageId FROM PackageComponents WHERE Id = (SELECT PackageComponentId FROM MemberMemberships WHERE Id = <gymMembershipId>));
   INSERT PackageComponents (PackageId, ComponentType, DurationDays, AllowFreeze, CreatedAt, UpdatedAt, IsDeleted) VALUES (@pkg, 'YOGA', 30, 0, SYSUTCDATETIME(), SYSUTCDATETIME(), 0);
