@@ -1,5 +1,6 @@
 @page "/competitions"
 @layout StaffPTLayout
+@using VFMS.Client.Components.Operations
 @inject CompetitionApiClient Api
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthStateProvider
@@ -12,7 +13,7 @@
             <p class="workspace-heading mb-3 text-[10px] font-bold tracking-[.18em] text-[#71717A]">VFMS / MODULE 06 / COMPETITIONS</p>
             <h1 class="workspace-heading text-3xl font-extrabold uppercase tracking-tight sm:text-4xl">Cuộc thi<span class="text-[#6366F1]">.</span></h1>
         </div>
-        <button type="button" @onclick="ReloadAsync" class="workspace-heading inline-flex w-fit items-center gap-2 border border-black bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider rounded-none">Làm mới ↻</button>
+        <button type="button" @onclick="ReloadAsync" disabled="@_loading" class="workspace-heading inline-flex w-fit items-center gap-2 border border-black bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider rounded-none">Làm mới ↻</button>
     </header>
 
     @if (_error is not null)
@@ -98,6 +99,10 @@
                     </tbody>
                 </table>
             </div>
+            @if (_total > 0)
+            {
+                <Pager Page="_page" PageSize="PageSize" TotalCount="_total" Noun="cuộc thi" AriaLabel="Phân trang cuộc thi" Disabled="_loading" OnPage="LoadPageAsync" />
+            }
         }
     </section>
 
@@ -106,9 +111,13 @@
         <section class="overflow-hidden border-2 border-black bg-white rounded-none" aria-labelledby="comp-history-title">
             <div class="flex flex-wrap items-center justify-between gap-3 border-b-2 border-black px-5 py-5 sm:px-6">
                 <h2 id="comp-history-title" class="workspace-heading text-sm font-extrabold uppercase tracking-wider">Lịch sử tham gia của tôi</h2>
-                <button type="button" @onclick="ReloadHistoryAsync" class="text-xs text-[#6366F1]">Làm mới ↻</button>
+                <button type="button" @onclick="ReloadHistoryAsync" disabled="@_historyLoading" class="text-xs text-[#6366F1]">Làm mới ↻</button>
             </div>
-            @if (_history.Count == 0)
+            @if (_historyLoading)
+            {
+                <p role="status" class="px-6 py-8 text-center text-sm text-[#69706A]">Đang tải lịch sử...</p>
+            }
+            else if (_history.Count == 0)
             {
                 <p class="px-6 py-8 text-center text-sm text-[#71717A]">Bạn chưa đăng ký cuộc thi nào.</p>
             }
@@ -134,6 +143,10 @@
                         </tbody>
                     </table>
                 </div>
+                @if (_historyTotal > 0)
+                {
+                    <Pager Page="_historyPage" PageSize="PageSize" TotalCount="_historyTotal" Noun="lượt tham gia" AriaLabel="Phân trang lịch sử tham gia" Disabled="_historyLoading" OnPage="LoadHistoryPageAsync" />
+                }
             }
         </section>
     }
@@ -187,13 +200,18 @@
 </div>
 
 @code {
+    private const int PageSize = 8;
     private IReadOnlyCollection<CompetitionResponse> _items = [];
     private IReadOnlyCollection<CompetitionParticipantResponse> _history = [];
     private CompetitionResponse? _selectedCompetition;
     private string _search = string.Empty;
     private string _status = string.Empty;
     private int _total;
+    private int _page = 1;
+    private int _historyPage = 1;
+    private int _historyTotal;
     private bool _loading = true;
+    private bool _historyLoading;
     private bool _isMember;
     private string? _error;
 
@@ -206,16 +224,13 @@
 
     private async Task ReloadAsync()
     {
-        _loading = true;
         await LoadAsync();
-        _loading = false;
     }
 
     private async Task ApplyFilterAsync()
     {
-        _loading = true;
+        _page = 1;
         await LoadAsync();
-        _loading = false;
     }
 
     private async Task ClearFilterAsync()
@@ -227,31 +242,63 @@
 
     private async Task LoadAsync()
     {
+        _loading = true;
         try
         {
-            var page = await Api.GetCompetitionsAsync(new CompetitionListRequest(_status, _search, 1, 50));
+            var page = await Api.GetCompetitionsAsync(new CompetitionListRequest(_status, _search, _page, PageSize));
+            var lastPage = PageCount(page.TotalCount, page.PageSize);
+            if (_page > lastPage)
+            {
+                _page = lastPage;
+                page = await Api.GetCompetitionsAsync(new CompetitionListRequest(_status, _search, _page, PageSize));
+            }
             _items = page.Items;
             _total = page.TotalCount;
             _error = null;
         }
         catch (CompetitionApiException error) { _error = error.Message; }
         catch (Exception error) { _error = error.Message; }
+        finally { _loading = false; }
     }
 
-    private async Task ReloadHistoryAsync()
+    private Task LoadPageAsync(int page)
+    {
+        if (page < 1) return Task.CompletedTask;
+        _page = page;
+        return LoadAsync();
+    }
+
+    private Task ReloadHistoryAsync() => LoadHistoryPageAsync(_historyPage);
+
+    private async Task LoadHistoryPageAsync(int page)
     {
         // UC-58 is a Member-only view; other roles would get a 403 from the API.
-        if (!_isMember)
+        if (!_isMember || page < 1)
         {
             _history = [];
+            _historyTotal = 0;
             return;
         }
+        _historyPage = page;
+        _historyLoading = true;
         try
         {
-            var page = await Api.GetMyHistoryAsync(new CompetitionParticipantListRequest(PageSize: 50));
-            _history = page.Items;
+            var result = await Api.GetMyHistoryAsync(new CompetitionParticipantListRequest(Page: _historyPage, PageSize: PageSize));
+            var lastPage = PageCount(result.TotalCount, result.PageSize);
+            if (_historyPage > lastPage)
+            {
+                _historyPage = lastPage;
+                result = await Api.GetMyHistoryAsync(new CompetitionParticipantListRequest(Page: _historyPage, PageSize: PageSize));
+            }
+            _history = result.Items;
+            _historyTotal = result.TotalCount;
         }
-        catch (Exception) { _history = []; }
+        catch (Exception)
+        {
+            _history = [];
+            _historyTotal = 0;
+        }
+        finally { _historyLoading = false; }
     }
 
     private async Task<bool> IsMemberAsync()
@@ -265,6 +312,7 @@
         try
         {
             await Api.RegisterAsync(id);
+            _historyPage = 1;
             await Task.WhenAll(LoadAsync(), ReloadHistoryAsync());
             _error = null;
         }
@@ -288,6 +336,9 @@
 
     private static string FormatRange(DateTime start, DateTime end) =>
         $"{start.ToLocalTime():dd/MM/yyyy} - {end.ToLocalTime():dd/MM/yyyy}";
+
+    private static int PageCount(int totalCount, int pageSize) =>
+        Math.Max(1, (int)Math.Ceiling((double)totalCount / Math.Max(1, pageSize)));
 
     private static string StatusClass(string status) => status switch
     {

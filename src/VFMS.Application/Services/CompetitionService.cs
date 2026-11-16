@@ -11,7 +11,7 @@ namespace VFMS.Application.Services;
 /// UC-56 View Competitions (Guest, Customer, Member, Staff, Manager).
 /// UC-57 Competition Registration (Member) – only for a Published competition inside its registration window.
 /// UC-58 View Competition History (Member).
-/// UC-59 Manage Competitions (Manager) – Draft → Published → Ongoing → Completed (JOB-05).
+/// UC-59 Manage Competitions (Manager) – competition status changes are manager-controlled.
 /// UC-60 Manage Competition Participants (Staff, Manager).
 /// UC-61 Manage Competition Results (Staff) – records the preliminary score.
 /// UC-62 Review and Confirm Competition Results (Manager) – confirms the final result and grants the prize voucher.
@@ -212,10 +212,10 @@ public sealed class CompetitionService : ICompetitionService
         if (competition is null)
             return NotFound<CompetitionResponse>();
 
-        // A competition that already started keeps its published data (JOB-05 advances the status by itself).
-        if (competition.Status is CompetitionStatus.Ongoing or CompetitionStatus.Completed)
+        if (competition.Status is CompetitionStatus.Ongoing or CompetitionStatus.Completed ||
+            competition.StartDate <= DateTime.UtcNow)
             return Result<CompetitionResponse>.Failure(
-                "A running or finished competition cannot be edited.", "COMPETITION_NOT_EDITABLE", 409);
+                "A started or finished competition cannot be edited.", "COMPETITION_NOT_EDITABLE", 409);
 
         var name = request.Name.Trim();
         if (await _repository.CompetitionNameExistsAsync(name, id, cancellationToken))
@@ -293,14 +293,37 @@ public sealed class CompetitionService : ICompetitionService
         if (competition.Status is CompetitionStatus.Completed or CompetitionStatus.Cancelled)
             return Result<CompetitionResponse>.Failure(
                 $"A {competition.Status} competition cannot be cancelled.", "COMPETITION_INVALID_STATE", 409);
-        if (competition.Status == CompetitionStatus.Ongoing)
-            return Result<CompetitionResponse>.Failure(
-                "A running competition cannot be cancelled.", "COMPETITION_ALREADY_STARTED", 409);
-
         var previousStatus = competition.Status;
         competition.Status = CompetitionStatus.Cancelled;
         var audit = AuditedWriter.Audit(managerUserId, AuditActionType.Update, Entity, ipAddress,
             $"Status={previousStatus}", $"Status={CompetitionStatus.Cancelled}");
+        await AuditedWriter.SaveChangedAsync(_repository, competition, audit, null, cancellationToken);
+
+        var saved = await _repository.GetCompetitionWithDetailsAsync(id, cancellationToken) ?? competition;
+        var participants = await _repository.CountActiveParticipantsAsync(id, cancellationToken);
+        return Result<CompetitionResponse>.Success(ToResponse(saved, participants));
+    }
+
+    public async Task<Result<CompetitionResponse>> CompleteAsync(
+        int id, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default)
+    {
+        var competition = await _repository.GetCompetitionAsync(id, cancellationToken);
+        if (competition is null)
+            return NotFound<CompetitionResponse>();
+        if (competition.Status is not (CompetitionStatus.Published or CompetitionStatus.Ongoing))
+            return Result<CompetitionResponse>.Failure(
+                $"A {competition.Status} competition cannot be completed manually.", "COMPETITION_INVALID_STATE", 409);
+
+        var now = DateTime.UtcNow;
+        if (competition.StartDate > now)
+            return Result<CompetitionResponse>.Failure(
+                "A competition can only be completed manually after it has started.",
+                "COMPETITION_NOT_STARTED", 409);
+
+        var previousStatus = competition.Status;
+        competition.Status = CompetitionStatus.Completed;
+        var audit = AuditedWriter.Audit(managerUserId, AuditActionType.Update, Entity, ipAddress,
+            $"Status={previousStatus}", $"Status={CompetitionStatus.Completed}; Trigger=Manager");
         await AuditedWriter.SaveChangedAsync(_repository, competition, audit, null, cancellationToken);
 
         var saved = await _repository.GetCompetitionWithDetailsAsync(id, cancellationToken) ?? competition;

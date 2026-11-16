@@ -66,6 +66,9 @@ public sealed class CompetitionApiClient(HttpClient http, AuthSession session)
     public Task<CompetitionResponse> CancelAsync(int id, CancellationToken cancellationToken = default) =>
         PostAsync<CompetitionResponse>($"api/competitions/{id}/cancel", null, cancellationToken);
 
+    public Task<CompetitionResponse> CompleteAsync(int id, CancellationToken cancellationToken = default) =>
+        PostAsync<CompetitionResponse>($"api/competitions/{id}/complete", null, cancellationToken);
+
     // UC-60 Manage Competition Participants
     public Task<PagedResponse<CompetitionParticipantResponse>> GetParticipantsAsync(
         CompetitionParticipantListRequest request, CancellationToken cancellationToken = default)

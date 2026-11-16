@@ -110,6 +110,15 @@ public sealed class CompetitionsController : ControllerBase
     public Task<IActionResult> Cancel(int id, CancellationToken cancellationToken) =>
         Run(userId => _service.CancelAsync(id, userId, ClientIp, cancellationToken));
 
+    /// <summary>End a started competition early. Scheduled completion still occurs at its end time.</summary>
+    [HttpPost("{id:int}/complete")]
+    [Authorize(Roles = ManagerRoles)]
+    [ProducesResponseType(typeof(CompetitionResponse), 200)]
+    [ProducesResponseType(404)]
+    [ProducesResponseType(409)]
+    public Task<IActionResult> Complete(int id, CancellationToken cancellationToken) =>
+        Run(userId => _service.CompleteAsync(id, userId, ClientIp, cancellationToken));
+
     // ── UC-60 Manage Competition Participants ─────────────────────
 
     /// <summary>All participants, newest registration first. Filter by competition, status or member name.</summary>

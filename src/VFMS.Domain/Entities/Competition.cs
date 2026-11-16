@@ -5,7 +5,7 @@ namespace VFMS.Domain.Entities;
 
 /// <summary>
 /// Competition configured by a Manager (UC-60–UC-66).
-/// Status transitions: Draft → Published → Ongoing → Completed (JOB-05).
+/// A Manager publishes, cancels, or completes a competition; completion is manual after the start time.
 /// </summary>
 public class Competition : BaseEntity
 {

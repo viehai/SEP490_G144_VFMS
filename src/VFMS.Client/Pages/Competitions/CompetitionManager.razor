@@ -1,6 +1,8 @@
 @page "/manager/competitions"
 @layout ManagerAdminLayout
+@using VFMS.Client.Components.Operations
 @inject CompetitionApiClient Api
+@inject IJSRuntime JS
 
 <PageTitle>Quản lý cuộc thi | Victor Fitness</PageTitle>
 
@@ -11,7 +13,7 @@
             <h1 class="workspace-heading text-3xl font-extrabold uppercase tracking-tight sm:text-4xl">Quản lý cuộc thi<span class="text-[#6366F1]">.</span></h1>
         </div>
         <div class="flex flex-wrap gap-3">
-            <button type="button" @onclick="ReloadAsync" class="workspace-heading border border-black bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider rounded-none">Làm mới ↻</button>
+            <button type="button" @onclick="ReloadAsync" disabled="@_loading" class="workspace-heading border border-black bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider rounded-none">Làm mới ↻</button>
             <button type="button" @onclick="() => _showCreate = !_showCreate" class="workspace-heading border-2 border-black bg-black px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-white rounded-none">+ Tạo cuộc thi</button>
         </div>
     </header>
@@ -62,14 +64,48 @@
         </section>
     }
 
+    <section class="rounded-2xl border border-[#D8DED2] bg-white p-5 shadow-sm sm:p-6" aria-labelledby="manager-competition-filter-title">
+        <div class="mb-5">
+            <h2 id="manager-competition-filter-title" class="workspace-heading text-sm font-extrabold text-[#383E43]">Lọc cuộc thi</h2>
+            <p class="mt-1 text-xs text-[#69706A]">Tìm theo tên hoặc mô tả, hoặc chọn trạng thái. Cuộc thi không tự đổi trạng thái theo lịch; sau khi đến giờ bắt đầu, quản lý có thể chủ động kết thúc để duyệt kết quả.</p>
+        </div>
+        <form class="grid items-end gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto]" @onsubmit="ApplyFiltersAsync" @onsubmit:preventDefault>
+            <div>
+                <label for="manager-comp-search" class="workspace-heading mb-2 block text-[10px] font-bold uppercase tracking-wider text-[#69706A]">Tìm kiếm</label>
+                <input id="manager-comp-search" class="w-full rounded-xl border border-[#D8DED2] bg-[#FAFAF8] px-4 py-3 text-sm text-[#383E43] placeholder:text-[#9AA098] focus:border-[#5F6F52] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#5F6F52]/15" @bind="_search" @bind:event="oninput" placeholder="Tên hoặc mô tả cuộc thi" />
+            </div>
+            <div>
+                <label for="manager-comp-status" class="workspace-heading mb-2 block text-[10px] font-bold uppercase tracking-wider text-[#69706A]">Trạng thái</label>
+                <select id="manager-comp-status" class="w-full rounded-xl border border-[#D8DED2] bg-[#FAFAF8] px-4 py-3 text-sm text-[#383E43] focus:border-[#5F6F52] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#5F6F52]/15" @bind="_status">
+                    <option value="">Tất cả trạng thái</option>
+                    <option value="Draft">Bản nháp</option>
+                    <option value="Published">Đã phát hành</option>
+                    <option value="Ongoing">Đang diễn ra</option>
+                    <option value="Completed">Đã kết thúc</option>
+                    <option value="Cancelled">Đã hủy</option>
+                </select>
+            </div>
+            <div class="flex flex-wrap gap-2 md:col-span-2 xl:col-span-1">
+                <button type="submit" disabled="@_loading" class="workspace-heading min-h-11 flex-1 rounded-xl bg-[#5F6F52] px-5 py-3 text-xs font-bold uppercase tracking-wider text-white transition-colors hover:bg-[#4E5D44] disabled:opacity-50">Lọc cuộc thi</button>
+                <button type="button" @onclick="ClearFiltersAsync" disabled="@_loading" class="workspace-heading min-h-11 rounded-xl border border-[#D8DED2] bg-white px-4 py-3 text-xs font-bold text-[#383E43] transition-colors hover:bg-[#EEF1EA] disabled:opacity-50">Xóa lọc</button>
+            </div>
+        </form>
+    </section>
+
     <section class="overflow-hidden rounded-2xl border border-[#D8DED2] bg-white shadow-sm" aria-labelledby="mgr-list-title" aria-live="polite">
         <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[#D8DED2] bg-[#EEF1EA]/40 px-5 py-5 sm:px-6">
-            <h2 id="mgr-list-title" class="workspace-heading text-sm font-extrabold uppercase tracking-wider">Tất cả cuộc thi</h2>
+            <h2 id="mgr-list-title" class="workspace-heading text-sm font-extrabold uppercase tracking-wider">Danh sách cuộc thi</h2>
             <span class="text-xs text-[#71717A]">@_total mục</span>
         </div>
-        @if (_items.Count == 0)
+        @if (_loading)
         {
-            <p class="px-6 py-10 text-center text-sm text-[#71717A]">Chưa có cuộc thi nào. Bấm "+ Tạo cuộc thi" để bắt đầu.</p>
+            <p role="status" class="px-6 py-10 text-center text-sm text-[#69706A]">Đang tải cuộc thi...</p>
+        }
+        else if (_items.Count == 0)
+        {
+            <p class="px-6 py-10 text-center text-sm text-[#71717A]">
+                @(HasFilters ? "Không tìm thấy cuộc thi phù hợp với bộ lọc." : "Chưa có cuộc thi nào. Bấm nút Tạo cuộc thi để bắt đầu.")
+            </p>
         }
         else
         {
@@ -92,9 +128,13 @@
                                         {
                                             <button type="button" @onclick='() => PublishAsync(item.Id)' class="workspace-heading rounded-lg border border-[#A9B79D] bg-[#EEF1EA] px-2.5 py-1.5 text-[10px] font-bold uppercase text-[#4E5D44]">Phát hành</button>
                                         }
-                                        @if (item.Status is "Draft" or "Published")
+                                        @if (item.Status is "Draft" or "Published" or "Ongoing")
                                         {
-                                            <button type="button" @onclick='() => CancelAsync(item.Id)' class="workspace-heading rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-[10px] font-bold uppercase text-red-700">Hủy</button>
+                                            <button type="button" @onclick='() => CancelAsync(item.Id)' disabled="@_busy" class="workspace-heading rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-[10px] font-bold uppercase text-red-700 disabled:opacity-50">Hủy</button>
+                                        }
+                                        @if (CanCompleteManually(item))
+                                        {
+                                            <button type="button" @onclick='() => CompleteAsync(item.Id)' disabled="@_busy" class="workspace-heading rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[10px] font-bold uppercase text-amber-800 disabled:opacity-50">Kết thúc</button>
                                         }
                                         <button type="button" @onclick='() => OpenParticipantsAsync(item.Id)' class="workspace-heading rounded-lg border border-[#D8DED2] bg-white px-2.5 py-1.5 text-[10px] font-bold uppercase text-[#383E43] hover:bg-[#EEF1EA]">Người tham gia</button>
                                         <button type="button" @onclick='() => OpenResultsAsync(item.Id)' class="workspace-heading rounded-lg bg-[#5F6F52] px-2.5 py-1.5 text-[10px] font-bold uppercase text-white hover:bg-[#4E5D44]">Kết quả</button>
@@ -105,6 +145,10 @@
                     </tbody>
                 </table>
             </div>
+            @if (_total > 0)
+            {
+                <Pager Page="_page" PageSize="PageSize" TotalCount="_total" Noun="cuộc thi" AriaLabel="Phân trang cuộc thi" Disabled="@(_loading || _busy)" OnPage="LoadPageAsync" />
+            }
         }
     </section>
 
@@ -283,16 +327,21 @@
 
 @code {
     private enum Panel { None, Participants, RecordResult, Results }
+    private const int PageSize = 8;
 
     private IReadOnlyCollection<CompetitionResponse> _items = [];
     private IReadOnlyCollection<CompetitionParticipantResponse> _participants = [];
     private IReadOnlyCollection<CompetitionLeaderboardEntry> _leaderboard = [];
     private int _total;
+    private int _page = 1;
+    private string _search = string.Empty;
+    private string _status = string.Empty;
     private int? _selectedCompetitionId;
     private string _selectedCompetitionName = string.Empty;
     private Panel _panel = Panel.None;
     private bool _showCreate;
     private bool _busy;
+    private bool _loading = true;
     private string? _error;
     private string? _notice;
 
@@ -317,25 +366,58 @@
         _leaderboard.Count(result => result.Status != "Completed" && result.Rank is null);
     private bool CanConfirmAllResults =>
         !_busy && SelectedCompetitionStatus == "Completed" && PendingResultCount > 0;
+    private bool HasFilters =>
+        Blank(_search) is not null || Blank(_status) is not null;
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
     private async Task LoadAsync()
     {
+        await LoadPageAsync(_page);
+    }
+
+    private async Task LoadPageAsync(int page)
+    {
+        if (page < 1) return;
+        _page = page;
+        _loading = true;
+        _error = null;
         try
         {
-            var page = await Api.GetCompetitionsAsync(new CompetitionListRequest(PageSize: 50));
-            _items = page.Items;
-            _total = page.TotalCount;
-            _error = null;
+            var result = await Api.GetCompetitionsAsync(new CompetitionListRequest(
+                Status: Blank(_status), Search: Blank(_search), Page: _page, PageSize: PageSize));
+            var lastPage = PageCount(result.TotalCount);
+            if (_page > lastPage)
+            {
+                _page = lastPage;
+                result = await Api.GetCompetitionsAsync(new CompetitionListRequest(
+                    Status: Blank(_status), Search: Blank(_search), Page: _page, PageSize: PageSize));
+            }
+            _items = result.Items;
+            _total = result.TotalCount;
         }
         catch (Exception error) { _error = error.Message; }
+        finally { _loading = false; }
     }
 
     private async Task ReloadAsync()
     {
         await LoadAsync();
         if (_selectedCompetitionId is { } id) await LoadDetailsAsync(id);
+    }
+
+    private Task ApplyFiltersAsync()
+    {
+        if (_loading) return Task.CompletedTask;
+        _page = 1;
+        return LoadAsync();
+    }
+
+    private Task ClearFiltersAsync()
+    {
+        _search = string.Empty;
+        _status = string.Empty;
+        return ApplyFiltersAsync();
     }
 
     private async Task CreateAsync()
@@ -358,6 +440,7 @@
             _formName = string.Empty;
             _formDescription = string.Empty;
             _formMaxParticipants = null;
+            _page = 1;
             await LoadAsync();
             _error = null;
         }
@@ -373,8 +456,44 @@
 
     private async Task CancelAsync(int id)
     {
-        try { await Api.CancelAsync(id); await LoadAsync(); _error = null; }
+        if (_busy) return;
+        var competition = _items.FirstOrDefault(item => item.Id == id);
+        if (competition is null) return;
+
+        _busy = true;
+        _error = null;
+        try
+        {
+            var confirmed = await JS.InvokeAsync<bool>("confirm",
+                $"Hủy cuộc thi \"{competition.Name}\"? Thao tác này không thể hoàn tác.");
+            if (!confirmed) return;
+
+            await Api.CancelAsync(id);
+            await LoadAsync();
+        }
         catch (Exception error) { _error = error.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task CompleteAsync(int id)
+    {
+        if (_busy) return;
+        var competition = _items.FirstOrDefault(item => item.Id == id);
+        if (competition is null) return;
+
+        _busy = true;
+        _error = null;
+        try
+        {
+            var confirmed = await JS.InvokeAsync<bool>("confirm",
+                $"Kết thúc cuộc thi \"{competition.Name}\"? Thao tác này không thể hoàn tác.");
+            if (!confirmed) return;
+
+            await Api.CompleteAsync(id);
+            await LoadAsync();
+        }
+        catch (Exception error) { _error = error.Message; }
+        finally { _busy = false; }
     }
 
     private async Task OpenParticipantsAsync(int id)
@@ -548,4 +667,14 @@
         "Disqualified" => "Đã loại",
         _ => status
     };
+
+    private static int PageCount(int totalCount) =>
+        Math.Max(1, (int)Math.Ceiling((double)totalCount / PageSize));
+
+    private static bool CanCompleteManually(CompetitionResponse competition) =>
+        competition.Status is "Published" or "Ongoing" &&
+        DateTime.UtcNow >= DateTime.SpecifyKind(competition.StartDate, DateTimeKind.Utc);
+
+    private static string? Blank(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
