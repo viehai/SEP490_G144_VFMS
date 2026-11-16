@@ -49,7 +49,9 @@ Member user id: `b7a2e8b5-23e2-4415-8679-357bb5c33ad3`. Use an InPrivate window 
 Data that already exists:
 - The member has "Gym 1 Month" (order ORD-20261112-367A858627B3, paid in cash), valid 12/11 to 11/12/2026. The member also has a YOGA membership, added by SQL (see section 6).
 - The member's face is registered.
-- Yoga: Studio A and Studio B, and class "Hatha Morning" (Open) with sessions from 19/11 at 08:00. Booking 1 is the member on mat 3.
+- Yoga: Studio A and Studio B, and class "Hatha Morning" (Open) with sessions from 19/11 at 08:00.
+  - The member's active booking is on **mat 5** (booking 1, mat 3, was cancelled during testing).
+  - Session 3 was added for 16/11 at 19:07 for an attendance test; its roster is submitted (member Có mặt), so it's locked. Add a new "now" session (section 5) to test attendance again.
 
 ## 3. Check-in and check-out
 
