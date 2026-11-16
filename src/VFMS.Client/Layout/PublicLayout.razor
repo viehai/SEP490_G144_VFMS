@@ -41,6 +41,10 @@
                     }
                     @if (auth.User.IsInRole("Member") || auth.User.IsInRole("Customer"))
                     {
+                        <NavLink href="/my-transactions" Match="NavLinkMatch.Prefix" ActiveClass="text-[#5F6F52] underline underline-offset-4"
+                                 class="@MyMembershipsClass" title="Lịch sử giao dịch">
+                            Giao dịch
+                        </NavLink>
                         <NavLink href="/supplements" Match="NavLinkMatch.Prefix" ActiveClass="text-[#5F6F52] underline underline-offset-4"
                                  class="@MyMembershipsClass">
                             Cửa hàng

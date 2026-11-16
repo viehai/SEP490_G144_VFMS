@@ -1,0 +1,190 @@
+@page "/my-transactions/{OrderId:int}"
+@layout PublicLayout
+@using Microsoft.AspNetCore.Authorization
+@using System.Net
+@using VFMS.Client.Components.Memberships
+@using VFMS.Contracts.Memberships
+@attribute [Authorize(Roles = "Customer,Member")]
+@inject MembershipPlanApiClient Plans
+@implements IDisposable
+
+<PageTitle>Chi tiết giao dịch | Victor Fitness</PageTitle>
+
+<section class="mx-auto min-w-0 max-w-5xl space-y-6 px-[20px] pb-16 pt-28 font-body" aria-labelledby="transaction-title" aria-busy="@(_detail is null && !_notFound && _loadError is null ? "true" : "false")">
+    <header class="space-y-2 border-b border-vfms-border pb-5">
+        <a href="/my-transactions" class="inline-flex min-h-[44px] items-center gap-2 text-sm font-bold text-vfms-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary"><span aria-hidden="true">←</span> Lịch sử giao dịch</a>
+        <h1 id="transaction-title" class="break-words font-heading text-3xl font-extrabold text-vfms-text">Chi tiết giao dịch</h1>
+        @if (_detail is { } loaded)
+        {
+            <p class="break-all text-sm font-semibold text-vfms-text-secondary">@loaded.Transaction.OrderNumber</p>
+        }
+    </header>
+
+    @if (_notFound)
+    {
+        <p role="status" class="rounded-xl border border-vfms-border bg-vfms-surface p-[20px] text-sm text-vfms-text-secondary">Không tìm thấy giao dịch. (MSG-01)</p>
+    }
+    else if (_loadError is not null)
+    {
+        <div class="space-y-3 rounded-xl border border-red-200 bg-red-50 p-[20px]">
+            <p role="alert" class="text-sm text-red-800">@_loadError</p>
+            @if (_sessionExpired)
+            {
+                <a href="@($"/auth/login?returnUrl={Uri.EscapeDataString($"/my-transactions/{OrderId}")}")" class="@ActionClass">Đăng nhập lại</a>
+            }
+            else
+            {
+                <button type="button" class="@ActionClass" @onclick="LoadAsync">Thử lại</button>
+            }
+        </div>
+    }
+    else if (_detail is { } detail)
+    {
+        var transaction = detail.Transaction;
+        <section class="min-w-0 space-y-5 rounded-xl border border-vfms-border bg-vfms-surface p-[20px] sm:p-6" aria-labelledby="payment-title">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <h2 id="payment-title" class="font-heading text-xl font-bold text-vfms-text">Thông tin thanh toán</h2>
+                <TransactionStatusBadge Status="@transaction.OrderStatus" />
+            </div>
+            <dl class="grid min-w-0 gap-5 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                <div class="min-w-0"><dt class="text-xs text-vfms-text-secondary">Loại giao dịch</dt><dd class="m-0 mt-1 font-semibold text-vfms-text">@(transaction.IsRenewal ? "Gia hạn gói hội viên" : "Mua gói hội viên")</dd></div>
+                <div class="min-w-0"><dt class="text-xs text-vfms-text-secondary">Ngày tạo (UTC+7)</dt><dd class="m-0 mt-1 text-vfms-text"><time datetime="@transaction.CreatedAt.ToString("O")">@TransactionDisplay.Date(transaction.CreatedAt)</time></dd></div>
+                <div class="min-w-0"><dt class="text-xs text-vfms-text-secondary">Phương thức</dt><dd class="m-0 mt-1 break-words text-vfms-text">@TransactionDisplay.Method(transaction.PaymentMethod)</dd></div>
+                <div class="min-w-0"><dt class="mb-1 text-xs text-vfms-text-secondary">Trạng thái thanh toán</dt><dd class="m-0"><TransactionStatusBadge Status="@transaction.PaymentStatus" /></dd></div>
+                @if (detail.PaidAt is { } paidAt)
+                {
+                    <div class="min-w-0"><dt class="text-xs text-vfms-text-secondary">Ngày thanh toán (UTC+7)</dt><dd class="m-0 mt-1 text-vfms-text"><time datetime="@paidAt.ToString("O")">@TransactionDisplay.Date(paidAt)</time></dd></div>
+                }
+                @if (transaction.CompletedAt is { } completedAt)
+                {
+                    <div class="min-w-0"><dt class="text-xs text-vfms-text-secondary">Ngày hoàn tất (UTC+7)</dt><dd class="m-0 mt-1 text-vfms-text"><time datetime="@completedAt.ToString("O")">@TransactionDisplay.Date(completedAt)</time></dd></div>
+                }
+            </dl>
+            @if (transaction.PaymentMethod == "NoCharge")
+            {
+                <p class="rounded-lg bg-vfms-muted p-3 text-sm text-vfms-text-secondary">Đơn hàng hoàn tất không thu tiền; không phát sinh chuyển khoản hay thanh toán tiền mặt.</p>
+            }
+        </section>
+
+        <section class="min-w-0 space-y-4 rounded-xl border border-vfms-border bg-vfms-surface p-[20px] sm:p-6" aria-labelledby="items-title">
+            <h2 id="items-title" class="font-heading text-xl font-bold text-vfms-text">Gói đã mua</h2>
+            <ul class="m-0 list-none divide-y divide-vfms-border p-0">
+                @foreach (var item in detail.Items)
+                {
+                    <li class="min-w-0 space-y-3 py-4 first:pt-0 last:pb-0">
+                        <div class="flex min-w-0 flex-wrap justify-between gap-3">
+                            <h3 class="min-w-0 flex-1 basis-48 break-words font-heading text-base font-bold text-vfms-text">@item.PlanName</h3>
+                            <p class="m-0 break-words text-sm font-bold tabular-nums text-vfms-text">@TransactionDisplay.Money(item.UnitPrice)</p>
+                        </div>
+                        <p class="m-0 text-sm text-vfms-text-secondary">@(item.IsRenewal ? "Gia hạn" : "Mua mới") · @(item.IsForPurchaser ? "Dành cho bạn" : "Dành cho người nhận")</p>
+                        @if (item.ActivationStartDate is { } start)
+                        {
+                            <p class="m-0 text-sm text-vfms-text-secondary">Ngày kích hoạt đã chọn: <MembershipDate Date="@start" /></p>
+                        }
+                    </li>
+                }
+            </ul>
+        </section>
+
+        <section class="min-w-0 space-y-4 rounded-xl border border-vfms-border bg-vfms-surface p-[20px] sm:p-6" aria-labelledby="amounts-title">
+            <h2 id="amounts-title" class="font-heading text-xl font-bold text-vfms-text">Giá trị giao dịch</h2>
+            <dl class="m-0 space-y-3 text-sm">
+                <div class="grid min-w-0 grid-cols-2 gap-3"><dt class="text-vfms-text-secondary">Tạm tính</dt><dd class="m-0 break-words text-right font-semibold tabular-nums text-vfms-text">@TransactionDisplay.Money(detail.Subtotal)</dd></div>
+                <div class="grid min-w-0 grid-cols-2 gap-3"><dt class="text-vfms-text-secondary">Giảm giá đã ghi nhận</dt><dd class="m-0 break-words text-right font-semibold tabular-nums text-vfms-text">@TransactionDisplay.Money(detail.DiscountAmount)</dd></div>
+                <div class="grid min-w-0 grid-cols-2 gap-3 border-t border-vfms-border pt-3"><dt class="font-semibold text-vfms-text">Tổng thanh toán</dt><dd class="m-0 break-words text-right font-bold tabular-nums text-vfms-text">@TransactionDisplay.Money(transaction.AmountDue)</dd></div>
+                <div class="grid min-w-0 grid-cols-2 gap-3"><dt class="text-vfms-text-secondary">Số tiền đã nhận</dt><dd class="m-0 break-words text-right font-semibold tabular-nums text-vfms-text">@TransactionDisplay.Money(transaction.AmountReceived)</dd></div>
+            </dl>
+            @if (detail.Voucher is { } voucher)
+            {
+                <div class="min-w-0 space-y-2 border-t border-vfms-border pt-4">
+                    <h3 class="font-heading text-sm font-bold text-vfms-text">Mã giảm giá của giao dịch</h3>
+                    @if (!string.IsNullOrWhiteSpace(voucher.Code))
+                    {
+                        <p class="m-0 break-all text-sm font-bold text-vfms-primary">@voucher.Code</p>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(voucher.Name))
+                    {
+                        <p class="m-0 break-words text-sm text-vfms-text">@voucher.Name</p>
+                    }
+                    @if (string.IsNullOrWhiteSpace(voucher.Code) && string.IsNullOrWhiteSpace(voucher.Name))
+                    {
+                        <p class="m-0 text-sm text-vfms-text-secondary">Tên và mã giảm giá không được lưu cho giao dịch này.</p>
+                    }
+                    <p class="m-0 text-sm text-vfms-text-secondary">Mức giảm đã lưu: @TransactionDisplay.Money(voucher.DiscountAmount)</p>
+                    <TransactionStatusBadge Status="@voucher.RedemptionStatus" />
+                </div>
+            }
+        </section>
+
+        <section class="min-w-0 space-y-4 rounded-xl border border-vfms-border bg-vfms-surface p-[20px] sm:p-6" aria-labelledby="invoice-title">
+            <h2 id="invoice-title" class="font-heading text-xl font-bold text-vfms-text">Chi tiết hóa đơn</h2>
+            @if (detail.Invoice is { } invoice)
+            {
+                <dl class="grid min-w-0 gap-4 text-sm sm:grid-cols-2">
+                    <div class="min-w-0"><dt class="text-xs text-vfms-text-secondary">Số hóa đơn</dt><dd class="m-0 mt-1 break-all font-bold text-vfms-text">@invoice.InvoiceNumber</dd></div>
+                    <div class="min-w-0"><dt class="text-xs text-vfms-text-secondary">Ngày phát hành (UTC+7)</dt><dd class="m-0 mt-1 text-vfms-text"><time datetime="@invoice.IssuedAt.ToString("O")">@TransactionDisplay.Date(invoice.IssuedAt)</time></dd></div>
+                    <div class="min-w-0"><dt class="mb-1 text-xs text-vfms-text-secondary">Trạng thái hóa đơn</dt><dd class="m-0"><TransactionStatusBadge Status="@invoice.InvoiceStatus" /></dd></div>
+                    <div class="min-w-0"><dt class="text-xs text-vfms-text-secondary">Đơn hàng liên quan</dt><dd class="m-0 mt-1 break-all text-vfms-text">@transaction.OrderNumber</dd></div>
+                </dl>
+                <p class="text-sm text-vfms-text-secondary">Hóa đơn gắn với các gói đã mua, giá trị giao dịch và thông tin thanh toán ở trên.</p>
+            }
+            else
+            {
+                <p class="m-0 text-sm text-vfms-text-secondary">Giao dịch này chưa có hóa đơn.</p>
+            }
+            <InvoicePdfDownload @key="OrderId" OrderId="@OrderId" CanExport="@detail.CanExportInvoicePdf" />
+        </section>
+    }
+    else
+    {
+        <p role="status" class="py-8 text-sm text-vfms-text-secondary">Đang tải chi tiết giao dịch...</p>
+    }
+</section>
+
+@code {
+    [Parameter] public int OrderId { get; set; }
+
+    private const string ActionClass = "inline-flex min-h-[44px] items-center rounded-lg border border-vfms-primary px-4 py-2 text-sm font-semibold text-vfms-primary hover:bg-vfms-primary-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary";
+    private CancellationTokenSource? _loadRequest;
+    private MembershipTransactionDetailResponse? _detail;
+    private string? _loadError;
+    private bool _notFound;
+    private bool _sessionExpired;
+
+    protected override Task OnParametersSetAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        CancelLoad();
+        _loadRequest = new();
+        var ct = _loadRequest.Token;
+        _detail = null;
+        _loadError = null;
+        _notFound = false;
+        _sessionExpired = false;
+        try
+        {
+            var detail = await Plans.GetTransactionAsync(OrderId, ct);
+            if (!ct.IsCancellationRequested)
+                _detail = detail;
+        }
+        catch (AuthApiException ex)
+        {
+            if (ct.IsCancellationRequested)
+                return;
+            _notFound = ex.StatusCode == HttpStatusCode.NotFound;
+            _sessionExpired = ex.StatusCode == HttpStatusCode.Unauthorized;
+            if (!_notFound)
+                _loadError = _sessionExpired ? "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại. (MSG-11)" : ex.Message;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+    }
+
+    private void CancelLoad()
+    {
+        _loadRequest?.Cancel();
+        _loadRequest?.Dispose();
+    }
+
+    public void Dispose() => CancelLoad();
+}

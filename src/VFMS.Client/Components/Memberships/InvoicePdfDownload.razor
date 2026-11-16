@@ -1,0 +1,93 @@
+@using System.Net
+@implements IDisposable
+@inject MembershipPlanApiClient Api
+@inject IJSRuntime JS
+
+<div class="min-w-0 space-y-3 border-t border-vfms-border pt-4" aria-busy="@(_downloading ? "true" : "false")">
+    <button type="button" class="min-h-[44px] max-w-full rounded-lg bg-vfms-primary px-4 py-2 text-sm font-semibold text-white hover:bg-vfms-primary-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary disabled:cursor-not-allowed disabled:opacity-50"
+            disabled="@(!CanExport || _downloading || _sessionExpired)" aria-describedby="@FeedbackId" @onclick="DownloadAsync">
+        @(_downloading ? "Đang tải hóa đơn..." : "Tải hóa đơn (PDF)")
+    </button>
+    <div id="@FeedbackId" class="min-w-0 space-y-2">
+        @if (!CanExport)
+        {
+            <p class="m-0 text-sm text-vfms-text-secondary">Chỉ có thể tải hóa đơn đã phát hành của giao dịch hoàn tất.</p>
+        }
+        @if (_error is not null)
+        {
+            <p role="alert" class="m-0 break-words text-sm text-red-800">@_error</p>
+        }
+        @if (_sessionExpired)
+        {
+            <a class="inline-flex min-h-[44px] items-center text-sm font-semibold text-vfms-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary"
+               href="@($"/auth/login?returnUrl={Uri.EscapeDataString($"/my-transactions/{OrderId}")}")">Đăng nhập lại</a>
+        }
+        @if (_downloading || _notice is not null)
+        {
+            <p role="status" class="m-0 text-sm text-vfms-text-secondary">@(_downloading ? "Đang chuẩn bị tệp PDF..." : _notice)</p>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public int OrderId { get; set; }
+    [Parameter] public bool CanExport { get; set; }
+
+    private readonly CancellationTokenSource _lifetime = new();
+    private bool _downloading;
+    private bool _sessionExpired;
+    private string? _error;
+    private string? _notice;
+    private string FeedbackId => $"invoice-download-{OrderId}-feedback";
+
+    private async Task DownloadAsync()
+    {
+        if (!CanExport || _downloading || _sessionExpired)
+            return;
+        _downloading = true;
+        _error = _notice = null;
+        var ct = _lifetime.Token;
+        try
+        {
+            var download = await Api.DownloadInvoicePdfAsync(OrderId, ct);
+            if (ct.IsCancellationRequested)
+                return;
+            using var stream = new MemoryStream(download.Content);
+            using var reference = new DotNetStreamReference(stream);
+            await JS.InvokeVoidAsync("vfmsInvoices.download", ct, download.FileName, download.ContentType, reference);
+            if (!ct.IsCancellationRequested)
+                _notice = "Đã gửi hóa đơn PDF tới trình duyệt.";
+        }
+        catch (AuthApiException error)
+        {
+            if (ct.IsCancellationRequested)
+                return;
+            _sessionExpired = error.StatusCode == HttpStatusCode.Unauthorized;
+            _error = _sessionExpired
+                ? "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại. (MSG-11)"
+                : error.StatusCode == HttpStatusCode.Forbidden
+                    ? "Tài khoản của bạn không có quyền tải hóa đơn này."
+                : error.StatusCode == HttpStatusCode.NotFound
+                    ? "Không tìm thấy hóa đơn để tải. Vui lòng kiểm tra lại giao dịch."
+                    : error.StatusCode == HttpStatusCode.Conflict && error.ErrorCode == "INVOICE_EXPORT_UNAVAILABLE"
+                        ? "Giao dịch chưa đủ điều kiện tải hóa đơn PDF. Vui lòng kiểm tra lại trạng thái giao dịch."
+                        : error.Message;
+        }
+        catch (JSException)
+        {
+            if (!ct.IsCancellationRequested)
+                _error = "Không tải được tệp PDF trong trình duyệt. Vui lòng thử lại.";
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        finally
+        {
+            _downloading = false;
+        }
+    }
+
+    public void Dispose()
+    {
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+    }
+}

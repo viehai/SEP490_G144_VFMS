@@ -55,6 +55,27 @@
     .public-navbar {
         grid-template-columns: minmax(180px, 1fr) auto minmax(180px, 1fr);
     }
+
+    .public-navbar:has(a[href="/my-transactions"]) {
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-rows: 44px 32px;
+        height: 80px;
+    }
+
+    .public-navbar:has(a[href="/my-transactions"]) .public-navbar__logo {
+        grid-column: 1;
+        grid-row: 1;
+    }
+
+    .public-navbar:has(a[href="/my-transactions"]) .public-navbar__actions {
+        grid-column: 2;
+        grid-row: 1;
+    }
+
+    .public-navbar:has(a[href="/my-transactions"]) .public-navbar__nav {
+        grid-column: 1 / -1;
+        grid-row: 2;
+    }
 }
 
 @media (max-width: 1279px) {
@@ -79,6 +100,21 @@
 
     .public-navbar__actions {
         gap: 4px;
+    }
+
+    .public-navbar:has(a[href="/my-transactions"]) {
+        grid-template-columns: 72px minmax(0, 1fr);
+        height: auto;
+        min-height: 60px;
+        padding-top: 6px;
+        padding-bottom: 6px;
+    }
+
+    .public-navbar:has(a[href="/my-transactions"]) .public-navbar__actions {
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        max-width: 100%;
+        row-gap: 8px;
     }
 }
 
