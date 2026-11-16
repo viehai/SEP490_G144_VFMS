@@ -9,9 +9,6 @@ namespace VFMS.API.Controllers;
 
 /// <summary>
 /// Module 6 – Competitions.
-/// UC-56 View Competitions, UC-57 Competition Registration, UC-58 View Competition History,
-/// UC-59 Manage Competitions, UC-60 Manage Competition Participants,
-/// UC-61 Manage Competition Results, UC-62 Review and Confirm Competition Results.
 /// </summary>
 [ApiController]
 [Route("api/competitions")]
