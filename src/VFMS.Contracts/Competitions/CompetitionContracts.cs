@@ -121,7 +121,7 @@ public sealed record ConfirmCompetitionResultRequest(
 
 public sealed record CompetitionLeaderboardEntry(
     int JoinId,
-    int Rank,
+    int? Rank,
     string MemberUserId,
     string MemberName,
     decimal? Score,

@@ -62,8 +62,8 @@
         </section>
     }
 
-    <section class="overflow-hidden border-2 border-black bg-white rounded-none" aria-labelledby="mgr-list-title" aria-live="polite">
-        <div class="flex flex-wrap items-center justify-between gap-3 border-b-2 border-black px-5 py-5 sm:px-6">
+    <section class="overflow-hidden rounded-2xl border border-[#D8DED2] bg-white shadow-sm" aria-labelledby="mgr-list-title" aria-live="polite">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[#D8DED2] bg-[#EEF1EA]/40 px-5 py-5 sm:px-6">
             <h2 id="mgr-list-title" class="workspace-heading text-sm font-extrabold uppercase tracking-wider">Tất cả cuộc thi</h2>
             <span class="text-xs text-[#71717A]">@_total mục</span>
         </div>
@@ -74,30 +74,30 @@
         else
         {
             <div class="overflow-x-auto">
-                <table class="workspace-table w-full min-w-[900px] text-left text-sm">
-                    <thead class="workspace-heading bg-[#F7F7F7] text-[10px] uppercase tracking-wider">
-                        <tr><th class="px-6 py-4">Cuộc thi</th><th class="px-6 py-4">Thi</th><th class="px-6 py-4">Người</th><th class="px-6 py-4">Trạng thái</th><th class="px-6 py-4">Thao tác</th></tr>
+                <table class="workspace-table w-full min-w-[900px] table-fixed text-left text-sm">
+                    <thead class="workspace-heading text-[10px] uppercase tracking-wider">
+                        <tr><th class="w-[30%] px-4 py-4">Cuộc thi</th><th class="w-[18%] px-4 py-4">Thi</th><th class="w-[10%] px-4 py-4">Người</th><th class="w-[14%] px-4 py-4">Trạng thái</th><th class="w-[28%] px-4 py-4">Thao tác</th></tr>
                     </thead>
-                    <tbody class="divide-y divide-[#CFCFCF]">
+                    <tbody class="divide-y divide-[#EEF1EA]">
                         @foreach (var item in _items)
                         {
-                            <tr class="hover:bg-[#F7F7F7]">
-                                <th scope="row" class="px-6 py-5 font-semibold">@item.Name</th>
-                                <td class="px-6 py-5 text-xs text-[#545454]">@item.StartDate.ToLocalTime().ToString("dd/MM/yyyy") - @item.EndDate.ToLocalTime().ToString("dd/MM/yyyy")</td>
-                                <td class="workspace-heading px-6 py-5 text-xs font-bold">@item.ParticipantCount@(item.MaxParticipants is { } max ? $" / {max}" : "")</td>
-                                <td class="px-6 py-5"><span class="@StatusClass(item.Status)">@item.Status</span></td>
-                                <td class="px-6 py-5">
+                            <tr class="hover:bg-[#FAFAF7]">
+                                <th scope="row" class="break-words px-4 py-4 font-semibold">@item.Name</th>
+                                <td class="whitespace-nowrap px-4 py-4 text-xs text-[#69706A]">@item.StartDate.ToLocalTime().ToString("dd/MM/yyyy") - @item.EndDate.ToLocalTime().ToString("dd/MM/yyyy")</td>
+                                <td class="workspace-heading whitespace-nowrap px-4 py-4 text-xs font-bold">@item.ParticipantCount@(item.MaxParticipants is { } max ? $" / {max}" : "")</td>
+                                <td class="px-4 py-4"><span class="@StatusClass(item.Status)">@CompetitionStatusLabel(item.Status)</span></td>
+                                <td class="px-4 py-4">
                                     <div class="flex flex-wrap gap-2">
                                         @if (item.Status == "Draft")
                                         {
-                                            <button type="button" @onclick='() => PublishAsync(item.Id)' class="workspace-heading border border-[#10B981] bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase text-[#047857] rounded-none">Phát hành</button>
+                                            <button type="button" @onclick='() => PublishAsync(item.Id)' class="workspace-heading rounded-lg border border-[#A9B79D] bg-[#EEF1EA] px-2.5 py-1.5 text-[10px] font-bold uppercase text-[#4E5D44]">Phát hành</button>
                                         }
                                         @if (item.Status is "Draft" or "Published")
                                         {
-                                            <button type="button" @onclick='() => CancelAsync(item.Id)' class="workspace-heading border border-[#EF4444] bg-red-50 px-2 py-1 text-[10px] font-bold uppercase text-[#B91C1C] rounded-none">Hủy</button>
+                                            <button type="button" @onclick='() => CancelAsync(item.Id)' class="workspace-heading rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-[10px] font-bold uppercase text-red-700">Hủy</button>
                                         }
-                                        <button type="button" @onclick='() => OpenParticipantsAsync(item.Id)' class="workspace-heading border border-black px-2 py-1 text-[10px] font-bold uppercase rounded-none">Người tham gia</button>
-                                        <button type="button" @onclick='() => OpenResultsAsync(item.Id)' class="workspace-heading border border-[#6366F1] bg-[#6366F1] px-2 py-1 text-[10px] font-bold uppercase text-white rounded-none">Kết quả</button>
+                                        <button type="button" @onclick='() => OpenParticipantsAsync(item.Id)' class="workspace-heading rounded-lg border border-[#D8DED2] bg-white px-2.5 py-1.5 text-[10px] font-bold uppercase text-[#383E43] hover:bg-[#EEF1EA]">Người tham gia</button>
+                                        <button type="button" @onclick='() => OpenResultsAsync(item.Id)' class="workspace-heading rounded-lg bg-[#5F6F52] px-2.5 py-1.5 text-[10px] font-bold uppercase text-white hover:bg-[#4E5D44]">Kết quả</button>
                                     </div>
                                 </td>
                             </tr>
@@ -111,6 +111,10 @@
     @if (_panel is Panel.Participants)
     {
         <WorkspaceModal Open="true" Eyebrow="VFMS / MODULE 06 / UC-60" Title="@($"Người tham gia · {_selectedCompetitionName}")" OnClose="CloseDetailsAsync">
+            @if (_notice is not null)
+            {
+                <div class="m-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800" role="status">@_notice</div>
+            }
             @if (_error is not null)
             {
                 <div class="m-4 border-2 border-[#EF4444] bg-red-50 p-4 text-sm text-red-800" role="alert">@_error</div>
@@ -137,7 +141,7 @@
                                     <td class="px-6 py-5 text-xs text-[#545454]">@row.RegisteredAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
                                     <td class="workspace-heading px-6 py-5 text-xs font-bold">@(row.Score?.ToString("0.##") ?? "-")</td>
                                     <td class="workspace-heading px-6 py-5 text-xs font-bold">@(row.Rank?.ToString() ?? "-")</td>
-                                    <td class="px-6 py-5"><span class="@StatusClass(row.Status)">@row.Status</span></td>
+                                    <td class="px-6 py-5"><span class="@StatusClass(row.Status)">@ParticipantStatusLabel(row.Status)</span></td>
                                     <td class="px-6 py-5">
                                         <div class="flex flex-wrap gap-2">
                                             @if (row.Status == "Disqualified")
@@ -152,9 +156,9 @@
                                             {
                                                 <button type="button" @onclick='() => OpenRecordResult(row)' class="workspace-heading border border-black px-2 py-1 text-[10px] font-bold uppercase rounded-none">Ghi điểm</button>
                                             }
-                                            @if (row.Status == "Completed")
+                                            @if (CanConfirmResult(row))
                                             {
-                                                <button type="button" @onclick='() => ConfirmResultAsync(row.Id, row.Rank)' class="workspace-heading border border-[#6366F1] bg-[#6366F1] px-2 py-1 text-[10px] font-bold uppercase text-white rounded-none">Duyệt</button>
+                                                <button type="button" @onclick='() => ConfirmResultAsync(row.Id, row.Rank)' disabled="@_busy" class="workspace-heading rounded-lg bg-[#5F6F52] px-2.5 py-1.5 text-[10px] font-bold uppercase text-white hover:bg-[#4E5D44] disabled:opacity-50">Duyệt kết quả</button>
                                             }
                                         </div>
                                     </td>
@@ -198,35 +202,62 @@
     @if (_panel is Panel.Results)
     {
         <WorkspaceModal Open="true" Eyebrow="VFMS / MODULE 06 / UC-61 · UC-62" Title="@($"Kết quả · {_selectedCompetitionName}")" OnClose="CloseDetailsAsync">
+            @if (_notice is not null)
+            {
+                <div class="m-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800" role="status">@_notice</div>
+            }
             @if (_error is not null)
             {
                 <div class="m-4 border-2 border-[#EF4444] bg-red-50 p-4 text-sm text-red-800" role="alert">@_error</div>
             }
-            <div class="flex flex-wrap items-center justify-between gap-3 border-b-2 border-black px-6 py-4">
-                <h3 class="workspace-heading text-sm font-extrabold uppercase tracking-wider">Bảng xếp hạng</h3>
-                <button type="button" @onclick='() => ConfirmAllAsync(_selectedCompetitionId!.Value)' class="workspace-heading border border-black bg-white px-3 py-2 text-[10px] font-bold uppercase rounded-none">Duyệt tất cả ↗</button>
+            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[#D8DED2] bg-[#EEF1EA]/40 px-5 py-4 sm:px-6">
+                <div>
+                    <h3 class="workspace-heading text-sm font-extrabold uppercase tracking-wider">Bảng kết quả</h3>
+                    @if (SelectedCompetitionStatus != "Completed")
+                    {
+                        <p class="mt-1 text-xs text-[#69706A]">Chỉ có thể duyệt sau khi cuộc thi kết thúc.</p>
+                    }
+                    else if (PendingUnrankedResultCount > 0 && PendingResultCount == 0)
+                    {
+                        <p class="mt-1 text-xs text-[#69706A]">@PendingUnrankedResultCount kết quả đang chờ bổ sung hạng trước khi duyệt.</p>
+                    }
+                    else if (PendingResultCount == 0)
+                    {
+                        <p class="mt-1 text-xs text-[#69706A]">Không còn kết quả có hạng cần duyệt.</p>
+                    }
+                    else
+                    {
+                        <p class="mt-1 text-xs text-[#69706A]">@PendingResultCount kết quả có hạng đang chờ duyệt.</p>
+                        <p class="mt-1 max-w-2xl text-xs text-[#69706A]">Duyệt từng kết quả trong danh sách người tham gia để cấp voucher theo giải (nếu có); “Duyệt tất cả” chỉ xác nhận trạng thái các kết quả còn lại.</p>
+                    }
+                </div>
+                <button type="button" @onclick='() => ConfirmAllAsync(_selectedCompetitionId!.Value)' disabled="@(!CanConfirmAllResults)" class="workspace-heading rounded-lg bg-[#5F6F52] px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-white hover:bg-[#4E5D44] disabled:cursor-not-allowed disabled:opacity-50">Duyệt tất cả (@PendingResultCount)</button>
             </div>
             @if (_leaderboard.Count == 0)
             {
-                <p class="px-6 py-8 text-center text-sm text-[#71717A]">Chưa có kết quả.</p>
+                <p class="px-6 py-10 text-center text-sm text-[#69706A]">
+                    @(_participants.Count == 0
+                        ? "Chưa có người tham gia."
+                        : "Chưa có kết quả được nhập. Vào Người tham gia để nhập điểm và hạng.")
+                </p>
             }
             else
             {
                 <div class="overflow-x-auto">
-                    <table class="workspace-table w-full min-w-[700px] text-left text-sm">
-                        <thead class="workspace-heading bg-[#F7F7F7] text-[10px] uppercase tracking-wider">
-                            <tr><th class="px-6 py-4">Hạng</th><th class="px-6 py-4">Hội viên</th><th class="px-6 py-4">Điểm</th><th class="px-6 py-4">Ghi chú</th><th class="px-6 py-4">Trạng thái</th><th class="px-6 py-4">Phần thưởng</th></tr>
+                    <table class="workspace-table w-full min-w-[760px] table-fixed text-left text-sm">
+                        <thead class="workspace-heading text-[10px] uppercase tracking-wider">
+                            <tr><th class="w-[8%] px-4 py-4">Hạng</th><th class="w-[20%] px-4 py-4">Hội viên</th><th class="w-[10%] px-4 py-4">Điểm</th><th class="w-[24%] px-4 py-4">Ghi chú</th><th class="w-[15%] px-4 py-4">Trạng thái</th><th class="w-[23%] px-4 py-4">Phần thưởng</th></tr>
                         </thead>
-                        <tbody class="divide-y divide-[#CFCFCF]">
+                        <tbody class="divide-y divide-[#EEF1EA]">
                             @foreach (var row in _leaderboard)
                             {
-                                <tr class="hover:bg-[#F7F7F7]">
-                                    <th scope="row" class="workspace-heading px-6 py-5 text-lg font-extrabold text-[#6366F1]">@row.Rank</th>
-                                    <td class="px-6 py-5 font-medium">@row.MemberName</td>
-                                    <td class="workspace-heading px-6 py-5 text-xs font-bold">@(row.Score?.ToString("0.##") ?? "-")</td>
-                                    <td class="max-w-sm whitespace-pre-line px-6 py-5 text-xs text-[#545454]">@(string.IsNullOrWhiteSpace(row.Note) ? "-" : row.Note)</td>
-                                    <td class="px-6 py-5"><span class="@StatusClass(row.Status)">@row.Status</span></td>
-                                    <td class="px-6 py-5 text-xs">
+                                <tr class="hover:bg-[#FAFAF7]">
+                                    <th scope="row" class="workspace-heading px-4 py-4 text-base font-extrabold text-[#5F6F52]">@(row.Rank?.ToString() ?? "-")</th>
+                                    <td class="break-words px-4 py-4 font-medium">@row.MemberName</td>
+                                    <td class="workspace-heading px-4 py-4 text-xs font-bold">@(row.Score?.ToString("0.##") ?? "-")</td>
+                                    <td class="whitespace-pre-line break-words px-4 py-4 text-xs text-[#545454]">@(string.IsNullOrWhiteSpace(row.Note) ? "-" : row.Note)</td>
+                                    <td class="px-4 py-4"><span class="@StatusClass(row.Status)">@ParticipantStatusLabel(row.Status)</span></td>
+                                    <td class="break-words px-4 py-4 text-xs">
                                         @if (!string.IsNullOrWhiteSpace(row.PrizeName))
                                         {
                                             <span class="block font-semibold">@row.PrizeName</span>
@@ -263,6 +294,7 @@
     private bool _showCreate;
     private bool _busy;
     private string? _error;
+    private string? _notice;
 
     private string _formName = string.Empty;
     private string _formDescription = string.Empty;
@@ -276,6 +308,15 @@
     private decimal? _resultScore;
     private int? _resultRank;
     private string _resultNote = string.Empty;
+
+    private string? SelectedCompetitionStatus =>
+        _items.FirstOrDefault(item => item.Id == _selectedCompetitionId)?.Status;
+    private int PendingResultCount =>
+        _leaderboard.Count(result => result.Status != "Completed" && result.Rank.HasValue);
+    private int PendingUnrankedResultCount =>
+        _leaderboard.Count(result => result.Status != "Completed" && result.Rank is null);
+    private bool CanConfirmAllResults =>
+        !_busy && SelectedCompetitionStatus == "Completed" && PendingResultCount > 0;
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
@@ -301,6 +342,8 @@
     {
         if (_busy) return;
         _busy = true;
+        _error = null;
+        _notice = null;
         try
         {
             var request = new CompetitionRequest(_formName.Trim(),
@@ -337,6 +380,7 @@
     private async Task OpenParticipantsAsync(int id)
     {
         _error = null;
+        _notice = null;
         _panel = Panel.Participants;
         await LoadDetailsAsync(id);
     }
@@ -344,6 +388,7 @@
     private async Task OpenResultsAsync(int id)
     {
         _error = null;
+        _notice = null;
         _panel = Panel.Results;
         await LoadDetailsAsync(id);
     }
@@ -352,6 +397,9 @@
     {
         _selectedCompetitionId = id;
         _selectedCompetitionName = _items.FirstOrDefault(i => i.Id == id)?.Name ?? string.Empty;
+        _participants = [];
+        _leaderboard = [];
+        _error = null;
         try
         {
             var participants = await Api.GetParticipantsAsync(new CompetitionParticipantListRequest(CompetitionId: id, PageSize: 100));
@@ -368,6 +416,7 @@
         _selectedCompetitionId = null;
         _participants = [];
         _leaderboard = [];
+        _notice = null;
         return Task.CompletedTask;
     }
 
@@ -391,6 +440,7 @@
         _resultRank = participant.Rank;
         _resultNote = participant.Note ?? string.Empty;
         _error = null;
+        _notice = null;
         _panel = Panel.RecordResult;
     }
 
@@ -399,11 +449,14 @@
         if (_busy || _resultParticipantId is not { } joinId) return;
         if (_resultScore is null && _resultRank is null)
         {
+            _notice = null;
             _error = "Vui lòng nhập điểm hoặc hạng trước khi lưu.";
             return;
         }
 
         _busy = true;
+        _error = null;
+        _notice = null;
         try
         {
             await Api.RecordResultAsync(joinId, new RecordCompetitionResultRequest(
@@ -412,7 +465,7 @@
                 string.IsNullOrWhiteSpace(_resultNote) ? null : _resultNote.Trim()));
             _panel = Panel.Participants;
             await RefreshSelectedAsync();
-            _error = null;
+            _notice = "Đã lưu điểm và hạng. Kết quả đang chờ quản lý duyệt.";
         }
         catch (Exception error) { _error = error.Message; }
         finally { _busy = false; }
@@ -420,24 +473,41 @@
 
     private async Task ConfirmResultAsync(int joinId, int? rank)
     {
+        var participant = _participants.FirstOrDefault(row => row.Id == joinId);
+        if (_busy || participant is null || !CanConfirmResult(participant)) return;
+
+        _busy = true;
+        _error = null;
+        _notice = null;
         try
         {
-            await Api.ConfirmResultAsync(new ConfirmCompetitionResultRequest(joinId, null, rank, null, true));
+            var grantPrizeVoucher = !string.IsNullOrWhiteSpace(
+                _leaderboard.FirstOrDefault(result => result.JoinId == joinId)?.VoucherCode);
+            await Api.ConfirmResultAsync(new ConfirmCompetitionResultRequest(joinId, null, rank, null, grantPrizeVoucher));
             await RefreshSelectedAsync();
-            _error = null;
+            _notice = grantPrizeVoucher
+                ? "Đã duyệt kết quả và cấp voucher phần thưởng."
+                : "Đã duyệt kết quả.";
         }
         catch (Exception error) { _error = error.Message; }
+        finally { _busy = false; }
     }
 
     private async Task ConfirmAllAsync(int competitionId)
     {
+        if (_busy || !CanConfirmAllResults || competitionId != _selectedCompetitionId) return;
+
+        _busy = true;
+        _error = null;
+        _notice = null;
         try
         {
             var count = await Api.ConfirmAllResultsAsync(competitionId);
-            _error = $"Đã xác nhận {count} kết quả.";
             await RefreshSelectedAsync();
+            _notice = $"Đã duyệt {count} kết quả.";
         }
         catch (Exception error) { _error = error.Message; }
+        finally { _busy = false; }
     }
 
     private async Task RefreshSelectedAsync()
@@ -453,5 +523,29 @@
         "Cancelled" => "inline-block border border-[#EF4444] bg-red-50 px-2 py-1 text-[10px] font-bold uppercase text-[#B91C1C] rounded-none",
         "Disqualified" => "inline-block border border-[#EF4444] bg-red-50 px-2 py-1 text-[10px] font-bold uppercase text-[#B91C1C] rounded-none",
         _ => "inline-block border border-[#F59E0B] bg-amber-50 px-2 py-1 text-[10px] font-bold uppercase text-[#92400E] rounded-none"
+    };
+
+    private bool CanConfirmResult(CompetitionParticipantResponse participant) =>
+        SelectedCompetitionStatus == "Completed"
+        && participant.Status is not ("Completed" or "Disqualified")
+        && participant.Rank.HasValue;
+
+    private static string CompetitionStatusLabel(string status) => status switch
+    {
+        "Draft" => "Bản nháp",
+        "Published" => "Đã phát hành",
+        "Ongoing" => "Đang diễn ra",
+        "Completed" => "Đã kết thúc",
+        "Cancelled" => "Đã hủy",
+        _ => status
+    };
+
+    private static string ParticipantStatusLabel(string status) => status switch
+    {
+        "Registered" => "Đã đăng ký",
+        "Confirmed" => "Đã xác nhận",
+        "Completed" => "Đã duyệt",
+        "Disqualified" => "Đã loại",
+        _ => status
     };
 }

@@ -20,29 +20,36 @@
         <div class="border-2 border-[#EF4444] bg-red-50 p-4 text-sm text-red-800" role="alert">@_error</div>
     }
 
-    <section class="grid gap-3 lg:grid-cols-3" aria-label="Bộ lọc">
-        <div class="border-2 border-black bg-white p-5 rounded-none">
-            <label for="comp-search" class="workspace-heading mb-2 block text-[10px] font-bold uppercase tracking-wider">TÌM KIẾM</label>
-            <input id="comp-search" class="w-full border border-[#CFCFCF] px-3 py-2 text-sm" @bind="_search" @bind:event="oninput" placeholder="Tên cuộc thi" />
+    <section class="rounded-2xl border border-[#D8DED2] bg-white p-5 shadow-sm sm:p-6" aria-labelledby="comp-filter-title">
+        <div class="mb-5">
+            <h2 id="comp-filter-title" class="workspace-heading text-sm font-extrabold text-[#383E43]">Lọc cuộc thi</h2>
+            <p class="mt-1 text-xs text-[#69706A]">Tìm theo tên hoặc mô tả, hoặc chọn trạng thái cuộc thi.</p>
         </div>
-        <div class="border-2 border-black bg-white p-5 rounded-none">
-            <label for="comp-status" class="workspace-heading mb-2 block text-[10px] font-bold uppercase tracking-wider">TRẠNG THÁI</label>
-            <select id="comp-status" class="w-full border border-[#CFCFCF] px-3 py-2 text-sm" @bind="_status">
-                <option value="">Tất cả</option>
-                <option value="Draft">Draft</option>
-                <option value="Published">Published</option>
-                <option value="Ongoing">Ongoing</option>
-                <option value="Completed">Completed</option>
-                <option value="Cancelled">Cancelled</option>
-            </select>
-        </div>
-        <div class="flex items-end">
-            <button type="button" @onclick="ApplyFilterAsync" class="workspace-heading w-full border-2 border-black bg-black px-4 py-3 text-xs font-bold uppercase tracking-wider text-white transition-colors hover:bg-[#6366F1] rounded-none">Áp dụng bộ lọc ↗</button>
-        </div>
+        <form class="grid items-end gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto]" @onsubmit="ApplyFilterAsync" @onsubmit:preventDefault>
+            <div>
+                <label for="comp-search" class="workspace-heading mb-2 block text-[10px] font-bold uppercase tracking-wider text-[#69706A]">Tìm kiếm</label>
+                <input id="comp-search" class="w-full rounded-xl border border-[#D8DED2] bg-[#FAFAF8] px-4 py-3 text-sm text-[#383E43] placeholder:text-[#9AA098] focus:border-[#5F6F52] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#5F6F52]/15" @bind="_search" @bind:event="oninput" placeholder="Tên hoặc mô tả cuộc thi" />
+            </div>
+            <div>
+                <label for="comp-status" class="workspace-heading mb-2 block text-[10px] font-bold uppercase tracking-wider text-[#69706A]">Trạng thái</label>
+                <select id="comp-status" class="w-full rounded-xl border border-[#D8DED2] bg-[#FAFAF8] px-4 py-3 text-sm text-[#383E43] focus:border-[#5F6F52] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#5F6F52]/15" @bind="_status">
+                    <option value="">Tất cả trạng thái</option>
+                    <option value="Draft">Bản nháp</option>
+                    <option value="Published">Đã phát hành</option>
+                    <option value="Ongoing">Đang diễn ra</option>
+                    <option value="Completed">Đã kết thúc</option>
+                    <option value="Cancelled">Đã hủy</option>
+                </select>
+            </div>
+            <div class="flex flex-wrap gap-2 md:col-span-2 xl:col-span-1">
+                <button type="button" @onclick="ApplyFilterAsync" class="workspace-heading min-h-11 flex-1 rounded-xl bg-[#5F6F52] px-5 py-3 text-xs font-bold uppercase tracking-wider text-white transition-colors hover:bg-[#4E5D44]">Lọc cuộc thi</button>
+                <button type="button" @onclick="ClearFilterAsync" class="workspace-heading min-h-11 rounded-xl border border-[#D8DED2] bg-white px-4 py-3 text-xs font-bold text-[#383E43] transition-colors hover:bg-[#EEF1EA]">Xóa lọc</button>
+            </div>
+        </form>
     </section>
 
-    <section class="overflow-hidden border-2 border-black bg-white rounded-none" aria-labelledby="comp-list-title" aria-live="polite">
-        <div class="flex flex-wrap items-center justify-between gap-3 border-b-2 border-black px-5 py-5 sm:px-6">
+    <section class="overflow-hidden rounded-2xl border border-[#D8DED2] bg-white shadow-sm" aria-labelledby="comp-list-title" aria-live="polite">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[#D8DED2] bg-[#EEF1EA]/40 px-5 py-5 sm:px-6">
             <h2 id="comp-list-title" class="workspace-heading text-sm font-extrabold uppercase tracking-wider">Danh sách cuộc thi</h2>
             <span class="text-xs text-[#71717A]">@_total mục</span>
         </div>
@@ -59,7 +66,7 @@
             <div class="overflow-x-auto">
                 <table class="workspace-table w-full min-w-[900px] text-left text-sm">
                     <caption class="sr-only">Danh sách cuộc thi</caption>
-                    <thead class="workspace-heading bg-[#F7F7F7] text-[10px] uppercase tracking-wider">
+                    <thead class="workspace-heading text-[10px] uppercase tracking-wider">
                         <tr><th class="px-6 py-4">Cuộc thi</th><th class="px-6 py-4">Đăng ký</th><th class="px-6 py-4">Thi</th><th class="px-6 py-4">Số người</th><th class="px-6 py-4">Trạng thái</th><th class="px-6 py-4">Thao tác</th></tr>
                     </thead>
                     <tbody class="divide-y divide-[#CFCFCF]">
@@ -76,7 +83,7 @@
                                 <td class="px-6 py-5 text-xs text-[#545454]">@FormatRange(item.RegistrationStart, item.RegistrationEnd)</td>
                                 <td class="px-6 py-5 text-xs text-[#545454]">@FormatRange(item.StartDate, item.EndDate)</td>
                                 <td class="workspace-heading px-6 py-5 text-xs font-bold">@item.ParticipantCount@(item.MaxParticipants is { } max ? $" / {max}" : "")</td>
-                                <td class="px-6 py-5"><span class="@StatusClass(item.Status)">@item.Status</span></td>
+                                <td class="px-6 py-5"><span class="@StatusClass(item.Status)">@CompetitionStatusLabel(item.Status)</span></td>
                                 <td class="px-6 py-5">
                                     <div class="flex flex-wrap gap-2">
                                         <button type="button" @onclick='() => OpenDetailAsync(item.Id)' class="workspace-heading border border-black px-2 py-1 text-[10px] font-bold uppercase rounded-none">Chi tiết</button>
@@ -121,7 +128,7 @@
                                     <td class="workspace-heading px-6 py-5 text-xs font-bold">@(row.Score?.ToString("0.##") ?? "-")</td>
                                     <td class="workspace-heading px-6 py-5 text-xs font-bold">@(row.Rank?.ToString() ?? "-")</td>
                                     <td class="max-w-sm whitespace-pre-line px-6 py-5 text-xs text-[#545454]">@(string.IsNullOrWhiteSpace(row.Note) ? "-" : row.Note)</td>
-                                    <td class="px-6 py-5"><span class="@StatusClass(row.Status)">@row.Status</span></td>
+                                    <td class="px-6 py-5"><span class="@StatusClass(row.Status)">@ParticipantStatusLabel(row.Status)</span></td>
                                 </tr>
                             }
                         </tbody>
@@ -211,6 +218,13 @@
         _loading = false;
     }
 
+    private async Task ClearFilterAsync()
+    {
+        _search = string.Empty;
+        _status = string.Empty;
+        await ApplyFilterAsync();
+    }
+
     private async Task LoadAsync()
     {
         try
@@ -282,5 +296,24 @@
         "Completed" => "inline-block border border-[#CFCFCF] bg-[#F7F7F7] px-2 py-1 text-[10px] font-bold uppercase text-[#545454] rounded-none",
         "Cancelled" => "inline-block border border-[#EF4444] bg-red-50 px-2 py-1 text-[10px] font-bold uppercase text-[#B91C1C] rounded-none",
         _ => "inline-block border border-[#F59E0B] bg-amber-50 px-2 py-1 text-[10px] font-bold uppercase text-[#92400E] rounded-none"
+    };
+
+    private static string CompetitionStatusLabel(string status) => status switch
+    {
+        "Draft" => "Bản nháp",
+        "Published" => "Đã phát hành",
+        "Ongoing" => "Đang diễn ra",
+        "Completed" => "Đã kết thúc",
+        "Cancelled" => "Đã hủy",
+        _ => status
+    };
+
+    private static string ParticipantStatusLabel(string status) => status switch
+    {
+        "Registered" => "Đã đăng ký",
+        "Confirmed" => "Đã xác nhận",
+        "Completed" => "Đã duyệt",
+        "Disqualified" => "Đã loại",
+        _ => status
     };
 }
