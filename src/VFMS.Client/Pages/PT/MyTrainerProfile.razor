@@ -35,6 +35,7 @@
                 <form class="trainer-stack" @onsubmit="SaveAsync" @onsubmit:preventDefault>
                     <fieldset class="trainer-stack" disabled="@_saving">
                         <label>Giới thiệu<textarea class="trainer-input" rows="5" maxlength="4000" @bind="_bio"></textarea></label>
+                        <BannedWordPreview Text="@_bio" Words="_bannedWords" />
                         <label>Đổi ảnh đại diện (JPG hoặc PNG, tối đa 5 MB)
                             <InputFile @key="_avatarVersion" class="trainer-input" accept=".jpg,.jpeg,.png" OnChange="AvatarAsync" />
                         </label>
@@ -120,6 +121,7 @@
     private bool _editingCredentials;
     private int _credentialFormVersion;
     private string _bio = "";
+    private IReadOnlyList<string> _bannedWords = [];
     private int _avatarVersion;
     private bool _loading = true, _saving, _historyLoading;
     private string? _error, _message, _historyError;
@@ -203,6 +205,7 @@
             return;
         }
         _saving = true;
+        _bannedWords = [];
         try
         {
             await Api.UpdateAsync(request);
@@ -210,7 +213,11 @@
             _message = "Đã lưu hồ sơ PT.";
             await LoadProfileAsync();
         }
-        catch (AuthApiException ex) { _error = ex.Message; }
+        catch (AuthApiException ex)
+        {
+            _bannedWords = TrainerContentRules.ProhibitedWords(ex.ErrorCode, ex.Message);
+            _error = _bannedWords.Count > 0 ? "Giới thiệu có từ ngữ không được phép. Sửa các từ được tô đỏ rồi lưu lại." : ex.Message;
+        }
         finally { _saving = false; }
     }
 

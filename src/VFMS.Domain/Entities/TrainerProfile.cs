@@ -16,6 +16,8 @@ public class TrainerProfile : BaseEntity
     public string CertificatesJson { get; set; } = "[]";
     public string? AvatarJson { get; set; }
     public string PTUserId { get; set; } = string.Empty;
+    /// <summary>Citizen ID (CCCD) copied from the hired application; verified on ProfileUpdate (UC-3.2, UC-3.3).</summary>
+    public string? CitizenId { get; set; }
     public string? Bio { get; set; }
     public string? AvatarUrl { get; set; }
     public string? CertificateUrl { get; set; }

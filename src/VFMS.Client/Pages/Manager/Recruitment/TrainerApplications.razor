@@ -17,7 +17,7 @@
         <fieldset class="trainer-grid" disabled="@Busy">
             <label>Loại hồ sơ<select class="trainer-input" @bind="_type"><option value="">Tất cả</option><option value="Recruitment">Tuyển dụng</option><option value="ProfileUpdate">Cập nhật chứng chỉ</option></select></label>
             <label>Trạng thái<select class="trainer-input" @bind="_status"><option value="">Tất cả</option><option value="Pending">Chờ duyệt</option><option value="Interviewing">Đang phỏng vấn</option><option value="Hired">Đã tuyển</option><option value="Approved">Đã duyệt</option><option value="Rejected">Từ chối</option></select></label>
-            <label>Vị trí ứng tuyển<select class="trainer-input" @bind="_specialty"><option value="">Tất cả</option><option value="PT">PT</option><option value="Yoga">Yoga</option></select></label>
+            <label>Chuyên môn<select class="trainer-input" @bind="_specialty"><option value="">Tất cả</option><option value="PT">PT</option><option value="Yoga">Yoga</option></select></label>
             <label>Từ ngày<input type="date" class="trainer-input" @bind="_from" /></label>
             <label>Đến ngày<input type="date" class="trainer-input" @bind="_to" /></label>
             <button class="trainer-button trainer-primary self-end">Lọc hồ sơ</button>
@@ -105,14 +105,21 @@
                 {
                     <div class="trainer-stack">
                         <h3>Tài khoản khớp với hồ sơ</h3>
-                        <p class="trainer-feedback trainer-error" role="alert">@AccountMatchError(app)</p>
+                        <p class="trainer-muted">Email hoặc số điện thoại khớp nhiều tài khoản. Xác minh danh tính ứng viên rồi chọn đúng tài khoản để liên kết khi tuyển.</p>
                         <ul class="trainer-list">
                             @foreach (var match in matches)
                             {
                                 <li class="trainer-copy">
-                                    <strong>@match.FullName</strong> · ID: @match.UserId<br />
-                                    Email: @match.Email @(match.EmailMatches ? "(khớp hồ sơ)" : "")<br />
-                                    Số điện thoại: @match.PhoneNumber @(match.PhoneMatches ? "(khớp hồ sơ)" : "")
+                                    <label class="trainer-row">
+                                        <input type="radio" name="account-match" value="@match.UserId" disabled="@(!match.Eligible || Busy)"
+                                               checked="@(_chosenAccount == match.UserId)" @onchange="() => _chosenAccount = match.UserId" />
+                                        <span>
+                                            <strong>@match.FullName</strong> · ID: @match.UserId<br />
+                                            Email: @match.Email @(match.EmailMatches ? "(khớp hồ sơ)" : "")<br />
+                                            Số điện thoại: @match.PhoneNumber @(match.PhoneMatches ? "(khớp hồ sơ)" : "")
+                                            @if (!match.Eligible) { <br /><small class="trainer-field-error">Không đủ điều kiện: tài khoản không hoạt động hoặc là tài khoản nhân viên/PT.</small> }
+                                        </span>
+                                    </label>
                                 </li>
                             }
                         </ul>
@@ -129,7 +136,11 @@
                             @if (_action == "Hire")
                             {
                                 <label>Cấp PT<select class="trainer-input" @bind="_level"><option>Junior</option><option>Senior</option><option>Master</option></select></label>
-                                @if (app.AccountMatch is { Status: "Matched" } match)
+                                @if (app.AccountMatch is { Status: "Ambiguous" } && _chosenAccount is { } chosen)
+                                {
+                                    <p class="trainer-muted trainer-copy">Liên kết với tài khoản ID: @chosen</p>
+                                }
+                                else if (app.AccountMatch is { Status: "Matched" } match)
                                 {
                                     <label>Tài khoản khớp theo email hoặc số điện thoại
                                         <input class="trainer-input" value="@match.FullName" readonly />
@@ -236,8 +247,9 @@
             _error = matchError;
             return;
         }
+        var account = app.AccountMatch?.Status == "Ambiguous" ? _chosenAccount : app.AccountMatch?.UserId;
         var request = new ReviewTrainerApplicationRequest(_action, _note.Trim(), hire ? _level : null,
-            hire ? app.AccountMatch?.UserId : null, hire && _verified);
+            hire ? account : null, hire && _verified);
         if (!new ReviewTrainerApplicationValidator().Validate(request).IsValid)
         {
             _error = "Nhập ghi chú và hoàn tất các thông tin bắt buộc.";
@@ -256,7 +268,11 @@
             try { _selected = await Api.ApplicationAsync(app.Id); }
             catch (AuthApiException) { _error = "Đã lưu quyết định. Mở lại hồ sơ để tải chi tiết mới nhất."; }
         }
-        catch (AuthApiException ex) { _error = ex.Message; }
+        catch (AuthApiException ex)
+        {
+            var banned = TrainerContentRules.ProhibitedWords(ex.ErrorCode, ex.Message);
+            _error = banned.Count > 0 ? $"Giới thiệu của ứng viên có từ ngữ không được phép: {string.Join(", ", banned)}." : ex.Message;
+        }
         finally { _saving = false; }
     }
 
@@ -286,6 +302,7 @@
         _action = _note = "";
         _level = "Junior";
         _verified = false;
+        _chosenAccount = null;
     }
 
     private static string[] Actions(TrainerApplicationResponse app) => (app.ApplicationType, app.Status) switch
@@ -296,11 +313,14 @@
         _ => []
     };
 
-    private static string? AccountMatchError(TrainerApplicationResponse app) => app.AccountMatch?.Status switch
+    private string? _chosenAccount;
+
+    private string? AccountMatchError(TrainerApplicationResponse app) => app.AccountMatch?.Status switch
     {
         "Matched" or "None" => null,
-        "Ambiguous" => "Email hoặc số điện thoại khớp nhiều tài khoản. Xử lý xung đột tài khoản rồi mở lại hồ sơ.",
-        "Ineligible" => "Tài khoản khớp hiện không đủ điều kiện. Kiểm tra trạng thái tài khoản rồi mở lại hồ sơ.",
+        "Ambiguous" when _chosenAccount is not null => null,
+        "Ambiguous" => "Hồ sơ khớp nhiều tài khoản. Xác minh danh tính rồi chọn một tài khoản đủ điều kiện ở danh sách trên.",
+        "Ineligible" => "Tài khoản khớp không phải tài khoản Customer/Member đang hoạt động nên không thể liên kết.",
         _ => "Chưa xác định được tài khoản. Mở lại hồ sơ để tải kết quả mới nhất."
     };
 

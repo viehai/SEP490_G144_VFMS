@@ -512,7 +512,7 @@ public class TrainerWorkflowTests
         pending = await db.TrainerApplications.SingleAsync(x => x.Id == pending.Id);
         pending.SubmittedAt = DateTime.UtcNow.AddMinutes(-11);
         await db.SaveChangesAsync();
-        TrainerTestDatabase.Success(await service.Submit(update with { Specialty = "Pilates" }, userId, default));
+        TrainerTestDatabase.Success(await service.Submit(update with { Specialty = "PT" }, userId, default));
         var rejected = await db.TrainerApplications.SingleAsync(x => x.ApplicationType == "ProfileUpdate" && x.ApplicationStatus == TrainerApplicationStatus.Pending);
         var profileBeforeReject = await db.TrainerProfiles.AsNoTracking().Select(x => new { x.Specialty, x.CertificatesJson, x.Bio, x.AvatarJson, x.Level, x.CommissionTier }).SingleAsync();
         TrainerTestDatabase.Success(await service.Review(rejected.Id, new("Reject", "Certificate not verified"), "manager", default));
@@ -544,4 +544,111 @@ public class TrainerWorkflowTests
         Assert.True(await db.AuditLogs.AnyAsync());
     }
 
+    private static async Task<ApplicationUser> AddUser(VfmsDbContext db, string id, string email, string phone, string? role = null)
+    {
+        var user = new ApplicationUser
+        {
+            UserId = id, GymId = await db.Gyms.Select(g => g.Id).SingleAsync(), FullName = id,
+            Email = email, PhoneNumber = phone, AccountStatus = AccountStatus.Active
+        };
+        db.Add(user);
+        if (role != null)
+        {
+            var roleEntity = await db.ApplicationRoles.SingleOrDefaultAsync(r => r.RoleName == role) ?? new ApplicationRole { RoleName = role };
+            db.Add(new ApplicationUserRole { UserId = id, Role = roleEntity });
+        }
+        await db.SaveChangesAsync();
+        return user;
+    }
+
+    [SqlTrainerFact]
+    public async Task Employees_cannot_apply_and_hiring_stores_citizen_id_and_closes_other_open_applications()
+    {
+        await using var fixture = new TrainerTestDatabase(); await fixture.Initialize();
+        var db = fixture.Db; var service = fixture.Service; var request = TrainerTestDatabase.Request;
+        await AddUser(db, "staff", "staff@example.test", "0900000050", "Staff");
+        // GBR-101: Staff email (any Gmail dot variant included) cannot apply.
+        Assert.Equal("TRAINER_NOT_ELIGIBLE", (await service.Submit(request with { Email = "staff@example.test" }, null, default)).ErrorCode);
+
+        TrainerTestDatabase.Success(await service.Submit(request, null, default));
+        var first = await db.TrainerApplications.SingleAsync();
+        first.SubmittedAt = DateTime.UtcNow.AddMinutes(-10); await db.SaveChangesAsync();
+        TrainerTestDatabase.Success(await service.Submit(request with { Email = "second@example.test" }, null, default));
+        var second = await db.TrainerApplications.SingleAsync(x => x.Id != first.Id);
+        TrainerTestDatabase.Success(await service.Review(second.Id, new("Interview", "Interview completed"), "manager", default));
+        TrainerTestDatabase.Success(await service.Review(second.Id, new("Hire", "Verified", "Junior", null, true), "manager", default));
+
+        db.ChangeTracker.Clear();
+        var closed = await db.TrainerApplications.SingleAsync(x => x.Id == first.Id);
+        Assert.Equal(TrainerApplicationStatus.Rejected, closed.ApplicationStatus);
+        Assert.Contains("Closed automatically", closed.ReviewNote);
+        Assert.Equal(request.CitizenId, (await db.TrainerProfiles.SingleAsync()).CitizenId);
+
+        // An active trainer's Citizen ID blocks a new application under another email.
+        TrainerTestDatabase.Success(await service.Setup(new(await fixture.SetupToken(second.Id), "TestPassword1!"), default));
+        await db.TrainerApplications.ForEachAsync(x => x.SubmittedAt = DateTime.UtcNow.AddMinutes(-20));
+        await db.SaveChangesAsync();
+        Assert.Equal("TRAINER_NOT_ELIGIBLE", (await service.Submit(request with { Email = "third@example.test" }, null, default)).ErrorCode);
+    }
+
+    [SqlTrainerFact]
+    public async Task Manager_picks_one_eligible_account_when_application_matches_several()
+    {
+        await using var fixture = new TrainerTestDatabase(); await fixture.Initialize();
+        var db = fixture.Db; var service = fixture.Service; var request = TrainerTestDatabase.Request;
+        TrainerTestDatabase.Success(await service.Submit(request, null, default));
+        var application = await db.TrainerApplications.SingleAsync();
+        TrainerTestDatabase.Success(await service.Review(application.Id, new("Interview", "Interview completed"), "manager", default));
+        await AddUser(db, "email-match", request.Email, "0900000020", "Customer");
+        await AddUser(db, "phone-staff", "phone@example.test", request.PhoneNumber, "Staff");
+
+        var match = TrainerTestDatabase.Success(await service.Application(application.Id, "manager", default)).AccountMatch!;
+        Assert.Equal("Ambiguous", match.Status);
+        Assert.True(match.Matches!.Single(m => m.UserId == "email-match").Eligible);
+        Assert.False(match.Matches!.Single(m => m.UserId == "phone-staff").Eligible);
+
+        Assert.Equal("TRAINER_IDENTITY_CONFLICT", (await service.Review(application.Id,
+            new("Hire", "Verified", "Senior", "phone-staff", true), "manager", default)).ErrorCode);
+        TrainerTestDatabase.Success(await service.Review(application.Id,
+            new("Hire", "Verified in person", "Senior", "email-match", true), "manager", default));
+        Assert.Equal("email-match", (await db.TrainerProfiles.SingleAsync()).PTUserId);
+        Assert.Equal(3, await db.ApplicationUsers.CountAsync());
+    }
+
+    [SqlTrainerFact]
+    public async Task Expired_setup_link_notifies_managers_once_per_link()
+    {
+        await using var fixture = new TrainerTestDatabase(); await fixture.Initialize();
+        var db = fixture.Db; var service = fixture.Service;
+        var hired = await fixture.Hire();
+        Assert.Equal(0, TrainerTestDatabase.Success(await service.NotifyExpiredSetupLinks(default)));
+
+        var user = await db.ApplicationUsers.SingleAsync(x => x.UserId == hired.HiredUserId);
+        user.PasswordSetupExpiresAt = DateTime.UtcNow.AddMinutes(-1); await db.SaveChangesAsync();
+        Assert.Equal(1, TrainerTestDatabase.Success(await service.NotifyExpiredSetupLinks(default)));
+        Assert.Equal(0, TrainerTestDatabase.Success(await service.NotifyExpiredSetupLinks(default)));
+        Assert.Equal(1, await db.Notifications.CountAsync(n => n.RecipientUserId == "manager" && n.NotificationType == "TrainerSetupLinkExpired"));
+    }
+
+    [SqlTrainerFact]
+    public async Task Banned_bio_lists_offending_words_and_reviews_show_member_name()
+    {
+        await using var fixture = new TrainerTestDatabase(); await fixture.Initialize();
+        var db = fixture.Db; var service = fixture.Service;
+        var hired = await fixture.Hire();
+        TrainerTestDatabase.Success(await service.Setup(new(await fixture.SetupToken(hired.Id), "TestPassword1!"), default));
+        var profile = await db.TrainerProfiles.SingleAsync();
+        db.Add(new BannedWordList { Word = "scam", CreatedByUserId = "manager" });
+        var member = await AddUser(db, "member", "member@example.test", "0900000060", "Member");
+        db.Add(new TrainerReview { TrainerUserId = profile.PTUserId, MemberUserId = member.UserId, Rating = 5, Comment = "Great coach",
+            ReviewStatus = TrainerReviewStatus.Approved, IsVisible = true });
+        await db.SaveChangesAsync();
+
+        var rejected = await service.Update(new("Not a SCAM coach"), profile.PTUserId, default);
+        Assert.Equal(TrainerContentRules.RejectedCode, rejected.ErrorCode);
+        Assert.Equal(["scam"], TrainerContentRules.ProhibitedWords(rejected.ErrorCode, rejected.ErrorMessage));
+
+        var review = Assert.Single(TrainerTestDatabase.Success(await service.Public(profile.Id, default)).Reviews);
+        Assert.Equal("member", review.MemberName);
+    }
 }

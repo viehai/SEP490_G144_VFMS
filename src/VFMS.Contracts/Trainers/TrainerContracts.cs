@@ -22,7 +22,7 @@ public sealed record TrainerDocumentResponse(string Id, string FileName, string 
 public sealed record TrainerAccountMatch(string Status, string? UserId = null, string? FullName = null,
     IReadOnlyList<TrainerAccountCandidate>? Matches = null);
 public sealed record TrainerAccountCandidate(string UserId, string FullName, string Email, string PhoneNumber,
-    bool EmailMatches, bool PhoneMatches);
+    bool EmailMatches, bool PhoneMatches, bool Eligible = true);
 public sealed record TrainerApplicationResponse(int Id, string TrackingCode, string Status, string FullName,
     string Email, string PhoneNumber, string CitizenId, DateOnly? DateOfBirth, string Gender, string Specialty,
     int ExperienceYears, string Bio, DateTime SubmittedAt, int SubmissionAttempt, string? ReviewNote,
@@ -40,7 +40,7 @@ public sealed record TrainerProfileResponse(int Id, string UserId, string FullNa
 public sealed record TrainerReadinessStatus(bool IsAcceptingNow, bool ScheduledAcceptance, DateOnly EffectiveDate);
 public sealed record SetTrainerReadinessRequest(bool IsAcceptingNewMembers);
 public sealed record TrainerAvailabilityResponse(DateOnly Date, TimeOnly StartTime, TimeOnly EndTime, string Status);
-public sealed record TrainerReviewResponse(int Rating, string? Comment);
+public sealed record TrainerReviewResponse(int Rating, string? Comment, string MemberName = "");
 public sealed record TrainerPublicDetail(TrainerProfileResponse Profile, IReadOnlyList<TrainerDocumentResponse> Certificates,
     IReadOnlyList<TrainerAvailabilityResponse> Availability, IReadOnlyList<TrainerReviewResponse> Reviews,
     bool HasActivePTContract = false, bool IsOwnProfile = false, int ReviewPage = 1, int ReviewTotal = 0);

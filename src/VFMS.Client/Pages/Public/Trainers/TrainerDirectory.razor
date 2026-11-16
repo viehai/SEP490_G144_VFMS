@@ -15,7 +15,11 @@
     <form class="trainer-panel trainer-stack" @onsubmit="SearchAsync" @onsubmit:preventDefault>
         <div class="trainer-grid">
             <label>Tên huấn luyện viên<input class="trainer-input" maxlength="200" @bind="_search" /></label>
-            <label>Chuyên môn<input class="trainer-input" maxlength="200" @bind="_specialty" /></label>
+            <label>Chuyên môn
+                <select class="trainer-input" @bind="_specialty">
+                    <option value="">Tất cả</option><option value="PT">PT</option><option value="Yoga">Yoga</option>
+                </select>
+            </label>
             <label>Giới tính
                 <select class="trainer-input" @bind="_gender">
                     <option value="">Tất cả</option><option value="Male">Nam</option><option value="Female">Nữ</option><option value="Other">Khác</option>

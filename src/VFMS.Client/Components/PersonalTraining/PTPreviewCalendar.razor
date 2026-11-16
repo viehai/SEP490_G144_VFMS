@@ -9,13 +9,16 @@
                 @onclick="() => ShowWeek(_monday.AddDays(7))">Tuần sau →</button>
     </div>
 </div>
-<PTWeeklyGrid Slots="_weekSlots" WeekMonday="_monday" SelectedIds="SelectedIds" SlotSelected="SlotSelected" />
+<PTWeeklyGrid Slots="_weekSlots" WeekMonday="_monday" SelectedIds="SelectedIds"
+              SlotSelected="SlotSelected" SlotContent="SlotContent" />
 
 @code {
     [Parameter, EditorRequired] public IReadOnlyList<PTCalendarSlot> Slots { get; set; } = [];
     [Parameter, EditorRequired] public DateOnly StartDate { get; set; }
     [Parameter] public IReadOnlyCollection<int> SelectedIds { get; set; } = [];
     [Parameter] public EventCallback<PTWeeklySlot> SlotSelected { get; set; }
+    [Parameter] public RenderFragment<PTWeeklySlot>? SlotContent { get; set; }
+    [Parameter] public bool StartCurrentWeek { get; set; }
 
     private DateOnly _monday;
     private DateOnly _currentMonday;
@@ -29,7 +32,7 @@
     {
         _currentMonday = MondayOf(Today);
         var startMonday = MondayOf(StartDate);
-        _monday = startMonday;
+        _monday = StartCurrentWeek ? _currentMonday : startMonday;
     }
 
     protected override void OnParametersSet()

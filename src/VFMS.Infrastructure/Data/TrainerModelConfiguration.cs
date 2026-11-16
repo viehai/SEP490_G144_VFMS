@@ -34,6 +34,8 @@ internal static class TrainerModelConfiguration
             e.Property(x => x.Gender).HasMaxLength(20);
             e.Property(x => x.Bio).HasMaxLength(4000);
             e.Property(x => x.CommissionTier).HasMaxLength(100);
+            e.Property(x => x.CitizenId).HasMaxLength(12);
+            e.HasIndex(x => x.CitizenId).IsUnique().HasFilter("[CitizenId] IS NOT NULL");
         });
     }
 }

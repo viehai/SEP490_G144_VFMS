@@ -26,9 +26,13 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
                           where u.UserId == actor && u.AccountStatus == AccountStatus.Active && !u.IsBanned && r.RoleName == role
                           select u, ct) > 0;
 
-    private async Task<bool> ContainsBannedWord(string text, CancellationToken ct) =>
+    private async Task<List<string>> BannedWords(string text, CancellationToken ct) =>
         (await store.List(store.Query<BannedWordList>().Where(x => x.IsActive).Select(x => x.Word), ct))
-        .Any(w => !string.IsNullOrWhiteSpace(w) && text.Contains(w, StringComparison.OrdinalIgnoreCase));
+        .Where(w => !string.IsNullOrWhiteSpace(w) && text.Contains(w, StringComparison.OrdinalIgnoreCase))
+        .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+    private static Result<T> ContentRejected<T>(List<string> words) =>
+        Error<T>(TrainerContentRules.RejectedCode, TrainerContentRules.Message(words), 400);
 
     private void Audit(string? actor, string entity, int id, string action, string? before = null, string? after = null) => store.Add(new AuditLog
     {
@@ -129,18 +133,21 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
         if (update && !pt)
             return Error<TrainerApplicationReceipt>("TRAINER_FORBIDDEN", "PT role required.", 403);
         if (!update && actor != null && !pt && !await HasRole(actor, "Customer", ct))
-            return Error<TrainerApplicationReceipt>("TRAINER_FORBIDDEN", "Customer or PT role required.", 403);
+            return Error<TrainerApplicationReceipt>("TRAINER_FORBIDDEN", "Customer role required.", 403);
 
         var email = r.Email.Trim().ToLowerInvariant();
         var citizen = r.CitizenId.Trim();
         var now = DateTime.UtcNow;
+        if (!update && (pt || await IsEmployee(email, citizen, ct)))
+            return Error<TrainerApplicationReceipt>("TRAINER_NOT_ELIGIBLE", "Staff, Manager, Admin and active Trainer accounts cannot apply.");
         if (update)
         {
             var owner = await store.First(store.Query<ApplicationUser>().Where(x => x.UserId == actor), ct);
             var profile = await store.First(store.Query<TrainerProfile>().Where(x => x.PTUserId == actor && x.IsActive), ct);
-            var original = await store.First(store.Query<TrainerApplication>().Where(x => x.HiredUserId == actor && x.ApplicationType == "Recruitment" && x.ApplicationStatus == TrainerApplicationStatus.Hired).OrderBy(x => x.SubmittedAt).ThenBy(x => x.Id), ct);
-            if (profile == null || owner == null || original == null || !string.Equals(owner.Email.Trim(), email, StringComparison.OrdinalIgnoreCase) || original.CitizenId != citizen)
-                return Error<TrainerApplicationReceipt>("TRAINER_IDENTITY_CONFLICT", "Email must match the current account and citizen identity must match its hired application.");
+            if (profile?.CitizenId == null)
+                return Error<TrainerApplicationReceipt>("TRAINER_IDENTITY_MISSING", "The trainer profile has no verified Citizen ID. Contact the Manager.");
+            if (owner == null || !string.Equals(owner.Email.Trim(), email, StringComparison.OrdinalIgnoreCase) || profile.CitizenId != citizen)
+                return Error<TrainerApplicationReceipt>("TRAINER_IDENTITY_CONFLICT", "Email must match the current account and Citizen ID must match the trainer profile.");
             var replacements = r.Certificates.Select(file => file.ReplacesCertificateId)
                 .Concat((r.CertificateLinks ?? []).Select(link => link.ReplacesCertificateId)).OfType<string>().ToArray();
             var published = Records<TrainerStoredFile>(profile.CertificatesJson);
@@ -220,7 +227,7 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
             var status = Enum.Parse<TrainerApplicationStatus>(r.Status);
             q = q.Where(x => x.ApplicationStatus == status);
         }
-        if (r.Specialty != null) q = q.Where(x => x.Specialty.Contains(r.Specialty));
+        if (!string.IsNullOrEmpty(r.Specialty)) q = q.Where(x => x.Specialty == r.Specialty);
         if (r.From != null)
             q = q.Where(x => x.SubmittedAt >= r.From);
         if (r.To != null)
@@ -254,10 +261,13 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
         var history = await store.List(related
             .OrderByDescending(x => x.SubmittedAt).ThenByDescending(x => x.Id)
             .Select(x => new TrainerSubmissionAttempt(x.Id, x.SubmissionAttempt, x.SubmittedAt, x.ApplicationStatus.ToString())), ct);
-        var accountMatch = a.ApplicationType == "Recruitment" &&
-            a.ApplicationStatus is TrainerApplicationStatus.Pending or TrainerApplicationStatus.UnderReview or TrainerApplicationStatus.Interviewing
-            ? DescribeAccountMatch(await FindMatchingAccounts(a, ct), a)
-            : null;
+        TrainerAccountMatch? accountMatch = null;
+        if (a.ApplicationType == "Recruitment" &&
+            a.ApplicationStatus is TrainerApplicationStatus.Pending or TrainerApplicationStatus.UnderReview or TrainerApplicationStatus.Interviewing)
+        {
+            var matches = await FindMatchingAccounts(a, ct);
+            accountMatch = DescribeAccountMatch(matches, await IneligibleAccounts(matches, ct), a);
+        }
         return Result<TrainerApplicationResponse>.Success(ApplicationResponse(a) with
         {
             SubmissionHistory = history,
@@ -276,6 +286,30 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
                 x.Email.ToLower().Replace(".", "") == identity));
     }
 
+    private static readonly string[] StaffRoles = ["Staff", "Manager", "Admin"];
+
+    // Email match that treats dotted and undotted @gmail.com variants as one address (GBR-03).
+    private IQueryable<ApplicationUser> AccountsWithEmail(string email)
+    {
+        email = email.Trim().ToLowerInvariant();
+        var isGmail = email.EndsWith(GmailSuffix, StringComparison.Ordinal);
+        var identity = email.Replace(".", "");
+        return store.Query<ApplicationUser>().Where(user => user.Email.ToLower() == email ||
+            (isGmail && user.Email.ToLower().EndsWith(GmailSuffix) && user.Email.ToLower().Replace(".", "") == identity));
+    }
+
+    // GBR-101: Staff, Manager, Admin and active Trainer accounts cannot apply.
+    private async Task<bool> IsEmployee(string email, string citizenId, CancellationToken ct) =>
+        await store.Count(from u in AccountsWithEmail(email)
+                          join ur in store.Query<ApplicationUserRole>() on u.UserId equals ur.UserId
+                          join r in store.Query<ApplicationRole>() on ur.RoleId equals r.Id
+                          where StaffRoles.Contains(r.RoleName) || (r.RoleName == "PT" && u.AccountStatus == AccountStatus.Active)
+                          select u.Id, ct) > 0 ||
+        await store.Count(from p in store.Query<TrainerProfile>()
+                          join u in store.Query<ApplicationUser>() on p.PTUserId equals u.UserId
+                          where p.CitizenId == citizenId && p.IsActive && u.AccountStatus == AccountStatus.Active
+                          select p.Id, ct) > 0;
+
     private Task<List<ApplicationUser>> FindMatchingAccounts(TrainerApplication application, CancellationToken ct)
     {
         var email = application.Email.Trim().ToLowerInvariant();
@@ -286,12 +320,23 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
                 (isGmail && user.Email.ToLower().EndsWith(GmailSuffix) && user.Email.ToLower().Replace(".", "") == identity)), ct);
     }
 
+    // Only an active Customer/Member account can be linked on hire (UC-3.2 step 7, GBR-101).
+    private async Task<HashSet<string>> IneligibleAccounts(IReadOnlyList<ApplicationUser> users, CancellationToken ct)
+    {
+        var ids = users.Select(u => u.UserId).ToList();
+        var employees = await store.List((from ur in store.Query<ApplicationUserRole>()
+                                          join r in store.Query<ApplicationRole>() on ur.RoleId equals r.Id
+                                          where ids.Contains(ur.UserId) && (StaffRoles.Contains(r.RoleName) || r.RoleName == "PT")
+                                          select ur.UserId).Distinct(), ct);
+        return users.Where(u => u.AccountStatus != AccountStatus.Active || u.IsBanned).Select(u => u.UserId)
+            .Concat(employees).ToHashSet();
+    }
+
     private static TrainerAccountMatch DescribeAccountMatch(IReadOnlyList<ApplicationUser> matches,
-        TrainerApplication application) => matches.Count switch
+        IReadOnlySet<string> ineligible, TrainerApplication application) => matches.Count switch
     {
         0 => new("None"),
-        1 when matches[0].AccountStatus == AccountStatus.Active && !matches[0].IsBanned =>
-            new("Matched", matches[0].UserId, matches[0].FullName),
+        1 when !ineligible.Contains(matches[0].UserId) => new("Matched", matches[0].UserId, matches[0].FullName),
         1 => new("Ineligible"),
         _ => new("Ambiguous", Matches: matches.OrderBy(user => user.UserId).Select(user =>
             new TrainerAccountCandidate(user.UserId, user.FullName, user.Email, user.PhoneNumber,
@@ -299,7 +344,7 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
                 application.Email.EndsWith(GmailSuffix, StringComparison.OrdinalIgnoreCase) &&
                 user.Email.EndsWith(GmailSuffix, StringComparison.OrdinalIgnoreCase) &&
                 string.Equals(user.Email.Replace(".", ""), application.Email.Replace(".", ""), StringComparison.OrdinalIgnoreCase),
-                user.PhoneNumber == application.PhoneNumber)).ToArray())
+                user.PhoneNumber == application.PhoneNumber, !ineligible.Contains(user.UserId))).ToArray())
     };
 
     public Task<Result<TrainerApplicationResponse>> Review(int id, ReviewTrainerApplicationRequest r, string actor, CancellationToken ct) => store.Write(async () =>
@@ -317,7 +362,6 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
             if (profile == null) return Error<TrainerApplicationResponse>("TRAINER_NOT_FOUND", "Profile not found.", 404);
             if (r.Action == "Approve")
             {
-                if (await ContainsBannedWord(a.Specialty, ct)) return Error<TrainerApplicationResponse>("TRAINER_CONTENT_REJECTED", "Specialty contains prohibited content.", 400);
                 var published = Records<TrainerStoredFile>(profile.CertificatesJson);
                 foreach (var file in Records<TrainerStoredFile>(a.CertificatesJson))
                 {
@@ -353,17 +397,31 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
         {
             if (a.ApplicationStatus is not (TrainerApplicationStatus.Interviewing or TrainerApplicationStatus.UnderReview)) return Error<TrainerApplicationResponse>("TRAINER_INTERVIEW_REQUIRED", "Record the interview before hiring.");
             var matches = await FindMatchingAccounts(a, ct);
-            var accountMatch = DescribeAccountMatch(matches, a);
-            if (accountMatch.Status is "Ambiguous" or "Ineligible")
-                return Error<TrainerApplicationResponse>("TRAINER_IDENTITY_CONFLICT", "Resolve the account match before hiring.");
-            if (r.ExistingUserId != accountMatch.UserId)
-                return Error<TrainerApplicationResponse>("TRAINER_IDENTITY_CONFLICT", "The account match has changed. Reload the application and verify it again.");
-            var user = matches.SingleOrDefault();
+            var ineligible = await IneligibleAccounts(matches, ct);
+            var accountMatch = DescribeAccountMatch(matches, ineligible, a);
+            if (accountMatch.Status == "Ineligible")
+                return Error<TrainerApplicationResponse>("TRAINER_IDENTITY_CONFLICT", "The matching account is not an active Customer/Member account.");
+            ApplicationUser? user;
+            if (accountMatch.Status == "Ambiguous")
+            {
+                // UC-3.2 step 7: the Manager verifies identity manually and picks the applicant's account.
+                user = matches.FirstOrDefault(m => m.UserId == r.ExistingUserId && !ineligible.Contains(m.UserId));
+                if (user == null)
+                    return Error<TrainerApplicationResponse>("TRAINER_IDENTITY_CONFLICT", "Select one eligible matching account after verifying the applicant's identity.");
+            }
+            else
+            {
+                if (r.ExistingUserId != accountMatch.UserId)
+                    return Error<TrainerApplicationResponse>("TRAINER_IDENTITY_CONFLICT", "The account match has changed. Reload the application and verify it again.");
+                user = matches.SingleOrDefault();
+            }
+            if (await store.Count(store.Query<TrainerProfile>().Where(x => x.CitizenId == a.CitizenId), ct) > 0)
+                return Error<TrainerApplicationResponse>("TRAINER_IDENTITY_CONFLICT", "Another trainer profile already uses this Citizen ID.");
             if (user != null && await store.Count(ActiveYogaAssignments.Where(c => c.InstructorUserId == user.UserId), ct) > 0)
                 return Error<TrainerApplicationResponse>("TRAINER_TEACHING_ROLE_CONFLICT",
                     "A Yoga instructor cannot be hired as a PT while assigned to Yoga classes.");
             if (user != null && await store.Count(store.Query<TrainerProfile>().Where(x => x.PTUserId == user.UserId), ct) > 0) return Error<TrainerApplicationResponse>("TRAINER_PROFILE_EXISTS", "Account already has a trainer profile.");
-            if (await ContainsBannedWord(a.Bio + " " + a.Specialty, ct)) return Error<TrainerApplicationResponse>("TRAINER_CONTENT_REJECTED", "Applicant public content requires correction before hiring.", 400);
+            if (await BannedWords(a.Bio, ct) is { Count: > 0 } bannedBio) return ContentRejected<TrainerApplicationResponse>(bannedBio);
             var role = await store.First(store.Query<ApplicationRole>().Where(x => x.RoleName == "PT"), ct);
             var gym = await store.First(store.Query<Gym>().OrderBy(x => x.Id), ct);
             if (role == null || gym == null) return Error<TrainerApplicationResponse>("TRAINER_CONFIGURATION", "Gym/PT role is not configured.", 503);
@@ -386,6 +444,7 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
             var profile = new TrainerProfile
             {
                 PTUserId = user!.UserId,
+                CitizenId = a.CitizenId,
                 Bio = a.Bio,
                 Specialty = a.Specialty,
                 CertificatesJson = PublishCertificates(a.CertificatesJson),
@@ -397,6 +456,20 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
             await store.Save(ct);
             a.HiredUserId = user.UserId;
             a.ApplicationStatus = TrainerApplicationStatus.Hired;
+            // GBR-101: hiring closes the person's other open recruitment applications.
+            var others = await store.List(RecruitmentHistory(store.Query<TrainerApplication>().Where(x => x.ApplicationType == "Recruitment"),
+                    a.Email.Trim().ToLowerInvariant(), a.CitizenId)
+                .Where(x => x.Id != a.Id && (x.ApplicationStatus == TrainerApplicationStatus.Pending ||
+                    x.ApplicationStatus == TrainerApplicationStatus.UnderReview || x.ApplicationStatus == TrainerApplicationStatus.Interviewing)), ct);
+            foreach (var other in others)
+            {
+                var otherBefore = other.ApplicationStatus.ToString();
+                other.ApplicationStatus = TrainerApplicationStatus.Rejected;
+                other.ReviewNote = $"Closed automatically: application {a.TrackingCode} was hired.";
+                other.ReviewedByUserId = actor;
+                other.ReviewedAt = DateTime.UtcNow;
+                Audit(actor, nameof(TrainerApplication), other.Id, "AutoClose", otherBefore, other.ApplicationStatus.ToString());
+            }
             if (isNew)
                 QueueSetup(user, a);
             else
@@ -530,8 +603,8 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
         var q = PublicProfiles();
         if (r.Search != null)
             q = q.Where(x => x.FullName.Contains(r.Search));
-        if (r.Specialty != null)
-            q = q.Where(x => x.Specialty.Contains(r.Specialty));
+        if (!string.IsNullOrEmpty(r.Specialty))
+            q = q.Where(x => x.Specialty == r.Specialty);
         if (r.Gender != null)
             q = q.Where(x => x.Gender == r.Gender);
         if (r.MinimumRating != null)
@@ -575,7 +648,7 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
         reviewPage = Math.Clamp(reviewPage, 1, Math.Max(1, (int)Math.Ceiling((double)reviewTotal / pageSize)));
         var page = await store.List(reviews.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id)
             .Skip((reviewPage - 1) * pageSize).Take(pageSize)
-            .Select(x => new TrainerReviewResponse(x.Rating, x.Comment)), ct);
+            .Select(x => new TrainerReviewResponse(x.Rating, x.Comment, x.MemberUser.FullName)), ct);
         return Result<TrainerPublicDetail>.Success(new(p, certificates, availability, page,
             hasActiveContract, actor == p.UserId, reviewPage, reviewTotal));
     }
@@ -591,7 +664,7 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
     {
         if (!await HasRole(actor, "PT", ct)) return Error<bool>("TRAINER_FORBIDDEN", "PT role required.", 403);
         if (!(await new TrainerProfileValidator().ValidateAsync(r, ct)).IsValid) return Error<bool>("TRAINER_VALIDATION", "Invalid bio or avatar.", 400);
-        if (r.Bio != null && await ContainsBannedWord(r.Bio, ct)) return Error<bool>("TRAINER_CONTENT_REJECTED", "Biography contains prohibited content.", 400);
+        if (r.Bio != null && await BannedWords(r.Bio, ct) is { Count: > 0 } banned) return ContentRejected<bool>(banned);
         var p = await store.First(store.Query<TrainerProfile>().Where(x => x.PTUserId == actor && x.IsActive), ct);
         if (p == null)
             return Error<bool>("TRAINER_NOT_FOUND", "Profile not found.", 404);
@@ -618,7 +691,33 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
             application.EmailQueueJson = JsonSerializer.Serialize(queue);
         }
     }
-    private void Notify(string recipient, string actor, TrainerApplication application, string type, string title, string message) =>
+    private const string SetupExpiredType = "TrainerSetupLinkExpired";
+
+    /// <summary>GBR-04: tells Managers in-app, once per expired link, that a hired trainer's setup link expired unused.</summary>
+    public Task<Result<int>> NotifyExpiredSetupLinks(CancellationToken ct) => store.Write(async () =>
+    {
+        var now = DateTime.UtcNow;
+        var expired = await store.List(
+            from a in store.Query<TrainerApplication>()
+            join u in store.Query<ApplicationUser>() on a.HiredUserId equals u.UserId
+            where a.ApplicationType == "Recruitment" && a.ApplicationStatus == TrainerApplicationStatus.Hired &&
+                  u.AccountStatus == AccountStatus.PendingVerification && u.PasswordSetupExpiresAt <= now &&
+                  !store.Query<Notification>().Any(n => n.NotificationType == SetupExpiredType &&
+                      n.EntityType == nameof(TrainerApplication) && n.EntityId == a.Id && n.NotifiedAt >= u.PasswordSetupExpiresAt)
+            select a, ct);
+        if (expired.Count == 0)
+            return Result<int>.Success(0);
+        var managers = await store.List((from ur in store.Query<ApplicationUserRole>()
+                                         join role in store.Query<ApplicationRole>() on ur.RoleId equals role.Id
+                                         where role.RoleName == "Manager" select ur.UserId).Distinct(), ct);
+        foreach (var application in expired)
+            foreach (var manager in managers)
+                Notify(manager, null, application, SetupExpiredType, "Trainer setup link expired",
+                    $"{application.FullName} did not set a password within 48 hours. Resend the setup link from the application.");
+        return Result<int>.Success(expired.Count);
+    }, ct);
+
+    private void Notify(string recipient, string? actor, TrainerApplication application, string type, string title, string message) =>
         store.Add(new Notification { RecipientUserId = recipient, SenderUserId = actor, NotificationType = type, Title = title, Message = message, EntityType = nameof(TrainerApplication), EntityId = application.Id, NotifiedAt = DateTime.UtcNow });
 
     private async Task<bool> OwnsApplication(TrainerApplication application, string? actor, CancellationToken ct) =>

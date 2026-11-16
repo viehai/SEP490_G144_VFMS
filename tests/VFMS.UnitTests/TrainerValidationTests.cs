@@ -68,15 +68,34 @@ public class TrainerValidationTests
     }
 
     [Theory]
-    [InlineData("PT", true)]
-    [InlineData("Yoga", true)]
-    [InlineData("Strength", false)]
-    public void Recruitment_specialty_is_PT_or_Yoga(string specialty, bool valid)
+    [InlineData("Recruitment", "PT", true)]
+    [InlineData("Recruitment", "Yoga", true)]
+    [InlineData("Recruitment", "Strength", false)]
+    [InlineData("ProfileUpdate", "Yoga", true)]
+    [InlineData("ProfileUpdate", "Pilates", false)]
+    public void Specialty_is_PT_or_Yoga_for_every_application_type(string type, string specialty, bool valid)
     {
         var request = new SubmitTrainerApplicationRequest("Test Applicant", "applicant@example.test", "0900000000",
             "000000000001", new(2000, 1, 1), "Other", specialty, 3, "Coach", true,
-            [new("proof.pdf", "%PDF-1.7"u8.ToArray())]);
+            [new("proof.pdf", "%PDF-1.7"u8.ToArray())], type);
         Assert.Equal(valid, new SubmitTrainerApplicationValidator().Validate(request).IsValid);
+    }
+
+    [Fact]
+    public void Banned_word_message_round_trips_only_for_the_content_rejected_code()
+    {
+        var message = TrainerContentRules.Message(["scam", "spam"]);
+        Assert.Equal(["scam", "spam"], TrainerContentRules.ProhibitedWords(TrainerContentRules.RejectedCode, message));
+        Assert.Empty(TrainerContentRules.ProhibitedWords("TRAINER_VALIDATION", message));
+        Assert.Empty(TrainerContentRules.ProhibitedWords(TrainerContentRules.RejectedCode, "Something else"));
+    }
+
+    [Fact]
+    public void Directory_and_application_filters_accept_only_known_specialties()
+    {
+        Assert.True(new TrainerSearchValidator().Validate(new TrainerSearch(Specialty: "Yoga")).IsValid);
+        Assert.False(new TrainerSearchValidator().Validate(new TrainerSearch(Specialty: "Boxing")).IsValid);
+        Assert.False(new TrainerApplicationFilterValidator().Validate(new TrainerApplicationFilter(Specialty: "Boxing")).IsValid);
     }
     [Fact]
     public void Public_list_filters_are_bounded()

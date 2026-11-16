@@ -38,23 +38,31 @@
     }
 
     <TrainerFeedback Error="@_error" Message="@_message" />
-    <div class="trainer-row" aria-label="Lọc buổi tập">
-        <button type="button" class="trainer-button" aria-pressed="@(!_history)" disabled="@_busy" @onclick="() => SelectHistory(false)">Lịch sắp tới</button>
-        <button type="button" class="trainer-button" aria-pressed="@_history" disabled="@_busy" @onclick="() => SelectHistory(true)">Lịch sử buổi tập</button>
-    </div>
-    @if (!Visible.Any()) { <p class="trainer-muted">Chưa có buổi tập trong danh sách này.</p> }
-    else if (!IsTrainer)
+    <button type="button" class="trainer-button" aria-pressed="@_history" disabled="@_busy"
+            @onclick="() => SelectHistory(!_history)">@(_history ? "Quay lại lịch tuần" : "Lịch sử buổi tập")</button>
+    @if (!IsTrainer && !_history)
     {
-        <PTPreviewCalendar @key="_history" Slots="CalendarSlots" StartDate="CalendarStart"
-                           SelectedIds="@(_selectedCalendarSession is { } selected ? new[] { selected } : [])"
-                           SlotSelected="SelectCalendarSession" />
+        <PTPreviewCalendar Slots="CalendarSlots" StartDate="Contract.StartDate" StartCurrentWeek="true">
+            <SlotContent Context="slot">
+                @{ var session = Contract.Sessions.First(s => s.Id == slot.TemplateId); }
+                <button type="button" class="pt-calendar-slot pt-teaching-slot pt-slot-choice pt-contract-calendar-slot"
+                        aria-pressed="@(_selectedCalendarSession == session.Id)"
+                        @onclick="() => SelectCalendarSession(slot)">
+                    <strong>@(TrainerName ?? "Huấn luyện viên")</strong>
+                    <span>@Time(slot.StartTime) – @Time(slot.EndTime)</span>
+                    <span>@Status(session.Status)</span>
+                    <span>Chi tiết ca</span>
+                </button>
+            </SlotContent>
+        </PTPreviewCalendar>
         @if (_selectedCalendarSession is null)
         {
             <p class="trainer-muted">Chọn một ca để xem chi tiết.</p>
         }
     }
+    else if (!Visible.Any()) { <p class="trainer-muted">Chưa có buổi tập trong danh sách này.</p> }
     <div class="trainer-stack">
-        @foreach (var item in Visible.Where(item => IsTrainer || item.Id == _selectedCalendarSession))
+        @foreach (var item in Visible.Where(item => IsTrainer || _history || item.Id == _selectedCalendarSession))
         {
             <article class="pt-session" @key="item.Id">
                 <div class="trainer-row trainer-between">
@@ -175,12 +183,13 @@
     private int _rating = 5;
     private bool _busy, _history, _reviewed;
 
-    private IEnumerable<PTSessionResponse> Visible => Contract.Sessions.Where(s => _history ==
-        (s.Status is "Completed" or "Cancelled" or "NoShow" || !IsFuture(s.Date, s.EndTime)));
+    private IEnumerable<PTSessionResponse> Visible => Contract.Sessions.Where(s => _history
+        ? !IsFuture(s.Date, s.EndTime) &&
+          (s.Status is "Completed" or "NoShow" or "TrainerAbsentReported" ||
+           s.Status == "Cancelled" && s.TrainerAbsenceReportedAt is not null)
+        : s.Status != "Cancelled" || s.TrainerAbsenceReportedAt is not null)
+        .Where(s => _history || !IsTrainer || IsFuture(s.Date, s.EndTime));
     private PTCalendarSlot[] CalendarSlots => Visible.Select(s => new PTCalendarSlot(s.Id, s.Date, s.StartTime, s.EndTime, s.Status)).ToArray();
-    private DateOnly CalendarStart => _history
-        ? Visible.Max(s => s.Date)
-        : Visible.Min(s => s.Date);
     private bool CanOfferReview => !_reviewed && Contract.Status == "Completed" &&
         Contract.Sessions.LastOrDefault(s => s.Status is not ("Cancelled" or "MakeUpPending"))?.Status == "Completed";
     private static bool IsFuture(DateOnly date, TimeOnly time) => date.ToDateTime(time) > DateTime.UtcNow.AddHours(7);

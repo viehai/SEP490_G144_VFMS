@@ -1,4 +1,5 @@
-<span class="trainer-status">@(Status switch
+@* Semantic status colours (frontend guideline 6.E); always paired with text. *@
+<span class="trainer-status @Tone">@(Status switch
     {
         "Pending" => "Chờ duyệt", "UnderReview" => "Đang xem xét", "Interviewing" => "Đang phỏng vấn",
         "Hired" => "Đã tuyển", "Approved" => "Đã duyệt", "Rejected" => "Từ chối",
@@ -8,4 +9,12 @@
     })</span>
 @code {
     [Parameter, EditorRequired] public string Status { get; set; } = "";
+
+    private string Tone => Status switch
+    {
+        "Hired" or "Approved" or "Available" or "Active" or "Completed" => "trainer-status--success",
+        "Pending" or "UnderReview" or "Interviewing" or "Booked" or "Frozen" or "Scheduled" => "trainer-status--pending",
+        "Rejected" or "NoShow" => "trainer-status--danger",
+        _ => "trainer-status--neutral"
+    };
 }

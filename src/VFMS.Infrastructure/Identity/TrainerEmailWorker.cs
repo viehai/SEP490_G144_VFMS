@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using VFMS.Application.Interfaces;
+using VFMS.Application.Services;
 using VFMS.Domain.Entities;
 using VFMS.Infrastructure.Data;
 
@@ -13,13 +14,21 @@ namespace VFMS.Infrastructure.Identity;
 
 public sealed class TrainerEmailWorker(IServiceScopeFactory scopes, IConfiguration config, ILogger<TrainerEmailWorker> log) : BackgroundService
 {
+    private DateTime _nextExpiryCheck = DateTime.MinValue;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                await Deliver(stoppingToken);
+                // Setup links only reach applicants when mail is configured, so only then can one expire unused.
+                if (await Deliver(stoppingToken) && DateTime.UtcNow >= _nextExpiryCheck)
+                {
+                    using var scope = scopes.CreateScope();
+                    await scope.ServiceProvider.GetRequiredService<TrainerService>().NotifyExpiredSetupLinks(stoppingToken);
+                    _nextExpiryCheck = DateTime.UtcNow.AddMinutes(1);
+                }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -40,12 +49,13 @@ public sealed class TrainerEmailWorker(IServiceScopeFactory scopes, IConfigurati
             }
         }
     }
-    private async Task Deliver(CancellationToken ct)
+    /// <returns>Whether mail delivery is configured.</returns>
+    private async Task<bool> Deliver(CancellationToken ct)
     {
         using var scope = scopes.CreateScope();
         var email = scope.ServiceProvider.GetRequiredService<IEmailService>();
         if (!email.IsConfigured)
-            return;
+            return false;
 
         var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
         var protector = scope.ServiceProvider.GetRequiredService<IDataProtectionProvider>().CreateProtector("VFMS.TrainerEmail.v1");
@@ -72,7 +82,7 @@ public sealed class TrainerEmailWorker(IServiceScopeFactory scopes, IConfigurati
         if (application == null)
         {
             await tx.CommitAsync(ct);
-            return;
+            return true;
         }
         var emails = JsonSerializer.Deserialize<List<TrainerQueuedEmail>>(application.EmailQueueJson) ?? [];
         var batch = emails.Where(x => !x.IsDeleted && x.SentAt == null && x.NextAttemptAt <= now)
@@ -103,6 +113,7 @@ public sealed class TrainerEmailWorker(IServiceScopeFactory scopes, IConfigurati
         application.EmailQueueJson = JsonSerializer.Serialize(emails);
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
+        return true;
     }
 
     private string SetupLink(string token)

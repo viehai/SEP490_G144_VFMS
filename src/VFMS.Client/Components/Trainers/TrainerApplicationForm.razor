@@ -22,7 +22,12 @@ else
         <fieldset disabled="@_busy" class="trainer-stack">
             @if (IsUpdate)
             {
-                <label>Chuyên môn đề xuất<input class="trainer-input" required maxlength="200" @bind="_specialty" /></label>
+                <label>Chuyên môn đề xuất
+                    <select class="trainer-input" required @bind="_specialty">
+                        <option value="PT">PT</option><option value="Yoga">Yoga</option>
+                    </select>
+                    @FieldError("Specialty")
+                </label>
                 @if (Replacement is { } replacement)
                 {
                     <p class="trainer-muted">Chứng chỉ cần thay: @replacement.FileName</p>
@@ -31,24 +36,27 @@ else
             else
             {
                 <div class="trainer-grid">
-                    <label>Họ và tên<input class="trainer-input" autocomplete="name" maxlength="256" required @bind="_name" /></label>
-                    <label>Email<input class="trainer-input" type="email" autocomplete="email" maxlength="256" required @bind="_email" readonly="@LockEmail" /></label>
-                    <label>Số điện thoại<input class="trainer-input" type="tel" autocomplete="tel" required maxlength="16" @bind="_phone" /></label>
-                    <label>CCCD<input class="trainer-input" inputmode="numeric" required maxlength="12" minlength="12" @bind="_citizenId" /></label>
-                    <label>Ngày sinh<input class="trainer-input" type="date" autocomplete="bday" required @bind="_birthDate" /></label>
+                    <label>Họ và tên<input class="trainer-input" autocomplete="name" maxlength="256" required @bind="_name" />@FieldError("FullName")</label>
+                    <label>Email<input class="trainer-input" type="email" autocomplete="email" maxlength="256" required @bind="_email" readonly="@LockEmail" />@FieldError("Email")</label>
+                    <label>Số điện thoại<input class="trainer-input" type="tel" autocomplete="tel" required maxlength="16" @bind="_phone" />@FieldError("PhoneNumber")</label>
+                    <label>CCCD<input class="trainer-input" inputmode="numeric" required maxlength="12" minlength="12" @bind="_citizenId" />@FieldError("CitizenId")</label>
+                    <label>Ngày sinh<input class="trainer-input" type="date" autocomplete="bday" required @bind="_birthDate" />@FieldError("DateOfBirth")</label>
                     <label>Giới tính
                         <select class="trainer-input" required @bind="_gender">
                             <option value="">Chọn giới tính</option><option value="Male">Nam</option><option value="Female">Nữ</option><option value="Other">Khác</option>
                         </select>
+                        @FieldError("Gender")
                     </label>
                     <label>Ứng tuyển vị trí
                         <select class="trainer-input" required @bind="_specialty">
                             <option value="">Chọn vị trí</option><option value="PT">PT</option><option value="Yoga">Yoga</option>
                         </select>
+                        @FieldError("Specialty")
                     </label>
-                    <label>Số năm kinh nghiệm<input class="trainer-input" type="number" min="0" max="80" required @bind="_experience" /></label>
+                    <label>Số năm kinh nghiệm<input class="trainer-input" type="number" min="0" max="80" required @bind="_experience" />@FieldError("ExperienceYears")</label>
                 </div>
-                <label>Giới thiệu chuyên môn<textarea class="trainer-input" rows="4" maxlength="4000" required @bind="_bio"></textarea></label>
+                <label>Giới thiệu chuyên môn<textarea class="trainer-input" rows="4" maxlength="4000" required @bind="_bio"></textarea>@FieldError("Bio")</label>
+                <BannedWordPreview Text="@_bio" Words="_bannedWords" />
             }
             <div class="trainer-stack">
                 <label>Chứng chỉ (PDF, JPG hoặc PNG, tối đa 5 MB mỗi tệp)
@@ -108,17 +116,13 @@ else
                                 @onclick="() => _links.Add(new())">+ Thêm link</button>
                     </fieldset>
                 <TrainerFeedback Error="@_fileError" />
+                @FieldError("Certificates")
             </div>
             <label class="trainer-row"><input type="checkbox" required @bind="_consent" /> Tôi đồng ý cho VFMS xử lý thông tin và xác minh hồ sơ này.</label>
+            @FieldError("Consent")
             <button type="submit" class="trainer-button trainer-primary">@(_busy ? "Đang xử lý…" : IsUpdate ? "Gửi yêu cầu duyệt" : "Nộp hồ sơ")</button>
         </fieldset>
         <TrainerFeedback Error="@_error" />
-        @if (_validation.Count > 0)
-        {
-            <ul class="trainer-feedback trainer-error list-disc pl-8" role="alert">
-                @foreach (var issue in _validation) { <li>@issue</li> }
-            </ul>
-        }
     </form>
 }
 
@@ -139,7 +143,8 @@ else
     private int _experience, _fileVersion;
     private bool _consent, _busy;
     private string? _error, _fileError;
-    private IReadOnlyList<string> _validation = [];
+    private Dictionary<string, string> _fieldErrors = [];
+    private IReadOnlyList<string> _bannedWords = [];
     private TrainerApplicationReceipt? _receipt;
     private bool IsUpdate => Profile is not null;
     private bool LockEmail => IsUpdate && !string.IsNullOrWhiteSpace(Email);
@@ -212,14 +217,15 @@ else
             IsUpdate ? null : _links.Select(link => link.Url.Trim()).Where(url => url.Length > 0).ToList(),
             IsUpdate ? _links.Where(link => !string.IsNullOrWhiteSpace(link.Url)).Select(link =>
                 new TrainerCertificateLinkInput(link.Url.Trim(), string.IsNullOrEmpty(link.Replaces) ? null : link.Replaces)).ToList() : null);
-        var issues = new SubmitTrainerApplicationValidator().Validate(request).Errors
-            .Select(issue => FieldMessage(issue.PropertyName)).Distinct().ToList();
+        _fieldErrors = new SubmitTrainerApplicationValidator().Validate(request).Errors
+            .Select(issue => FieldKey(issue.PropertyName))
+            .Distinct().ToDictionary(key => key, FieldMessage);
         var targets = request.Certificates.Select(file => file.ReplacesCertificateId)
             .Concat((request.CertificateLinks ?? []).Select(link => link.ReplacesCertificateId)).OfType<string>().ToArray();
         if (targets.Distinct().Count() != targets.Length)
-            issues.Add("Mỗi chứng chỉ hiện tại chỉ được thay thế một lần trong cùng hồ sơ.");
-        _validation = issues;
-        if (issues.Count > 0) return;
+            _fieldErrors["Certificates"] = "Mỗi chứng chỉ hiện tại chỉ được thay thế một lần trong cùng hồ sơ.";
+        _bannedWords = [];
+        if (_fieldErrors.Count > 0) return;
 
         _busy = true;
         try
@@ -233,12 +239,37 @@ else
         }
         catch (AuthApiException ex)
         {
-            _error = ex.ErrorCode == "TRAINER_CHANGE_PENDING"
-                ? "Bạn đang có yêu cầu cập nhật chờ Manager duyệt."
-                : ex.Message;
+            _bannedWords = TrainerContentRules.ProhibitedWords(ex.ErrorCode, ex.Message);
+            _error = ex.ErrorCode switch
+            {
+                "TRAINER_CHANGE_PENDING" => "Bạn đang có yêu cầu cập nhật chờ Manager duyệt.",
+                "TRAINER_NOT_ELIGIBLE" => "Bạn không đủ điều kiện ứng tuyển: email hoặc CCCD thuộc tài khoản nhân viên hoặc huấn luyện viên đang hoạt động.",
+                "TRAINER_IDENTITY_MISSING" => "Hồ sơ PT chưa có CCCD đã xác minh. Liên hệ Manager để cập nhật.",
+                "RECRUITMENT_COOLDOWN" or "TRAINER_PROFILE_UPDATE_COOLDOWN" => CooldownMessage(ex.Message),
+                TrainerContentRules.RejectedCode => "Giới thiệu có từ ngữ không được phép. Sửa các từ được tô đỏ rồi gửi lại.",
+                _ => ex.Message
+            };
         }
         finally { _busy = false; }
     }
+
+    // The API message ends with the next eligible time in ISO-8601 UTC (GBR-03).
+    private static string CooldownMessage(string message)
+    {
+        var iso = message.Split(' ').LastOrDefault()?.TrimEnd('.');
+        return DateTime.TryParse(iso, null, System.Globalization.DateTimeStyles.RoundtripKind, out var next)
+            ? $"Bạn vừa nộp hồ sơ. Có thể nộp lại sau {next.ToUniversalTime().AddHours(7):HH:mm dd/MM/yyyy}."
+            : "Bạn vừa nộp hồ sơ. Vui lòng chờ 10 phút rồi nộp lại.";
+    }
+
+    private static readonly HashSet<string> SimpleFields =
+        ["FullName", "Email", "PhoneNumber", "CitizenId", "DateOfBirth", "Gender", "Specialty", "ExperienceYears", "Bio", "Consent"];
+
+    private static string FieldKey(string property) => SimpleFields.Contains(property) ? property : "Certificates";
+
+    private RenderFragment? FieldError(string field) => _fieldErrors.TryGetValue(field, out var message)
+        ? @<span class="trainer-field-error" role="alert">@message</span>
+        : null;
 
     private void ResetReceipt() => _receipt = null;
 
@@ -250,13 +281,11 @@ else
         "CitizenId" => "CCCD phải có đúng 12 chữ số.",
         "DateOfBirth" => "Ngày sinh phải từ năm 1900 và trước hôm nay.",
         "Gender" => "Chọn giới tính.",
-        "Specialty" => "Nhập chuyên môn, tối đa 200 ký tự.",
+        "Specialty" => "Chọn chuyên môn PT hoặc Yoga.",
         "ExperienceYears" => "Nhập số năm kinh nghiệm từ 0 đến 80.",
         "Bio" => "Nhập giới thiệu chuyên môn, tối đa 4.000 ký tự.",
         "Consent" => "Xác nhận đồng ý trước khi gửi.",
-        "CertificateUrls" => "Dùng link chứng chỉ HTTPS hợp lệ, tối đa 2.048 ký tự mỗi link.",
-        "CertificateLinks" => "Dùng link chứng chỉ HTTPS hợp lệ, tối đa 2.048 ký tự mỗi link.",
-        _ => "Gửi từ 1 đến 5 chứng chỉ hợp lệ."
+        _ => "Gửi từ 1 đến 5 chứng chỉ hợp lệ (tệp PDF/JPG/PNG tối đa 5 MB hoặc link HTTPS tối đa 2.048 ký tự)."
     };
 
     private sealed class CertificateLink

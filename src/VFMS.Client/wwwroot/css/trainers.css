@@ -33,6 +33,12 @@
 .trainer-avatar { display: grid; place-items: center; width: 4rem; height: 4rem; flex: none; border-radius: 12px; background: #e8ede3; color: #405038; font-size: 1.15rem; font-weight: 800; object-fit: cover; }
 .trainer-feedback { padding: .75rem; border-radius: 8px; background: #eef1ea; color: #405038; }
 .trainer-error { background: #fef2f2; color: #991b1b; }
+.trainer-status--success { background: #f0fdf4; color: #15803d; box-shadow: inset 0 0 0 1px #16a34a; }
+.trainer-status--pending { background: #fffbeb; color: #92400e; box-shadow: inset 0 0 0 1px #d97706; }
+.trainer-status--danger { background: #fef2f2; color: #b91c1c; box-shadow: inset 0 0 0 1px #dc2626; }
+.trainer-status--neutral { background: #f3f4f6; color: #4b5563; box-shadow: inset 0 0 0 1px #6b7280; }
+.trainer-field-error { display: block; margin-top: .3rem; color: #b91c1c; font-size: .82rem; font-weight: 500; }
+.trainer-banned { background: #fee2e2; color: #991b1b; border-radius: 3px; padding: 0 .15rem; }
 .trainer-table { width: 100%; border-collapse: collapse; text-align: left; font-size: .9rem; }
 .trainer-table th, .trainer-table td { padding: .68rem .55rem; border-bottom: 1px solid #d8ded2; vertical-align: top; }
 .trainer-table th { color: #405038; }
@@ -71,6 +77,8 @@
 .pt-public-calendar .pt-calendar-slot { white-space: nowrap; }
 .pt-public-calendar .pt-teaching-slot { white-space: normal; overflow-wrap: anywhere; }
 .pt-teaching-slot span { white-space: nowrap; }
+.pt-contract-calendar-slot { display: grid; width: 100%; text-align: left; border: 1px solid transparent; cursor: pointer; }
+.pt-contract-calendar-slot:focus-visible { outline: 2px solid #405038; outline-offset: 2px; }
 .pt-wide-choice { width: 100%; text-align: left; }
 .trainer-button[aria-pressed="true"] { background: #e8ede3; box-shadow: inset 0 0 0 1px #5f6f52; }
 .pt-slot-choice[aria-pressed="true"] { background: #405038; border-color: #405038; color: #fff; box-shadow: none; }

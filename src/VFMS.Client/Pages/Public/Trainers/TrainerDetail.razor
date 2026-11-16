@@ -74,7 +74,7 @@
                     <ul class="trainer-list">
                         @foreach (var review in detail.Reviews)
                         {
-                            <li><strong>@review.Rating / 5 sao</strong><p class="trainer-copy">@review.Comment</p></li>
+                            <li><strong>@review.MemberName</strong> · @review.Rating / 5 sao<p class="trainer-copy">@review.Comment</p></li>
                         }
                     </ul>
                     @if (detail.ReviewTotal > 20)

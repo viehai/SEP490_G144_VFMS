@@ -7,7 +7,7 @@ namespace VFMS.Domain.Entities;
 /// Trainer recruitment application submitted by a Guest or Customer.
 /// Submitting does NOT create an account (GBR-02).
 /// Only upon <c>Hired</c> status does the system provision a PT user account (UC-23).
-/// Enforces 30-day duplicate cooldown per CCCD/Email (GBR-03).
+/// Enforces a 10-minute waiting period per CCCD/Email between submissions (GBR-03).
 /// </summary>
 public class TrainerApplication : BaseEntity
 {

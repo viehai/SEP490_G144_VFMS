@@ -3061,6 +3061,10 @@ namespace VFMS.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("CitizenId")
+                        .HasMaxLength(12)
+                        .HasColumnType("nvarchar(12)");
+
                     b.Property<string>("CommissionTier")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
@@ -3106,6 +3110,10 @@ namespace VFMS.Infrastructure.Migrations
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CitizenId")
+                        .IsUnique()
+                        .HasFilter("[CitizenId] IS NOT NULL");
 
                     b.HasIndex("PTUserId")
                         .IsUnique();

@@ -30,7 +30,11 @@
                             }
                             @foreach (var slot in cellSlots)
                             {
-                                @if (SlotSelected.HasDelegate)
+                                @if (SlotContent is { } content)
+                                {
+                                    @content(slot)
+                                }
+                                else if (SlotSelected.HasDelegate)
                                 {
                                     <button type="button" class="trainer-button pt-slot-choice" disabled="@(Disabled ||
                                                 slot.BlockedReason is not null && !SelectedIds.Contains(slot.TemplateId))"
@@ -43,10 +47,6 @@
                                     {
                                         <small class="block trainer-muted">@reason</small>
                                     }
-                                }
-                                else if (SlotContent is { } content)
-                                {
-                                    @content(slot)
                                 }
                                 else
                                 {
