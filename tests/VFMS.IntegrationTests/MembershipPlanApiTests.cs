@@ -104,6 +104,7 @@ public sealed class MembershipPlanApiTests : IAsyncLifetime
     [Fact]
     public async Task ManagerCreatesYogaPlanThatCatalogFiltersByServiceType()
     {
+        await SeedYogaClassAsync(ManagerUserId, DateTime.UtcNow.AddDays(7));
         using var manager = CreateClient();
         var gymId = (await CreatePlanAsync(manager, "Gym Monthly")).GetProperty("id").GetInt32();
         var request = PlanRequest("Yoga Monthly");
@@ -137,6 +138,34 @@ public sealed class MembershipPlanApiTests : IAsyncLifetime
         var component = await db.PackageComponents.SingleAsync(row => row.PackageId == yogaId);
         Assert.Equal(ComponentType.YOGA, component.ComponentType);
         Assert.Equal(30, component.DurationDays);
+    }
+
+    [Theory]
+    [InlineData(null, 7)]                           // no yoga class at all
+    [InlineData(YogaClassStatus.Draft, 7)]          // not published
+    [InlineData(YogaClassStatus.Cancelled, 7)]
+    [InlineData(YogaClassStatus.Open, -1)]          // registration closed
+    public async Task YogaPlanIsHiddenFromTheCatalogWhileNoYogaClassCanBeBooked(YogaClassStatus? status, int deadlineDays)
+    {
+        if (status is { } classStatus)
+            await SeedYogaClassAsync(ManagerUserId, DateTime.UtcNow.AddDays(deadlineDays), classStatus);
+        using var manager = CreateClient();
+        var gymId = (await CreatePlanAsync(manager, "Gym Monthly")).GetProperty("id").GetInt32();
+        var request = PlanRequest("Yoga Monthly");
+        request["serviceType"] = "YOGA";
+        var yogaId = (await ReadBodyAsync(await manager.PostAsJsonAsync(ManagementRoute, request), HttpStatusCode.Created))
+            .GetProperty("id").GetInt32();
+
+        using var buyer = CreateClient("Customer");
+        var catalog = await ReadBodyAsync(await buyer.GetAsync(CatalogRoute), HttpStatusCode.OK);
+        var yogaCatalog = await ReadBodyAsync(await buyer.GetAsync($"{CatalogRoute}?serviceType=YOGA"), HttpStatusCode.OK);
+        using var detail = await buyer.GetAsync($"{CatalogRoute}/{yogaId}");
+        var managed = await ReadBodyAsync(await manager.GetAsync($"{ManagementRoute}?serviceType=YOGA"), HttpStatusCode.OK);
+
+        Assert.Equal(gymId, Assert.Single(catalog.GetProperty("items").EnumerateArray()).GetProperty("id").GetInt32());
+        Assert.Empty(yogaCatalog.GetProperty("items").EnumerateArray());
+        Assert.Equal(HttpStatusCode.NotFound, detail.StatusCode);
+        Assert.Equal(yogaId, Assert.Single(managed.GetProperty("items").EnumerateArray()).GetProperty("id").GetInt32());   // the manager still sees it
     }
 
     [Fact]
@@ -515,6 +544,22 @@ public sealed class MembershipPlanApiTests : IAsyncLifetime
         if (role is not null)
             client.DefaultRequestHeaders.Add(RoleHeader, role);
         return client;
+    }
+
+    /// <summary>A yoga class members can still book: yoga-only plans are sold only while one exists.</summary>
+    private async Task SeedYogaClassAsync(string instructorId, DateTime deadlineUtc,
+        YogaClassStatus status = YogaClassStatus.Open)
+    {
+        await using var scope = _app.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+        db.YogaClasses.Add(new YogaClass
+        {
+            YogaClassType = new YogaClassType { TypeName = "Hatha" }, ClassName = "Hatha Morning",
+            InstructorUserId = instructorId, MinParticipants = 1, MaxParticipants = 10, DurationMinutes = 60,
+            ClassStatus = status, RegistrationDeadline = deadlineUtc,
+            StartDate = DateOnly.FromDateTime(deadlineUtc).AddDays(1), EndDate = DateOnly.FromDateTime(deadlineUtc).AddDays(60)
+        });
+        await db.SaveChangesAsync();
     }
 
     private static ApplicationUser TestUser(string id, Gym gym) => new()

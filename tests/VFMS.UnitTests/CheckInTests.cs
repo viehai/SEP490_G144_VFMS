@@ -165,6 +165,30 @@ public sealed class CheckInTests
     }
 
     [Fact]
+    public async Task OnlyAGymPlanOpensTheGym()   // a yoga-only plan books yoga classes but never passes check-in
+    {
+        var (repo, service, qr) = Kiosk();
+        repo.Memberships.Add(Membership("yoga-only", type: ComponentType.YOGA));
+        var yoga = Membership("both", type: ComponentType.YOGA, endOffset: 60);
+        yoga.Id = 8;
+        repo.Memberships.AddRange([Membership("both"), yoga]);
+
+        var refused = await service.KioskCheckInAsync(await QrScan(qr, "yoga-only"));
+        var manual = await service.ManualCheckInAsync("yoga-only", "staff-1");
+        var desk = (await service.SearchMembersAsync("yoga-only")).Data!.Single();
+        var both = await service.KioskCheckInAsync(await QrScan(qr, "both"));
+
+        Assert.Equal(403, refused.StatusCode);
+        Assert.EndsWith("Membership status: None.", refused.ErrorMessage);
+        Assert.Equal(403, manual.StatusCode);
+        Assert.Equal("None", desk.MembershipStatus);
+        Assert.Null(desk.ValidThrough);
+        Assert.Equal(201, both.StatusCode);
+        Assert.Equal(7, repo.Active.Single(c => c.MemberUserId == "both").MemberMembershipId);   // the gym plan, not the longer yoga one
+        Assert.Equal(Today.AddDays(20), both.Data!.ValidThrough);
+    }
+
+    [Fact]
     public async Task ACustomerCanOnlyScanThemselves()   // kiosk open to Customer/Member: no checking other people in
     {
         var (repo, service, qr) = Kiosk();

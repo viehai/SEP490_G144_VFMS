@@ -7,7 +7,7 @@ using VFMS.Domain.Enums;
 
 namespace VFMS.Application.Services;
 
-public sealed class MembershipPlanService(IMembershipPlanRepository repository) : IMembershipPlanService
+public sealed class MembershipPlanService(IMembershipPlanRepository repository, TimeProvider clock) : IMembershipPlanService
 {
     public async Task<Result<PagedResponse<MembershipPlanResponse>>> ListAsync(
         MembershipPlanListRequest request, CancellationToken cancellationToken)
@@ -34,7 +34,7 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository) 
 
         var (items, total) = await repository.SearchAsync(
             Clean(request.Search), PackageStatus.Active, request.Page, request.PageSize, cancellationToken,
-            ParseServiceType(request.ServiceType));
+            ParseServiceType(request.ServiceType), clock.GetUtcNow().UtcDateTime);
         return Result<PagedResponse<MembershipPlanCatalogItemResponse>>.Success(
             new(request.Page, request.PageSize, total, items.Select(ToCatalogResponse).ToArray()));
     }
@@ -42,7 +42,7 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository) 
     public async Task<Result<MembershipPlanCatalogItemResponse>> GetCatalogItemAsync(
         int id, CancellationToken cancellationToken)
     {
-        var plan = await repository.GetDetailsAsync(id, PackageStatus.Active, cancellationToken);
+        var plan = await repository.GetDetailsAsync(id, PackageStatus.Active, cancellationToken, clock.GetUtcNow().UtcDateTime);
         return plan is null
             ? NotFound<MembershipPlanCatalogItemResponse>()
             : Result<MembershipPlanCatalogItemResponse>.Success(ToCatalogResponse(plan));

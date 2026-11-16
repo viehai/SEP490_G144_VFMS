@@ -1,6 +1,7 @@
 using System.Data;
 using Microsoft.EntityFrameworkCore;
 using VFMS.Application.Interfaces;
+using VFMS.Application.Services;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
 using VFMS.Infrastructure.Data;
@@ -12,9 +13,9 @@ public sealed class MembershipPlanRepository(VfmsDbContext context)
 {
     public async Task<(IReadOnlyList<MembershipPlanReadModel> Items, int TotalCount)> SearchAsync(
         string? search, PackageStatus? status, int page, int pageSize, CancellationToken cancellationToken = default,
-        ComponentType? serviceType = null)
+        ComponentType? serviceType = null, DateTime? sellableAtUtc = null)
     {
-        var query = Plans(status);
+        var query = Plans(status, sellableAtUtc);
         if (serviceType == ComponentType.GYM)
             query = query.Where(package => package.Components.Any(component => component.ComponentType == ComponentType.GYM));
         else if (serviceType == ComponentType.YOGA)   // a yoga plan has no GYM part; legacy gym+yoga combos stay gym plans
@@ -29,8 +30,8 @@ public sealed class MembershipPlanRepository(VfmsDbContext context)
     }
 
     public Task<MembershipPlanReadModel?> GetDetailsAsync(
-        int id, PackageStatus? requiredStatus, CancellationToken cancellationToken = default) =>
-        Project(Plans(requiredStatus).Where(package => package.Id == id)).SingleOrDefaultAsync(cancellationToken);
+        int id, PackageStatus? requiredStatus, CancellationToken cancellationToken = default, DateTime? sellableAtUtc = null) =>
+        Project(Plans(requiredStatus, sellableAtUtc).Where(package => package.Id == id)).SingleOrDefaultAsync(cancellationToken);
 
     public async Task<Package?> GetForUpdateAsync(int id, CancellationToken cancellationToken = default)
     {
@@ -70,12 +71,18 @@ public sealed class MembershipPlanRepository(VfmsDbContext context)
         await transaction.CommitAsync(cancellationToken);
     }
 
-    private IQueryable<Package> Plans(PackageStatus? status)
+    private IQueryable<Package> Plans(PackageStatus? status, DateTime? sellableAtUtc = null)
     {
         // Membership plans sell GYM or YOGA (PT packages are managed elsewhere).
         var plans = Context.Packages.AsNoTracking()
             .Where(package => package.Components.Any(component =>
                 component.ComponentType == ComponentType.GYM || component.ComponentType == ComponentType.YOGA));
+        if (sellableAtUtc is { } now)
+        {
+            var bookable = Context.YogaClasses.Where(YogaClassRules.Bookable(now));
+            plans = plans.Where(package => bookable.Any() ||
+                package.Components.Any(component => component.ComponentType == ComponentType.GYM));
+        }
         return status.HasValue ? plans.Where(package => package.PackageStatus == status.Value) : plans;
     }
 

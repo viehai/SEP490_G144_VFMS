@@ -330,19 +330,8 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
     [Fact]
     public async Task YogaPlanPaidInCashGivesAnActiveYogaMembershipAndTheMemberRole()
     {
-        int yogaPlan;
-        await using (var seed = _app.Services.CreateAsyncScope())
-        {
-            var seedDb = seed.ServiceProvider.GetRequiredService<VfmsDbContext>();
-            var plan = new Package
-            {
-                Name = "Yoga", Price = 600_000m, PackageStatus = PackageStatus.Active,
-                Components = [new PackageComponent { ComponentType = ComponentType.YOGA, DurationDays = 30 }]
-            };
-            seedDb.Packages.Add(plan);
-            await seedDb.SaveChangesAsync();
-            yogaPlan = plan.Id;
-        }
+        await SeedYogaClassAsync("staff", _clock.Now.UtcDateTime.AddDays(7));
+        var yogaPlan = await SeedYogaPlanAsync();
         using var buyer = Client("buyer", "Customer");
         using var staff = Client("staff", "Staff");
 
@@ -360,6 +349,55 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
         Assert.Equal(MembershipStatus.Active, membership.MembershipStatus);
         Assert.Equal(Today, membership.StartDate);
         Assert.Contains("Member", await RolesAsync(db, "buyer"));
+    }
+
+    [Fact]
+    public async Task YogaPlanCannotBeBoughtWhileNoYogaClassCanBeBooked()
+    {
+        await SeedYogaClassAsync("staff", _clock.Now.UtcDateTime.AddHours(-1));   // registration already closed
+        var yogaPlan = await SeedYogaPlanAsync();
+        using var buyer = Client("buyer", "Customer");
+
+        using var refused = await buyer.PostAsJsonAsync(Route, Purchase([new(yogaPlan)], MembershipPaymentMethods.Cash));
+        var gym = await CreateAsync(buyer, Purchase([new(_basic)], MembershipPaymentMethods.Cash));   // gym plans are unaffected
+
+        Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+        Assert.Contains("PLAN_NOT_PURCHASABLE", await refused.Content.ReadAsStringAsync());
+        Assert.Equal(500_000m, gym.AmountDue);
+    }
+
+    private async Task<int> SeedYogaPlanAsync()
+    {
+        int yogaPlan;
+        await using (var seed = _app.Services.CreateAsyncScope())
+        {
+            var seedDb = seed.ServiceProvider.GetRequiredService<VfmsDbContext>();
+            var plan = new Package
+            {
+                Name = "Yoga", Price = 600_000m, PackageStatus = PackageStatus.Active,
+                Components = [new PackageComponent { ComponentType = ComponentType.YOGA, DurationDays = 30 }]
+            };
+            seedDb.Packages.Add(plan);
+            await seedDb.SaveChangesAsync();
+            yogaPlan = plan.Id;
+        }
+        return yogaPlan;
+    }
+
+    /// <summary>A yoga class members can still book: yoga-only plans are sold only while one exists.</summary>
+    private async Task SeedYogaClassAsync(string instructorId, DateTime deadlineUtc,
+        YogaClassStatus status = YogaClassStatus.Open)
+    {
+        await using var scope = _app.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+        db.YogaClasses.Add(new YogaClass
+        {
+            YogaClassType = new YogaClassType { TypeName = "Hatha" }, ClassName = "Hatha Morning",
+            InstructorUserId = instructorId, MinParticipants = 1, MaxParticipants = 10, DurationMinutes = 60,
+            ClassStatus = status, RegistrationDeadline = deadlineUtc,
+            StartDate = DateOnly.FromDateTime(deadlineUtc).AddDays(1), EndDate = DateOnly.FromDateTime(deadlineUtc).AddDays(60)
+        });
+        await db.SaveChangesAsync();
     }
 
     [Fact]

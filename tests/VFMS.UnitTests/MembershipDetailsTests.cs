@@ -153,6 +153,7 @@ public sealed class MembershipDetailsTests
         public Task<T> ExecuteInSerializableTransactionAsync<T>(Func<Task<T>> work, CancellationToken ct) =>
             throw new NotSupportedException();
         public Task<List<Package>> LoadPlansAsync(int[] ids, CancellationToken ct) => throw new NotSupportedException();
+        public Task<bool> AnyBookableYogaClassAsync(DateTime nowUtc, CancellationToken ct) => throw new NotSupportedException();
         public Task<List<ApplicationUser>> LoadCheckoutUsersAsync(string purchaserId, string[] emails, CancellationToken ct) =>
             throw new NotSupportedException();
         public Task<List<ApplicationUser>> LockUsersAsync(string[] userIds, CancellationToken ct) => throw new NotSupportedException();

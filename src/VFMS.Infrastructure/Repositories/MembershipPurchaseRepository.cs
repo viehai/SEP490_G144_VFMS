@@ -1,6 +1,7 @@
 using System.Data;
 using Microsoft.EntityFrameworkCore;
 using VFMS.Application.Interfaces;
+using VFMS.Application.Services;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
 using VFMS.Infrastructure.Data;
@@ -20,6 +21,9 @@ public sealed class MembershipPurchaseRepository(VfmsDbContext context) : IMembe
     public Task<List<Package>> LoadPlansAsync(int[] ids, CancellationToken ct) =>
         context.Packages.AsNoTracking().Where(plan => ids.Contains(plan.Id))
             .Include(plan => plan.Components).ToListAsync(ct);
+
+    public Task<bool> AnyBookableYogaClassAsync(DateTime nowUtc, CancellationToken ct) =>
+        context.YogaClasses.AnyAsync(YogaClassRules.Bookable(nowUtc), ct);
 
     public Task<List<ApplicationUser>> LoadCheckoutUsersAsync(string purchaserId, string[] emails, CancellationToken ct)
     {

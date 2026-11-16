@@ -54,7 +54,7 @@ dotnet user-secrets set "Gemini:ApiKey" "YOUR_KEY" --project src/VFMS.API
 
 Member user id: `b7a2e8b5-23e2-4415-8679-357bb5c33ad3`. Use an InPrivate window to be signed in as two roles at once.
 
-The three demo members (Demo Hội Viên Một / Hai / Ba, phones `0900000011`–`0900000013`) were made for the live check-in demo through the real flow: register, buy "Gym 1 Month" with cash, cash confirmed by staff (16/11/2026). They are valid to 15/12/2026, with gym and yoga. They exist only in this local database. On 16/11 Demo Hai was left checked in and Demo Một checked out.
+The three demo members (Demo Hội Viên Một / Hai / Ba, phones `0900000011`–`0900000013`) were made for the live check-in demo through the real flow: register, buy "Gym 1 Month" with cash, cash confirmed by staff (16/11/2026). They are valid to 15/12/2026, with gym and yoga. They exist only in this local database. On 16/11 Demo Hai was left checked in and Demo Một checked out; on 17/11 Demo Một was checked in again at the front desk (gym check-in test).
 
 Demo Yoga (`yoga1@example.com`, phone `0900000021`) has only a yoga plan. It was registered on 16/11/2026 and bought "Yoga 1 Tháng" (600.000 ₫, 30 days) on the home page with cash; staff confirmed the cash on `/staff/membership-cash-receipt` (order ORD-20261116-72A8729070BF). The yoga plan is valid 16/11 to 15/12/2026, and the account has booked Hatha Morning on mat 1.
 
@@ -144,8 +144,11 @@ How to tell which plan you got:
 **Yoga plans (sell and buy):**
 - Manager, `/manager/membership-plans` → **Thêm gói mới**: pick **Loại dịch vụ: Yoga**. The type can't be changed after the plan is created. The list has a **Dịch vụ** column and a filter.
 - Customer or Member, home page → **GÓI THẺ & LỊCH TẬP** → **YOGA STUDIO** tab: only yoga plans are listed (the GYM MEMBERSHIP tab lists only gym plans). **Thêm gói tập** → choose **Tiền mặt tại quầy** or VietQR → **Tạo đơn thanh toán**. Signed-out visitors still see the sample cards, with a link to sign in.
+- Yoga plans are sold only while at least one yoga class can be booked: a published class (Open, or Full with a waitlist) whose registration deadline hasn't passed (`YogaClassRules.Bookable`, the same rule as booking). Otherwise the yoga tab says "Hiện chưa có gói Yoga mở bán.", the plan's catalog page is not found, and buying it is refused with `PLAN_NOT_PURCHASABLE`. The Manager still sees and edits the plan. Gym plans are not affected. To test: cancel every yoga class on `/manager/yoga`, or let their registration deadlines pass.
 - Payment is the same as for gym plans. With cash, staff enter the order number and amount on `/staff/membership-cash-receipt`; VietQR is confirmed by the bank webhook. After payment a Customer becomes a Member, and `/my-memberships` shows the plan with **Dịch vụ: Yoga**.
-- A yoga plan lets the member book every yoga class. It doesn't open the gym: check-in still needs a gym plan (`MembershipAccessService`).
+- A yoga plan lets the member book every yoga class but gives no gym access. The kiosk and the front desk only count gym plans (`MembershipRules.Gym` in `GymAccessServices.cs`): a yoga-only member is refused with "Membership status: None.", and the front-desk search shows **None**. A member with gym and yoga checks in on the gym plan. Check-out is never blocked.
+  - Try it: front desk `/staff/check-ins`, search `0900000021` (Demo Yoga) → None, check-in refused; `0900000011` (Demo Một) → Active.
+  - Still open to Customers and to yoga-only members, because they need no plan: `/workout` (AI workout plan), `/face-id`, and `/my-qr` (yoga attendance scans it). Equipment-issue reports stay open to every Member.
 - API: `POST /api/manager/membership-plans` takes `"serviceType": "YOGA"` (default `GYM`); `GET /api/membership-plans?serviceType=YOGA` and the manager list filter by it.
 
 **Book (Member, on `/yoga/schedule`):**
@@ -175,7 +178,7 @@ The roster only lists bookings made before the session starts.
 
 ## 6. Known gaps
 
-- **One integration test from dev/viehai fails on SQLite.** `MembershipPurchaseApiTests.InvoicePdfPreservesMaximumPersistedDecimalPrecisionWithLongHistoricalItemName` comes from dev/viehai (commit 0642777, invoice PDF export) and tests that feature at the largest `decimal(18,2)` amount. The test's own SQLite database can't hold that many digits (`9999999999999999.99` comes back as `10000000000000000`), so it fails on main too. It isn't caused by this branch. Expected result: Unit 453, Client 280 and Integration 399 pass, with that 1 failing and 5 skipped. To run the rest without it:
+- **One integration test from dev/viehai fails on SQLite.** `MembershipPurchaseApiTests.InvoicePdfPreservesMaximumPersistedDecimalPrecisionWithLongHistoricalItemName` comes from dev/viehai (commit 0642777, invoice PDF export) and tests that feature at the largest `decimal(18,2)` amount. The test's own SQLite database can't hold that many digits (`9999999999999999.99` comes back as `10000000000000000`), so it fails on main too. It isn't caused by this branch. Expected result: Unit 454, Client 280 and Integration 404 pass, with that 1 failing and 5 skipped. To run the rest without it:
   ```powershell
   dotnet test tests/VFMS.IntegrationTests --filter "FullyQualifiedName!~InvoicePdfPreservesMaximumPersistedDecimalPrecision"
   ```
