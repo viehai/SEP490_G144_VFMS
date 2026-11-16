@@ -5,6 +5,8 @@
 @using VFMS.Contracts.CheckIn
 @inject VfmsApiClient Api
 @inject IJSRuntime JS
+@using Microsoft.Extensions.Logging
+@inject ILogger<MyQr> Log
 
 <PageTitle>Mã QR của tôi | Victor Fitness</PageTitle>
 
@@ -49,7 +51,7 @@
             _svg = await JS.InvokeAsync<string>("vfmsQr.svg", _qr.Token);
         }
         catch (ApiException ex) { _error = ex.Message; }
-        catch (JSException) { _svg = null; _error = "Không vẽ được mã QR; hãy dùng mã chữ bên dưới."; }
+        catch (JSException ex) { Log.LogWarning(ex, "MyQr: vfmsQr.svg (qr-code.js) failed"); _svg = null; _error = "Không vẽ được mã QR; hãy dùng mã chữ bên dưới."; }
         finally { _busy = false; }
     }
 }

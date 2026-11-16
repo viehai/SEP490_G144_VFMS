@@ -5,6 +5,8 @@
 @using VFMS.Contracts.CheckIn
 @inject VfmsApiClient Api
 @inject IJSRuntime JS
+@using Microsoft.Extensions.Logging
+@inject ILogger<FaceProfile> Log
 @implements IAsyncDisposable
 
 <PageTitle>FaceID | Victor Fitness</PageTitle>
@@ -89,7 +91,7 @@
             _cameraOn = await JS.InvokeAsync<bool>("vfmsFace.start", _video);
             _message = null;
         }
-        catch (JSException) { Show("Không mở được camera hoặc tải mô hình nhận diện. Hãy cấp quyền camera và thử lại.", true); }
+        catch (JSException ex) { Log.LogWarning(ex, "FaceProfile: vfmsFace.start (face-capture.js) failed"); Show("Không mở được camera hoặc tải mô hình nhận diện. Hãy cấp quyền camera và thử lại.", true); }
         finally { _busy = false; }
     }
 
@@ -109,7 +111,7 @@
             Show("Face profile updated successfully.", false);
         }
         catch (ApiException ex) { Show(ex.Message, true); }
-        catch (JSException) { Show("Không xử lý được ảnh. Vui lòng thử lại.", true); }
+        catch (JSException ex) { Log.LogWarning(ex, "FaceProfile: vfmsFace.capture (face-capture.js) failed"); Show("Không xử lý được ảnh. Vui lòng thử lại.", true); }
         finally { _busy = false; }
     }
 

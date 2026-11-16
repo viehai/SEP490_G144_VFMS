@@ -7,6 +7,8 @@
 @using VFMS.Contracts.Yoga
 @inject VfmsApiClient Api
 @inject IJSRuntime JS
+@using Microsoft.Extensions.Logging
+@inject ILogger<YogaAttendance> Log
 @inject NavigationManager Navigation
 @implements IAsyncDisposable
 
@@ -161,7 +163,7 @@
             await JS.InvokeVoidAsync("import", "./js/qr-code.js");
             _cameraOn = await JS.InvokeAsync<bool>("vfmsQr.startCamera", _video);
         }
-        catch (JSException) { _error = "Không mở được camera. Hãy cấp quyền camera và thử lại."; }
+        catch (JSException ex) { Log.LogWarning(ex, "YogaAttendance: vfmsQr.startCamera (qr-code.js) failed"); _error = "Không mở được camera. Hãy cấp quyền camera và thử lại."; }
     }
 
     private async Task ScanQr()
@@ -182,7 +184,7 @@
             var marked = _roster.Roster.FirstOrDefault(e => e.Mark == "Attended" && !before.Contains(e.BookingId));
             _notice = marked is null ? "Học viên này đã được đánh dấu có mặt." : $"Đã đánh dấu {marked.MemberName} có mặt.";
         }
-        catch (JSException) { _error = "Không đọc được mã QR. Vui lòng thử lại."; }
+        catch (JSException ex) { Log.LogWarning(ex, "YogaAttendance: vfmsQr.scan (qr-code.js) failed"); _error = "Không đọc được mã QR. Vui lòng thử lại."; }
         catch (ApiException ex)
         {
             _error = ex.ErrorCode switch

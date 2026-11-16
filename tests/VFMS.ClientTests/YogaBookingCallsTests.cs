@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
 using VFMS.Client.Auth;
 using VFMS.Client.Services;
@@ -43,12 +44,12 @@ public sealed class YogaBookingCallsTests
         Assert.Equal("No upcoming session.", error.Message);
     }
 
-    private static VfmsApiClient CreateClient(Func<HttpRequestMessage, Task<HttpResponseMessage>> handler)
+    internal static VfmsApiClient CreateClient(Func<HttpRequestMessage, Task<HttpResponseMessage>> handler, ILogger<VfmsApiClient>? logger = null)
     {
         var http = new HttpClient(new FakeHandler(handler)) { BaseAddress = new Uri("https://api.example.test/") };
         var login = new LoginResponse("access-token", "refresh-token", "Bearer", 1800, "member", "Member", "member@example.com", ["Member"]);
         var stored = JsonSerializer.Serialize(new StoredAuthSession(login, DateTimeOffset.UtcNow.AddMinutes(10), false));
-        return new(http, new AuthSession(new ReadOnlyStorage(stored), new AuthApiClient(http)));
+        return new(http, new AuthSession(new ReadOnlyStorage(stored), new AuthApiClient(http)), logger);
     }
 
     private static HttpResponseMessage Json<T>(T value, HttpStatusCode status = HttpStatusCode.OK) => new(status) { Content = JsonContent.Create(value) };

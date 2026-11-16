@@ -20,6 +20,12 @@ dotnet run --project src/VFMS.Client --launch-profile https --no-build
 
 - Open the client in **Edge or Chrome**. The camera (Face ID and QR scanning) doesn't work in Claude's built-in browser.
 - After a rebuild, press **Ctrl+F5** so the browser picks up the new code.
+- **When a page shows an error, open the browser console (F12).** Every failed call on these pages logs one line that names it:
+  - Format: `VFMS API <method> <path> -> <status> <code>: <message>`, for example `VFMS API POST api/check-ins/manual -> 409 Conflict ANTI_PASSBACK: …`.
+  - A 4xx line is a warning: a business rule refused the request. No response, a 5xx or a bad body is an error.
+  - Codes made on the client: `NETWORK_ERROR` (API not running, TLS or CORS), `TIMEOUT`, `EMPTY_RESPONSE`, `INVALID_RESPONSE`. With `INVALID_RESPONSE` the line also says `(expected <DTO>)`: the API's response no longer matches the client's contract, usually after a change on one side.
+  - Any other code comes from the API.
+  - Camera and QR failures log the JavaScript function that failed, for example `Kiosk: vfmsQr.scan (qr-code.js) failed`.
 - Swagger: https://localhost:7148/swagger. Log in with `POST /api/auth/login` (`{ "email", "password" }`), copy `accessToken` and paste it under **Authorize**.
 
 ### Gemini key (AI workout plans)
@@ -144,7 +150,7 @@ The roster only lists bookings made before the session starts.
 
 ## 6. Known gaps
 
-- **One integration test from dev/viehai fails on SQLite.** `MembershipPurchaseApiTests.InvoicePdfPreservesMaximumPersistedDecimalPrecisionWithLongHistoricalItemName` comes from dev/viehai (commit 0642777, invoice PDF export) and tests that feature at the largest `decimal(18,2)` amount. The test's own SQLite database can't hold that many digits (`9999999999999999.99` comes back as `10000000000000000`), so it fails on main too. It isn't caused by this branch. Expected result: Unit 453, Client 277 and Integration 395 pass, with that 1 failing and 5 skipped. To run the rest without it:
+- **One integration test from dev/viehai fails on SQLite.** `MembershipPurchaseApiTests.InvoicePdfPreservesMaximumPersistedDecimalPrecisionWithLongHistoricalItemName` comes from dev/viehai (commit 0642777, invoice PDF export) and tests that feature at the largest `decimal(18,2)` amount. The test's own SQLite database can't hold that many digits (`9999999999999999.99` comes back as `10000000000000000`), so it fails on main too. It isn't caused by this branch. Expected result: Unit 453, Client 280 and Integration 395 pass, with that 1 failing and 5 skipped. To run the rest without it:
   ```powershell
   dotnet test tests/VFMS.IntegrationTests --filter "FullyQualifiedName!~InvoicePdfPreservesMaximumPersistedDecimalPrecision"
   ```

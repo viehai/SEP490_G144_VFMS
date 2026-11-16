@@ -215,7 +215,7 @@
         var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7));
         _from = today.AddDays(-(((int)today.DayOfWeek + 6) % 7));
         try { _instructors = await Api.GetAsync<List<YogaInstructorResponse>>("api/yoga/instructors"); }
-        catch (ApiException) { /* filter stays empty */ }
+        catch (ApiException) { /* filter stays empty; VfmsApiClient already logged which call failed */ }
         await Load();
     }
 
