@@ -14,7 +14,7 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository) 
     {
         PackageStatus? status = string.IsNullOrWhiteSpace(request.Status) ? null : ParseStatus(request.Status);
         var (items, total) = await repository.SearchAsync(
-            Clean(request.Search), status, request.Page, request.PageSize, cancellationToken);
+            Clean(request.Search), status, request.Page, request.PageSize, cancellationToken, ParseServiceType(request.ServiceType));
         return Result<PagedResponse<MembershipPlanResponse>>.Success(
             new(request.Page, request.PageSize, total, items.Select(ToResponse).ToArray()));
     }
@@ -33,7 +33,8 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository) 
                 new(request.Page, request.PageSize, 0, []));
 
         var (items, total) = await repository.SearchAsync(
-            Clean(request.Search), PackageStatus.Active, request.Page, request.PageSize, cancellationToken);
+            Clean(request.Search), PackageStatus.Active, request.Page, request.PageSize, cancellationToken,
+            ParseServiceType(request.ServiceType));
         return Result<PagedResponse<MembershipPlanCatalogItemResponse>>.Success(
             new(request.Page, request.PageSize, total, items.Select(ToCatalogResponse).ToArray()));
     }
@@ -50,21 +51,22 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository) 
     public async Task<Result<MembershipPlanResponse>> CreateAsync(
         MembershipPlanRequest request, string actorUserId, string? ipAddress, CancellationToken cancellationToken)
     {
-        var gym = new PackageComponent { ComponentType = ComponentType.GYM };
-        var plan = new Package { Components = [gym] };
-        Apply(plan, gym, request);
+        // A plan sells one service, GYM or YOGA (legacy combos keep GYM as their main part).
+        var service = new PackageComponent { ComponentType = ParseServiceType(request.ServiceType) ?? ComponentType.GYM };
+        var plan = new Package { Components = [service] };
+        Apply(plan, service, request);
 
         var audit = AuditedWriter.Audit(actorUserId, AuditActionType.CreateMembershipPlan, nameof(Package), ipAddress,
-            newValue: Snapshot(plan, gym));
+            newValue: Snapshot(plan, service));
         await AuditedWriter.SaveNewAsync(repository, plan, audit, notifications: null, cancellationToken);
-        return Result<MembershipPlanResponse>.Success(ToResponse(ReadCreatedPlan(plan, gym)), 201);
+        return Result<MembershipPlanResponse>.Success(ToResponse(ReadCreatedPlan(plan, service)), 201);
     }
 
     public Task<Result<MembershipPlanResponse>> UpdateAsync(
         int id, MembershipPlanRequest request, string actorUserId, string? ipAddress, CancellationToken cancellationToken) =>
         MutateAsync(id, async plan =>
         {
-            var gym = PrimaryGymComponent(plan);
+            var gym = PrimaryComponent(plan);   // the type never changes on update
             var oldStatus = plan.PackageStatus;
             var before = Snapshot(plan, gym);
             Apply(plan, gym, request);
@@ -111,7 +113,7 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository) 
             }
 
             var audit = AuditedWriter.Audit(actorUserId, AuditActionType.DeleteMembershipPlan, nameof(Package),
-                ipAddress, oldValue: Snapshot(plan, PrimaryGymComponent(plan)));
+                ipAddress, oldValue: Snapshot(plan, PrimaryComponent(plan)));
             repository.Remove(plan);
             await AuditedWriter.SaveChangedAsync(repository, plan, audit, notifications: null, cancellationToken);
             return Result<MembershipPlanDeleteResponse>.Success(new(false, "The membership plan was permanently deleted."));
@@ -133,7 +135,7 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository) 
     private async Task SetStatusAsync(
         Package plan, PackageStatus status, string actorUserId, string? ipAddress, CancellationToken cancellationToken)
     {
-        var gym = PrimaryGymComponent(plan);
+        var gym = PrimaryComponent(plan);
         var before = Snapshot(plan, gym);
         plan.PackageStatus = status;
         var audit = AuditedWriter.Audit(actorUserId, StatusAction(status), nameof(Package), ipAddress, before, Snapshot(plan, gym));
@@ -155,21 +157,28 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository) 
         }
     }
 
-    private static PackageComponent PrimaryGymComponent(Package plan) => plan.Components
-        .Where(component => !component.IsDeleted && component.ComponentType == ComponentType.GYM)
-        .MinBy(component => component.Id)!;
+    /// <summary>The plan's main part: its GYM component, or for a yoga plan its YOGA component.</summary>
+    private static PackageComponent PrimaryComponent(Package plan)
+    {
+        var live = plan.Components.Where(component => !component.IsDeleted).ToArray();
+        var type = live.Any(component => component.ComponentType == ComponentType.GYM) ? ComponentType.GYM : ComponentType.YOGA;
+        return live.Where(component => component.ComponentType == type).MinBy(component => component.Id)!;
+    }
 
-    private static MembershipPlanReadModel ReadCreatedPlan(Package plan, PackageComponent gym) =>
-        new(plan.Id, plan.Name, plan.Description, gym.DurationDays, gym.DurationMonths, plan.Price,
-            plan.PackageStatus, SubscriberCount: 0);
+    private static MembershipPlanReadModel ReadCreatedPlan(Package plan, PackageComponent service) =>
+        new(plan.Id, plan.Name, plan.Description, service.DurationDays, service.DurationMonths, plan.Price,
+            plan.PackageStatus, SubscriberCount: 0, service.ComponentType);
 
     private static MembershipPlanResponse ToResponse(MembershipPlanReadModel plan) =>
         new(plan.Id, plan.Name, plan.Description, DisplayDays(plan.DurationDays, plan.DurationMonths), plan.Price,
-            FormatStatus(plan.Status), plan.SubscriberCount, LegacyMonths(plan));
+            FormatStatus(plan.Status), plan.SubscriberCount, LegacyMonths(plan), plan.ServiceType.ToString());
 
     private static MembershipPlanCatalogItemResponse ToCatalogResponse(MembershipPlanReadModel plan) =>
         new(plan.Id, plan.Name, plan.Description, DisplayDays(plan.DurationDays, plan.DurationMonths), plan.Price,
-            FormatStatus(plan.Status), LegacyMonths(plan));
+            FormatStatus(plan.Status), LegacyMonths(plan), plan.ServiceType.ToString());
+
+    private static ComponentType? ParseServiceType(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : Enum.Parse<ComponentType>(value.Trim(), ignoreCase: true);
 
     private static int? LegacyMonths(MembershipPlanReadModel plan) =>
         plan.DurationDays is not > 0 && plan.DurationMonths is > 0 ? plan.DurationMonths : null;
@@ -179,6 +188,7 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository) 
 
     private static string Snapshot(Package plan, PackageComponent gym) => JsonSerializer.Serialize(new
     {
+        ServiceType = gym.ComponentType.ToString(),
         plan.Name,
         plan.Description,
         DurationInDays = gym.DurationDays,

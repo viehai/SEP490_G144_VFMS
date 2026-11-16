@@ -50,10 +50,13 @@ dotnet user-secrets set "Gemini:ApiKey" "YOUR_KEY" --project src/VFMS.API
 | YogaInstructor | yoga@test.vn    | Test@1234 |
 | Member         | member@test.vn  | Test@1234 |
 | Member (demo)  | demo1@example.com, demo2@example.com, demo3@example.com | Test@1234 |
+| Member (yoga only) | yoga1@example.com | Test@1234 |
 
 Member user id: `b7a2e8b5-23e2-4415-8679-357bb5c33ad3`. Use an InPrivate window to be signed in as two roles at once.
 
 The three demo members (Demo Hội Viên Một / Hai / Ba, phones `0900000011`–`0900000013`) were made for the live check-in demo through the real flow: register, buy "Gym 1 Month" with cash, cash confirmed by staff (16/11/2026). They are valid to 15/12/2026, with gym and yoga. They exist only in this local database. On 16/11 Demo Hai was left checked in and Demo Một checked out.
+
+Demo Yoga (`yoga1@example.com`, phone `0900000021`) has only a yoga plan. It was registered on 16/11/2026 and bought "Yoga 1 Tháng" (600.000 ₫, 30 days) on the home page with cash; staff confirmed the cash on `/staff/membership-cash-receipt` (order ORD-20261116-72A8729070BF). The yoga plan is valid 16/11 to 15/12/2026, and the account has booked Hatha Morning on mat 1.
 
 Data that already exists:
 - The member has "Gym 1 Month" (order ORD-20261112-367A858627B3, paid in cash), valid 12/11 to 11/12/2026. The member also has a YOGA membership, added by SQL (see section 6).
@@ -138,6 +141,13 @@ How to tell which plan you got:
 | `/yoga/my-bookings` | Member | Upcoming (with cancel), past (Có mặt / Vắng) and waitlist tabs |
 | `/staff/yoga` | Staff | The day's sessions; **Điểm danh** opens the roster |
 
+**Yoga plans (sell and buy):**
+- Manager, `/manager/membership-plans` → **Thêm gói mới**: pick **Loại dịch vụ: Yoga**. The type can't be changed after the plan is created. The list has a **Dịch vụ** column and a filter.
+- Customer or Member, home page → **GÓI THẺ & LỊCH TẬP** → **YOGA STUDIO** tab: only yoga plans are listed (the GYM MEMBERSHIP tab lists only gym plans). **Thêm gói tập** → choose **Tiền mặt tại quầy** or VietQR → **Tạo đơn thanh toán**. Signed-out visitors still see the sample cards, with a link to sign in.
+- Payment is the same as for gym plans. With cash, staff enter the order number and amount on `/staff/membership-cash-receipt`; VietQR is confirmed by the bank webhook. After payment a Customer becomes a Member, and `/my-memberships` shows the plan with **Dịch vụ: Yoga**.
+- A yoga plan lets the member book every yoga class. It doesn't open the gym: check-in still needs a gym plan (`MembershipAccessService`).
+- API: `POST /api/manager/membership-plans` takes `"serviceType": "YOGA"` (default `GYM`); `GET /api/membership-plans?serviceType=YOGA` and the manager list filter by it.
+
 **Book (Member, on `/yoga/schedule`):**
 - Each session shows **Đặt chỗ**, or **Vào danh sách chờ (miễn phí)** when the class is full.
 - A booking is **per class**: one booking holds the mat for every session of that class. Pick a mat or leave it to the system.
@@ -165,17 +175,12 @@ The roster only lists bookings made before the session starts.
 
 ## 6. Known gaps
 
-- **One integration test from dev/viehai fails on SQLite.** `MembershipPurchaseApiTests.InvoicePdfPreservesMaximumPersistedDecimalPrecisionWithLongHistoricalItemName` comes from dev/viehai (commit 0642777, invoice PDF export) and tests that feature at the largest `decimal(18,2)` amount. The test's own SQLite database can't hold that many digits (`9999999999999999.99` comes back as `10000000000000000`), so it fails on main too. It isn't caused by this branch. Expected result: Unit 453, Client 280 and Integration 395 pass, with that 1 failing and 5 skipped. To run the rest without it:
+- **One integration test from dev/viehai fails on SQLite.** `MembershipPurchaseApiTests.InvoicePdfPreservesMaximumPersistedDecimalPrecisionWithLongHistoricalItemName` comes from dev/viehai (commit 0642777, invoice PDF export) and tests that feature at the largest `decimal(18,2)` amount. The test's own SQLite database can't hold that many digits (`9999999999999999.99` comes back as `10000000000000000`), so it fails on main too. It isn't caused by this branch. Expected result: Unit 453, Client 280 and Integration 399 pass, with that 1 failing and 5 skipped. To run the rest without it:
   ```powershell
   dotnet test tests/VFMS.IntegrationTests --filter "FullyQualifiedName!~InvoicePdfPreservesMaximumPersistedDecimalPrecision"
   ```
 
-- **No yoga membership through the API.** Plans made through `POST /api/manager/membership-plans` only get a GYM component (`MembershipPlanService`, dev/viehai), so a real member can't book yoga. The SQL below adds the YOGA part inside the member's gym package, so `/my-memberships` then shows two cards both named after the gym plan (e.g. "Gym 1 Month"); the second one says **Dịch vụ: Yoga**. To give a member yoga for testing:
-  ```sql
-  DECLARE @pkg int = (SELECT PackageId FROM PackageComponents WHERE Id = (SELECT PackageComponentId FROM MemberMemberships WHERE Id = <gymMembershipId>));
-  INSERT PackageComponents (PackageId, ComponentType, DurationDays, AllowFreeze, CreatedAt, UpdatedAt, IsDeleted) VALUES (@pkg, 'YOGA', 30, 0, SYSUTCDATETIME(), SYSUTCDATETIME(), 0);
-  INSERT MemberMemberships (OrderItemId, PackageComponentId, MemberUserId, MembershipStatus, StartDate, EndDate, TotalFrozenDays, FreezeCount, CreatedAt, UpdatedAt, IsDeleted)
-  SELECT OrderItemId, SCOPE_IDENTITY(), MemberUserId, MembershipStatus, StartDate, EndDate, 0, 0, SYSUTCDATETIME(), SYSUTCDATETIME(), 0 FROM MemberMemberships WHERE Id = <gymMembershipId>;
-  ```
+- **Yoga plans can't be renewed yet.** Renewal (`/my-memberships` → gia hạn) still only covers gym plans, so a yoga member buys a new yoga plan instead; it starts after the current one ends.
+- **Old SQL yoga parts.** The member and the three demo members got their YOGA part by SQL inside the gym package "Gym 1 Month", before yoga plans existed. So `/my-memberships` shows two cards named "Gym 1 Month"; the second says **Dịch vụ: Yoga**. New yoga plans don't need this.
 - **Self check-in from anywhere.** Because the kiosk is open to Customers and Members, one can check in from anywhere with `/my-qr` plus `/kiosk` on one phone. That check-in can also mark a PT session as done.
 - **Phones can't open localhost.** To test QR with a phone, photograph the code shown on the laptop.

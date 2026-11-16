@@ -26,6 +26,8 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
             path += $"&search={Uri.EscapeDataString(request.Search.Trim())}";
         if (!string.IsNullOrWhiteSpace(request.Status))
             path += $"&status={Uri.EscapeDataString(request.Status)}";
+        if (!string.IsNullOrWhiteSpace(request.ServiceType))
+            path += $"&serviceType={Uri.EscapeDataString(request.ServiceType)}";
         return SendAsync<PagedResponse<MembershipPlanResponse>>(HttpMethod.Get, path, cancellationToken);
     }
 
@@ -52,9 +54,11 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
         MembershipFreezePolicyRequest request, CancellationToken cancellationToken = default) =>
         SendAsync<MembershipFreezePolicyResponse>(HttpMethod.Put, FreezePolicyPath, cancellationToken, JsonContent.Create(request));
 
-    public Task<PagedResponse<MembershipPlanCatalogItemResponse>> ListCatalogAsync(int page, CancellationToken cancellationToken = default) =>
+    public Task<PagedResponse<MembershipPlanCatalogItemResponse>> ListCatalogAsync(int page, CancellationToken cancellationToken = default,
+        string? serviceType = null) =>
         SendAsync<PagedResponse<MembershipPlanCatalogItemResponse>>(HttpMethod.Get,
-            FormattableString.Invariant($"api/membership-plans?page={page}&pageSize=9"), cancellationToken);
+            FormattableString.Invariant($"api/membership-plans?page={page}&pageSize=9") +
+            (string.IsNullOrWhiteSpace(serviceType) ? "" : $"&serviceType={Uri.EscapeDataString(serviceType)}"), cancellationToken);
 
     public Task<MembershipPurchaseResponse> PurchaseAsync(MembershipPurchaseRequest request, CancellationToken cancellationToken = default) =>
         SendAsync<MembershipPurchaseResponse>(HttpMethod.Post, PurchasesPath, cancellationToken, JsonContent.Create(request), ReadPurchaseAsync);

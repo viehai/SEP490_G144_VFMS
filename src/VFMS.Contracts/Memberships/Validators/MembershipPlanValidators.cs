@@ -20,6 +20,8 @@ public sealed class MembershipPlanRequestValidator : AbstractValidator<Membershi
             .WithMessage("The price must be non-negative and fit in 18 digits with at most two decimal places.");
         RuleFor(x => x.Status)
             .Must(MembershipPlanRules.IsStatus).WithMessage(MembershipPlanRules.StatusMessage);
+        RuleFor(x => x.ServiceType)
+            .Must(MembershipPlanRules.IsServiceType).WithMessage(MembershipPlanRules.ServiceTypeMessage);
     }
 }
 
@@ -40,6 +42,9 @@ public sealed class MembershipPlanListRequestValidator : AbstractValidator<Membe
         RuleFor(x => x.Status)
             .Must(status => string.IsNullOrWhiteSpace(status) || MembershipPlanRules.IsStatus(status))
             .WithMessage(MembershipPlanRules.StatusMessage);
+        RuleFor(x => x.ServiceType)
+            .Must(type => string.IsNullOrWhiteSpace(type) || MembershipPlanRules.IsServiceType(type))
+            .WithMessage(MembershipPlanRules.ServiceTypeMessage);
         RuleFor(x => x.Page).InclusiveBetween(1, 1_000_000);
         RuleFor(x => x.PageSize).InclusiveBetween(1, 100);
     }
@@ -48,6 +53,11 @@ public sealed class MembershipPlanListRequestValidator : AbstractValidator<Membe
 internal static class MembershipPlanRules
 {
     public const string StatusMessage = "Status must be ACTIVE or INACTIVE.";
+    public const string ServiceTypeMessage = "Service type must be GYM or YOGA.";
+
+    public static bool IsServiceType(string? type) =>
+        string.Equals(type?.Trim(), MembershipPlanServiceTypes.Gym, StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(type?.Trim(), MembershipPlanServiceTypes.Yoga, StringComparison.OrdinalIgnoreCase);
 
     public static bool IsStatus(string? status) =>
         string.Equals(status?.Trim(), MembershipPlanStatuses.Active, StringComparison.OrdinalIgnoreCase) ||

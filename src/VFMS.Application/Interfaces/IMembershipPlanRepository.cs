@@ -11,12 +11,14 @@ public sealed record MembershipPlanReadModel(
     int? DurationMonths,
     decimal Price,
     PackageStatus Status,
-    int SubscriberCount);
+    int SubscriberCount,
+    ComponentType ServiceType = ComponentType.GYM);
 
 public interface IMembershipPlanRepository : IAuditedRepository
 {
     Task<(IReadOnlyList<MembershipPlanReadModel> Items, int TotalCount)> SearchAsync(
-        string? search, PackageStatus? status, int page, int pageSize, CancellationToken cancellationToken = default);
+        string? search, PackageStatus? status, int page, int pageSize, CancellationToken cancellationToken = default,
+        ComponentType? serviceType = null);
 
     Task<MembershipPlanReadModel?> GetDetailsAsync(
         int id, PackageStatus? requiredStatus, CancellationToken cancellationToken = default);

@@ -325,7 +325,7 @@ public sealed partial class MembershipPurchaseService(
 
     private static bool IsPurchasable(Package plan, DateOnly latestStart) =>
         plan.PackageStatus == PackageStatus.Active && plan.Price > 0 && decimal.Truncate(plan.Price) == plan.Price &&
-        plan.Components.Any(component => component.ComponentType == ComponentType.GYM) &&
+        plan.Components.Any(component => component.ComponentType is ComponentType.GYM or ComponentType.YOGA) &&
         plan.Components.All(component => IsValidComponent(component, latestStart));
 
     private static ComponentTerms[] ReadComponentTerms(OrderItem item) =>

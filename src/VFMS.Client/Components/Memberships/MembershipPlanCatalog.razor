@@ -24,7 +24,7 @@ else if (_page is { Items.Count: > 0 } catalog)
         {
             <article @key="plan.Id" class="flex flex-col gap-5 border border-[#D8D1CD] bg-[#F8F5F2] p-7 rounded-xl hover:border-[#B83A3A] transition-colors">
                 <header class="border-b border-[#D8D1CD] pb-5">
-                    <span class="text-[10px] font-bold uppercase tracking-widest text-[#B83A3A] block mb-1">GÓI TẬP GYM</span>
+                    <span class="text-[10px] font-bold uppercase tracking-widest text-[#B83A3A] block mb-1">@(IsYoga(plan.ServiceType) ? "GÓI YOGA" : "GÓI TẬP GYM")</span>
                     <h3 class="font-heading mt-1 text-2xl font-black text-[#242424]">@plan.Name</h3>
                     <p class="mt-1 font-body text-xs text-[#6F6966]">@Duration(plan)</p>
                 </header>
@@ -53,7 +53,7 @@ else if (_page is { Items.Count: > 0 } catalog)
 }
 else
 {
-    <p role="status" class="font-body text-sm text-[#6F6966]">Hiện chưa có gói tập Gym mở bán.</p>
+    <p role="status" class="font-body text-sm text-[#6F6966]">@(IsYoga(ServiceType) ? "Hiện chưa có gói Yoga mở bán." : "Hiện chưa có gói tập Gym mở bán.")</p>
 }
 
 @if (_cart.Count > 0)
@@ -105,6 +105,11 @@ else
 }
 
 @code {
+    /// <summary>GYM or YOGA: which plans this catalog sells. Null lists every plan.</summary>
+    [Parameter] public string? ServiceType { get; set; }
+
+    private static bool IsYoga(string? type) => string.Equals(type, MembershipPlanServiceTypes.Yoga, StringComparison.OrdinalIgnoreCase);
+
     private static readonly NumberFormatInfo Vietnamese = new() { NumberGroupSeparator = ".", NumberDecimalSeparator = "," };
     private static readonly MembershipPurchaseRequestValidator PurchaseValidator = new();
     private readonly CancellationTokenSource _lifetime = new();
@@ -131,9 +136,9 @@ else
         var cancellationToken = _lifetime.Token;
         try
         {
-            _page = await Plans.ListCatalogAsync(page, cancellationToken);
+            _page = await Plans.ListCatalogAsync(page, cancellationToken, ServiceType);
             if (_page.Items.Count == 0 && page > 1)
-                _page = await Plans.ListCatalogAsync(1, cancellationToken);
+                _page = await Plans.ListCatalogAsync(1, cancellationToken, ServiceType);
         }
         catch (AuthApiException ex)
         {

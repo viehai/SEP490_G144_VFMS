@@ -328,6 +328,41 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task YogaPlanPaidInCashGivesAnActiveYogaMembershipAndTheMemberRole()
+    {
+        int yogaPlan;
+        await using (var seed = _app.Services.CreateAsyncScope())
+        {
+            var seedDb = seed.ServiceProvider.GetRequiredService<VfmsDbContext>();
+            var plan = new Package
+            {
+                Name = "Yoga", Price = 600_000m, PackageStatus = PackageStatus.Active,
+                Components = [new PackageComponent { ComponentType = ComponentType.YOGA, DurationDays = 30 }]
+            };
+            seedDb.Packages.Add(plan);
+            await seedDb.SaveChangesAsync();
+            yogaPlan = plan.Id;
+        }
+        using var buyer = Client("buyer", "Customer");
+        using var staff = Client("staff", "Staff");
+
+        var purchase = await CreateAsync(buyer, Purchase([new(yogaPlan, ActivationDate: Today)], MembershipPaymentMethods.Cash));
+        Assert.Equal(600_000m, purchase.AmountDue);
+        var route = $"/api/staff/membership-purchases/{purchase.OrderNumber}/confirm-cash";
+        Assert.Equal("Paid", (await ReadAsync(await staff.PostAsJsonAsync(route,
+            new ConfirmMembershipCashRequest(purchase.AmountDue)), HttpStatusCode.OK)).OrderStatus);
+
+        await using var scope = _app.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+        var membership = await db.MemberMemberships.Include(row => row.PackageComponent).SingleAsync();
+        Assert.Equal("buyer", membership.MemberUserId);
+        Assert.Equal(ComponentType.YOGA, membership.PackageComponent.ComponentType);
+        Assert.Equal(MembershipStatus.Active, membership.MembershipStatus);
+        Assert.Equal(Today, membership.StartDate);
+        Assert.Contains("Member", await RolesAsync(db, "buyer"));
+    }
+
+    [Fact]
     public async Task CashRequiresExactReceiptByStaffAtPurchasersGymAndIsAuditedOnce()
     {
         using var buyer = Client("buyer", "Customer");
