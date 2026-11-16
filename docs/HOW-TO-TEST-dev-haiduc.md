@@ -49,8 +49,11 @@ dotnet user-secrets set "Gemini:ApiKey" "YOUR_KEY" --project src/VFMS.API
 | Staff          | staff@test.vn   | Test@1234 |
 | YogaInstructor | yoga@test.vn    | Test@1234 |
 | Member         | member@test.vn  | Test@1234 |
+| Member (demo)  | demo1@example.com, demo2@example.com, demo3@example.com | Test@1234 |
 
 Member user id: `b7a2e8b5-23e2-4415-8679-357bb5c33ad3`. Use an InPrivate window to be signed in as two roles at once.
+
+The three demo members (Demo Hội Viên Một / Hai / Ba, phones `0900000011`–`0900000013`) were made for the live check-in demo through the real flow: register, buy "Gym 1 Month" with cash, cash confirmed by staff (16/11/2026). They are valid to 15/12/2026, with gym and yoga. They exist only in this local database. On 16/11 Demo Hai was left checked in and Demo Một checked out.
 
 Data that already exists:
 - The member has "Gym 1 Month" (order ORD-20261112-367A858627B3, paid in cash), valid 12/11 to 11/12/2026. The member also has a YOGA membership, added by SQL (see section 6).
@@ -91,7 +94,17 @@ Things that look like errors but are the rules:
 
 1. **Check-in thủ công:** search by name, phone (`0900000004`) or order number, then press **Check-in**. The button is off for members without an active membership; a member already inside shows "Đang trong phòng tập".
 2. **Đang có mặt:** who is inside, the occupancy, today's check-ins and the peak flag. **Check-out** on a row asks once, then records the staff member who did it.
+   - The list **updates itself every 5 seconds**, including check-ins and check-outs made at the kiosk or another desk. The line under the title shows "Trực tiếp · cập nhật lúc HH:mm:ss", or "Mất kết nối, đang thử lại…" while the API is down. A new row is tinted.
+   - A filter that matches no one shows "Không tìm thấy kết quả phù hợp." (MSG-01); the occupancy cards still count everyone.
 3. A second check-in within 15 minutes of the last one is refused (anti-passback).
+
+**Live demo (two front desks):**
+1. Edge window A (normal): sign in as `staff@test.vn`, open `/staff/check-ins`. Don't touch it from now on.
+2. Edge window B (InPrivate): sign in as `manager@test.vn`, open `/staff/check-ins`.
+3. In B, search `0900000011` and press **Check-in**. Within 5 seconds A shows Demo Hội Viên Một, and "Đang có mặt" goes up by 1.
+4. In B, press **Check-out** on that row. Within 5 seconds the row leaves A.
+5. Repeat with `0900000012` and `0900000013`. Each demo member can only check in again 15 minutes after their last check-in (anti-passback), which is why there are three.
+6. The kiosk works the same way: a scan at `/kiosk` shows up in A within 5 seconds.
 
 ### API (Swagger)
 

@@ -11,7 +11,7 @@
 
 @* UC-46 Front-desk check-in, UC-47 manual check-out, UC-48 active check-ins. *@
 <div class="workspace-page space-y-8 font-['Inter',sans-serif] text-[#242424]">
-    <PageHeader Overline="VFMS / CHECK-IN" Title="Lễ tân check-in" Description="Tìm hội viên để check-in thủ công, và check-out người đang có mặt. Danh sách tự cập nhật mỗi 30 giây." />
+    <PageHeader Overline="VFMS / CHECK-IN" Title="Lễ tân check-in" Description="Tìm hội viên để check-in thủ công, và check-out người đang có mặt. Danh sách tự cập nhật vài giây một lần, kể cả lượt quét ở Kiosk và quầy khác." />
 
     <Alerts Notice="@_notice" Error="@_error" />
 
@@ -81,7 +81,13 @@
 
     <section class="@Ui.ListCard" aria-labelledby="inside-title">
         <div class="@Ui.ListHeader flex flex-wrap items-end justify-between gap-3">
-            <h2 id="inside-title" class="workspace-heading text-base">Đang có mặt</h2>
+            <div>
+                <h2 id="inside-title" class="workspace-heading text-base">Đang có mặt</h2>
+                <p class="mt-1 flex items-center gap-1.5 text-xs text-[#6F6966]" role="status">
+                    <span class="@($"h-2 w-2 rounded-full {(_pollFailed ? "bg-[#D97706]" : "bg-[#16A34A] motion-safe:animate-pulse")}")" aria-hidden="true"></span>
+                    @(_pollFailed ? "Mất kết nối, đang thử lại…" : _updatedAt is { } at ? $"Trực tiếp · cập nhật lúc {at:HH:mm:ss}" : "Đang tải…")
+                </p>
+            </div>
             <label class="@Ui.Label w-full max-w-sm">Lọc danh sách
                 <input class="@Ui.Field" @bind="_search" @bind:event="oninput" @bind:after="Load" placeholder="Tên, số điện thoại hoặc mã đơn" />
             </label>
@@ -94,14 +100,14 @@
                 <tbody class="divide-y divide-[#D8D1CD]">
                     @if (_data is null || _data.Items.Count == 0)
                     {
-                        <tr><td colspan="6" class="px-5 py-6 text-[#6F6966]">Không có hội viên nào đang có mặt.</td></tr>
+                        <tr><td colspan="6" class="px-5 py-6 text-[#6F6966]">@(_search.Trim().Length > 0 ? "Không tìm thấy kết quả phù hợp." : "Không có hội viên nào đang có mặt.")</td></tr>
                     }
                     else
                     {
                         @foreach (var c in _data.Items)
                         {
-                            <tr @key="c.CheckInId" class="hover:bg-[#F3EDEA]">
-                                <td class="px-5 py-4 font-semibold">@c.MemberName</td>
+                            <tr @key="c.CheckInId" class="@($"hover:bg-[#F3EDEA] {(_fresh.Contains(c.CheckInId) ? "bg-[#F3E4E2] motion-safe:transition-colors" : "")}")">
+                                <td class="whitespace-nowrap px-5 py-4 font-semibold">@c.MemberName</td>
                                 <td class="px-5 py-4">@c.PhoneNumber</td>
                                 <td class="px-5 py-4">@GymTime(c.CheckinTime).ToString("HH:mm")</td>
                                 <td class="px-5 py-4">@(c.MinutesInside / 60)h @(c.MinutesInside % 60)m</td>
@@ -128,31 +134,70 @@
 </div>
 
 @code {
+    // UC-48 step 5: other desks and the kiosk change the list too. shortcut: polling every few seconds, not a push; upgrade to SignalR if the gym needs sub-second updates.
+    private static readonly TimeSpan PollEvery = TimeSpan.FromSeconds(5);
+
     private ActiveCheckInsResponse? _data;
     private List<FrontDeskMemberResponse>? _members;
-    private string _search = string.Empty, _memberSearch = string.Empty;
-    private string? _notice, _error;
+    private string _search = string.Empty, _memberSearch = string.Empty, _searchedTerm = string.Empty;
+    private string? _notice, _error, _pollError;
     private int? _confirmOutId;
-    private bool _searching, _working;
+    private bool _searching, _working, _pollFailed;
+    private DateTime? _updatedAt;
+    private HashSet<int> _fresh = [];
+    private int _loadVersion;
     private Timer? _timer;
 
     protected override async Task OnInitializedAsync()
     {
         await Load();
-        _timer = new Timer(_ => InvokeAsync(async () => { await Load(); StateHasChanged(); }), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+        _timer = new Timer(_ => InvokeAsync(Poll), null, PollEvery, PollEvery);
+    }
+
+    private async Task Poll()
+    {
+        if (_working || _searching) return;   // an action in flight refreshes the page itself
+        await Load();
+        await RefreshSearchResults();
+        StateHasChanged();
     }
 
     private async Task Load()
     {
-        try { _data = await Api.GetAsync<ActiveCheckInsResponse>($"api/check-ins/active?search={Uri.EscapeDataString(_search)}"); }
-        catch (ApiException ex) { _error = ex.Message; }
+        var version = ++_loadVersion;
+        try
+        {
+            var data = await Api.GetAsync<ActiveCheckInsResponse>($"api/check-ins/active?search={Uri.EscapeDataString(_search.Trim())}");
+            if (version != _loadVersion) return;   // a newer filter or tick already answered
+            _fresh = _data is null ? [] : data.Items.Select(i => i.CheckInId).Except(_data.Items.Select(i => i.CheckInId)).ToHashSet();
+            _data = data;
+            _updatedAt = GymTime(DateTime.UtcNow);
+            _pollFailed = false;
+            if (_error == _pollError) _error = null;   // clear only what a failed refresh showed, never an action's error
+            _pollError = null;
+        }
+        catch (ApiException ex)
+        {
+            if (version != _loadVersion) return;
+            _pollFailed = true;
+            if (_error is null || _error == _pollError) _error = _pollError = ex.Message;
+        }
+    }
+
+    // Keeps the front-desk results honest when the member checked in elsewhere, without touching the search button or errors.
+    private async Task RefreshSearchResults()
+    {
+        if (_members is not { Count: > 0 } || _searchedTerm.Length == 0) return;
+        try { _members = await Api.GetAsync<List<FrontDeskMemberResponse>>($"api/check-ins/members?search={Uri.EscapeDataString(_searchedTerm)}"); }
+        catch (ApiException) { /* keep the last results; VfmsApiClient logged the call */ }
     }
 
     private async Task SearchMembers()
     {
         _searching = true;
         _error = null;
-        try { _members = await Api.GetAsync<List<FrontDeskMemberResponse>>($"api/check-ins/members?search={Uri.EscapeDataString(_memberSearch.Trim())}"); }
+        _searchedTerm = _memberSearch.Trim();
+        try { _members = await Api.GetAsync<List<FrontDeskMemberResponse>>($"api/check-ins/members?search={Uri.EscapeDataString(_searchedTerm)}"); }
         catch (ApiException ex) when (ex.ErrorCode == "NOT_FOUND") { _members = []; }   // MSG-01: shown as the empty state
         catch (ApiException ex) { _error = ex.Message; }
         finally { _searching = false; }
