@@ -6,7 +6,7 @@
     margin: 0 auto;
     padding: 128px 24px 80px;
     background: transparent;
-    color: #383E43;
+    color: #242424;
     font-family: 'Inter', sans-serif;
 }
 
@@ -26,21 +26,21 @@
 }
 
 .profile-page input:not([readonly]) {
-    border: 1px solid #D8DED2 !important;
-    background-color: #FFFFFF !important;
-    color: #383E43 !important;
+    border: 1px solid #D8D1CD !important;
+    background-color: #F8F5F2 !important;
+    color: #242424 !important;
 }
 
 .profile-page input:not([readonly]):focus {
-    border-color: #5F6F52 !important;
-    box-shadow: 0 0 0 3px rgba(95, 111, 82, 0.15) !important;
+    border-color: #B83A3A !important;
+    box-shadow: 0 0 0 3px rgba(184, 58, 58, 0.15) !important;
     outline: none !important;
 }
 
 .profile-page input[readonly] {
-    border: 1px solid #D8DED2 !important;
-    background-color: #EEF1EA !important;
-    color: #69706A !important;
+    border: 1px solid #D8D1CD !important;
+    background-color: #ECE8E4 !important;
+    color: #6F6966 !important;
 }
 
 .profile-page input.valid.modified:not([type=checkbox]),
@@ -50,7 +50,7 @@
 
 .profile-page .validation-message {
     margin-top: 4px;
-    color: #B91C1C;
+    color: #DC2626;
     font-family: 'Inter', sans-serif;
     font-size: 12px;
     line-height: 1.5;

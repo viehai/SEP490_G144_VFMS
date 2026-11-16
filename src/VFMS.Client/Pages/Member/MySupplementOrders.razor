@@ -11,12 +11,12 @@
 <PageTitle>Đơn hàng của tôi | Victor Fitness</PageTitle>
 
 <section class="mx-auto max-w-4xl space-y-6 px-5 pb-16 pt-28" aria-labelledby="orders-title">
-    <header class="flex flex-wrap items-end justify-between gap-4 border-b border-[#D8DED2] pb-5">
+    <header class="flex flex-wrap items-end justify-between gap-4 border-b border-[#D8D1CD] pb-5">
         <div class="space-y-2">
-            <h1 id="orders-title" class="font-['Montserrat',sans-serif] text-3xl font-black text-[#383E43]">Đơn hàng của tôi</h1>
-            <p class="text-sm text-[#69706A]">Theo dõi đơn thực phẩm bổ sung; đơn chưa xử lý có thể hủy.</p>
+            <h1 id="orders-title" class="font-['Montserrat',sans-serif] text-3xl font-black text-[#242424]">Đơn hàng của tôi</h1>
+            <p class="text-sm text-[#6F6966]">Theo dõi đơn thực phẩm bổ sung; đơn chưa xử lý có thể hủy.</p>
         </div>
-        <a href="/supplements" class="text-sm font-semibold text-[#5F6F52] underline underline-offset-4">← Tiếp tục mua sắm</a>
+        <a href="/supplements" class="text-sm font-semibold text-[#B83A3A] underline underline-offset-4">← Tiếp tục mua sắm</a>
     </header>
 
     <Alerts Notice="@_notice" Error="@_error" />
@@ -26,7 +26,7 @@
         <button type="button" role="tab" aria-selected="@(!_ongoing)" class="@Tab(!_ongoing)" @onclick="() => SwitchAsync(false)">Lịch sử</button>
         @if (!_ongoing)
         {
-            <select class="rounded-lg border border-[#D8DED2] bg-white px-3 py-1.5 text-xs font-semibold" aria-label="Lọc trạng thái" @bind="_status" @bind:after="() => LoadAsync(1)">
+            <select class="rounded-lg border border-[#D8D1CD] bg-[#F8F5F2] px-3 py-1.5 text-xs font-semibold text-[#242424]" aria-label="Lọc trạng thái" @bind="_status" @bind:after="() => LoadAsync(1)">
                 <option value="">Mọi trạng thái</option>
                 @foreach (var status in OperationsText.OrderStatuses) { <option value="@status">@OperationsText.Label(status)</option> }
             </select>
@@ -35,7 +35,7 @@
 
     @if (_loading)
     {
-        <p role="status" class="text-sm text-[#69706A]">Đang tải đơn hàng...</p>
+        <p role="status" class="text-sm text-[#6F6966]">Đang tải đơn hàng...</p>
     }
     else if (_page is { Items.Count: > 0 } list)
     {
@@ -45,15 +45,15 @@
                 <li @key="order.Id" class="@Ui.Card">
                     <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
                         <div>
-                            <p class="text-base font-bold text-[#383E43]">@order.OrderNumber</p>
-                            <p class="text-xs text-[#69706A]">@OperationsText.Local(order.PlacedAt) · @OperationsText.Label(order.FulfillmentType)</p>
+                            <p class="text-base font-bold text-[#242424]">@order.OrderNumber</p>
+                            <p class="text-xs text-[#6F6966]">@OperationsText.Local(order.PlacedAt) · @OperationsText.Label(order.FulfillmentType)</p>
                         </div>
                         <span class="@OperationsText.Badge(order.Status)">@OperationsText.Label(order.Status)</span>
                     </div>
                     <OrderLines Order="order" />
                     @if (order.Delivery is { CourierName: { } courier } delivery)
                     {
-                        <p class="mt-2 text-xs text-[#69706A]">Vận chuyển: @courier · Mã vận đơn @delivery.TrackingCode</p>
+                        <p class="mt-2 text-xs text-[#6F6966]">Vận chuyển: @courier · Mã vận đơn @delivery.TrackingCode</p>
                     }
                     @if (order.CanCancel)
                     {
@@ -73,13 +73,13 @@
                 </li>
             }
         </ul>
-        <div class="overflow-hidden rounded-xl border border-[#D8DED2] bg-white">
+        <div class="overflow-hidden rounded-xl border border-[#D8D1CD] bg-[#F8F5F2]">
             <Pager Page="list.Page" PageSize="list.PageSize" TotalCount="list.TotalCount" Noun="đơn" AriaLabel="Phân trang đơn hàng" Disabled="_loading" OnPage="LoadAsync" />
         </div>
     }
     else
     {
-        <p role="status" class="text-sm text-[#69706A]">@(_ongoing ? "Không có đơn nào đang xử lý." : "Chưa có đơn hàng.")</p>
+        <p role="status" class="text-sm text-[#6F6966]">@(_ongoing ? "Không có đơn nào đang xử lý." : "Chưa có đơn hàng.")</p>
     }
 </section>
 
@@ -93,8 +93,8 @@
     private bool _ongoing = true, _loading, _working;
 
     private static string Tab(bool active) => active
-        ? "rounded-lg bg-[#5F6F52] px-4 py-1.5 text-xs font-semibold text-white"
-        : "rounded-lg border border-[#D8DED2] bg-white px-4 py-1.5 text-xs font-semibold text-[#383E43] hover:bg-[#EEF1EA]";
+        ? "rounded-lg bg-[#B83A3A] px-4 py-1.5 text-xs font-semibold text-white"
+        : "rounded-lg border border-[#D8D1CD] bg-[#F8F5F2] px-4 py-1.5 text-xs font-semibold text-[#242424] hover:bg-[#F3EDEA]";
 
     protected override Task OnInitializedAsync() => LoadAsync(1);
 

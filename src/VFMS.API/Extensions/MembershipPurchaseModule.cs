@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using VFMS.Application.Interfaces;
 using VFMS.Application.Services;
 using VFMS.Infrastructure.Payments;
+using VFMS.Infrastructure.Invoices;
 using VFMS.Infrastructure.Repositories;
 using VFMS.Infrastructure.Workers;
 
@@ -16,6 +17,10 @@ public static class MembershipPurchaseModule
         services.AddScoped<IMembershipPaymentGateway, SepayVietQrGateway>();
         services.AddScoped<IMembershipPurchaseRepository, MembershipPurchaseRepository>();
         services.AddScoped<IMembershipPurchaseService, MembershipPurchaseService>();
+        services.AddScoped<IMembershipTransactionRepository, MembershipTransactionRepository>();
+        services.AddScoped<IMembershipTransactionService, MembershipTransactionService>();
+        services.AddSingleton<IMembershipInvoicePdfRenderer, MembershipInvoicePdfRenderer>();
+        services.AddScoped<IMembershipInvoiceExportService, MembershipInvoiceExportService>();
         services.AddHostedService<MembershipCommerceWorker>();
         return services;
     }

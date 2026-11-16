@@ -1,0 +1,13 @@
+<span class="inline-flex max-w-full items-center rounded-full border px-2.5 py-1 text-xs font-semibold @Tone">@TransactionDisplay.Status(Status)</span>
+
+@code {
+    [Parameter, EditorRequired] public string Status { get; set; } = string.Empty;
+
+    private string Tone => Status switch
+    {
+        "Paid" or "Issued" or "Confirmed" => "border-green-200 bg-green-50 text-green-800",
+        "Pending" or "Reserved" => "border-amber-200 bg-amber-50 text-amber-800",
+        "Failed" or "Expired" => "border-red-200 bg-red-50 text-red-800",
+        _ => "border-vfms-border bg-vfms-muted text-vfms-text-secondary"
+    };
+}
