@@ -80,7 +80,11 @@ public sealed class RouterAuthenticationTests
             navigation.NavigateTo(dashboard);
             return WebUtility.HtmlDecode(rendered.ToHtmlString());
         });
-        Assert.Contains("Vui lòng đăng nhập", denied);
+        // Signed out, a protected route goes straight to the login page and comes back after sign-in.
+        var login = new Uri(navigation.Uri);
+        Assert.Equal("/auth/login", login.AbsolutePath);
+        Assert.Equal($"?returnUrl={Uri.EscapeDataString(dashboard)}", login.Query);
+        Assert.Contains("auth-shell", denied);
         Assert.DoesNotContain("workspace-shell--", denied);
     }
 
