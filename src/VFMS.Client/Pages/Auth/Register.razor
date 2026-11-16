@@ -16,16 +16,16 @@
 @if (_registered)
 {
     <div class="auth-success-mark" aria-hidden="true">✓</div>
-    <p class="auth-overline">TÀI KHOẢN ĐÃ SẴN SÀNG</p>
+    <span class="auth-overline-card">TÀI KHOẢN ĐÃ SẴN SÀNG</span>
     <h1 class="auth-title">BƯỚC ĐẦU<br />ĐÃ HOÀN TẤT.</h1>
     <p class="auth-description" role="status">Đăng ký thành công. Bạn có thể đăng nhập bằng email hoặc số điện thoại vừa đăng ký.</p>
     <a class="auth-submit" href="@($"/auth/login?email={Uri.EscapeDataString(_model.Email)}")">ĐĂNG NHẬP NGAY <span aria-hidden="true">↗</span></a>
 }
 else
 {
-    <p class="auth-overline">TÀI KHOẢN / ĐĂNG KÝ</p>
+    <span class="auth-overline-card">TÀI KHOẢN / ĐĂNG KÝ</span>
     <h1 class="auth-title">BẮT ĐẦU<br />HÀNH TRÌNH.</h1>
-    <p class="auth-description">Tạo tài khoản để khám phá các dịch vụ tại Victor Fitness.</p>
+    <p class="auth-description">Tạo tài khoản để bắt đầu trải nghiệm cùng Victor Fitness.</p>
     @if (!string.IsNullOrEmpty(_error))
     {
         <div class="auth-notice auth-notice-error" role="alert">@_error</div>

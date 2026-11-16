@@ -19,14 +19,14 @@ else
     <Authorizing><p role="status">Đang kiểm tra phiên đăng nhập...</p></Authorizing>
     <Authorized Context="auth">
         <div class="auth-success-mark" aria-hidden="true">✓</div>
-        <p class="auth-overline">TÀI KHOẢN CỦA BẠN</p>
+        <span class="auth-overline-card">TÀI KHOẢN CỦA BẠN</span>
         <h1 class="auth-title">BẠN ĐÃ<br />ĐĂNG NHẬP.</h1>
         <p class="auth-description">Chào @auth.User.Identity?.Name. Phiên đăng nhập của bạn đang hoạt động.</p>
         <a class="auth-submit" href="/">VỀ TRANG CHỦ <span aria-hidden="true">↗</span></a>
         <p class="auth-switch"><LogoutButton Class="auth-text-button">Đăng xuất để dùng tài khoản khác</LogoutButton></p>
     </Authorized>
     <NotAuthorized>
-        <p class="auth-overline">TÀI KHOẢN / ĐĂNG NHẬP</p>
+        <span class="auth-overline-card">TÀI KHOẢN / ĐĂNG NHẬP</span>
         <h1 class="auth-title">CHÀO MỪNG<br />TRỞ LẠI.</h1>
         <p class="auth-description">Đăng nhập để tiếp tục hành trình cùng Victor Fitness.</p>
         @if (!string.IsNullOrEmpty(_error))
