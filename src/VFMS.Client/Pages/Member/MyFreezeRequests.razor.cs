@@ -135,6 +135,10 @@ public partial class MyFreezeRequests : IDisposable
         UpdateRequest(request, "Đã cập nhật yêu cầu bảo lưu. Yêu cầu đang chờ duyệt.");
     }
 
+    private void DocumentChanged(int requestId, MembershipFreezeDocumentResponse? document) =>
+        _requests = _requests.Select(request => request.FreezeRequestId == requestId
+            ? request with { SupportingDocument = document } : request).ToArray();
+
     private void UpdateRequest(MembershipFreezeRequestResponse updated, string notice)
     {
         _requests = _requests.Select(request =>

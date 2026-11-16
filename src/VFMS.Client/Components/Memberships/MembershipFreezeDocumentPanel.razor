@@ -1,0 +1,145 @@
+@using VFMS.Contracts.Memberships
+@implements IDisposable
+@inject MembershipPlanApiClient Api
+@inject IJSRuntime JS
+
+<section class="space-y-3 border-t border-vfms-border pt-4" aria-label="Tài liệu hỗ trợ bảo lưu">
+    <p class="text-sm font-semibold text-vfms-text">Tài liệu hỗ trợ (tùy chọn)</p>
+    @if (_document is { } document)
+    {
+        <div class="flex flex-wrap items-center gap-3 text-sm">
+            <span class="min-w-0 break-all text-vfms-text">@document.FileName <span class="text-vfms-text-secondary">(@((document.Size / 1024d).ToString("0.#")) KiB)</span></span>
+            <button type="button" class="@Button" disabled="@Unavailable" @onclick="DownloadAsync">Tải tài liệu</button>
+            @if (CanEdit)
+            {
+                <button type="button" class="@Button" disabled="@Unavailable" @onclick="RemoveAsync">Gỡ tài liệu</button>
+            }
+        </div>
+    }
+    else
+    {
+        <p class="text-sm text-vfms-text-secondary">Chưa có tài liệu đính kèm.</p>
+    }
+    @if (CanEdit)
+    {
+        <div class="space-y-2">
+            <label for="@($"freeze-document-{RequestId}")" class="block text-sm text-vfms-text">Chọn PDF, PNG hoặc JPEG, tối đa 5 MiB</label>
+            <InputFile @key="_inputVersion" id="@($"freeze-document-{RequestId}")" OnChange="SelectFile" accept=".pdf,.png,.jpg,.jpeg"
+                       disabled="@Unavailable" class="block min-h-[44px] max-w-full text-sm text-vfms-text"
+                       aria-describedby="@($"freeze-document-{RequestId}-feedback")" />
+            <button type="button" class="@Button" disabled="@(Unavailable || _file is null)" @onclick="UploadAsync">
+                @(_document is null ? "Đính kèm tài liệu" : "Thay tài liệu")
+            </button>
+        </div>
+    }
+    <div id="@($"freeze-document-{RequestId}-feedback")">
+        @if (_error is not null)
+        {
+            <p role="alert" class="text-sm text-red-800">@_error</p>
+        }
+        <p role="status" class="text-sm text-vfms-text-secondary">@(_working ? "Đang xử lý tài liệu..." : _notice)</p>
+    </div>
+</section>
+
+@code {
+    [Parameter] public int RequestId { get; set; }
+    [Parameter] public MembershipFreezeDocumentResponse? Document { get; set; }
+    [Parameter] public bool CanEdit { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public EventCallback<MembershipFreezeDocumentResponse?> Changed { get; set; }
+
+    private const string Button = "min-h-[44px] rounded-lg border border-vfms-border bg-white px-4 py-2 text-sm font-semibold text-vfms-text hover:bg-vfms-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary disabled:opacity-50";
+    private readonly CancellationTokenSource _lifetime = new();
+    private MembershipFreezeDocumentResponse? _document;
+    private IBrowserFile? _file;
+    private string _contentType = "";
+    private string? _error;
+    private string? _notice;
+    private int _inputVersion;
+    private bool _working;
+    private bool Unavailable => _working || Disabled;
+
+    protected override void OnParametersSet() => _document = Document;
+
+    private void SelectFile(InputFileChangeEventArgs args)
+    {
+        _error = _notice = null;
+        _file = args.File;
+        if (_file.Size > MembershipFreezeDocumentLimits.MaximumBytes || _file.Size == 0)
+        {
+            _error = "Chọn tài liệu có nội dung, tối đa 5 MiB.";
+            _file = null;
+            return;
+        }
+        _contentType = Path.GetExtension(_file.Name).ToLowerInvariant() switch
+        {
+            ".pdf" => "application/pdf",
+            ".png" => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            _ => ""
+        };
+        if (_contentType.Length == 0)
+        {
+            _error = "Chọn tài liệu PDF, PNG hoặc JPEG.";
+            _file = null;
+        }
+    }
+
+    private Task UploadAsync() => RunAsync(async ct =>
+    {
+        if (!CanEdit || _file is not { } file)
+            return;
+        await using var content = file.OpenReadStream(MembershipFreezeDocumentLimits.MaximumBytes, ct);
+        var document = await Api.UploadFreezeDocumentAsync(RequestId, content, file.Name, _contentType, ct);
+        if (ct.IsCancellationRequested)
+            return;
+        _document = document;
+        _file = null;
+        _inputVersion++;
+        _notice = "Đã đính kèm tài liệu.";
+        await Changed.InvokeAsync(document);
+    });
+
+    private Task RemoveAsync() => RunAsync(async ct =>
+    {
+        if (!CanEdit || !await JS.InvokeAsync<bool>("confirm", ct, "Gỡ tài liệu khỏi yêu cầu bảo lưu?"))
+            return;
+        await Api.RemoveFreezeDocumentAsync(RequestId, ct);
+        if (ct.IsCancellationRequested)
+            return;
+        _document = null;
+        _notice = "Đã gỡ tài liệu.";
+        await Changed.InvokeAsync(null);
+    });
+
+    private Task DownloadAsync() => RunAsync(async ct =>
+    {
+        if (_document is null)
+            return;
+        var download = await Api.DownloadFreezeDocumentAsync(RequestId, ct);
+        using var stream = new MemoryStream(download.Content);
+        using var reference = new DotNetStreamReference(stream);
+        await JS.InvokeVoidAsync("vfmsFreezeDocuments.download", ct, download.FileName, download.ContentType, reference);
+    });
+
+    private async Task RunAsync(Func<CancellationToken, Task> work)
+    {
+        if (Unavailable)
+            return;
+        _working = true;
+        _error = _notice = null;
+        var ct = _lifetime.Token;
+        try { await work(ct); }
+        catch (AuthApiException error) { if (!ct.IsCancellationRequested) _error = error.Message; }
+        catch (IOException) { _error = "Không đọc được tài liệu. Vui lòng chọn lại tệp."; }
+        catch (JSException) { if (!ct.IsCancellationRequested) _error = "Không xử lý được tài liệu trong trình duyệt. Vui lòng thử lại."; }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        finally { _working = false; }
+    }
+
+    public void Dispose()
+    {
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+    }
+}

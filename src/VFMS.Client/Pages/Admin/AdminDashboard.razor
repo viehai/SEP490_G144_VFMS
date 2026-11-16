@@ -1,5 +1,7 @@
 @page "/admin/dashboard"
 @layout ManagerAdminLayout
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "Admin")]
 
 <PageTitle>Admin Dashboard | Victor Fitness</PageTitle>
 

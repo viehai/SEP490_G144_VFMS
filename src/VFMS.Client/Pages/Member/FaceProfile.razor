@@ -1,0 +1,139 @@
+@page "/face-id"
+@layout PublicLayout
+@using VFMS.Contracts.CheckIn
+@inject VfmsApiClient Api
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<PageTitle>FaceID | Victor Fitness</PageTitle>
+
+<div class="mx-auto max-w-4xl space-y-8 px-4 py-28 font-['Inter',sans-serif] text-[#252525] sm:px-6">
+    <header class="border-b-2 border-black pb-7">
+        <p class="mb-3 text-[10px] font-bold tracking-[.18em] text-neutral-500">TÀI KHOẢN / FACEID</p>
+        <h1 class="font-['Montserrat'] text-3xl font-extrabold uppercase tracking-tight sm:text-4xl">Nhận diện khuôn mặt<span class="text-neutral-400">.</span></h1>
+        <p class="mt-3 max-w-2xl text-sm leading-6 text-neutral-600">Đăng ký khuôn mặt để check-in tại Kiosk mà không cần điện thoại.</p>
+    </header>
+
+    @if (_message is not null)
+    {
+        <p role="status" class="border-2 px-4 py-3 text-sm rounded-none @(_isError ? "border-[#EF4444] bg-red-50 text-[#B91C1C]" : "border-[#10B981] bg-emerald-50 text-[#047857]")">@_message</p>
+    }
+
+    <section class="border-2 border-black bg-white p-6 rounded-none">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+            <p class="font-['Montserrat'] text-sm font-extrabold uppercase">Trạng thái</p>
+            @if (_profile?.IsRegistered == true)
+            {
+                <StatusBadge Status="Active" Label="Đã đăng ký" />
+            }
+            else
+            {
+                <StatusBadge Status="Inactive" Label="Chưa đăng ký" />
+            }
+        </div>
+        @if (_profile?.IsRegistered == true)
+        {
+            <p class="mt-3 text-sm text-neutral-600">Đăng ký lúc @_profile.RegisteredAt?.ToLocalTime().ToString("dd/MM/yyyy HH:mm")@(_profile.LastUsedAt is { } used ? $" · dùng gần nhất {used.ToLocalTime():dd/MM/yyyy HH:mm}" : "")</p>
+            <button type="button" disabled="@_busy" class="mt-4 border-2 border-[#EF4444] px-5 py-3 text-xs font-bold uppercase text-[#B91C1C] rounded-none" @onclick="Delete">Xóa dữ liệu khuôn mặt</button>
+        }
+    </section>
+
+    <section class="space-y-4 border-2 border-black bg-white p-6 rounded-none">
+        <h2 class="font-['Montserrat'] text-sm font-extrabold uppercase">@(_profile?.IsRegistered == true ? "Cập nhật khuôn mặt" : "Đăng ký khuôn mặt")</h2>
+        <label class="flex items-start gap-2 text-xs leading-5">
+            <input type="checkbox" class="mt-1" @bind="_consent" />
+            <span>Tôi đồng ý cho Victor Fitness xử lý dữ liệu sinh trắc học khuôn mặt để check-in. Ảnh chỉ được xử lý trên thiết bị này; hệ thống chỉ lưu mẫu khuôn mặt đã mã hóa và xóa sau 90 ngày kể từ khi gói tập cuối cùng hết hạn.</span>
+        </label>
+        <div class="relative aspect-[4/3] w-full max-w-md overflow-hidden border-2 border-black bg-[#0A0A0A] rounded-none">
+            <video @ref="_video" class="h-full w-full -scale-x-100 object-cover" playsinline muted></video>
+            @if (!_cameraOn)
+            {
+                <p class="absolute inset-0 flex items-center justify-center p-6 text-center text-xs text-neutral-300">Camera đang tắt</p>
+            }
+        </div>
+        <div class="flex flex-wrap gap-2">
+            @if (!_cameraOn)
+            {
+                <button type="button" disabled="@(!_consent || _busy)" class="bg-black px-6 py-3 text-xs font-bold uppercase text-white rounded-none disabled:opacity-40" @onclick="StartCamera">Bật camera</button>
+            }
+            else
+            {
+                <button type="button" disabled="@_busy" class="bg-black px-6 py-3 text-xs font-bold uppercase text-white rounded-none disabled:opacity-40" @onclick="Capture">@(_busy ? "Đang xử lý…" : "Chụp & lưu")</button>
+                <button type="button" class="border-2 border-black px-6 py-3 text-xs font-bold uppercase rounded-none" @onclick="StopCamera">Tắt camera</button>
+            }
+        </div>
+        <p class="text-xs text-neutral-500">Nhìn thẳng vào camera, đủ sáng, không đeo khẩu trang hay kính râm.</p>
+    </section>
+</div>
+
+@code {
+    private ElementReference _video;
+    private FaceProfileResponse? _profile;
+    private bool _consent, _cameraOn, _busy, _isError;
+    private string? _message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { _profile = await Api.GetAsync<FaceProfileResponse>("api/face-profile"); }
+        catch (ApiException ex) { Show(ex.Message, true); }
+    }
+
+    private async Task StartCamera()
+    {
+        _busy = true;
+        try
+        {
+            await JS.InvokeVoidAsync("import", "./js/face-capture.js");
+            _cameraOn = await JS.InvokeAsync<bool>("vfmsFace.start", _video);
+            _message = null;
+        }
+        catch (JSException) { Show("Không mở được camera hoặc tải mô hình nhận diện. Hãy cấp quyền camera và thử lại.", true); }
+        finally { _busy = false; }
+    }
+
+    private async Task Capture()
+    {
+        _busy = true;
+        try
+        {
+            var descriptor = await JS.InvokeAsync<float[]?>("vfmsFace.capture", _video);
+            if (descriptor is null)
+            {
+                Show("Không phát hiện khuôn mặt. Hãy nhìn thẳng vào camera và thử lại.", true);
+                return;
+            }
+            _profile = await Api.PutAsync<FaceProfileResponse>("api/face-profile", new RegisterFaceRequest(descriptor, _consent));
+            await StopCamera();
+            Show("Face profile updated successfully.", false);
+        }
+        catch (ApiException ex) { Show(ex.Message, true); }
+        catch (JSException) { Show("Không xử lý được ảnh. Vui lòng thử lại.", true); }
+        finally { _busy = false; }
+    }
+
+    private async Task Delete()
+    {
+        _busy = true;
+        try
+        {
+            _profile = await Api.DeleteAsync<FaceProfileResponse>("api/face-profile");
+            Show("Đã xóa dữ liệu khuôn mặt.", false);
+        }
+        catch (ApiException ex) { Show(ex.Message, true); }
+        finally { _busy = false; }
+    }
+
+    private async Task StopCamera()
+    {
+        _cameraOn = false;
+        try { await JS.InvokeVoidAsync("vfmsFace.stop"); } catch (JSException) { }
+    }
+
+    private void Show(string message, bool error) { _message = message; _isError = error; }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_cameraOn)
+            try { await JS.InvokeVoidAsync("vfmsFace.stop"); } catch (JSException) { } catch (JSDisconnectedException) { }
+    }
+}

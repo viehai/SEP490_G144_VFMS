@@ -24,6 +24,5 @@ public class TrainerProfile : BaseEntity
     public ICollection<PTAvailability> Availabilities { get; set; } = [];
     public ICollection<PTPurchase> PTPurchases { get; set; } = [];
     public ICollection<TrainerReview> Reviews { get; set; } = [];
-    public ICollection<YogaClass> AssignedYogaClasses { get; set; } = [];
 }
 

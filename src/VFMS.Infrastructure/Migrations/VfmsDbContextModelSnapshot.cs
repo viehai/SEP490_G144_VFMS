@@ -334,6 +334,9 @@ namespace VFMS.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("CheckedOutByUserId")
+                        .HasColumnType("nvarchar(128)");
+
                     b.Property<string>("CheckinMethod")
                         .IsRequired()
                         .HasMaxLength(30)
@@ -375,11 +378,15 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CheckedOutByUserId");
+
                     b.HasIndex("HandledByUserId");
 
                     b.HasIndex("MemberMembershipId");
 
-                    b.HasIndex("MemberUserId");
+                    b.HasIndex("MemberUserId")
+                        .IsUnique()
+                        .HasFilter("[Status] = 'Active'");
 
                     b.ToTable("CheckIns");
                 });
@@ -1356,6 +1363,9 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<DateOnly?>("ActualStartDate")
                         .HasColumnType("date");
 
+                    b.Property<int?>("AppliedExpiryExtensionDays")
+                        .HasColumnType("int");
+
                     b.Property<string>("AppliedPolicySnapshot")
                         .HasColumnType("nvarchar(max)");
 
@@ -1371,6 +1381,16 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.Property<DateTime?>("EarlyUnfreezeRequestedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("EarlyUnfreezeReviewNote")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<DateTime?>("EarlyUnfreezeReviewedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("EarlyUnfreezeReviewedByUserId")
+                        .HasColumnType("nvarchar(128)");
 
                     b.Property<int?>("FreezePolicyId")
                         .HasColumnType("int");
@@ -1409,10 +1429,26 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<string>("ReviewedByUserId")
                         .HasColumnType("nvarchar(128)");
 
+                    b.Property<byte[]>("SupportingDocumentContent")
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<string>("SupportingDocumentContentType")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("SupportingDocumentFileName")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<Guid?>("SupportingDocumentId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("EarlyUnfreezeReviewedByUserId");
 
                     b.HasIndex("FreezePolicyId");
 
@@ -1421,6 +1457,10 @@ namespace VFMS.Infrastructure.Migrations
                     b.HasIndex("RequestedByUserId");
 
                     b.HasIndex("ReviewedByUserId");
+
+                    b.HasIndex("RequestStatus", "RequestedEndDate", "Id");
+
+                    b.HasIndex("RequestStatus", "RequestedStartDate", "Id");
 
                     b.ToTable("MembershipFreezes");
                 });
@@ -2003,6 +2043,12 @@ namespace VFMS.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<DateTime?>("AiConsentGrantedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal?>("BodyFatPercent")
+                        .HasColumnType("decimal(5,2)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -2036,6 +2082,9 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<string>("MemberUserId")
                         .IsRequired()
                         .HasColumnType("nvarchar(128)");
+
+                    b.Property<decimal?>("SkeletalMuscleMassKg")
+                        .HasColumnType("decimal(5,2)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
@@ -2071,6 +2120,9 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<int?>("DurationMinutes")
                         .HasColumnType("int");
 
+                    b.Property<int?>("EquipmentId")
+                        .HasColumnType("int");
+
                     b.Property<int>("ExerciseId")
                         .HasColumnType("int");
 
@@ -2096,6 +2148,8 @@ namespace VFMS.Infrastructure.Migrations
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("EquipmentId");
 
                     b.HasIndex("ExerciseId");
 
@@ -2773,7 +2827,8 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
+                        .HasColumnType("nvarchar(50)")
+                        .UseCollation("Latin1_General_100_CI_AS");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
@@ -2868,17 +2923,68 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("VoucherCodeSnapshot")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
                     b.Property<int>("VoucherId")
                         .HasColumnType("int");
+
+                    b.Property<string>("VoucherNameSnapshot")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
 
                     b.HasKey("Id");
 
                     b.HasIndex("OrderId")
                         .IsUnique();
 
-                    b.HasIndex("VoucherId");
+                    b.HasIndex("VoucherId", "RedemptionStatus");
 
                     b.ToTable("VoucherRedemptions");
+                });
+
+            modelBuilder.Entity("VFMS.Domain.Entities.WorkoutLog", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DurationMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateOnly>("LoggedOn")
+                        .HasColumnType("date");
+
+                    b.Property<int>("PlanItemId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("RepsDone")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("SetsDone")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal?>("WeightKg")
+                        .HasColumnType("decimal(6,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlanItemId", "LoggedOn")
+                        .IsUnique();
+
+                    b.ToTable("WorkoutLogs");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.WorkoutPlan", b =>
@@ -2917,6 +3023,10 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<string>("Name")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("NutritionAdvice")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
                     b.Property<int?>("PhysicalProfileId")
                         .HasColumnType("int");
 
@@ -2930,7 +3040,10 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("MemberUserId");
+                    b.HasIndex("MemberUserId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_WorkoutPlans_MemberUserId_ActivePlan")
+                        .HasFilter("[PlanStatus] = 'Active' AND [IsTemplate] = 0 AND [IsDeleted] = 0");
 
                     b.HasIndex("PhysicalProfileId");
 
@@ -2982,8 +3095,7 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.HasIndex("MemberUserId");
 
-                    b.HasIndex("YogaBookingId")
-                        .IsUnique();
+                    b.HasIndex("YogaBookingId");
 
                     b.HasIndex("YogaClassScheduleId");
 
@@ -3012,25 +3124,44 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateOnly?>("EndDate")
+                        .HasColumnType("date");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
+
+                    b.Property<int?>("MatNumber")
+                        .HasColumnType("int");
 
                     b.Property<string>("MemberUserId")
                         .IsRequired()
                         .HasColumnType("nvarchar(128)");
 
+                    b.Property<int?>("OrderItemId")
+                        .HasColumnType("int");
+
+                    b.Property<DateOnly?>("StartDate")
+                        .HasColumnType("date");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<int>("YogaClassScheduleId")
+                    b.Property<int>("YogaClassId")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
 
                     b.HasIndex("MemberUserId");
 
-                    b.HasIndex("YogaClassScheduleId", "MemberUserId")
-                        .IsUnique();
+                    b.HasIndex("OrderItemId");
+
+                    b.HasIndex("YogaClassId", "MatNumber")
+                        .IsUnique()
+                        .HasFilter("[MatNumber] IS NOT NULL AND [BookingStatus] = 'Confirmed'");
+
+                    b.HasIndex("YogaClassId", "MemberUserId")
+                        .IsUnique()
+                        .HasFilter("[BookingStatus] = 'Confirmed'");
 
                     b.ToTable("YogaBookings");
                 });
@@ -3059,8 +3190,16 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<string>("Description")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("DifficultyLevel")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<int>("DurationMinutes")
                         .HasColumnType("int");
+
+                    b.Property<DateOnly>("EndDate")
+                        .HasColumnType("date");
 
                     b.Property<string>("ImageUrl")
                         .HasColumnType("nvarchar(max)");
@@ -3080,6 +3219,15 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.Property<int>("MinParticipants")
                         .HasColumnType("int");
+
+                    b.Property<DateTime>("RegistrationDeadline")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("SessionsPerWeek")
+                        .HasColumnType("int");
+
+                    b.Property<DateOnly>("StartDate")
+                        .HasColumnType("date");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
@@ -3104,6 +3252,9 @@ namespace VFMS.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<DateTime?>("AttendanceSubmittedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime?>("CancelledAt")
                         .HasColumnType("datetime2");
 
@@ -3112,6 +3263,9 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.Property<TimeOnly>("EndTime")
                         .HasColumnType("time");
+
+                    b.Property<string>("InstructorUserId")
+                        .HasColumnType("nvarchar(128)");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
@@ -3140,6 +3294,8 @@ namespace VFMS.Infrastructure.Migrations
                         .HasColumnType("int");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("InstructorUserId");
 
                     b.HasIndex("RescheduledFromId");
 
@@ -3340,6 +3496,11 @@ namespace VFMS.Infrastructure.Migrations
 
             modelBuilder.Entity("VFMS.Domain.Entities.CheckIn", b =>
                 {
+                    b.HasOne("VFMS.Domain.Entities.ApplicationUser", "CheckedOutByUser")
+                        .WithMany()
+                        .HasForeignKey("CheckedOutByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("VFMS.Domain.Entities.ApplicationUser", "HandledByUser")
                         .WithMany()
                         .HasForeignKey("HandledByUserId")
@@ -3355,6 +3516,8 @@ namespace VFMS.Infrastructure.Migrations
                         .HasForeignKey("MemberUserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("CheckedOutByUser");
 
                     b.Navigation("HandledByUser");
 
@@ -3675,6 +3838,11 @@ namespace VFMS.Infrastructure.Migrations
 
             modelBuilder.Entity("VFMS.Domain.Entities.MembershipFreeze", b =>
                 {
+                    b.HasOne("VFMS.Domain.Entities.ApplicationUser", "EarlyUnfreezeReviewedByUser")
+                        .WithMany()
+                        .HasForeignKey("EarlyUnfreezeReviewedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("VFMS.Domain.Entities.FreezePolicy", "FreezePolicy")
                         .WithMany()
                         .HasForeignKey("FreezePolicyId")
@@ -3696,6 +3864,8 @@ namespace VFMS.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("ReviewedByUserId")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("EarlyUnfreezeReviewedByUser");
 
                     b.Navigation("FreezePolicy");
 
@@ -3926,6 +4096,11 @@ namespace VFMS.Infrastructure.Migrations
 
             modelBuilder.Entity("VFMS.Domain.Entities.PlanItem", b =>
                 {
+                    b.HasOne("VFMS.Domain.Entities.Equipment", "Equipment")
+                        .WithMany()
+                        .HasForeignKey("EquipmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("VFMS.Domain.Entities.Exercise", "Exercise")
                         .WithMany("PlanItems")
                         .HasForeignKey("ExerciseId")
@@ -3937,6 +4112,8 @@ namespace VFMS.Infrastructure.Migrations
                         .HasForeignKey("PlanId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("Equipment");
 
                     b.Navigation("Exercise");
 
@@ -4153,6 +4330,17 @@ namespace VFMS.Infrastructure.Migrations
                     b.Navigation("Voucher");
                 });
 
+            modelBuilder.Entity("VFMS.Domain.Entities.WorkoutLog", b =>
+                {
+                    b.HasOne("VFMS.Domain.Entities.PlanItem", "PlanItem")
+                        .WithMany("Logs")
+                        .HasForeignKey("PlanItemId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PlanItem");
+                });
+
             modelBuilder.Entity("VFMS.Domain.Entities.WorkoutPlan", b =>
                 {
                     b.HasOne("VFMS.Domain.Entities.ApplicationUser", "Member")
@@ -4186,8 +4374,8 @@ namespace VFMS.Infrastructure.Migrations
                         .IsRequired();
 
                     b.HasOne("VFMS.Domain.Entities.YogaBooking", "YogaBooking")
-                        .WithOne("Attendance")
-                        .HasForeignKey("VFMS.Domain.Entities.YogaAttendance", "YogaBookingId")
+                        .WithMany("Attendances")
+                        .HasForeignKey("YogaBookingId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
@@ -4214,26 +4402,26 @@ namespace VFMS.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("VFMS.Domain.Entities.YogaClassSchedule", "YogaClassSchedule")
+                    b.HasOne("VFMS.Domain.Entities.OrderItem", "OrderItem")
+                        .WithMany()
+                        .HasForeignKey("OrderItemId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("VFMS.Domain.Entities.YogaClass", "YogaClass")
                         .WithMany("Bookings")
-                        .HasForeignKey("YogaClassScheduleId")
+                        .HasForeignKey("YogaClassId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Member");
 
-                    b.Navigation("YogaClassSchedule");
+                    b.Navigation("OrderItem");
+
+                    b.Navigation("YogaClass");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.YogaClass", b =>
                 {
-                    b.HasOne("VFMS.Domain.Entities.TrainerProfile", null)
-                        .WithMany("AssignedYogaClasses")
-                        .HasForeignKey("InstructorUserId")
-                        .HasPrincipalKey("PTUserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.HasOne("VFMS.Domain.Entities.ApplicationUser", "Instructor")
                         .WithMany()
                         .HasForeignKey("InstructorUserId")
@@ -4253,6 +4441,11 @@ namespace VFMS.Infrastructure.Migrations
 
             modelBuilder.Entity("VFMS.Domain.Entities.YogaClassSchedule", b =>
                 {
+                    b.HasOne("VFMS.Domain.Entities.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("InstructorUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("VFMS.Domain.Entities.YogaClassSchedule", "RescheduledFrom")
                         .WithMany("RescheduledSessions")
                         .HasForeignKey("RescheduledFromId")
@@ -4503,6 +4696,11 @@ namespace VFMS.Infrastructure.Migrations
                     b.Navigation("WorkoutPlans");
                 });
 
+            modelBuilder.Entity("VFMS.Domain.Entities.PlanItem", b =>
+                {
+                    b.Navigation("Logs");
+                });
+
             modelBuilder.Entity("VFMS.Domain.Entities.PurchaseProposal", b =>
                 {
                     b.Navigation("Items");
@@ -4524,8 +4722,6 @@ namespace VFMS.Infrastructure.Migrations
 
             modelBuilder.Entity("VFMS.Domain.Entities.TrainerProfile", b =>
                 {
-                    b.Navigation("AssignedYogaClasses");
-
                     b.Navigation("Availabilities");
 
                     b.Navigation("PTPurchases");
@@ -4545,19 +4741,19 @@ namespace VFMS.Infrastructure.Migrations
 
             modelBuilder.Entity("VFMS.Domain.Entities.YogaBooking", b =>
                 {
-                    b.Navigation("Attendance");
+                    b.Navigation("Attendances");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.YogaClass", b =>
                 {
+                    b.Navigation("Bookings");
+
                     b.Navigation("Schedules");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.YogaClassSchedule", b =>
                 {
                     b.Navigation("Attendances");
-
-                    b.Navigation("Bookings");
 
                     b.Navigation("RescheduledSessions");
 

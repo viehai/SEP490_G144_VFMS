@@ -17,6 +17,10 @@ public class MembershipFreeze : BaseEntity
     public DateOnly? ActualStartDate { get; set; }
     public DateOnly? ActualEndDate { get; set; }
     public string? Reason { get; set; }
+    public Guid? SupportingDocumentId { get; set; }
+    public string? SupportingDocumentFileName { get; set; }
+    public string? SupportingDocumentContentType { get; set; }
+    public byte[]? SupportingDocumentContent { get; set; }
     public int? FreezePolicyId { get; set; }
     /// <summary>UC-16 policy values captured on submission or a Member edit.</summary>
     public string? AppliedPolicySnapshot { get; set; }
@@ -28,11 +32,17 @@ public class MembershipFreeze : BaseEntity
     /// <summary>Member submission for later UC-17 review, separate from execution.</summary>
     public DateTime? EarlyUnfreezeRequestedAt { get; set; }
     public FreezeRequestStatus? EarlyUnfreezeRequestStatus { get; set; }
+    /// <summary>Net expiry days already applied by UC-17. JOB-03 must not apply these days again.</summary>
+    public int? AppliedExpiryExtensionDays { get; set; }
+    public string? EarlyUnfreezeReviewedByUserId { get; set; }
+    public DateTime? EarlyUnfreezeReviewedAt { get; set; }
+    public string? EarlyUnfreezeReviewNote { get; set; }
 
     // ── Navigation Properties ──────────────────────────────────
     public MemberMembership MemberMembership { get; set; } = null!;
     public ApplicationUser RequestedByUser { get; set; } = null!;
     public ApplicationUser? ReviewedByUser { get; set; }
     public FreezePolicy? FreezePolicy { get; set; }
+    public ApplicationUser? EarlyUnfreezeReviewedByUser { get; set; }
 }
 
