@@ -21,7 +21,7 @@
     @if (_formOpen)
     {
         <section class="@Ui.Card" aria-labelledby="equipment-form-title">
-            <h2 id="equipment-form-title" class="text-base font-bold text-[#242424]">@(_editingId is null ? "Thêm thiết bị" : "Sửa thiết bị")</h2>
+            <h2 id="equipment-form-title" class="text-base font-bold text-vfms-text">@(_editingId is null ? "Thêm thiết bị" : "Sửa thiết bị")</h2>
             <EditForm Model="_form" OnValidSubmit="SaveAsync" class="mt-4" novalidate>
                 <OperationsValidation TRequest="EquipmentRequest" Validator="_validator" CreateRequest="CreateRequest" @ref="_validation" />
                 <ValidationSummary />
@@ -31,7 +31,7 @@
                     </label>
                     <label class="@Ui.Label" for="eq-code">Mã thiết bị
                         <InputText id="eq-code" class="@Ui.Field" @bind-Value="_form.Code" maxlength="50" placeholder="@CodeHint" />
-                        <span class="mt-1 block text-[11px] font-normal text-[#8C8581]">@CodeHelp</span>
+                        <span class="mt-1 block text-[11px] font-normal text-vfms-text-muted">@CodeHelp</span>
                     </label>
                     <label class="@Ui.Label" for="eq-category">Danh mục
                         <InputSelect id="eq-category" class="@Ui.Field" @bind-Value="_form.CategoryId" required>
@@ -78,7 +78,7 @@
     @if (_statusTarget is { } target)
     {
         <section class="@Ui.Card" aria-labelledby="status-form-title">
-            <h2 id="status-form-title" class="text-base font-bold text-[#242424]">Đổi trạng thái: @target.Name</h2>
+            <h2 id="status-form-title" class="text-base font-bold text-vfms-text">Đổi trạng thái: @target.Name</h2>
             <form class="mt-4" @onsubmit="ChangeStatusAsync" @onsubmit:preventDefault>
                 <fieldset disabled="@_working" class="flex flex-wrap items-end gap-3">
                     <label class="@Ui.Label" for="status-new">Trạng thái mới
@@ -105,7 +105,7 @@
 
     <section class="@Ui.ListCard" aria-labelledby="equipment-list-title" aria-busy="@_loading">
         <div class="@Ui.ListHeader">
-            <h2 id="equipment-list-title" class="mb-3 text-sm font-bold text-[#242424]">Danh sách thiết bị</h2>
+            <h2 id="equipment-list-title" class="mb-3 text-sm font-bold text-vfms-text">Danh sách thiết bị</h2>
             <form @onsubmit="() => LoadAsync(1)" @onsubmit:preventDefault>
                 <fieldset disabled="@Busy" class="flex flex-wrap items-end gap-3">
                     <label class="@Ui.Label w-full sm:w-64" for="eq-search">Tìm kiếm
@@ -142,13 +142,13 @@
                         @foreach (var row in list.Items)
                         {
                             <tr @key="row.Id">
-                                <th scope="row" class="font-semibold">@row.Name<span class="block text-xs font-normal text-[#8C8581]">@(row.Code ?? "Chưa có mã")</span></th>
+                                <th scope="row" class="font-semibold">@row.Name<span class="block text-xs font-normal text-vfms-text-muted">@(row.Code ?? "Chưa có mã")</span></th>
                                 <td>@(row.CategoryName ?? "—")</td>
                                 <td>@(string.Join(" · ", new[] { row.Brand, row.Model }.Where(v => !string.IsNullOrWhiteSpace(v))) is { Length: > 0 } brand ? brand : "—")</td>
                                 <td class="whitespace-nowrap">@(row.PurchaseDate?.ToString("dd/MM/yyyy") ?? "—")</td>
                                 <td><span class="@OperationsText.Badge(row.Status)">@OperationsText.Label(row.Status)</span></td>
                                 <td>
-                                    <div class="flex flex-wrap gap-2">
+                                    <div class="flex flex-nowrap whitespace-nowrap gap-2">
                                         <button type="button" class="@Ui.Button" disabled="@(Busy || row.Status == "Retired")" aria-label="Sửa @row.Name" @onclick="() => StartEdit(row)">Sửa</button>
                                         <button type="button" class="@Ui.Button" disabled="@(Busy || row.Status == "Retired")" @onclick="() => StartStatus(row)">Đổi trạng thái</button>
                                     </div>
@@ -162,13 +162,13 @@
         }
         else
         {
-            <p role="status" class="p-5 text-sm text-[#6F6966]">Chưa có thiết bị phù hợp.</p>
+            <p role="status" class="p-5 text-sm text-vfms-text-secondary">Chưa có thiết bị phù hợp.</p>
         }
     </section>
 
     <section class="@Ui.ListCard" aria-labelledby="category-title">
         <div class="@Ui.ListHeader">
-            <h2 id="category-title" class="mb-3 text-sm font-bold text-[#242424]">Danh mục thiết bị</h2>
+            <h2 id="category-title" class="mb-3 text-sm font-bold text-vfms-text">Danh mục thiết bị</h2>
             <EditForm Model="_categoryForm" OnValidSubmit="SaveCategoryAsync" novalidate>
                 <OperationsValidation TRequest="EquipmentCategoryRequest" Validator="_categoryValidator" CreateRequest="CreateCategoryRequest" @ref="_categoryValidation" />
                 <ValidationSummary />
@@ -192,18 +192,18 @@
         </div>
         @if (_categories.Count == 0)
         {
-            <p role="status" class="p-5 text-sm text-[#6F6966]">Chưa có danh mục.</p>
+            <p role="status" class="p-5 text-sm text-vfms-text-secondary">Chưa có danh mục.</p>
         }
         else
         {
-            <ul class="divide-y divide-[#ECE8E4]">
+            <ul class="divide-y divide-vfms-surface-alt">
                 @foreach (var category in _categories)
                 {
                     <li @key="category.Id" class="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
                         <div>
-                            <p class="text-sm font-semibold text-[#242424]">@category.Name <span class="ml-1 text-xs font-normal text-[#8C8581]">@category.EquipmentCount thiết bị</span></p>
-                            <p class="text-xs text-[#6F6966]">@(category.CodePrefix is { } prefix ? $"Tiền tố {prefix} · mã tiếp theo {category.NextCode}" : "Chưa có tiền tố mã, cần cập nhật trước khi thêm thiết bị")</p>
-                            @if (!string.IsNullOrWhiteSpace(category.Description)) { <p class="text-xs text-[#6F6966]">@category.Description</p> }
+                            <p class="text-sm font-semibold text-vfms-text">@category.Name <span class="ml-1 text-xs font-normal text-vfms-text-muted">@category.EquipmentCount thiết bị</span></p>
+                            <p class="text-xs text-vfms-text-secondary">@(category.CodePrefix is { } prefix ? $"Tiền tố {prefix} · mã tiếp theo {category.NextCode}" : "Chưa có tiền tố mã, cần cập nhật trước khi thêm thiết bị")</p>
+                            @if (!string.IsNullOrWhiteSpace(category.Description)) { <p class="text-xs text-vfms-text-secondary">@category.Description</p> }
                         </div>
                         <div class="flex gap-2">
                             <button type="button" class="@Ui.Button" disabled="@Busy" aria-label="Sửa danh mục @category.Name" @onclick="() => StartCategoryEdit(category)">Sửa</button>

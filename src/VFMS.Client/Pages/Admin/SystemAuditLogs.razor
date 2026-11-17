@@ -13,56 +13,56 @@
 <PageTitle>Nhật ký hệ thống | Victor Fitness</PageTitle>
 
 <div class="workspace-page space-y-6">
-    <header class="border-b border-[#D8D1CD] pb-6">
-        <p class="mb-2 text-xs font-bold tracking-wider text-[#B83A3A]">VFMS / SECURITY</p>
-        <h1 class="text-3xl font-extrabold tracking-tight text-[#242424] sm:text-4xl">Nhật ký hệ thống<span class="text-[#B83A3A]">.</span></h1>
-        <p class="mt-2 text-sm text-[#6F6966]">Theo dõi các thay đổi dữ liệu và thao tác quan trọng. Bộ lọc ngày tính theo giờ UTC.</p>
+    <header class="border-b border-vfms-border pb-6">
+        <p class="mb-2 text-xs font-bold tracking-wider text-vfms-primary">VFMS / SECURITY</p>
+        <h1 class="text-3xl font-extrabold tracking-tight text-vfms-text sm:text-4xl">Nhật ký hệ thống<span class="text-vfms-primary">.</span></h1>
+        <p class="mt-2 text-sm text-vfms-text-secondary">Theo dõi các thay đổi dữ liệu và thao tác quan trọng. Bộ lọc ngày tính theo giờ UTC.</p>
     </header>
 
     @if (_error is not null)
     {
-        <p role="alert" class="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">@_error</p>
+        <p role="alert" class="rounded-[10px] border border-red-300 bg-red-50 p-4 text-sm text-red-900">@_error</p>
     }
 
     @if (_selected is { } log)
     {
-        <section class="rounded-xl border border-[#D8D1CD] bg-[#F8F5F2] p-5 sm:p-6 shadow-sm" aria-labelledby="log-detail-title">
+        <section class="rounded-[12px] border border-vfms-border bg-vfms-surface p-5 sm:p-6 shadow-sm" aria-labelledby="log-detail-title">
             <div class="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                    <h2 id="log-detail-title" class="text-base font-bold text-[#242424]">#@log.Id · @ActionLabel(log.ActionType) · @log.AuditEntity@(log.EntityId is { } selectedId ? $" #{selectedId}" : "")</h2>
-                    <p class="mt-1 text-xs text-[#6F6966]">@log.OccurredAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") · @(log.ActorName ?? "Hệ thống")@(log.IpAddress is { } ip ? $" · IP {ip}" : "")</p>
+                    <h2 id="log-detail-title" class="text-base font-bold text-vfms-text">#@log.Id · @ActionLabel(log.ActionType) · @log.AuditEntity@(log.EntityId is { } selectedId ? $" #{selectedId}" : "")</h2>
+                    <p class="mt-1 text-xs text-vfms-text-secondary">@log.OccurredAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") · @(log.ActorName ?? "Hệ thống")@(log.IpAddress is { } ip ? $" · IP {ip}" : "")</p>
                 </div>
                 <button type="button" class="@Button" @onclick="() => _selected = null">Đóng chi tiết</button>
             </div>
             <div class="mt-4 grid gap-4 lg:grid-cols-2">
                 <div>
-                    <p class="mb-2 text-sm font-semibold text-[#242424]">Giá trị cũ</p>
-                    <pre class="max-h-96 overflow-auto whitespace-pre-wrap break-all rounded-lg border border-[#D8D1CD] bg-[#ECE8E4] p-4 text-xs text-[#242424]">@FormatValue(log.OldValue)</pre>
+                    <p class="mb-2 text-sm font-semibold text-vfms-text">Giá trị cũ</p>
+                    <pre class="max-h-96 overflow-auto whitespace-pre-wrap break-all rounded-lg border border-vfms-border bg-vfms-surface-alt p-4 text-xs text-vfms-text">@FormatValue(log.OldValue)</pre>
                 </div>
                 <div>
-                    <p class="mb-2 text-sm font-semibold text-[#242424]">Giá trị mới</p>
-                    <pre class="max-h-96 overflow-auto whitespace-pre-wrap break-all rounded-lg border border-[#D8D1CD] bg-[#ECE8E4] p-4 text-xs text-[#242424]">@FormatValue(log.NewValue)</pre>
+                    <p class="mb-2 text-sm font-semibold text-vfms-text">Giá trị mới</p>
+                    <pre class="max-h-96 overflow-auto whitespace-pre-wrap break-all rounded-lg border border-vfms-border bg-vfms-surface-alt p-4 text-xs text-vfms-text">@FormatValue(log.NewValue)</pre>
                 </div>
             </div>
         </section>
     }
 
-    <section class="rounded-xl border border-[#D8D1CD] bg-[#F8F5F2] shadow-sm overflow-hidden" aria-labelledby="log-list-title" aria-busy="@_loading">
-        <div class="border-b border-[#D8D1CD] p-5 bg-[#ECE8E4]/40">
-            <h2 id="log-list-title" class="mb-3 text-sm font-bold text-[#242424]">Bản ghi</h2>
+    <section class="rounded-[12px] border border-vfms-border bg-vfms-surface shadow-sm overflow-hidden" aria-labelledby="log-list-title" aria-busy="@_loading">
+        <div class="border-b border-vfms-border p-5 bg-vfms-surface-alt/40">
+            <h2 id="log-list-title" class="mb-3 text-sm font-bold text-vfms-text">Bản ghi</h2>
             <EditForm Model="_filter" OnValidSubmit="() => LoadAsync(1)" novalidate>
                 <ContractValidation TRequest="AuditLogListRequest" Validator="_validator" CreateRequest="() => CreateRequest(1)" @ref="_validation" />
                 <ValidationSummary />
                 <fieldset disabled="@_loading" class="flex flex-wrap items-end gap-3">
-                    <label class="text-xs font-semibold text-[#242424]" for="log-from">
+                    <label class="text-xs font-semibold text-vfms-text" for="log-from">
                         Từ ngày
                         <InputDate id="log-from" class="@Field" @bind-Value="_filter.From" />
                     </label>
-                    <label class="text-xs font-semibold text-[#242424]" for="log-to">
+                    <label class="text-xs font-semibold text-vfms-text" for="log-to">
                         Đến ngày
                         <InputDate id="log-to" class="@Field" @bind-Value="_filter.To" />
                     </label>
-                    <label class="text-xs font-semibold text-[#242424]" for="log-action">
+                    <label class="text-xs font-semibold text-vfms-text" for="log-action">
                         Thao tác
                         <InputSelect id="log-action" class="@Field" @bind-Value="_filter.ActionType">
                             <option value="">Tất cả</option>
@@ -72,14 +72,14 @@
                             }
                         </InputSelect>
                     </label>
-                    <label class="text-xs font-semibold text-[#242424]" for="log-entity">
+                    <label class="text-xs font-semibold text-vfms-text" for="log-entity">
                         Đối tượng
                         <InputText id="log-entity" class="@Field" @bind-Value="_filter.Entity" list="log-entities" maxlength="100" />
                         <datalist id="log-entities">
                             @foreach (var entity in KnownEntities) { <option value="@entity"></option> }
                         </datalist>
                     </label>
-                    <label class="text-xs font-semibold text-[#242424]" for="log-actor">
+                    <label class="text-xs font-semibold text-vfms-text" for="log-actor">
                         Mã người thực hiện
                         <InputText id="log-actor" class="@Field" @bind-Value="_filter.ActorUserId" maxlength="128" />
                     </label>
@@ -105,7 +105,7 @@
                             <tr @key="row.Id">
                                 <th scope="row" class="whitespace-nowrap font-normal">@row.OccurredAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")</th>
                                 <td>@(row.ActorName ?? "Hệ thống")</td>
-                                <td><span class="inline-block whitespace-nowrap rounded-md border border-[#D8D1CD] bg-[#ECE8E4] px-2.5 py-1 text-[11px] font-semibold text-[#242424]">@ActionLabel(row.ActionType)</span></td>
+                                <td><span class="inline-block whitespace-nowrap rounded-md border border-vfms-border bg-vfms-surface-alt px-2.5 py-1 text-[11px] font-semibold text-vfms-text">@ActionLabel(row.ActionType)</span></td>
                                 <td>@row.AuditEntity@(row.EntityId is { } id ? $" #{id}" : "")</td>
                                 <td>@(row.IpAddress ?? "—")</td>
                                 <td><button type="button" class="@Button" @onclick="() => OpenAsync(row.Id)">Xem</button></td>
@@ -114,7 +114,7 @@
                     </tbody>
                 </table>
             </div>
-            <nav aria-label="Phân trang nhật ký" class="flex flex-wrap items-center justify-between gap-3 border-t border-[#D8D1CD] p-4 text-xs font-medium text-[#6F6966]">
+            <nav aria-label="Phân trang nhật ký" class="flex flex-wrap items-center justify-between gap-3 border-t border-vfms-border p-4 text-xs font-medium text-vfms-text-secondary">
                 <p>Trang @list.Page / @PageCount(list) · @list.TotalCount bản ghi</p>
                 <div class="flex gap-2">
                     <button type="button" class="@Button" disabled="@(_loading || list.Page <= 1)" @onclick="() => LoadAsync(list.Page - 1)">Trang trước</button>
@@ -124,15 +124,15 @@
         }
         else
         {
-            <p role="status" class="p-5 text-sm text-[#6F6966]">Không có bản ghi phù hợp.</p>
+            <p role="status" class="p-5 text-sm text-vfms-text-secondary">Không có bản ghi phù hợp.</p>
         }
     </section>
 </div>
 
 @code {
     private const int PageSize = 20;
-    private const string Field = "mt-1 block w-full rounded-lg border border-[#D8D1CD] bg-[#F8F5F2] px-3 py-2 text-sm font-normal text-[#242424] focus:border-[#B83A3A] focus:ring-2 focus:ring-[#B83A3A]/20 outline-none";
-    private const string Button = "rounded-lg border border-[#C9C0BB] bg-[#F8F5F2] px-3 py-1.5 text-xs font-semibold text-[#242424] hover:bg-[#F3EDEA] transition";
+    private const string Field = "mt-1 block w-full rounded-lg border border-vfms-border bg-vfms-surface px-3 py-2 text-sm font-normal text-vfms-text focus:border-vfms-primary focus:ring-2 focus:ring-vfms-primary/20 outline-none";
+    private const string Button = "rounded-lg border border-vfms-border-strong bg-vfms-surface px-3 py-1.5 text-xs font-semibold text-vfms-text hover:bg-[#F3EDEA] transition";
     private static readonly string[] KnownEntities =
         ["Gym", "BannedWordList", "BusinessReportSnapshot", "Equipment", "CatalogCategory", "EquipmentIssueReport",
          "PurchaseProposal", "SupplementProduct", "SupplementOrder", "ApplicationUser"];

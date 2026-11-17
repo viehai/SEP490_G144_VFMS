@@ -62,16 +62,18 @@ public static class OperationsText
         _ => value
     };
 
+    /// <summary>Semantic status badge (frontend guidelines 6.E): pill, tinted background, always paired with text.</summary>
     public static string Badge(string? status) =>
-        "inline-block whitespace-nowrap rounded-md border px-2.5 py-1 text-[11px] font-semibold " + status switch
+        "inline-block whitespace-nowrap rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide " + status switch
         {
             "Operational" or "Resolved" or "MarkedSafe" or "Approved" or "Completed" or "Active"
-                => "border-emerald-200 bg-emerald-50 text-emerald-800",
-            "UnderMaintenance" or "InProgress" or "Submitted" or "Processing" or "ReadyForPickup" or "OutForDelivery"
-                => "border-amber-200 bg-amber-50 text-amber-800",
-            "Damaged" or "Escalated" or "Rejected" or "Reported" or "Pending" or "OutOfStock" or "Safety"
-                => "border-red-200 bg-red-50 text-red-800",
-            _ => "border-[#D8D1CD] bg-[#ECE8E4] text-[#6F6966]"
+                => "border-emerald-200 bg-emerald-50 text-[#16A34A]",
+            "Reported" or "Pending" or "InProgress" or "Submitted" or "Processing" or "ReadyForPickup" or "OutForDelivery"
+                or "UnderMaintenance" or "Draft"
+                => "border-amber-200 bg-amber-50 text-[#D97706]",
+            "Damaged" or "Escalated" or "Rejected" or "OutOfStock" or "Safety"
+                => "border-red-200 bg-red-50 text-[#DC2626]",
+            _ => "border-[#D8D1CD] bg-[#ECE8E4] text-[#6B7280]"
         };
 
     /// <summary>Vietnamese text for an API error code, or null to keep the server's message.</summary>
