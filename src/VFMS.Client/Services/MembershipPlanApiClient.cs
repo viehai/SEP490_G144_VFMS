@@ -58,7 +58,8 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
         string? serviceType = null) =>
         SendAsync<PagedResponse<MembershipPlanCatalogItemResponse>>(HttpMethod.Get,
             FormattableString.Invariant($"api/membership-plans?page={page}&pageSize=9") +
-            (string.IsNullOrWhiteSpace(serviceType) ? "" : $"&serviceType={Uri.EscapeDataString(serviceType)}"), cancellationToken);
+            (string.IsNullOrWhiteSpace(serviceType) ? "" : $"&serviceType={Uri.EscapeDataString(serviceType)}"), cancellationToken,
+            allowAnonymous: true);   // the public price list on the home page
 
     public Task<MembershipPurchaseResponse> PurchaseAsync(MembershipPurchaseRequest request, CancellationToken cancellationToken = default) =>
         SendAsync<MembershipPurchaseResponse>(HttpMethod.Post, PurchasesPath, cancellationToken, JsonContent.Create(request), ReadPurchaseAsync);
@@ -229,12 +230,14 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
 
     private async Task<T> SendAsync<T>(
         HttpMethod method, string path, CancellationToken cancellationToken, HttpContent? content = null,
-        Func<HttpResponseMessage, CancellationToken, Task<T>>? readResponse = null)
+        Func<HttpResponseMessage, CancellationToken, Task<T>>? readResponse = null, bool allowAnonymous = false)
     {
         using var request = new HttpRequestMessage(method, path) { Content = content };
-        var token = await session.GetAccessTokenAsync()
-            ?? throw new AuthApiException("Vui lòng đăng nhập để tiếp tục.", HttpStatusCode.Unauthorized);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        var token = await session.GetAccessTokenAsync();
+        if (token is null && !allowAnonymous)
+            throw new AuthApiException("Vui lòng đăng nhập để tiếp tục.", HttpStatusCode.Unauthorized);
+        if (token is not null)
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         return readResponse is null ? await AuthApiClient.SendAsync<T>(http, request, cancellationToken)
             : await AuthApiClient.SendAsync(http, request, readResponse, cancellationToken);
     }

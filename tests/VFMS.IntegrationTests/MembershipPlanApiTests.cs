@@ -486,7 +486,8 @@ public sealed class MembershipPlanApiTests : IAsyncLifetime
     [Theory]
     [InlineData("Customer")]
     [InlineData("Member")]
-    public async Task PurchaseCatalogReturnsOnlyActivePlansAndRejectsDirectAccessToInactivePlans(string role)
+    [InlineData(null)]   // signed out: the home page price list is public
+    public async Task PurchaseCatalogReturnsOnlyActivePlansAndRejectsDirectAccessToInactivePlans(string? role)
     {
         using var manager = CreateClient();
         var activeId = (await CreatePlanAsync(manager, "Available Plan")).GetProperty("id").GetInt32();

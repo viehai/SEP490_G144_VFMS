@@ -33,9 +33,23 @@ else if (_page is { Items.Count: > 0 } catalog)
                 {
                     <p class="whitespace-pre-line font-body text-xs text-[#6F6966] leading-relaxed">@plan.Description</p>
                 }
-                <button type="button" disabled="@(_submitting || _cart.Count >= 50)"
-                        class="mt-auto bg-[#B83A3A] hover:bg-[#9F3030] px-4 py-3 font-heading text-xs uppercase tracking-wider font-bold text-white rounded-lg transition-colors disabled:opacity-50"
-                        @onclick="() => _cart.Add(new CartLine(plan))">Thêm gói tập</button>
+                <AuthorizeView Roles="Customer,Member" Context="buyer">
+                    <Authorized>
+                        <button type="button" disabled="@(_submitting || _cart.Count >= 50)"
+                                class="mt-auto bg-[#B83A3A] hover:bg-[#9F3030] px-4 py-3 font-heading text-xs uppercase tracking-wider font-bold text-white rounded-lg transition-colors disabled:opacity-50"
+                                @onclick="() => _cart.Add(new CartLine(plan))">Thêm gói tập</button>
+                    </Authorized>
+                    <NotAuthorized>
+                        @if (buyer.User.Identity?.IsAuthenticated == true)
+                        {
+                            <p class="mt-auto font-body text-xs text-[#6F6966]">Chỉ tài khoản khách hàng hoặc hội viên mua được gói tập.</p>
+                        }
+                        else
+                        {
+                            <a href="@LoginUrl" class="mt-auto block bg-[#B83A3A] hover:bg-[#9F3030] px-4 py-3 text-center font-heading text-xs uppercase tracking-wider font-bold text-white rounded-lg transition-colors">Đăng nhập để mua</a>
+                        }
+                    </NotAuthorized>
+                </AuthorizeView>
             </article>
         }
     </div>
@@ -107,6 +121,9 @@ else
 @code {
     /// <summary>GYM or YOGA: which plans this catalog sells. Null lists every plan.</summary>
     [Parameter] public string? ServiceType { get; set; }
+
+    // Back to the price list after signing in.
+    private string LoginUrl => $"/auth/login?returnUrl={Uri.EscapeDataString("/" + Navigation.ToBaseRelativePath(Navigation.Uri).Split('#')[0])}";
 
     private static bool IsYoga(string? type) => string.Equals(type, MembershipPlanServiceTypes.Yoga, StringComparison.OrdinalIgnoreCase);
 

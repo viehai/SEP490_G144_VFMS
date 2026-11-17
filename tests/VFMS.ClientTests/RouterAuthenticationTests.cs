@@ -14,6 +14,8 @@ using VFMS.Client.Auth;
 using VFMS.Client.Components.Auth;
 using VFMS.Client.Services;
 using VFMS.Contracts.Auth;
+using VFMS.Contracts.Common;
+using VFMS.Contracts.Memberships;
 using Xunit;
 
 namespace VFMS.ClientTests;
@@ -35,6 +37,11 @@ public sealed class RouterAuthenticationTests
         var logoutCalls = 0;
         using var http = new HttpClient(new Handler(request =>
         {
+            if (request.RequestUri!.AbsolutePath == "/api/membership-plans")   // the home page's public price list
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(new PagedResponse<MembershipPlanCatalogItemResponse>(1, 9, 0, []))
+                };
             Assert.Equal("/api/auth/logout", request.RequestUri!.AbsolutePath);
             logoutCalls++;
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new { Message = "Logged out." }) };
@@ -44,6 +51,7 @@ public sealed class RouterAuthenticationTests
         var components = new CapturingActivator();
         var registrations = new ServiceCollection().AddLogging().AddAuthorizationCore()
             .AddSingleton(session).AddSingleton<AuthenticationStateProvider>(session)
+            .AddSingleton(new MembershipPlanApiClient(http, session))
             .AddSingleton<IJSRuntime>(storage).AddSingleton<NavigationManager>(navigation)
             .AddSingleton<IComponentActivator>(components)
             .AddSingleton<INavigationInterception>(new NoNavigationInterception())
