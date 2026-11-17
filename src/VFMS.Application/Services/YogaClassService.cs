@@ -502,7 +502,8 @@ public sealed class YogaClassService : IYogaClassService
             instructor, names.GetValueOrDefault(instructor, string.Empty),
             s.ScheduledDate, s.StartTime, s.EndTime, s.ScheduleStatus.ToString(), c.ClassStatus.ToString(),
             c.MaxParticipants, confirmed, Math.Max(0, c.MaxParticipants - confirmed),
-            s.AttendanceSubmittedAt, YogaAttendanceService.SubmittedLate(s));
+            s.AttendanceSubmittedAt, YogaAttendanceService.SubmittedLate(s),
+            DateTime.SpecifyKind(c.RegistrationDeadline, DateTimeKind.Utc));
     }
 
     private static string Describe(YogaClass c) =>
