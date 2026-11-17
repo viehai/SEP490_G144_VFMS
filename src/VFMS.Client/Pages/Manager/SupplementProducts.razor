@@ -90,11 +90,23 @@
                     <label class="@Ui.Label w-full sm:w-64" for="product-search">Tìm kiếm
                         <input id="product-search" type="search" class="@Ui.Field" @bind="_search" maxlength="100" />
                     </label>
-                    <label class="@Ui.Label" for="product-filter-category">Danh mục
+                    <label class="@Ui.Label" for="product-filter-brand">Thương hiệu
+                        <select id="product-filter-brand" class="@Ui.Field" @bind="_filterBrand">
+                            <option value="">Tất cả</option>
+                            @foreach (var brand in _brands) { <option value="@brand">@brand</option> }
+                        </select>
+                    </label>
+                    <label class="@Ui.Label" for="product-filter-category">Loại
                         <select id="product-filter-category" class="@Ui.Field" @bind="_filterCategory">
                             <option value="">Tất cả</option>
                             @foreach (var category in _categories) { <option value="@category">@category</option> }
                         </select>
+                    </label>
+                    <label class="@Ui.Label w-32" for="product-filter-min">Giá từ (₫)
+                        <input id="product-filter-min" type="number" class="@Ui.Field" min="0" step="10000" @bind="_minPrice" placeholder="0" />
+                    </label>
+                    <label class="@Ui.Label w-32" for="product-filter-max">Đến (₫)
+                        <input id="product-filter-max" type="number" class="@Ui.Field" min="0" step="10000" @bind="_maxPrice" placeholder="Tối đa" />
                     </label>
                     <label class="@Ui.Label" for="product-filter-status">Trạng thái
                         <select id="product-filter-status" class="@Ui.Field" @bind="_filterStatus">
@@ -102,8 +114,21 @@
                             @foreach (var status in OperationsText.ProductStatuses) { <option value="@status">@OperationsText.Label(status)</option> }
                         </select>
                     </label>
+                    <label class="@Ui.Label" for="product-sort">Sắp xếp
+                        <select id="product-sort" class="@Ui.Field" @bind="_sort">
+                            @foreach (var (value, label) in Sorts) { <option value="@value">@label</option> }
+                        </select>
+                    </label>
                     <button type="submit" class="@Ui.Button">Áp dụng</button>
+                    @if (HasFilters)
+                    {
+                        <button type="button" class="text-xs font-semibold text-vfms-primary underline-offset-2 hover:underline" @onclick="ClearFiltersAsync">Xóa bộ lọc</button>
+                    }
                 </fieldset>
+                @if (_priceError is not null)
+                {
+                    <p role="alert" class="mt-2 text-xs font-semibold text-vfms-error">@_priceError</p>
+                }
             </form>
         </div>
         @if (_loading)
@@ -113,9 +138,9 @@
         else if (_page is { Items.Count: > 0 } list)
         {
             <div class="overflow-x-auto">
-                <table class="workspace-table min-w-[860px]">
+                <table class="workspace-table min-w-[960px]">
                     <thead>
-                        <tr><th scope="col">Sản phẩm</th><th scope="col">Danh mục</th><th scope="col" class="text-right">Giá bán</th><th scope="col">Trạng thái</th><th scope="col">Thao tác</th></tr>
+                        <tr><th scope="col">Sản phẩm</th><th scope="col">Thương hiệu</th><th scope="col">Loại</th><th scope="col" class="text-right">Giá bán</th><th scope="col">Trạng thái</th><th scope="col">Thao tác</th></tr>
                     </thead>
                     <tbody>
                         @foreach (var row in list.Items)
@@ -123,10 +148,24 @@
                             <tr @key="row.Id">
                                 <th scope="row">
                                     <div class="flex items-center gap-3">
-                                        @if (row.ImageUrl is { } image) { <img src="@image" alt="" class="h-10 w-10 flex-none rounded-md border border-vfms-border object-cover" loading="lazy" /> }
-                                        <span class="font-semibold">@row.Name</span>
+                                        @if (row.ImageUrl is { } image && !_brokenImages.Contains(row.Id))
+                                        {
+                                            <img src="@image" alt="" class="h-10 w-10 flex-none rounded-md border border-vfms-border bg-white object-contain" loading="lazy" @onerror="() => _brokenImages.Add(row.Id)" />
+                                        }
+                                        else
+                                        {
+                                            <span class="h-10 w-10 flex-none rounded-md border border-dashed border-vfms-border bg-vfms-surface-alt" aria-hidden="true"></span>
+                                        }
+                                        <div class="min-w-0">
+                                            <span class="block font-semibold">@row.Name</span>
+                                            @if (Details(row) is { Length: > 0 } details)
+                                            {
+                                                <span class="block text-xs font-normal text-vfms-text-secondary">@details</span>
+                                            }
+                                        </div>
                                     </div>
                                 </th>
+                                <td>@(row.Brand ?? "—")</td>
                                 <td>@(row.Category ?? "—")</td>
                                 <td class="text-right whitespace-nowrap">@OperationsText.Money(row.UnitPrice)</td>
                                 <td><span class="@OperationsText.Badge(row.Status)">@OperationsText.Label(row.Status)</span></td>
@@ -160,9 +199,23 @@
     private readonly SupplementProductRequestValidator _validator = new();
     private OperationsValidation<SupplementProductRequest>? _validation;
     private PagedResponse<SupplementProductResponse>? _page;
+    private static readonly (string Value, string Label)[] Sorts =
+    [
+        ("name", "Tên A → Z"),
+        ("price_asc", "Giá thấp → cao"),
+        ("price_desc", "Giá cao → thấp"),
+        ("newest", "Mới thêm"),
+    ];
     private List<string> _categories = [];
+    private List<string> _brands = [];
+    private string _filterBrand = "", _sort = "name";
+    private decimal? _minPrice, _maxPrice;
+    private string? _priceError;
+    private bool HasFilters => !string.IsNullOrWhiteSpace(_search) || _filterBrand != "" || _filterCategory != "" || _filterStatus != ""
+        || _minPrice.HasValue || _maxPrice.HasValue || _sort != "name";
     private int? _editingId;
     private string? _brokenPreview;
+    private readonly HashSet<int> _brokenImages = [];
     private string _search = "", _filterCategory = "", _filterStatus = "";
     private string? _notice, _error;
     private bool _formOpen, _loading, _working;
@@ -180,18 +233,44 @@
 
     private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
+    /// <summary>Size and flavour under the product name, e.g. "5 lbs · Double Rich Chocolate".</summary>
+    private static string Details(SupplementProductResponse row) =>
+        string.Join(" · ", new[] { row.Size, row.Flavour }.Where(v => !string.IsNullOrWhiteSpace(v)));
+
     private async Task LoadAsync(int page)
     {
+        _priceError = _minPrice > _maxPrice ? "Giá \"từ\" phải nhỏ hơn hoặc bằng giá \"đến\"." : null;
+        if (_priceError is not null || _minPrice < 0 || _maxPrice < 0)
+        {
+            _priceError ??= "Giá không được âm.";
+            return;
+        }
         _loading = true;
-        try { _page = await Api.GetProductsAsync(new(Blank(_search), Blank(_filterCategory), Blank(_filterStatus), page, PageSize), manage: true, _lifetime.Token); }
+        try
+        {
+            _page = await Api.GetProductsAsync(new(Blank(_search), Blank(_filterCategory), Blank(_filterStatus), page, PageSize,
+                Brand: Blank(_filterBrand), MinPrice: _minPrice, MaxPrice: _maxPrice, Sort: _sort), manage: true, _lifetime.Token);
+        }
         catch (AuthApiException error) { _error = error.Message; }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
         finally { _loading = false; }
     }
 
+    private async Task ClearFiltersAsync()
+    {
+        _search = _filterBrand = _filterCategory = _filterStatus = "";
+        _minPrice = _maxPrice = null;
+        _sort = "name";
+        await LoadAsync(1);
+    }
+
     private async Task LoadCategoriesAsync()
     {
-        try { _categories = await Api.GetProductCategoriesAsync(_lifetime.Token); }
+        try
+        {
+            _categories = await Api.GetProductCategoriesAsync(_lifetime.Token);
+            _brands = await Api.GetProductBrandsAsync(_lifetime.Token);
+        }
         catch (AuthApiException error) { _error = error.Message; }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
     }
