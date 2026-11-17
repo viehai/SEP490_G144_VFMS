@@ -21,6 +21,7 @@ public sealed class SupplementRepository : AuditedRepositoryBase, ISupplementRep
             query = query.Where(p => p.CatalogCategory == category);
         if (search is not null)
             query = query.Where(p => p.ProductName.Contains(search) ||
+                                     (p.Brand != null && p.Brand.Contains(search)) ||
                                      (p.CatalogCategory != null && p.CatalogCategory.Contains(search)));
 
         var total = await query.CountAsync(cancellationToken);
