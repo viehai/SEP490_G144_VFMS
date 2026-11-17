@@ -2,12 +2,9 @@ namespace VFMS.Application.Services;
 
 public static class TrainerReadinessRules
 {
-    public static bool IsAccepting(bool current, bool? pending, DateOnly? effectiveDate, DateOnly today) =>
-        pending is not null && effectiveDate <= today ? pending.Value : current;
+    public const int NotAcceptingLimitDays = 60;
 
-    public static bool HasExpired(DateOnly? firstReadyDate, DateOnly? lastContractEndDate, DateOnly today)
-    {
-        var start = lastContractEndDate ?? firstReadyDate;
-        return start is not null && start.Value.AddMonths(2) <= today;
-    }
+    /// <summary>GBR-98: a trainer 'Not Accepting' for more than 60 consecutive days loses the PT role.</summary>
+    public static bool HasExpired(DateOnly? notAcceptingSince, DateOnly today) =>
+        notAcceptingSince is { } since && today.DayNumber - since.DayNumber > NotAcceptingLimitDays;
 }

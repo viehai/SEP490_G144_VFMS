@@ -1,16 +1,12 @@
-using Microsoft.Data.SqlClient;
-using Microsoft.EntityFrameworkCore;
 using VFMS.Application.Interfaces;
-using VFMS.Application.Services;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.PersonalTraining;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
-using VFMS.Infrastructure.Data;
 
-namespace VFMS.Infrastructure.PersonalTraining;
+namespace VFMS.Application.Services;
 
-public sealed partial class PersonalTrainingService(VfmsDbContext db, TimeProvider clock,
+public sealed partial class PersonalTrainingService(IPersonalTrainingStore store, TimeProvider clock,
     IMembershipPaymentGateway gateway, IMembershipPurchaseRepository payments, IBannedWordService bannedWords)
     : IPTPaymentFulfillment
 {
@@ -19,49 +15,35 @@ public sealed partial class PersonalTrainingService(VfmsDbContext db, TimeProvid
     private static DateTime Utc(DateOnly date, TimeOnly time) =>
         date.ToDateTime(time, DateTimeKind.Utc).AddHours(-7);
 
-    private async Task<Result<T>> Write<T>(Func<Task<Result<T>>> work, CancellationToken ct)
-    {
-        try
-        {
-            return await payments.ExecuteInSerializableTransactionAsync(work, ct);
-        }
-        catch (SqlException ex) when (ex.Number == 1205)
-        {
-            return Conflict<T>("Lịch vừa thay đổi. Vui lòng tải lại và thử lại.");
-        }
-        catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 1205 or 2601 or 2627 })
-        {
-            return Conflict<T>("Dữ liệu vừa thay đổi. Vui lòng tải lại và thử lại.");
-        }
-    }
+    private Task<Result<T>> Write<T>(Func<Task<Result<T>>> work, CancellationToken ct) => store.Write(work, ct);
 
     private static Result<T> Invalid<T>(string message) => Result<T>.Failure(message, "PT_VALIDATION");
     private static Result<T> Conflict<T>(string message) => Result<T>.Failure(message, "PT_CONFLICT", 409);
     private static Result<T> Missing<T>() => Result<T>.Failure("Không tìm thấy dữ liệu PT.", "PT_NOT_FOUND", 404);
     private static Result<T> Forbidden<T>() => Result<T>.Failure("Tài khoản không có quyền thực hiện.", "PT_FORBIDDEN", 403);
 
-    private IQueryable<ApplicationUser> ActiveUsers => db.ApplicationUsers
+    private IQueryable<ApplicationUser> ActiveUsers => store.Query<ApplicationUser>()
         .Where(u => u.AccountStatus == AccountStatus.Active && !u.IsBanned);
 
     private Task<ApplicationUser?> User(string id, UserRole role, CancellationToken ct) =>
-        ActiveUsers.Include(u => u.Gym).SingleOrDefaultAsync(u => u.UserId == id &&
-            u.UserRoles.Any(r => r.Role.RoleName == role.ToString()), ct);
+        store.Single(store.Include(ActiveUsers, nameof(ApplicationUser.Gym)).Where(u => u.UserId == id &&
+            u.UserRoles.Any(r => r.Role.RoleName == role.ToString())), ct);
 
-    private IQueryable<YogaClass> ActiveYogaAssignments => db.YogaClasses.Where(c =>
+    private IQueryable<YogaClass> ActiveYogaAssignments => store.Query<YogaClass>().Where(c =>
         !c.IsDeleted && (c.ClassStatus == YogaClassStatus.Draft || c.ClassStatus == YogaClassStatus.Published));
 
-    private IQueryable<PTAvailability> Templates(string trainerId) => db.PTAvailabilities
+    private IQueryable<PTAvailability> Templates(string trainerId) => store.Query<PTAvailability>()
         .Where(x => x.PTUserId == trainerId && x.DayOfWeek != null && x.SlotStatus == SlotStatus.Available);
 
     private IQueryable<PTSession> Occupied(DateTime now) =>
-        db.PTSessions.Where(PersonalTrainingRules.OccupiesTime(now));
+        store.Query<PTSession>().Where(PersonalTrainingRules.OccupiesTime(now));
 
     private static bool InHours(Gym gym, TimeOnly start, TimeOnly end) =>
         gym.OpenTime is { } open && gym.CloseTime is { } close && start >= open && end <= close && end > start;
 
     private static bool IsWholeHour(TimeOnly time) => time.Ticks % TimeSpan.TicksPerHour == 0;
 
-    private IQueryable<MemberMembership> Coverage(string memberId) => db.MemberMemberships.Where(x =>
+    private IQueryable<MemberMembership> Coverage(string memberId) => store.Query<MemberMembership>().Where(x =>
         x.MemberUserId == memberId && x.MembershipStatus == MembershipStatus.Active &&
         x.PackageComponent.ComponentType == ComponentType.GYM);
 
@@ -83,9 +65,9 @@ public sealed partial class PersonalTrainingService(VfmsDbContext db, TimeProvid
             (s.PTUserId == trainerId || s.MemberUserId == memberId) &&
             (ignoreSession == null || s.Id != ignoreSession) &&
             (ignorePurchase == null || s.PTPurchaseId != ignorePurchase))
-            .Select(s => new { s.SessionDate, s.StartTime, s.EndTime, s.MemberUserId }).ToListAsync(ct);
+            .Select(s => new { s.SessionDate, s.StartTime, s.EndTime, s.MemberUserId }).ToListAsync(store, ct);
         var yoga = await Yoga(trainerId, memberId, from, through)
-            .Select(s => new { s.ScheduledDate, s.StartTime, s.EndTime }).ToListAsync(ct);
+            .Select(s => new { s.ScheduledDate, s.StartTime, s.EndTime }).ToListAsync(store, ct);
         return dates.Where(d => pt.Any(s => s.SessionDate == d.Date &&
             (!allowSecondMemberSession && s.MemberUserId == memberId ||
              PersonalTrainingRules.Overlaps(d.StartTime, d.EndTime, s.StartTime, s.EndTime))) ||
@@ -94,7 +76,7 @@ public sealed partial class PersonalTrainingService(VfmsDbContext db, TimeProvid
     }
 
     private IQueryable<YogaClassSchedule> Yoga(string trainerId, string? memberId, DateOnly from, DateOnly through) =>
-        db.YogaClassSchedules.Where(s => s.ScheduledDate >= from && s.ScheduledDate <= through &&
+        store.Query<YogaClassSchedule>().Where(s => s.ScheduledDate >= from && s.ScheduledDate <= through &&
             (s.ScheduleStatus == YogaScheduleStatus.Scheduled || s.ScheduleStatus == YogaScheduleStatus.Ongoing) &&
             (s.YogaClass.InstructorUserId == trainerId || memberId != null &&
                 s.YogaClass.Bookings.Any(b => b.MemberUserId == memberId && b.BookingStatus == YogaBookingStatus.Confirmed &&
@@ -102,7 +84,7 @@ public sealed partial class PersonalTrainingService(VfmsDbContext db, TimeProvid
                     (b.EndDate == null || b.EndDate >= s.ScheduledDate))));
 
     private void Audit(string? actor, string entity, int id, string value) =>
-        db.AuditLogs.Add(new AuditLog
+        store.Add(new AuditLog
         {
             ActorUserId = actor,
             ActionType = AuditActionType.Update,
@@ -113,7 +95,7 @@ public sealed partial class PersonalTrainingService(VfmsDbContext db, TimeProvid
         });
 
     private void Notify(string recipient, string title, string message, string entity, int id) =>
-        db.Notifications.Add(new Notification
+        store.Add(new Notification
         {
             RecipientUserId = recipient,
             Title = title,
@@ -124,42 +106,32 @@ public sealed partial class PersonalTrainingService(VfmsDbContext db, TimeProvid
             NotifiedAt = Now
         });
 
+    /// <summary>GBR-98: removes the PT role after more than 60 consecutive 'Not Accepting' days, once no contract is still running.</summary>
     public async Task ExpireInactiveTrainers(DateOnly today, CancellationToken ct)
     {
-        var profiles = await db.TrainerProfiles.Where(p => p.IsActive).ToListAsync(ct);
-        var lastEnds = await db.PTPurchases.Where(p => p.Order != null && p.Order.OrderStatus == OrderStatus.Paid)
-            .GroupBy(p => p.PTUserId)
-            .Select(group => new { UserId = group.Key, LastEnd = group.Max(p => p.EndDate) })
-            .ToDictionaryAsync(x => x.UserId, x => x.LastEnd, ct);
-        var ptRoleId = await db.ApplicationRoles.Where(role => role.RoleName == nameof(UserRole.PT))
-            .Select(role => (int?)role.Id).SingleOrDefaultAsync(ct);
+        var profiles = await store.List(store.Query<TrainerProfile>().Where(p => p.IsActive && !p.AcceptingNewMembers &&
+            p.NotAcceptingSince != null), ct);
+        var ptRoleId = await store.Single(store.Query<ApplicationRole>().Where(role => role.RoleName == nameof(UserRole.PT))
+            .Select(role => (int?)role.Id), ct);
         foreach (var profile in profiles)
         {
-            if (profile.PendingAcceptingNewMembers is { } pending && profile.AcceptingNewMembersEffectiveDate <= today)
-            {
-                profile.AcceptingNewMembers = pending;
-                profile.PendingAcceptingNewMembers = null;
-                profile.AcceptingNewMembersEffectiveDate = null;
-            }
-            DateOnly? lastEnd = lastEnds.TryGetValue(profile.PTUserId, out var end) ? end : null;
-            if (!TrainerReadinessRules.HasExpired(profile.FirstReadyDate, lastEnd, today))
+            if (!TrainerReadinessRules.HasExpired(profile.NotAcceptingSince, today) ||
+                await store.Query<PTPurchase>().AnyAsync(store, p => p.PTUserId == profile.PTUserId && !p.IsCompleted &&
+                    (p.Status == PTPurchaseStatus.Active || p.Status == PTPurchaseStatus.Frozen) && p.EndDate >= today, ct))
                 continue;
             profile.IsActive = false;
-            profile.AcceptingNewMembers = false;
-            profile.PendingAcceptingNewMembers = null;
-            profile.AcceptingNewMembersEffectiveDate = null;
             if (ptRoleId is { } roleId)
             {
-                var assignment = await db.ApplicationUserRoles.SingleOrDefaultAsync(role =>
-                    role.UserId == profile.PTUserId && role.RoleId == roleId, ct);
-                if (assignment != null) db.ApplicationUserRoles.Remove(assignment);
+                var assignment = await store.Single(store.Query<ApplicationUserRole>().Where(role =>
+                    role.UserId == profile.PTUserId && role.RoleId == roleId), ct);
+                if (assignment != null) store.Remove(assignment);
             }
             Audit(profile.PTUserId, nameof(TrainerProfile), profile.Id, "PTInactivityExpired");
             Notify(profile.PTUserId, "Quyền PT đã kết thúc",
-                "Đã quá 2 tháng kể từ khi hợp đồng PT gần nhất kết thúc hoặc từ ngày bắt đầu sẵn sàng nhận học viên.",
+                "Bạn đã ở trạng thái không nhận học viên mới quá 60 ngày liên tục và không còn hợp đồng đang chạy.",
                 nameof(TrainerProfile), profile.Id);
         }
-        await db.SaveChangesAsync(ct);
+        await store.Save(ct);
     }
 
     public async Task ExpirePending(CancellationToken ct)
@@ -167,11 +139,10 @@ public sealed partial class PersonalTrainingService(VfmsDbContext db, TimeProvid
         var now = Now;
         await Write(async () =>
         {
-            var expired = await db.PTPurchases.Include(p => p.Sessions)
-                .Include(p => p.Order).ThenInclude(o => o!.PaymentTransaction)
-                .Include(p => p.Order).ThenInclude(o => o!.VoucherRedemption).Where(p =>
+            var expired = await store.List(store.Include(store.Query<PTPurchase>(), "Sessions",
+                    "Order.PaymentTransaction", "Order.VoucherRedemption").Where(p =>
                     p.Status == PTPurchaseStatus.PendingPayment && p.HoldExpiresAt <= now)
-                .OrderBy(p => p.Id).Take(100).ToListAsync(ct);
+                .OrderBy(p => p.Id).Take(100), ct);
             foreach (var contract in expired)
             {
                 contract.Status = PTPurchaseStatus.Expired;
@@ -187,13 +158,13 @@ public sealed partial class PersonalTrainingService(VfmsDbContext db, TimeProvid
                     session.SessionStatus = PTSessionStatus.Cancelled;
             }
 
-            var proposals = await db.PTSessions.Where(s =>
+            var proposals = await store.List(store.Query<PTSession>().Where(s =>
                 (s.SessionStatus == PTSessionStatus.ReschedulePending || s.SessionStatus == PTSessionStatus.MakeUpPending ||
-                    s.SessionStatus == PTSessionStatus.RescheduleRequested) &&
-                s.ProposalExpiresAt <= now).OrderBy(s => s.Id).Take(100).ToListAsync(ct);
+                    s.SessionStatus == PTSessionStatus.MakeUpRequested || s.SessionStatus == PTSessionStatus.RescheduleRequested) &&
+                s.ProposalExpiresAt <= now).OrderBy(s => s.Id).Take(100), ct);
             foreach (var session in proposals)
             {
-                var isMakeUp = session.SessionStatus == PTSessionStatus.MakeUpPending;
+                var isMakeUp = session.SessionStatus is PTSessionStatus.MakeUpPending or PTSessionStatus.MakeUpRequested;
                 if (session.SessionStatus == PTSessionStatus.RescheduleRequested)
                     CloseMemberReschedule(session, null, "RescheduleExpired", "Yêu cầu đổi lịch đã hết hạn. Lịch cũ được giữ nguyên.");
                 else
@@ -201,7 +172,7 @@ public sealed partial class PersonalTrainingService(VfmsDbContext db, TimeProvid
                 if (isMakeUp)
                     session.SessionStatus = PTSessionStatus.Cancelled;
             }
-            await db.SaveChangesAsync(ct);
+            await store.Save(ct);
             return Result<bool>.Success(true);
         }, ct);
     }

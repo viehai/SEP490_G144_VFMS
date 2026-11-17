@@ -4,7 +4,7 @@
 <PageTitle>@(_detail?.Profile.FullName ?? "Hồ sơ huấn luyện viên") | Victor Fitness</PageTitle>
 
 <section class="trainer-page trainer-public trainer-stack">
-    <a class="trainer-link" href="/trainers">← Danh sách huấn luyện viên</a>
+    <a class="trainer-back" href="/trainers">← Danh sách huấn luyện viên</a>
     <TrainerFeedback Error="@_error" />
     @if (_loading)
     {
@@ -57,7 +57,7 @@
                     {
                         @if (Api.PublicAsset(file.DownloadUrl) is { } url)
                         {
-                            <li><a href="@url" class="trainer-link trainer-copy" target="@(file.IsExternalLink ? "_blank" : null)" rel="noopener noreferrer">@(file.IsExternalLink ? url : file.FileName)</a></li>
+                            <li><a href="@url" class="trainer-link trainer-copy" target="@(file.IsExternalLink ? "_blank" : null)" rel="noopener noreferrer">@(file.IsExternalLink ? $"Chứng chỉ tại {file.FileName} ↗" : file.FileName)</a></li>
                         }
                     }
                 </ul>

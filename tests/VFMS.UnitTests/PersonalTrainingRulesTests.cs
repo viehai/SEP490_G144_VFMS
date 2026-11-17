@@ -42,4 +42,27 @@ public sealed class PersonalTrainingRulesTests
 
         Assert.Equal((2, 3), PersonalTrainingRules.Credits(sessions));
     }
+
+    [Theory]
+    [InlineData("2026-11-17", "2026-11-23", true)]   // Tuesday -> next Monday
+    [InlineData("2026-11-20", "2026-11-23", true)]   // Friday -> Monday after: last day to hold
+    [InlineData("2026-11-21", "2026-11-23", false)]  // Saturday is too late for that Monday
+    [InlineData("2026-11-21", "2026-11-30", true)]
+    [InlineData("2026-11-16", "2026-11-16", false)]  // the current week is never allowed
+    [InlineData("2026-11-17", "2026-11-24", false)]  // not a Monday
+    public void Start_week_follows_GBR_12(string today, string start, bool allowed) =>
+        Assert.Equal(allowed, PersonalTrainingRules.CanStartOn(DateOnly.Parse(start), DateOnly.Parse(today)));
+
+    [Fact]
+    public void Auto_completed_sessions_count_as_used_and_disputes_stay_reserved()
+    {
+        var sessions = new[]
+        {
+            new PTSession { SessionStatus = PTSessionStatus.AutoCompleted, CreditUnits = 1 },
+            new PTSession { SessionStatus = PTSessionStatus.Disputed, CreditUnits = 1 },
+            new PTSession { SessionStatus = PTSessionStatus.FreezeHold, CreditUnits = 1 }
+        };
+        Assert.Equal((1, 1), PersonalTrainingRules.Credits(sessions));
+        Assert.Equal(new DateOnly(2026, 12, 15), PersonalTrainingRules.MakeUpDeadline(new DateOnly(2026, 12, 1)));
+    }
 }

@@ -26,9 +26,8 @@ public class TrainerProfile : BaseEntity
     public string? CommissionTier { get; set; }
     public bool IsActive { get; set; } = true;
     public bool AcceptingNewMembers { get; set; }
-    public bool? PendingAcceptingNewMembers { get; set; }
-    public DateOnly? AcceptingNewMembersEffectiveDate { get; set; }
-    public DateOnly? FirstReadyDate { get; set; }
+    /// <summary>First day of the current 'Not Accepting' period; null while accepting (GBR-98).</summary>
+    public DateOnly? NotAcceptingSince { get; set; }
 
     // ── Navigation Properties ──────────────────────────────────
     public ApplicationUser PTUser { get; set; } = null!;

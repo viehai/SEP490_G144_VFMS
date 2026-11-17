@@ -34,10 +34,10 @@ public sealed record TrainerProfileResponse(int Id, string UserId, string FullNa
 {
     public TrainerProfileResponse() : this(0, "", "", "", "", "", 0, null, null, 0) { }
     public bool IsAcceptingNewMembers { get; init; }
-    public bool? ScheduledAcceptance { get; init; }
-    public DateOnly? ReadinessEffectiveDate { get; init; }
+    public DateOnly? NotAcceptingSince { get; init; }
 }
-public sealed record TrainerReadinessStatus(bool IsAcceptingNow, bool ScheduledAcceptance, DateOnly EffectiveDate);
+/// <summary>ContractsNotified: members told they may change trainer within one week (GBR-98).</summary>
+public sealed record TrainerReadinessStatus(bool IsAcceptingNewMembers, int ContractsNotified);
 public sealed record SetTrainerReadinessRequest(bool IsAcceptingNewMembers);
 public sealed record TrainerAvailabilityResponse(DateOnly Date, TimeOnly StartTime, TimeOnly EndTime, string Status);
 public sealed record TrainerReviewResponse(int Rating, string? Comment, string MemberName = "");

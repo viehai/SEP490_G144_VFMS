@@ -10,7 +10,7 @@ using VFMS.Application.Services;
 using VFMS.Domain.Entities;
 using VFMS.Infrastructure.Data;
 
-namespace VFMS.Infrastructure.Identity;
+namespace VFMS.Infrastructure.Workers;
 
 public sealed class TrainerEmailWorker(IServiceScopeFactory scopes, IConfiguration config, ILogger<TrainerEmailWorker> log) : BackgroundService
 {

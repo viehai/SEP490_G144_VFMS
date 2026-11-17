@@ -1,12 +1,10 @@
 using System.Text.Json;
-using Microsoft.EntityFrameworkCore;
-using VFMS.Application.Services;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.PersonalTraining;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
 
-namespace VFMS.Infrastructure.PersonalTraining;
+namespace VFMS.Application.Services;
 
 public sealed partial class PersonalTrainingService
 {
@@ -15,8 +13,8 @@ public sealed partial class PersonalTrainingService
         if (await User(trainerId, UserRole.PT, ct) is null)
             return Missing<IReadOnlyList<PTWeeklySlot>>();
 
-        var slots = await Templates(trainerId).AsNoTracking().OrderBy(s => s.StartTime).ThenBy(s => s.DayOfWeek)
-            .Select(s => new PTWeeklySlot(s.Id, s.DayOfWeek!.Value, s.StartTime, s.EndTime, null)).ToArrayAsync(ct);
+        var slots = await Templates(trainerId).AsNoTracking(store).OrderBy(s => s.StartTime).ThenBy(s => s.DayOfWeek)
+            .Select(s => new PTWeeklySlot(s.Id, s.DayOfWeek!.Value, s.StartTime, s.EndTime, null)).ToArrayAsync(store, ct);
         return Result<IReadOnlyList<PTWeeklySlot>>.Success(slots);
     }
 
@@ -28,10 +26,10 @@ public sealed partial class PersonalTrainingService
         if (trainer is null)
             return Missing<IReadOnlyList<PTCalendarSlot>>();
         var through = from.AddDays(13);
-        var templates = await Templates(trainerId).AsNoTracking().ToListAsync(ct);
+        var templates = await Templates(trainerId).AsNoTracking(store).ToListAsync(store, ct);
         var booked = await Occupied(Now).Where(s => s.PTUserId == trainerId &&
-            s.SessionDate >= from && s.SessionDate <= through).ToListAsync(ct);
-        var yoga = await Yoga(trainerId, null, from, through).ToListAsync(ct);
+            s.SessionDate >= from && s.SessionDate <= through).ToListAsync(store, ct);
+        var yoga = await Yoga(trainerId, null, from, through).ToListAsync(store, ct);
         var slots = PersonalTrainingRules.Occurrences(from, through, templates, int.MaxValue)
             .Select(x => new PTCalendarSlot(x.Slot.Id, x.Date, x.Slot.StartTime, x.Slot.EndTime,
                 booked.Any(s => s.SessionDate == x.Date && PersonalTrainingRules.Overlaps(x.Slot.StartTime, x.Slot.EndTime, s.StartTime, s.EndTime)) ||
@@ -49,7 +47,7 @@ public sealed partial class PersonalTrainingService
         if (await User(actor, UserRole.PT, ct) is null)
             return Forbidden<IReadOnlyList<PTSlotInput>>();
         var slots = await Templates(actor).OrderBy(x => x.DayOfWeek).ThenBy(x => x.StartTime)
-            .Select(x => new PTSlotInput(x.DayOfWeek!.Value, x.StartTime)).ToListAsync(ct);
+            .Select(x => new PTSlotInput(x.DayOfWeek!.Value, x.StartTime)).ToListAsync(store, ct);
         return Result<IReadOnlyList<PTSlotInput>>.Success(slots);
     }
 
@@ -66,7 +64,7 @@ public sealed partial class PersonalTrainingService
         var trainer = await User(actor, UserRole.PT, ct);
         if (trainer is null)
             return Forbidden<bool>();
-        if (await ActiveYogaAssignments.AnyAsync(c => c.InstructorUserId == actor, ct))
+        if (await ActiveYogaAssignments.AnyAsync(store, c => c.InstructorUserId == actor, ct))
             return Conflict<bool>("Huấn luyện viên đang phụ trách lớp Yoga.");
         if (request.Slots.Any(s => s is null))
             return Invalid<bool>("Mẫu lịch chứa ca không hợp lệ.");
@@ -79,18 +77,18 @@ public sealed partial class PersonalTrainingService
                     right.StartTime - left.StartTime < TimeSpan.FromHours(1)).Any(x => x)))
             return Invalid<bool>("Các ca trong cùng ngày không được chồng giờ.");
 
-        var existing = await Templates(actor).ToListAsync(ct);
+        var existing = await Templates(actor).ToListAsync(store, ct);
         var added = desired.Where(slot => !existing.Any(x => x.DayOfWeek == slot.DayOfWeek && x.StartTime == slot.StartTime)).ToArray();
         if (added.Any(slot => !IsWholeHour(slot.StartTime)))
             return Invalid<bool>("Ca mới phải bắt đầu vào giờ tròn, ví dụ 06:00 hoặc 07:00.");
         var removed = existing.Where(x => !desired.Contains(new(x.DayOfWeek!.Value, x.StartTime))).ToArray();
         var removedIds = removed.Select(x => x.Id).ToArray();
-        var future = await Occupied(Now).Where(s => s.PTUserId == actor && s.SessionDate >= Today).ToListAsync(ct);
+        var future = await Occupied(Now).Where(s => s.PTUserId == actor && s.SessionDate >= Today).ToListAsync(store, ct);
         if (future.Any(s => s.PTAvailabilityId is { } id && removedIds.Contains(id) ||
             removed.Any(slot => slot.DayOfWeek == s.SessionDate.DayOfWeek &&
                 slot.StartTime < s.EndTime && s.StartTime < slot.EndTime)))
             return Conflict<bool>("Không thể sửa hoặc tắt ca đang được giữ hoặc đã xác nhận.");
-        var yoga = await Yoga(actor, null, Today, DateOnly.MaxValue).ToListAsync(ct);
+        var yoga = await Yoga(actor, null, Today, DateOnly.MaxValue).ToListAsync(store, ct);
         if (added.Any(slot => future.Any(s => s.SessionDate.DayOfWeek == slot.DayOfWeek &&
                 PersonalTrainingRules.Overlaps(slot.StartTime, slot.StartTime.AddHours(1), s.StartTime, s.EndTime)) ||
             yoga.Any(s => s.ScheduledDate.DayOfWeek == slot.DayOfWeek &&
@@ -99,37 +97,38 @@ public sealed partial class PersonalTrainingService
 
         foreach (var slot in removed)
             slot.IsDeleted = true;
-        db.PTAvailabilities.AddRange(added.Select(s => new PTAvailability
+        store.AddRange(added.Select(s => new PTAvailability
         {
             PTUserId = actor,
             DayOfWeek = s.DayOfWeek,
             StartTime = s.StartTime,
             EndTime = s.StartTime.AddHours(1)
         }));
-        await db.SaveChangesAsync(ct);
+        await store.Save(ct);
         return Result<bool>.Success(true);
     }, ct);
 
-    private IQueryable<Package> PTPackages => db.Packages.Include(p => p.Components)
+    private IQueryable<Package> PTPackages => store.Query<Package>().Including(store, "Components")
         .Where(p => p.Components.Count == 1 &&
             p.Components.Any(c => c.ComponentType == ComponentType.PT && c.ApplicableTrainerLevel != null));
 
     public async Task<Result<IReadOnlyList<PTPackageResponse>>> Packages(bool all, CancellationToken ct)
     {
-        var packages = await PTPackages.AsNoTracking().Where(p => all || p.PackageStatus == PackageStatus.Active)
-            .OrderBy(p => p.Id).ToListAsync(ct);
+        var packages = await PTPackages.AsNoTracking(store).Where(p => all || p.PackageStatus == PackageStatus.Active)
+            .OrderBy(p => p.Id).ToListAsync(store, ct);
         if (!all)
             return Result<IReadOnlyList<PTPackageResponse>>.Success(packages.Select(p => PackageResponse(p)).ToArray());
 
         var today = Today;
-        var registrations = await (
-            from purchase in db.PTPurchases
-            join item in db.OrderItems on purchase.OrderId equals (int?)item.OrderId
+        var registrations = (await (
+            from purchase in store.Query<PTPurchase>()
+            join item in store.Query<OrderItem>() on purchase.OrderId equals (int?)item.OrderId
             where !purchase.IsCompleted && purchase.EndDate >= today &&
                 (purchase.Status == PTPurchaseStatus.Active || purchase.Status == PTPurchaseStatus.Frozen)
             select new { item.PackageId, PurchaseId = purchase.Id })
             .Distinct().GroupBy(x => x.PackageId)
-            .ToDictionaryAsync(group => group.Key, group => group.Count(), ct);
+            .Select(group => new { group.Key, Count = group.Count() }).ToListAsync(store, ct))
+            .ToDictionary(group => group.Key, group => group.Count);
         return Result<IReadOnlyList<PTPackageResponse>>.Success(
             packages.Select(p => PackageResponse(p, registrations.GetValueOrDefault(p.Id))).ToArray());
     }
@@ -151,12 +150,12 @@ public sealed partial class PersonalTrainingService
         {
             if (await User(actor, UserRole.Manager, ct) is null)
                 return Forbidden<bool>();
-            var package = await PTPackages.SingleOrDefaultAsync(p => p.Id == id, ct);
+            var package = await PTPackages.SingleOrDefaultAsync(store, p => p.Id == id, ct);
             if (package is null)
                 return Missing<bool>();
 
             SetPackageStatus(package, isActive ? PackageStatus.Active : PackageStatus.Inactive, actor);
-            await db.SaveChangesAsync(ct);
+            await store.Save(ct);
             return Result<bool>.Success(true);
         }, ct);
 
@@ -165,20 +164,19 @@ public sealed partial class PersonalTrainingService
         {
             if (await User(actor, UserRole.Manager, ct) is null)
                 return Forbidden<PTPackageDeleteResponse>();
-            var package = await PTPackages.SingleOrDefaultAsync(p => p.Id == id, ct);
+            var package = await PTPackages.SingleOrDefaultAsync(store, p => p.Id == id, ct);
             if (package is null)
                 return Missing<PTPackageDeleteResponse>();
 
             // Hidden references still belong to the order and subscription history.
-            var hasUsage = await db.Packages.IgnoreQueryFilters().AnyAsync(p => p.Id == id &&
-                (p.OrderItems.Any() || p.Components.Any(c => c.MemberMemberships.Any())), ct);
+            var hasUsage = await store.PackageHasHistory(id, ct);
             if (hasUsage)
                 SetPackageStatus(package, PackageStatus.Inactive, actor);
             else
             {
-                db.PackageComponents.RemoveRange(package.Components);
-                db.Packages.Remove(package);
-                db.AuditLogs.Add(new AuditLog
+                store.RemoveRange(package.Components);
+                store.Remove(package);
+                store.Add(new AuditLog
                 {
                     ActorUserId = actor,
                     ActionType = AuditActionType.Delete,
@@ -188,7 +186,7 @@ public sealed partial class PersonalTrainingService
                     OccurredAt = Now
                 });
             }
-            await db.SaveChangesAsync(ct);
+            await store.Save(ct);
             return Result<PTPackageDeleteResponse>.Success(new(hasUsage));
         }, ct);
 
@@ -213,7 +211,7 @@ public sealed partial class PersonalTrainingService
                 return Invalid<PTPackageResponse>("Tên, số buổi, giá hoặc cấp PT không hợp lệ.");
             if (request.FreezeMinimumDays < 1 || request.FreezeMaxTotalDays < request.FreezeMinimumDays)
                 return Invalid<PTPackageResponse>("Số ngày bảo lưu tối thiểu phải dương và không vượt tổng hạn mức.");
-            var package = id is { } packageId ? await PTPackages.SingleOrDefaultAsync(p => p.Id == packageId, ct) :
+            var package = id is { } packageId ? await PTPackages.SingleOrDefaultAsync(store, p => p.Id == packageId, ct) :
                 new Package { Components = [new PackageComponent { ComponentType = ComponentType.PT }] };
             if (package is null)
                 return Missing<PTPackageResponse>();
@@ -236,8 +234,8 @@ public sealed partial class PersonalTrainingService
             component.PTFreezeMinimumDays = request.FreezeMinimumDays;
             component.PTFreezeMaxTotalDays = request.FreezeMaxTotalDays;
             if (id is null)
-                db.Packages.Add(package);
-            await db.SaveChangesAsync(ct);
+                store.Add(package);
+            await store.Save(ct);
             return Result<PTPackageResponse>.Success(PackageResponse(package), id is null ? 201 : 200);
         }, ct);
 }

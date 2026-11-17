@@ -19,6 +19,7 @@ using VFMS.Domain.Enums;
 using VFMS.Infrastructure.Data;
 using VFMS.Infrastructure.Identity;
 using VFMS.Infrastructure.Repositories;
+using VFMS.Infrastructure.Workers;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
 

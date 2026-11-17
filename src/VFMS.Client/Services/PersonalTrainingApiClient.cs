@@ -40,8 +40,6 @@ public sealed class PersonalTrainingApiClient(HttpClient http, AuthSession sessi
 
     public Task<PTContractResponse[]> ContractsAsync(int? id = null) =>
         Send<PTContractResponse[]>(HttpMethod.Get, id is { } contract ? $"contracts/{contract}" : "contracts");
-    public Task<PTAssignedMember[]> AssignedAsync(string search) =>
-        Send<PTAssignedMember[]>(HttpMethod.Get, $"assigned-members?search={Uri.EscapeDataString(search)}");
     public Task<PagedResponse<PTAssignedMember>> AssignedPageAsync(string search, bool historical, int page) =>
         Send<PagedResponse<PTAssignedMember>>(HttpMethod.Get,
             $"assigned-members/page?search={Uri.EscapeDataString(search)}&historical={(historical ? "true" : "false")}&page={page}");
@@ -60,24 +58,26 @@ public sealed class PersonalTrainingApiClient(HttpClient http, AuthSession sessi
         Send<PTSessionResponse>(HttpMethod.Post, $"sessions/{id}/proposal", request);
     public Task<PTSessionResponse> ProposeMakeUpAsync(int id, PTMakeUpRequest request) =>
         Send<PTSessionResponse>(HttpMethod.Post, $"sessions/{id}/make-up", request);
+    public Task<PTSessionResponse> DecideMakeUpRequestAsync(int id, PTProposalDecision request) =>
+        Send<PTSessionResponse>(HttpMethod.Post, $"sessions/{id}/make-up/decision", request);
+    public Task<PTSessionResponse> RequestCancellationAsync(int id) =>
+        Send<PTSessionResponse>(HttpMethod.Post, $"sessions/{id}/cancellation-request");
     public Task<PTSessionResponse> DecideProposalAsync(int id, PTProposalDecision request) =>
         Send<PTSessionResponse>(HttpMethod.Post, $"sessions/{id}/proposal/decision", request);
     public Task<PTSessionResponse> AttendanceAsync(int id, bool attended) =>
         Send<PTSessionResponse>(HttpMethod.Post, $"sessions/{id}/attendance", attended);
     public Task<PTSessionResponse> ReportTrainerAbsenceAsync(int id, PTTrainerAbsenceReportRequest request) =>
         Send<PTSessionResponse>(HttpMethod.Post, $"sessions/{id}/trainer-absence", request);
-    public Task<PagedResponse<PTTrainerAbsenceReport>> TrainerAbsenceReportsAsync(bool processed, int page) =>
-        Send<PagedResponse<PTTrainerAbsenceReport>>(HttpMethod.Get,
-            $"manager/trainer-absence-reports?processed={(processed ? "true" : "false")}&page={page}");
-    public Task<PTSessionResponse> DecideTrainerAbsenceAsync(int id, PTTrainerAbsenceDecisionRequest request) =>
-        Send<PTSessionResponse>(HttpMethod.Post, $"manager/trainer-absence-reports/{id}/decision", request);
+    public Task<PagedResponse<PTAttendanceDispute>> AttendanceDisputesAsync(bool processed, int page) =>
+        Send<PagedResponse<PTAttendanceDispute>>(HttpMethod.Get,
+            $"manager/attendance-disputes?processed={(processed ? "true" : "false")}&page={page}");
+    public Task<PTSessionResponse> DecideDisputeAsync(int id, PTAttendanceDisputeDecision request) =>
+        Send<PTSessionResponse>(HttpMethod.Post, $"manager/attendance-disputes/{id}/decision", request);
     public Task<PTSessionResponse> NoteAsync(int id, PTNoteRequest request) =>
         Send<PTSessionResponse>(HttpMethod.Put, $"sessions/{id}/note", request);
     public Task<int> ReviewAsync(int id, PTReviewRequest request) =>
         Send<int>(HttpMethod.Post, $"contracts/{id}/review", request);
 
-    public Task<PTFreezeResponse[]> FreezesAsync(bool manager = false, bool processed = false) =>
-        Send<PTFreezeResponse[]>(HttpMethod.Get, manager ? $"manager/freezes?processed={(processed ? "true" : "false")}" : "freezes");
     public Task<PagedResponse<PTFreezeResponse>> ManagerFreezePageAsync(bool processed, int page) =>
         Send<PagedResponse<PTFreezeResponse>>(HttpMethod.Get,
             $"manager/freezes/page?processed={(processed ? "true" : "false")}&page={page}");
@@ -85,6 +85,16 @@ public sealed class PersonalTrainingApiClient(HttpClient http, AuthSession sessi
         Send<PagedResponse<PTFreezeResponse>>(HttpMethod.Get, $"contracts/{contract}/freezes?page={page}");
     public Task<PTFreezeResponse> RequestFreezeAsync(int id, PTFreezeRequest request) =>
         Send<PTFreezeResponse>(HttpMethod.Post, $"contracts/{id}/freezes", request);
+    public Task<PTFreezeProposal> PreviewFreezeRequestAsync(int id, PTFreezeRequest request) =>
+        Send<PTFreezeProposal>(HttpMethod.Post, $"contracts/{id}/freezes/preview", request);
+    public Task<PTFreezeResponse> WithdrawFreezeAsync(int id) =>
+        Send<PTFreezeResponse>(HttpMethod.Post, $"freezes/{id}/withdraw");
+    public Task<PTReplacementTrainer[]> ReplacementTrainersAsync(int contract) =>
+        Send<PTReplacementTrainer[]>(HttpMethod.Get, $"contracts/{contract}/replacement-trainers");
+    public Task<PTTrainerChangePreview> PreviewTrainerChangeAsync(int contract, PTTrainerChangeRequest request) =>
+        Send<PTTrainerChangePreview>(HttpMethod.Post, $"contracts/{contract}/trainer-change/preview", request);
+    public Task<PTContractResponse> ChangeTrainerAsync(int contract, PTTrainerChangeRequest request) =>
+        Send<PTContractResponse>(HttpMethod.Post, $"contracts/{contract}/trainer-change", request);
     public Task<PTFreezePreview> PreviewFreezeAsync(int id) =>
         Send<PTFreezePreview>(HttpMethod.Get, $"manager/freezes/{id}/preview");
     public Task<PTFreezeResponse> DecideFreezeAsync(int id, PTFreezeDecision request) =>

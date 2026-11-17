@@ -1,9 +1,9 @@
-using Microsoft.EntityFrameworkCore;
 using VFMS.Application.Interfaces;
 using VFMS.Contracts.Common;
+using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
 
-namespace VFMS.Infrastructure.PersonalTraining;
+namespace VFMS.Application.Services;
 
 public sealed partial class PersonalTrainingService
 {
@@ -18,9 +18,9 @@ public sealed partial class PersonalTrainingService
         {
             var now = Now;
             var claim = now.AddMinutes(5);
-            var purchase = await db.PTPurchases.Include(p => p.Member).Include(p => p.Sessions)
-                .Include(p => p.Order).ThenInclude(o => o!.PaymentTransaction).ThenInclude(p => p!.Invoice)
-                .AsSplitQuery().OrderBy(p => p.Id).FirstOrDefaultAsync(p => p.OrderId != null &&
+            var purchase = await store.Query<PTPurchase>()
+                .Including(store, "Member", "Sessions", "Order.PaymentTransaction.Invoice")
+                .OrderBy(p => p.Id).FirstOrDefaultAsync(store, p => p.OrderId != null &&
                     p.Order!.OrderStatus == OrderStatus.Paid && p.Order.PaymentTransaction!.GatewayName != DemoGateway &&
                     p.ReceiptEmailSentAt == null &&
                     (p.ReceiptEmailRetryAt == null || p.ReceiptEmailRetryAt <= now), ct);
@@ -33,19 +33,19 @@ public sealed partial class PersonalTrainingService
                     .Select(s => $"{s.SessionDate:dd/MM/yyyy} {s.StartTime:HH:mm}–{s.EndTime:HH:mm}"));
                 var body = $"Hóa đơn {invoice.InvoiceNumber}\nĐã thanh toán {purchase.PurchasePrice:N0} VND cho gói {purchase.PackageNameSnapshot}.\n{schedule}";
                 purchase.ReceiptEmailRetryAt = claim;
-                await db.SaveChangesAsync(ct);
+                await store.Save(ct);
                 return Result<PTEmail?>.Success(new(purchase.Id, true, purchase.Member.Email,
                     "Xác nhận thanh toán và lịch tập PT", body, claim));
             }
 
-            var proposal = await db.PTSessions.Include(s => s.Member).OrderBy(s => s.Id)
-                .FirstOrDefaultAsync(s => s.SessionStatus == PTSessionStatus.ReschedulePending &&
+            var proposal = await store.Query<PTSession>().Including(store, "Member").OrderBy(s => s.Id)
+                .FirstOrDefaultAsync(store, s => s.SessionStatus == PTSessionStatus.ReschedulePending &&
                     s.ProposalExpiresAt > now && s.ProposalEmailSentAt == null &&
                     (s.ProposalEmailRetryAt == null || s.ProposalEmailRetryAt <= now), ct);
             if (proposal is null)
                 return Result<PTEmail?>.Success(null);
             proposal.ProposalEmailRetryAt = claim;
-            await db.SaveChangesAsync(ct);
+            await store.Save(ct);
             var message = $"Lịch đề xuất: {proposal.ProposedDate:dd/MM/yyyy} {proposal.ProposedStartTime:HH:mm}–{proposal.ProposedEndTime:HH:mm}. " +
                 "Vào lịch PT để xác nhận hoặc từ chối.";
             return Result<PTEmail?>.Success(new(proposal.Id, false, proposal.Member.Email, "Đề xuất đổi lịch PT", message, claim));
@@ -56,10 +56,8 @@ public sealed partial class PersonalTrainingService
         await email.SendAsync(delivery.Recipient, delivery.Subject, delivery.Body, ct);
         var sentAt = Now;
         if (delivery.IsReceipt)
-            await db.PTPurchases.Where(p => p.Id == delivery.Id && p.ReceiptEmailRetryAt == delivery.Claim)
-                .ExecuteUpdateAsync(set => set.SetProperty(p => p.ReceiptEmailSentAt, sentAt), ct);
+            await store.MarkReceiptEmailSent(delivery.Id, delivery.Claim, sentAt, ct);
         else
-            await db.PTSessions.Where(s => s.Id == delivery.Id && s.ProposalEmailRetryAt == delivery.Claim)
-                .ExecuteUpdateAsync(set => set.SetProperty(s => s.ProposalEmailSentAt, sentAt), ct);
+            await store.MarkProposalEmailSent(delivery.Id, delivery.Claim, sentAt, ct);
     }
 }

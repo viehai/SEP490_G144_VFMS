@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using MapsterMapper;
 using VFMS.Application.Interfaces;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Trainers;
@@ -9,7 +10,7 @@ using VFMS.Domain.Enums;
 
 namespace VFMS.Application.Services;
 
-public sealed class TrainerService(ITrainerStore store, IPasswordHasher passwords)
+public sealed class TrainerService(ITrainerStore store, IPasswordHasher passwords, IMapper mapper)
 {
     private static readonly TimeSpan SubmissionCooldown = TimeSpan.FromMinutes(10);
 
@@ -92,7 +93,7 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
         return JsonSerializer.Serialize(files);
     }
 
-    private static IReadOnlyList<TrainerDocumentResponse> Docs(string json, string path, bool publicOnly = false) =>
+    internal static IReadOnlyList<TrainerDocumentResponse> Docs(string json, string path, bool publicOnly = false) =>
         Records<TrainerStoredFile>(json).Where(d => !d.IsDeleted && !d.IsAvatar && (!publicOnly || d.IsPublic))
             .Select(d => new TrainerDocumentResponse(d.Id, d.FileName, d.ContentType,
                 d.ExternalUrl ?? path + "/documents/" + Uri.EscapeDataString(d.Id), d.ExternalUrl is not null)).ToList();
@@ -240,11 +241,7 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
             new(r.Page, r.PageSize, total, items.Select(ApplicationResponse).ToList()));
     }
 
-    private static TrainerApplicationResponse ApplicationResponse(TrainerApplication a) =>
-        new(a.Id, a.TrackingCode, a.ApplicationStatus.ToString(), a.FullName, a.Email, a.PhoneNumber,
-            a.CitizenId, a.DateOfBirth, a.Gender, a.Specialty, a.ExperienceYears, a.Bio, a.SubmittedAt,
-            a.SubmissionAttempt, a.ReviewNote, a.HiredUserId,
-            Docs(a.CertificatesJson, $"/api/trainers/applications/{a.Id}"), a.ApplicationType);
+    private TrainerApplicationResponse ApplicationResponse(TrainerApplication a) => mapper.Map<TrainerApplicationResponse>(a);
     public async Task<Result<TrainerApplicationResponse>> Application(int id, string actor, CancellationToken ct)
     {
         if (!await HasRole(actor, "Manager", ct)) return Error<TrainerApplicationResponse>("TRAINER_FORBIDDEN", "Manager role required.", 403);
@@ -450,7 +447,9 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
                 CertificatesJson = PublishCertificates(a.CertificatesJson),
                 Gender = a.Gender,
                 ExperienceYears = a.ExperienceYears,
-                Level = Enum.Parse<TrainerLevel>(r.Level!)
+                Level = Enum.Parse<TrainerLevel>(r.Level!),
+                // New trainers start 'Not Accepting'; the 60-day limit counts from hire (GBR-98).
+                NotAcceptingSince = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7))
             };
             store.Add(profile);
             await store.Save(ct);
@@ -527,7 +526,6 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
     private IQueryable<TrainerProfileResponse> PublicProfiles()
     {
         var yogaAssignments = ActiveYogaAssignments;
-        var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7));
         return from profile in store.Query<TrainerProfile>()
                join user in store.Query<ApplicationUser>() on profile.PTUserId equals user.UserId
                where profile.IsActive && user.AccountStatus == AccountStatus.Active && !user.IsBanned &&
@@ -550,16 +548,12 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
                            r.ReviewStatus == TrainerReviewStatus.Approved)
                        .Select(r => (decimal?)r.Rating)
                        .Average() ?? 0,
-                   IsAcceptingNewMembers = profile.PendingAcceptingNewMembers != null &&
-                       profile.AcceptingNewMembersEffectiveDate <= today
-                       ? profile.PendingAcceptingNewMembers.Value : profile.AcceptingNewMembers,
-                   ScheduledAcceptance = profile.AcceptingNewMembersEffectiveDate > today
-                       ? profile.PendingAcceptingNewMembers : null,
-                   ReadinessEffectiveDate = profile.AcceptingNewMembersEffectiveDate > today
-                       ? profile.AcceptingNewMembersEffectiveDate : null
+                   IsAcceptingNewMembers = profile.AcceptingNewMembers,
+                   NotAcceptingSince = profile.NotAcceptingSince
                };
     }
 
+    /// <summary>UC 4.12 / GBR-98: the change applies immediately; members of untouched contracts get one week to change trainer.</summary>
     public Task<Result<TrainerReadinessStatus>> SetReadiness(bool accepting, string actor, CancellationToken ct) =>
         store.Write(async () =>
         {
@@ -568,34 +562,40 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
             var profile = await store.First(store.Query<TrainerProfile>().Where(x => x.PTUserId == actor && x.IsActive), ct);
             if (profile == null)
                 return Error<TrainerReadinessStatus>("TRAINER_NOT_FOUND", "Active trainer profile not found.", 404);
-            var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7));
-            if (profile.PendingAcceptingNewMembers is { } pending && profile.AcceptingNewMembersEffectiveDate <= today)
+            var now = DateTime.UtcNow;
+            var today = DateOnly.FromDateTime(now.AddHours(7));
+            var notified = 0;
+            if (profile.AcceptingNewMembers != accepting)
             {
-                profile.AcceptingNewMembers = pending;
-                profile.PendingAcceptingNewMembers = null;
-                profile.AcceptingNewMembersEffectiveDate = null;
+                var before = profile.AcceptingNewMembers.ToString();
+                profile.AcceptingNewMembers = accepting;
+                profile.NotAcceptingSince = accepting ? null : today;
+                if (!accepting)
+                    notified = await OfferTrainerChange(actor, now, today, ct);
+                Audit(actor, nameof(TrainerProfile), profile.Id, "SetReadiness", before, accepting.ToString());
             }
-            var effective = today.AddDays(1);
-            if (accepting == profile.AcceptingNewMembers)
-            {
-                if (profile.PendingAcceptingNewMembers == true && profile.FirstReadyDate == profile.AcceptingNewMembersEffectiveDate)
-                    profile.FirstReadyDate = null;
-                profile.PendingAcceptingNewMembers = null;
-                profile.AcceptingNewMembersEffectiveDate = null;
-            }
-            else
-            {
-                profile.PendingAcceptingNewMembers = accepting;
-                profile.AcceptingNewMembersEffectiveDate = effective;
-                if (accepting && profile.FirstReadyDate == null)
-                    profile.FirstReadyDate = effective;
-            }
-            Audit(actor, nameof(TrainerProfile), profile.Id, "SetReadiness", null,
-                profile.PendingAcceptingNewMembers?.ToString() ?? profile.AcceptingNewMembers.ToString());
-            return Result<TrainerReadinessStatus>.Success(new(profile.AcceptingNewMembers,
-                profile.PendingAcceptingNewMembers ?? profile.AcceptingNewMembers,
-                profile.AcceptingNewMembersEffectiveDate ?? today));
+            return Result<TrainerReadinessStatus>.Success(new(profile.AcceptingNewMembers, notified));
         }, ct);
+
+    private async Task<int> OfferTrainerChange(string trainerId, DateTime now, DateOnly today, CancellationToken ct)
+    {
+        var untouched = await store.List(store.Query<PTPurchase>().Where(p => p.PTUserId == trainerId &&
+            p.Status == PTPurchaseStatus.Active && !p.IsCompleted && p.EndDate >= today &&
+            !p.Sessions.Any(s => s.SessionStatus == PTSessionStatus.Completed || s.SessionStatus == PTSessionStatus.AutoCompleted ||
+                s.SessionStatus == PTSessionStatus.NoShow || s.SessionStatus == PTSessionStatus.Disputed)), ct);
+        foreach (var contract in untouched)
+        {
+            contract.TrainerChangeDeadline = now.AddDays(7);
+            store.Add(new Notification
+            {
+                RecipientUserId = contract.MemberUserId, SenderUserId = trainerId, NotificationType = "PersonalTraining",
+                Title = "Bạn có thể đổi huấn luyện viên",
+                Message = "Huấn luyện viên của bạn tạm ngừng nhận học viên mới. Bạn có 1 tuần để chọn huấn luyện viên khác cho các buổi còn lại.",
+                EntityType = nameof(PTPurchase), EntityId = contract.Id, NotifiedAt = now
+            });
+        }
+        return untouched.Count;
+    }
 
     public async Task<Result<PagedResponse<TrainerProfileResponse>>> Search(TrainerSearch r, CancellationToken ct)
     {

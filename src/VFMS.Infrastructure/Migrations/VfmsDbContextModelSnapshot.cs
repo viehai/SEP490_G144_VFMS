@@ -1787,6 +1787,9 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
+                    b.Property<DateTime?>("ManagerRemindedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<int?>("MaxDaysSnapshot")
                         .HasColumnType("int");
 
@@ -1797,6 +1800,9 @@ namespace VFMS.Infrastructure.Migrations
                         .HasColumnType("int");
 
                     b.Property<string>("Reason")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ReplacementTrainerId")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("RequestStatus")
@@ -1915,6 +1921,9 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<int>("TotalSessions")
                         .HasColumnType("int");
 
+                    b.Property<DateTime?>("TrainerChangeDeadline")
+                        .HasColumnType("datetime2");
+
                     b.Property<int?>("TrainerLevelSnapshot")
                         .HasColumnType("int");
 
@@ -1951,6 +1960,9 @@ namespace VFMS.Infrastructure.Migrations
                         .HasColumnType("int");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("AttendanceReminderSentAt")
+                        .HasColumnType("datetime2");
 
                     b.Property<DateTime?>("CancelledAt")
                         .HasColumnType("datetime2");
@@ -3041,9 +3053,6 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<bool>("AcceptingNewMembers")
                         .HasColumnType("bit");
 
-                    b.Property<DateOnly?>("AcceptingNewMembersEffectiveDate")
-                        .HasColumnType("date");
-
                     b.Property<string>("AvatarJson")
                         .HasColumnType("nvarchar(max)");
 
@@ -3075,9 +3084,6 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<int>("ExperienceYears")
                         .HasColumnType("int");
 
-                    b.Property<DateOnly?>("FirstReadyDate")
-                        .HasColumnType("date");
-
                     b.Property<string>("Gender")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -3094,12 +3100,12 @@ namespace VFMS.Infrastructure.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<DateOnly?>("NotAcceptingSince")
+                        .HasColumnType("date");
+
                     b.Property<string>("PTUserId")
                         .IsRequired()
                         .HasColumnType("nvarchar(128)");
-
-                    b.Property<bool?>("PendingAcceptingNewMembers")
-                        .HasColumnType("bit");
 
                     b.Property<string>("Specialty")
                         .IsRequired()

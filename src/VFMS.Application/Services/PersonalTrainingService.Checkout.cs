@@ -1,20 +1,19 @@
 using System.Text.Json;
-using Microsoft.EntityFrameworkCore;
 using VFMS.Application.Interfaces;
-using VFMS.Application.Services;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Memberships;
 using VFMS.Contracts.PersonalTraining;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
-using VFMS.Infrastructure.Payments;
 
-namespace VFMS.Infrastructure.PersonalTraining;
+namespace VFMS.Application.Services;
 
 public sealed partial class PersonalTrainingService
 {
     private static readonly TimeSpan PaymentDuration = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan HoldDuration = TimeSpan.FromMinutes(20);
+    // GBR-96: the Member must click 'Proceed to Payment' within the first 10 minutes of the order.
+    private static readonly TimeSpan ProceedWindow = TimeSpan.FromMinutes(10);
     private const string DemoGateway = "PTDemo";
     private static DateTime PaymentDeadline(Order order) => order.CreatedAt.Add(PaymentDuration);
     private sealed record Booking(PTBookingPreview Preview, Package Package, TrainerProfile Trainer,
@@ -24,8 +23,8 @@ public sealed partial class PersonalTrainingService
     {
         var now = Now;
         var today = DateOnly.FromDateTime(now.AddHours(7));
-        if (request.StartDate < today || request.StartDate.DayOfWeek != DayOfWeek.Monday)
-            return Invalid<Booking>("Chọn ngày bắt đầu là thứ Hai chưa qua.");
+        if (!PersonalTrainingRules.CanStartOn(request.StartDate, today))
+            return Invalid<Booking>("Chọn tuần bắt đầu từ thứ Hai tuần sau trở đi; lịch phải được giữ chậm nhất vào thứ Sáu trước đó.");
         if (request.TemplateIds.Length == 0 ||
             request.TemplateIds.Distinct().Count() != request.TemplateIds.Length)
             return Invalid<Booking>("Ngày bắt đầu hoặc mẫu lịch không hợp lệ.");
@@ -35,19 +34,18 @@ public sealed partial class PersonalTrainingService
         var trainer = await User(request.TrainerId, UserRole.PT, ct);
         if (trainer is null || trainer.GymId != member.GymId || actor == request.TrainerId)
             return Missing<Booking>();
-        if (await ActiveYogaAssignments.AnyAsync(c => c.InstructorUserId == request.TrainerId, ct))
+        if (await ActiveYogaAssignments.AnyAsync(store, c => c.InstructorUserId == request.TrainerId, ct))
             return Conflict<Booking>("Huấn luyện viên đang phụ trách lớp Yoga.");
-        var profile = await db.TrainerProfiles.SingleOrDefaultAsync(p => p.PTUserId == request.TrainerId && p.IsActive, ct);
-        var package = await PTPackages.SingleOrDefaultAsync(p => p.Id == request.PackageId &&
+        var profile = await store.Query<TrainerProfile>().SingleOrDefaultAsync(store, p => p.PTUserId == request.TrainerId && p.IsActive, ct);
+        var package = await PTPackages.SingleOrDefaultAsync(store, p => p.Id == request.PackageId &&
             p.PackageStatus == PackageStatus.Active, ct);
         if (profile is null || package is null || package.Components.Single().ApplicableTrainerLevel != profile.Level)
             return Invalid<Booking>("Gói PT hoặc cấp độ huấn luyện viên không hợp lệ.");
-        if (profile.Specialty == "Yoga" || !TrainerReadinessRules.IsAccepting(profile.AcceptingNewMembers,
-                profile.PendingAcceptingNewMembers, profile.AcceptingNewMembersEffectiveDate, today))
+        if (profile.Specialty == "Yoga" || !profile.AcceptingNewMembers)
             return Conflict<Booking>("Huấn luyện viên hiện không nhận học viên mới.");
         var terms = package.Components.Single();
         var pattern = await Templates(request.TrainerId).Where(x => request.TemplateIds.Contains(x.Id))
-            .OrderBy(x => x.DayOfWeek).ToArrayAsync(ct);
+            .OrderBy(x => x.DayOfWeek).ToArrayAsync(store, ct);
         if (pattern.Length != request.TemplateIds.Length || pattern.Select(x => x.DayOfWeek).Distinct().Count() != pattern.Length)
             return Invalid<Booking>("Chọn một ca đã công bố cho mỗi ngày tập.");
         var dates = ProposedDates(request.StartDate, pattern, terms.SessionCount.GetValueOrDefault());
@@ -83,7 +81,7 @@ public sealed partial class PersonalTrainingService
                 f.RequestStatus == FreezeRequestStatus.Active || f.RequestStatus == FreezeRequestStatus.Completed) &&
                 (f.ActualStartDate ?? f.RequestedStartDate) <= today &&
                 (f.ActualEndDate ?? f.RequestedEndDate) > today))
-            .OrderByDescending(m => m.EndDate).FirstOrDefaultAsync(ct);
+            .OrderByDescending(m => m.EndDate).FirstOrDefaultAsync(store, ct);
         if (membership is null)
             return Result<MemberMembership>.Failure("Cần gói Gym đang hoạt động vào ngày đăng ký gói PT.", "PT_GYM_COVERAGE", 409);
         if (await HasConflict(booking.Preview.TrainerId, actor, dates, now, ct))
@@ -96,10 +94,10 @@ public sealed partial class PersonalTrainingService
     private async Task<bool> HasMemberBookingConflict(string actor, IReadOnlyList<PTCalendarSlot> slots, DateTime now, CancellationToken ct)
     {
         var dates = slots.Select(s => s.Date).Distinct().ToArray();
-        if (await Occupied(now).AnyAsync(s => s.MemberUserId == actor && dates.Contains(s.SessionDate), ct))
+        if (await Occupied(now).AnyAsync(store, s => s.MemberUserId == actor && dates.Contains(s.SessionDate), ct))
             return true;
         var yoga = await Yoga(string.Empty, actor, dates.Min(), dates.Max())
-            .Select(s => new { s.ScheduledDate, s.StartTime, s.EndTime }).ToListAsync(ct);
+            .Select(s => new { s.ScheduledDate, s.StartTime, s.EndTime }).ToListAsync(store, ct);
         return slots.Any(slot => yoga.Any(s => s.ScheduledDate == slot.Date &&
             PersonalTrainingRules.Overlaps(slot.StartTime, slot.EndTime, s.StartTime, s.EndTime)));
     }
@@ -114,8 +112,8 @@ public sealed partial class PersonalTrainingService
 
     public async Task<Result<PTWeeklySlot[]>> BookingSlots(string actor, PTBookingSlotsRequest request, CancellationToken ct)
     {
-        if (request.StartDate < Today || request.StartDate.DayOfWeek != DayOfWeek.Monday)
-            return Invalid<PTWeeklySlot[]>("Chọn ngày bắt đầu là thứ Hai chưa qua.");
+        if (!PersonalTrainingRules.CanStartOn(request.StartDate, Today))
+            return Invalid<PTWeeklySlot[]>("Chọn tuần bắt đầu từ thứ Hai tuần sau trở đi; lịch phải được giữ chậm nhất vào thứ Sáu trước đó.");
         var member = await User(actor, UserRole.Member, ct);
         if (member is null)
             return Forbidden<PTWeeklySlot[]>();
@@ -123,15 +121,15 @@ public sealed partial class PersonalTrainingService
         if (trainer is null || trainer.GymId != member.GymId || actor == request.TrainerId)
             return Missing<PTWeeklySlot[]>();
 
-        var level = await db.TrainerProfiles.Where(p => p.PTUserId == request.TrainerId && p.IsActive)
-            .Select(p => (TrainerLevel?)p.Level).SingleOrDefaultAsync(ct);
-        var package = await PTPackages.SingleOrDefaultAsync(p => p.Id == request.PackageId &&
+        var level = await store.Query<TrainerProfile>().Where(p => p.PTUserId == request.TrainerId && p.IsActive)
+            .Select(p => (TrainerLevel?)p.Level).SingleOrDefaultAsync(store, ct);
+        var package = await PTPackages.SingleOrDefaultAsync(store, p => p.Id == request.PackageId &&
             p.PackageStatus == PackageStatus.Active, ct);
         var component = package?.Components.Single();
         if (level is null || component is null || component.ApplicableTrainerLevel != level)
             return Invalid<PTWeeklySlot[]>("Gói PT hoặc cấp độ huấn luyện viên không hợp lệ.");
 
-        var templates = await Templates(request.TrainerId).AsNoTracking().OrderBy(s => s.StartTime).ToArrayAsync(ct);
+        var templates = await Templates(request.TrainerId).AsNoTracking(store).OrderBy(s => s.StartTime).ToArrayAsync(store, ct);
         if (templates.Length == 0)
             return Result<PTWeeklySlot[]>.Success([]);
         var selected = templates.Where(s => request.TemplateIds.Contains(s.Id))
@@ -145,8 +143,8 @@ public sealed partial class PersonalTrainingService
         var trainerBusy = await Occupied(now).Where(s => s.PTUserId == request.TrainerId &&
                 s.SessionDate >= request.StartDate && s.SessionDate <= through)
             .Select(s => new { s.SessionDate, s.StartTime, s.EndTime, s.SessionStatus })
-            .ToListAsync(ct);
-        var yogaAssigned = await ActiveYogaAssignments.AnyAsync(c => c.InstructorUserId == request.TrainerId, ct);
+            .ToListAsync(store, ct);
+        var yogaAssigned = await ActiveYogaAssignments.AnyAsync(store, c => c.InstructorUserId == request.TrainerId, ct);
 
         return Result<PTWeeklySlot[]>.Success(templates.Select(slot =>
         {
@@ -214,10 +212,10 @@ public sealed partial class PersonalTrainingService
                     SessionStatus = PTSessionStatus.CheckoutHold
                 }).ToList()
             };
-            db.PTPurchases.Add(purchase);
-            await db.SaveChangesAsync(ct);
+            store.Add(purchase);
+            await store.Save(ct);
             purchase.HoldExpiresAt = order.CreatedAt.Add(HoldDuration);
-            await db.SaveChangesAsync(ct);
+            await store.Save(ct);
             return Result<PTCheckoutResponse>.Success(CheckoutResponse(purchase, order, null, now), 201);
         }, ct);
 
@@ -229,13 +227,17 @@ public sealed partial class PersonalTrainingService
             var order = await payments.FindOrderAsync(orderNumber, actor, forUpdate: true, ct);
             if (order is null)
                 return Missing<PTCheckoutResponse>();
-            var purchase = await db.PTPurchases.SingleOrDefaultAsync(p => p.OrderId == order.Id && p.MemberUserId == actor, ct);
+            var purchase = await store.Query<PTPurchase>().SingleOrDefaultAsync(store, p => p.OrderId == order.Id && p.MemberUserId == actor, ct);
             if (purchase is null)
                 return Missing<PTCheckoutResponse>();
             var now = Now;
             if (purchase.Status != PTPurchaseStatus.PendingPayment || PaymentDeadline(order) <= now ||
                 order.OrderStatus != OrderStatus.Pending)
                 return Conflict<PTCheckoutResponse>("Đơn PT đã hết hạn hoặc đã được xử lý.");
+
+            if (order.PaymentTransaction is null && order.CreatedAt.Add(ProceedWindow) <= now)
+                return Result<PTCheckoutResponse>.Failure(
+                    "Đã quá 10 phút để bắt đầu thanh toán. Vui lòng đặt lại lịch.", "PT_PAYMENT_WINDOW_CLOSED", 409);
 
             if (order.PaymentTransaction is { } issued)
             {
@@ -265,7 +267,7 @@ public sealed partial class PersonalTrainingService
                 AmountDue = due
             };
             purchase.PurchasePrice = due;
-            await db.SaveChangesAsync(ct);
+            await store.Save(ct);
             return Result<PTCheckoutResponse>.Success(CheckoutResponse(purchase, order, qr, now));
         }, ct);
 
@@ -277,8 +279,8 @@ public sealed partial class PersonalTrainingService
             var order = await payments.FindOrderAsync(orderNumber, actor, forUpdate: true, ct);
             if (order is null)
                 return Missing<PTCheckoutResponse>();
-            var contract = await db.PTPurchases.Include(p => p.Sessions)
-                .SingleOrDefaultAsync(p => p.OrderId == order.Id && p.MemberUserId == actor, ct);
+            var contract = await store.Query<PTPurchase>().Including(store, "Sessions")
+                .SingleOrDefaultAsync(store, p => p.OrderId == order.Id && p.MemberUserId == actor, ct);
             if (contract is null)
                 return Missing<PTCheckoutResponse>();
 
@@ -292,7 +294,7 @@ public sealed partial class PersonalTrainingService
             var trainer = await User(contract.PTUserId, UserRole.PT, ct);
             if (slots.Length == 0 || slots.Length != contract.TotalSessions || trainer is null ||
                 slots.Any(s => Utc(s.Date, s.StartTime) <= now.UtcDateTime || !InHours(trainer.Gym, s.StartTime, s.EndTime)) ||
-                await ActiveYogaAssignments.AnyAsync(c => c.InstructorUserId == contract.PTUserId, ct) ||
+                await ActiveYogaAssignments.AnyAsync(store, c => c.InstructorUserId == contract.PTUserId, ct) ||
                 await HasConflict(contract.PTUserId, actor, slots, now.UtcDateTime, ct, ignorePurchase: contract.Id))
                 return Conflict<PTCheckoutResponse>("Lịch PT không còn hợp lệ.");
 
@@ -307,7 +309,7 @@ public sealed partial class PersonalTrainingService
             MembershipPurchaseService.RecordPaidOrder(order, contract.PurchasePrice, now, null, now);
             ActivatePTContract(contract);
             Audit(actor, nameof(PTPurchase), contract.Id, "DemoPaymentConfirmed");
-            await db.SaveChangesAsync(ct);
+            await store.Save(ct);
             return Result<PTCheckoutResponse>.Success(CheckoutResponse(contract, order, null, now.UtcDateTime));
         }, ct);
 
@@ -320,9 +322,8 @@ public sealed partial class PersonalTrainingService
     {
         if (await User(actor, UserRole.Member, ct) is null)
             return Forbidden<PTCheckoutResponse>();
-        var purchase = await db.PTPurchases.Include(p => p.Order).ThenInclude(o => o!.PaymentTransaction)
-            .ThenInclude(p => p!.Invoice)
-            .SingleOrDefaultAsync(p => p.MemberUserId == actor && p.Order!.OrderNumber == orderNumber, ct);
+        var purchase = await store.Query<PTPurchase>().Including(store, "Order.PaymentTransaction.Invoice")
+            .SingleOrDefaultAsync(store, p => p.MemberUserId == actor && p.Order!.OrderNumber == orderNumber, ct);
         if (purchase?.Order is not { } order)
             return Missing<PTCheckoutResponse>();
         var now = Now;
@@ -334,11 +335,11 @@ public sealed partial class PersonalTrainingService
         };
         if (order.PaymentTransaction is not { } original)
             return Result<PTCheckoutResponse>.Success(response);
-        var refunds = await db.PaymentTransactions.AsNoTracking()
+        var refunds = await store.Query<PaymentTransaction>().AsNoTracking(store)
             .Where(payment => (payment.Id == original.Id || payment.SourcePaymentTransactionId == original.Id) &&
                 payment.RefundStatus != null && payment.RefundAmount > 0 && payment.PaidAt != null &&
                 payment.GatewayTransactionReference != null)
-            .OrderByDescending(payment => payment.Id).ToListAsync(ct);
+            .OrderByDescending(payment => payment.Id).ToListAsync(store, ct);
         return Result<PTCheckoutResponse>.Success(response with
         {
             Refunds = refunds.Select(payment => new CheckoutRefundView(payment.Id, order.OrderNumber,
@@ -362,12 +363,13 @@ public sealed partial class PersonalTrainingService
             order.PaymentTransaction?.AmountDue ?? purchase.PurchasePrice,
             DateTime.SpecifyKind(PaymentDeadline(order), DateTimeKind.Utc),
             qr, order.PaymentTransaction?.Invoice?.InvoiceNumber, DateTime.SpecifyKind(purchase.HoldExpiresAt!.Value, DateTimeKind.Utc),
-            IsDemoPayment: order.PaymentTransaction?.GatewayName == DemoGateway);
+            IsDemoPayment: order.PaymentTransaction?.GatewayName == DemoGateway,
+            ProceedBefore: DateTime.SpecifyKind(order.CreatedAt.Add(ProceedWindow), DateTimeKind.Utc));
 
     private async Task<VoucherRedemption?> ReserveVoucher(string actor, string code, decimal price, DateTime now, CancellationToken ct)
     {
         var normalized = code.Trim().ToUpperInvariant();
-        var voucher = await db.Vouchers.SingleOrDefaultAsync(v => v.Code.ToUpper() == normalized &&
+        var voucher = await store.Query<Voucher>().SingleOrDefaultAsync(store, v => v.Code.ToUpper() == normalized &&
             v.VoucherStatus == VoucherStatus.Active && v.StartAt <= now && v.EndAt > now, ct);
         if (voucher is null || price < voucher.MinimumSpend)
             return null;
@@ -387,24 +389,24 @@ public sealed partial class PersonalTrainingService
 
     private async Task<bool> VoucherHasCapacity(Voucher voucher, string actor, CancellationToken ct, int? excludingOrder = null)
     {
-        var active = db.VoucherRedemptions.Where(r => r.VoucherId == voucher.Id &&
+        var active = store.Query<VoucherRedemption>().Where(r => r.VoucherId == voucher.Id &&
             (excludingOrder == null || r.OrderId != excludingOrder) &&
             (r.RedemptionStatus == VoucherRedemptionStatus.Confirmed ||
              r.RedemptionStatus == VoucherRedemptionStatus.Reserved && r.Order.OrderStatus == OrderStatus.Pending));
-        if (voucher.MaxRedemptions is { } max && await active.CountAsync(ct) >= max)
+        if (voucher.MaxRedemptions is { } max && await active.CountAsync(store, ct) >= max)
             return false;
         return voucher.MaxRedemptionsPerUser is not { } perUser ||
-            await active.CountAsync(r => r.Order.PurchaserUserId == actor, ct) < perUser;
+            await active.CountAsync(store, r => r.Order.PurchaserUserId == actor, ct) < perUser;
     }
 
     public async Task<Result<SepayWebhookResponse>?> TryFulfillAsync(Order order, SepayTransfer transfer, CancellationToken ct)
     {
-        var contract = await db.PTPurchases.Include(p => p.Sessions).SingleOrDefaultAsync(p => p.OrderId == order.Id, ct);
+        var contract = await store.Query<PTPurchase>().Including(store, "Sessions").SingleOrDefaultAsync(store, p => p.OrderId == order.Id, ct);
         if (contract is null)
             return null;
         var payment = order.PaymentTransaction!;
         var now = clock.GetUtcNow();
-        if (await CheckoutRefunds.IsRecorded(db, payment, transfer.TransactionId, ct))
+        if (await store.IsTransferRecorded(payment, transfer.TransactionId, ct))
             return Result<SepayWebhookResponse>.Success(new(true));
         var created = new DateTimeOffset(DateTime.SpecifyKind(order.CreatedAt, DateTimeKind.Utc));
         if (transfer.TransferredAt.ToUnixTimeSeconds() < created.ToUnixTimeSeconds() ||
@@ -412,16 +414,16 @@ public sealed partial class PersonalTrainingService
             return Result<SepayWebhookResponse>.Failure("Không thể xác nhận thanh toán PT.", "PT_PAYMENT_REJECTED", 409);
         if (payment.GatewayTransactionReference is not null || order.OrderStatus == OrderStatus.Paid)
         {
-            CheckoutRefunds.RecordExtraTransfer(db, payment, transfer, now.UtcDateTime);
-            await db.SaveChangesAsync(ct);
+            store.RecordExtraTransfer(payment, transfer, now.UtcDateTime);
+            await store.Save(ct);
             return Result<SepayWebhookResponse>.Success(new(true));
         }
 
         var slots = contract.Sessions.Select(s => new PTCalendarSlot(s.PTAvailabilityId ?? 0, s.SessionDate,
             s.StartTime, s.EndTime, "Available")).ToArray();
         var trainer = await User(contract.PTUserId, UserRole.PT, ct);
-        var redemption = await db.VoucherRedemptions.Include(r => r.Voucher)
-            .SingleOrDefaultAsync(r => r.OrderId == order.Id, ct);
+        var redemption = await store.Query<VoucherRedemption>().Including(store, "Voucher")
+            .SingleOrDefaultAsync(store, r => r.OrderId == order.Id, ct);
         if (contract.Status is not (PTPurchaseStatus.PendingPayment or PTPurchaseStatus.Expired) ||
             order.OrderStatus is not (OrderStatus.Pending or OrderStatus.Expired) ||
             payment.AmountDue != transfer.Amount || transfer.TransferredAt.UtcDateTime >= PaymentDeadline(order) ||
@@ -431,17 +433,20 @@ public sealed partial class PersonalTrainingService
             (contract.HoldExpiresAt <= now.UtcDateTime && !await OriginalTemplatesAvailable(contract.PTUserId, slots, ct)) ||
             (redemption?.RedemptionStatus == VoucherRedemptionStatus.Released &&
                 !await VoucherHasCapacity(redemption.Voucher, contract.MemberUserId, ct, order.Id)) ||
-            await ActiveYogaAssignments.AnyAsync(c => c.InstructorUserId == contract.PTUserId, ct) ||
+            await ActiveYogaAssignments.AnyAsync(store, c => c.InstructorUserId == contract.PTUserId, ct) ||
             await HasConflict(contract.PTUserId, contract.MemberUserId, slots, now.UtcDateTime, ct, ignorePurchase: contract.Id))
         {
-            CheckoutRefunds.RecordUnappliedTransfer(db, payment, transfer, now.UtcDateTime);
+            store.RecordUnappliedTransfer(payment, transfer, now.UtcDateTime);
             contract.Status = PTPurchaseStatus.Expired;
             foreach (var session in contract.Sessions)
                 session.SessionStatus = PTSessionStatus.Cancelled;
             if (redemption is not null)
                 redemption.RedemptionStatus = VoucherRedemptionStatus.Released;
             Audit(null, nameof(PTPurchase), contract.Id, "PT_REFUND_REQUESTED");
-            await db.SaveChangesAsync(ct);
+            Notify(contract.MemberUserId, "Thanh toán PT chưa được áp dụng",
+                $"Đã nhận {transfer.Amount:N0} VND cho đơn {order.OrderNumber} nhưng không thể xác nhận lịch tập. " +
+                "Vui lòng liên hệ quầy lễ tân để được hoàn tiền.", nameof(PTPurchase), contract.Id);
+            await store.Save(ct);
             return Result<SepayWebhookResponse>.Success(new(true));
         }
 
@@ -452,7 +457,7 @@ public sealed partial class PersonalTrainingService
         Notify(contract.MemberUserId, "Đã thanh toán gói PT", $"Hóa đơn {payment.Invoice!.InvoiceNumber}. Lịch tập đã được xác nhận.",
             nameof(PTPurchase), contract.Id);
         Audit(null, nameof(PTPurchase), contract.Id, nameof(PTPurchaseStatus.Active));
-        await db.SaveChangesAsync(ct);
+        await store.Save(ct);
         return Result<SepayWebhookResponse>.Success(new(true));
     }
 
@@ -465,7 +470,7 @@ public sealed partial class PersonalTrainingService
 
     private async Task<bool> OriginalTemplatesAvailable(string trainerId, PTCalendarSlot[] slots, CancellationToken ct)
     {
-        var template = await Templates(trainerId).Select(s => new { s.DayOfWeek, s.StartTime, s.EndTime }).ToListAsync(ct);
+        var template = await Templates(trainerId).Select(s => new { s.DayOfWeek, s.StartTime, s.EndTime }).ToListAsync(store, ct);
         return slots.All(slot => template.Any(s => s.DayOfWeek == slot.Date.DayOfWeek &&
             s.StartTime == slot.StartTime && s.EndTime == slot.EndTime));
     }

@@ -76,7 +76,7 @@
                             <li>
                                 @if (file.IsExternalLink && TrainerFileRules.IsCertificateUrl(file.DownloadUrl))
                                 {
-                                    <a class="trainer-link" href="@file.DownloadUrl" target="_blank" rel="noopener noreferrer">Mở chứng chỉ tại @file.FileName</a>
+                                    <a class="trainer-link" href="@file.DownloadUrl" target="_blank" rel="noopener noreferrer">Chứng chỉ tại @file.FileName ↗</a>
                                 }
                                 else if (!file.IsExternalLink)
                                 {

@@ -155,7 +155,7 @@ public sealed partial class MembershipPurchaseApiTests
         {
             await RunJobAsync((service, ct) => service.ExpireOrdersAsync(ct));
             await using var workerScope = _app.Services.CreateAsyncScope();
-            await workerScope.ServiceProvider.GetRequiredService<VFMS.Infrastructure.PersonalTraining.PersonalTrainingService>()
+            await workerScope.ServiceProvider.GetRequiredService<VFMS.Application.Services.PersonalTrainingService>()
                 .ExpirePending(CancellationToken.None);
         }
         if (taken)
@@ -308,7 +308,7 @@ public sealed partial class MembershipPurchaseApiTests
     }
 
     [Fact]
-    public async Task PTCanProposeAMakeUpButOnlyMemberAcceptanceReservesTheReturnedCredit()
+    public async Task EitherPartyCanProposeAMakeUpAndOnlyTheOtherPartyAcceptanceReservesTheCredit()
     {
         var request = await PreparePTCheckout();
         using var member = Client("member", "Member");
@@ -334,8 +334,19 @@ public sealed partial class MembershipPurchaseApiTests
 
         var route = $"/api/pt/sessions/{old.Id}/make-up";
         var makeUp = new PTMakeUpRequest(old.Date, new TimeOnly(15, 0));
-        using var forbidden = await member.PostAsJsonAsync(route, makeUp);
-        Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+        // Member-proposed make-up: the PT decides (UC 4.7); declining keeps the make-up unit.
+        using var requested = await member.PostAsJsonAsync(route, makeUp);
+        Assert.True(requested.StatusCode == HttpStatusCode.Created, await requested.Content.ReadAsStringAsync());
+        var memberRequest = (await requested.Content.ReadFromJsonAsync<PTSessionResponse>())!;
+        Assert.Equal("MakeUpRequested", memberRequest.Status);
+        using var memberCannotDecide = await member.PostAsJsonAsync($"/api/pt/sessions/{memberRequest.Id}/make-up/decision",
+            new PTProposalDecision(true, memberRequest.Proposal!.ExpiresAt));
+        Assert.Equal(HttpStatusCode.Forbidden, memberCannotDecide.StatusCode);
+        using var declined = await trainer.PostAsJsonAsync($"/api/pt/sessions/{memberRequest.Id}/make-up/decision",
+            new PTProposalDecision(false, memberRequest.Proposal.ExpiresAt));
+        Assert.Equal(HttpStatusCode.OK, declined.StatusCode);
+        Assert.Equal(1, (await member.GetFromJsonAsync<PTContractResponse[]>(path))!.Single().MakeUpUnits);
+
         using var proposed = await trainer.PostAsJsonAsync(route, makeUp);
         Assert.True(proposed.StatusCode == HttpStatusCode.Created, await proposed.Content.ReadAsStringAsync());
         var pending = (await proposed.Content.ReadFromJsonAsync<PTSessionResponse>())!;
@@ -416,9 +427,10 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Contains(calendar, slot => slot.Date == session.Date && slot.StartTime == newTime && slot.Status == "Available");
         using var removed = await member.PostAsync($"{sessionPath}/cancel", null);
         Assert.Equal(HttpStatusCode.NotFound, removed.StatusCode);
+        // The PT may also ask to reschedule (UC 4.7), but not onto the other member's booked hour.
         using var trainerRequest = await trainer.PostAsJsonAsync($"{sessionPath}/proposal",
-            new PTProposalRequest(session.Date, newTime, "Reschedule"));
-        Assert.Equal(HttpStatusCode.BadRequest, trainerRequest.StatusCode);
+            new PTProposalRequest(session.Date, busyTime, "Reschedule"));
+        Assert.Equal(HttpStatusCode.Conflict, trainerRequest.StatusCode);
         var requestPath = $"{sessionPath}/reschedule-request";
         using var wrongMember = await otherMember.PostAsJsonAsync(requestPath, new PTRescheduleRequest(session.Date, newTime));
         Assert.Equal(HttpStatusCode.NotFound, wrongMember.StatusCode);
@@ -452,7 +464,7 @@ public sealed partial class MembershipPurchaseApiTests
         {
             _clock.Now = new DateTimeOffset(pending.Proposal.ExpiresAt);
             await using var worker = _app.Services.CreateAsyncScope();
-            await worker.ServiceProvider.GetRequiredService<VFMS.Infrastructure.PersonalTraining.PersonalTrainingService>()
+            await worker.ServiceProvider.GetRequiredService<VFMS.Application.Services.PersonalTrainingService>()
                 .ExpirePending(CancellationToken.None);
         }
         using var decided = await trainer.PostAsJsonAsync($"{requestPath}/decision", decision);
@@ -511,9 +523,11 @@ public sealed partial class MembershipPurchaseApiTests
             new PTFreezeRequest(start, start.AddDays(7), "Travel"));
         Assert.True(requested.StatusCode == HttpStatusCode.Created, await requested.Content.ReadAsStringAsync());
         var freeze = (await requested.Content.ReadFromJsonAsync<PTFreezeResponse>())!;
-        var pendingRequests = (await manager.GetFromJsonAsync<PTFreezeResponse[]>("/api/pt/manager/freezes"))!;
+        var pendingRequests = (await manager.GetFromJsonAsync<VFMS.Contracts.Common.PagedResponse<PTFreezeResponse>>(
+            "/api/pt/manager/freezes/page?processed=false&page=1"))!.Items;
         Assert.Equal(freeze.Id, Assert.Single(pendingRequests).Id);
-        var processedRequests = (await manager.GetFromJsonAsync<PTFreezeResponse[]>("/api/pt/manager/freezes?processed=true"))!;
+        var processedRequests = (await manager.GetFromJsonAsync<VFMS.Contracts.Common.PagedResponse<PTFreezeResponse>>(
+            "/api/pt/manager/freezes/page?processed=true&page=1"))!.Items;
         var processedRequest = Assert.Single(processedRequests);
         Assert.Equal(firstFreeze.Id, processedRequest.Id);
         Assert.Equal("Rejected", processedRequest.Status);
@@ -810,7 +824,7 @@ public sealed partial class MembershipPurchaseApiTests
                 }]
             };
             db.Orders.Add(order);
-            db.TrainerProfiles.Add(new TrainerProfile { PTUserId = "buyer", Level = TrainerLevel.Senior });
+            db.TrainerProfiles.Add(new TrainerProfile { PTUserId = "buyer", Level = TrainerLevel.Senior, AcceptingNewMembers = true });
             db.Vouchers.Add(new Voucher
             {
                 Code = "PT-OFF",

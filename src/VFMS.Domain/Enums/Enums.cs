@@ -170,7 +170,15 @@ public enum PTSessionStatus
     PendingFreeze,
     MakeUpPending,
     RescheduleRequested,
-    TrainerAbsentReported
+    TrainerAbsentReported,
+    /// <summary>Nobody recorded attendance by the end of the session day; counts as used (GBR-97).</summary>
+    AutoCompleted,
+    /// <summary>PT recorded Present but the Member reported PT Absent; the Manager decides (UC 4.11).</summary>
+    Disputed,
+    /// <summary>Post-freeze slot held while the freeze request awaits the Manager (GBR-09).</summary>
+    FreezeHold,
+    /// <summary>Make-up appointment proposed by the Member; the PT accepts or declines (UC 4.7).</summary>
+    MakeUpRequested
 }
 
 public enum PTPurchaseStatus
@@ -185,7 +193,8 @@ public enum PTPurchaseStatus
 public enum PTAdjustmentType
 {
     Reschedule,
-    DoubleSession
+    DoubleSession,
+    Cancellation
 }
 
 public enum SlotStatus
@@ -202,7 +211,9 @@ public enum PTFreezeRequestStatus
     Rejected,
     Active,
     Completed,
-    Expired
+    Expired,
+    /// <summary>Withdrawn by the Member before the freeze started; not counted as used (UC 4.8).</summary>
+    Withdrawn
 }
 
 // ─────────────────────────────────────────────────────────────

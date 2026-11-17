@@ -1,4 +1,6 @@
 using System.Text.Json;
+using Mapster;
+using MapsterMapper;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
@@ -6,6 +8,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using VFMS.Application.Interfaces;
+using VFMS.Application.Mappings;
 using VFMS.Application.Services;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Trainers;
@@ -13,8 +16,8 @@ using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
 using VFMS.Infrastructure.Data;
 using VFMS.Infrastructure.Identity;
-using VFMS.Infrastructure.PersonalTraining;
 using VFMS.Infrastructure.Repositories;
+using VFMS.Infrastructure.Workers;
 
 namespace VFMS.IntegrationTests;
 
@@ -47,7 +50,9 @@ internal sealed class TrainerTestDatabase : IAsyncDisposable
             ["JwtSettings:Issuer"] = "vfms-tests",
             ["JwtSettings:Audience"] = "vfms-tests"
         }).Build();
-        Service = new(new TrainerStore(Db, Protection, Configuration), new PasswordHasher());
+        var mapping = new TypeAdapterConfig();
+        mapping.Scan(typeof(TrainerMapping).Assembly);
+        Service = new(new TrainerStore(Db, Protection, Configuration), new PasswordHasher(), new Mapper(mapping));
     }
     public async Task Initialize()
     {
@@ -205,7 +210,7 @@ public class TrainerWorkflowTests
     }
 
     [SqlTrainerFact]
-    public async Task Inactive_PT_loses_only_PT_role_after_two_months_without_contract()
+    public async Task PT_not_accepting_for_more_than_60_days_loses_only_the_PT_role()
     {
         await using var fixture = new TrainerTestDatabase();
         await fixture.Initialize();
@@ -214,11 +219,13 @@ public class TrainerWorkflowTests
             new(await fixture.SetupToken(hired.Id), "TestPassword1!"), default));
         var db = fixture.Db;
         var profile = await db.TrainerProfiles.SingleAsync();
-        profile.FirstReadyDate = new DateOnly(2026, 1, 1);
+        profile.NotAcceptingSince = new DateOnly(2026, 1, 1);
         profile.AcceptingNewMembers = false;
         await db.SaveChangesAsync();
-        var workerService = new PersonalTrainingService(db, TimeProvider.System, null!, null!, null!);
-        await workerService.ExpireInactiveTrainers(new DateOnly(2026, 3, 1), default);
+        var workerService = new PersonalTrainingService(new PersonalTrainingStore(db), TimeProvider.System, null!, null!, null!);
+        await workerService.ExpireInactiveTrainers(new DateOnly(2026, 3, 2), default);
+        Assert.True((await db.TrainerProfiles.AsNoTracking().SingleAsync()).IsActive);
+        await workerService.ExpireInactiveTrainers(new DateOnly(2026, 3, 3), default);
         Assert.False((await db.TrainerProfiles.SingleAsync()).IsActive);
         Assert.DoesNotContain(await db.ApplicationUserRoles.Where(x => x.UserId == profile.PTUserId)
             .Select(x => x.Role.RoleName).ToListAsync(), role => role == "PT");
@@ -226,24 +233,28 @@ public class TrainerWorkflowTests
     }
 
     [SqlTrainerFact]
-    public async Task PT_can_schedule_and_cancel_readiness_for_next_day()
+    public async Task PT_accepting_status_changes_immediately_and_tracks_the_not_accepting_start()
     {
         await using var fixture = new TrainerTestDatabase();
         await fixture.Initialize();
         var hired = await fixture.Hire();
         var service = fixture.Service;
         TrainerTestDatabase.Success(await service.Setup(new(await fixture.SetupToken(hired.Id), "TestPassword1!"), default));
-        var userId = (await fixture.Db.TrainerProfiles.SingleAsync()).PTUserId;
-        var tomorrow = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7)).AddDays(1);
-        var scheduled = TrainerTestDatabase.Success(await service.SetReadiness(true, userId, default));
-        Assert.False(scheduled.IsAcceptingNow);
-        Assert.True(scheduled.ScheduledAcceptance);
-        Assert.Equal(tomorrow, scheduled.EffectiveDate);
-        var profile = TrainerTestDatabase.Success(await service.Mine(userId, default)).Profile;
-        Assert.False(profile.IsAcceptingNewMembers);
-        Assert.True(profile.ScheduledAcceptance);
-        TrainerTestDatabase.Success(await service.SetReadiness(false, userId, default));
-        Assert.Null((await fixture.Db.TrainerProfiles.SingleAsync()).FirstReadyDate);
+        var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7));
+        var stored = await fixture.Db.TrainerProfiles.AsNoTracking().SingleAsync();
+        Assert.False(stored.AcceptingNewMembers);
+        Assert.Equal(today, stored.NotAcceptingSince);
+
+        var accepting = TrainerTestDatabase.Success(await service.SetReadiness(true, stored.PTUserId, default));
+        Assert.True(accepting.IsAcceptingNewMembers);
+        var profile = TrainerTestDatabase.Success(await service.Mine(stored.PTUserId, default)).Profile;
+        Assert.True(profile.IsAcceptingNewMembers);
+        Assert.Null(profile.NotAcceptingSince);
+
+        var stopped = TrainerTestDatabase.Success(await service.SetReadiness(false, stored.PTUserId, default));
+        Assert.False(stopped.IsAcceptingNewMembers);
+        Assert.Equal(0, stopped.ContractsNotified);
+        Assert.Equal(today, (await fixture.Db.TrainerProfiles.AsNoTracking().SingleAsync()).NotAcceptingSince);
     }
 
     [SqlTrainerFact]

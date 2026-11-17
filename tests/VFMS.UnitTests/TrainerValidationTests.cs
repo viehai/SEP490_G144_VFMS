@@ -91,6 +91,30 @@ public class TrainerValidationTests
     }
 
     [Fact]
+    public void Application_mapping_keeps_list_fields_and_leaves_detail_fields_empty()
+    {
+        var config = new Mapster.TypeAdapterConfig();
+        config.Scan(typeof(VFMS.Application.Mappings.TrainerMapping).Assembly);
+        var application = new VFMS.Domain.Entities.TrainerApplication
+        {
+            Id = 7, TrackingCode = "TR-1", FullName = "Applicant", Email = "a@example.test", PhoneNumber = "0900000000",
+            CitizenId = "000000000001", Specialty = "PT", InterviewNote = "private",
+            ApplicationStatus = VFMS.Domain.Enums.TrainerApplicationStatus.Interviewing,
+            CertificatesJson = """[{"Id":"f1","FileName":"proof.pdf","ContentType":"application/pdf"}]"""
+        };
+
+        var response = new MapsterMapper.Mapper(config).Map<TrainerApplicationResponse>(application);
+
+        Assert.Equal("Interviewing", response.Status);
+        Assert.Equal("TR-1", response.TrackingCode);
+        Assert.Equal("Recruitment", response.ApplicationType);
+        Assert.Equal("/api/trainers/applications/7/documents/f1", Assert.Single(response.Certificates).DownloadUrl);
+        Assert.Null(response.InterviewNote);
+        Assert.Null(response.SubmissionHistory);
+        Assert.Null(response.AccountMatch);
+    }
+
+    [Fact]
     public void Directory_and_application_filters_accept_only_known_specialties()
     {
         Assert.True(new TrainerSearchValidator().Validate(new TrainerSearch(Specialty: "Yoga")).IsValid);
@@ -129,15 +153,11 @@ public class TrainerValidationTests
     }
 
     [Fact]
-    public void Trainer_readiness_changes_the_next_day_and_inactivity_uses_last_contract_end()
+    public void Trainer_loses_the_role_only_after_more_than_60_not_accepting_days()
     {
         var today = new DateOnly(2026, 11, 15);
-        Assert.True(TrainerReadinessRules.IsAccepting(true, false, today.AddDays(1), today));
-        Assert.False(TrainerReadinessRules.IsAccepting(true, false, today.AddDays(1), today.AddDays(1)));
-        Assert.False(TrainerReadinessRules.IsAccepting(false, true, today.AddDays(1), today));
-        Assert.True(TrainerReadinessRules.IsAccepting(false, true, today.AddDays(1), today.AddDays(1)));
-        Assert.True(TrainerReadinessRules.HasExpired(new(2026, 8, 1), null, today));
-        Assert.False(TrainerReadinessRules.HasExpired(new(2026, 8, 1), new(2026, 10, 1), today));
-        Assert.True(TrainerReadinessRules.HasExpired(new(2026, 8, 1), new(2026, 9, 1), today));
+        Assert.False(TrainerReadinessRules.HasExpired(null, today));
+        Assert.False(TrainerReadinessRules.HasExpired(today.AddDays(-60), today));
+        Assert.True(TrainerReadinessRules.HasExpired(today.AddDays(-61), today));
     }
 }

@@ -23,13 +23,13 @@
                 <div class="trainer-row trainer-between">
                     <div>
                         <strong>@(detail.Profile.IsAcceptingNewMembers ? "Đang nhận học viên mới" : "Không nhận học viên mới")</strong>
-                        @if (detail.Profile.ScheduledAcceptance is { } scheduled && detail.Profile.ReadinessEffectiveDate is { } effective)
+                        @if (!detail.Profile.IsAcceptingNewMembers && detail.Profile.NotAcceptingSince is { } since)
                         {
-                            <p class="trainer-muted">Đã lên lịch @(scheduled ? "bật" : "tắt") từ 00:00 ngày @effective.ToString("dd/MM/yyyy").</p>
+                            <p class="trainer-muted">Từ ngày @since.ToString("dd/MM/yyyy"). Quá 60 ngày liên tục sẽ mất quyền PT khi không còn hợp đồng đang chạy.</p>
                         }
                     </div>
                     <button type="button" class="trainer-button" disabled="@_saving" @onclick="ToggleReadinessAsync">
-                        @(detail.Profile.ScheduledAcceptance is not null ? "Hủy thay đổi" : detail.Profile.IsAcceptingNewMembers ? "Ngừng nhận học viên" : "Sẵn sàng nhận học viên")
+                        @(detail.Profile.IsAcceptingNewMembers ? "Ngừng nhận học viên" : "Sẵn sàng nhận học viên")
                     </button>
                 </div>
                 <form class="trainer-stack" @onsubmit="SaveAsync" @onsubmit:preventDefault>
@@ -50,7 +50,7 @@
                     {
                         @if (Api.PublicAsset(certificate.DownloadUrl) is { } url)
                         {
-                            <li><a href="@url" class="trainer-link trainer-copy" target="@(certificate.IsExternalLink ? "_blank" : null)" rel="noopener noreferrer">@(certificate.IsExternalLink ? url : certificate.FileName)</a></li>
+                            <li><a href="@url" class="trainer-link trainer-copy" target="@(certificate.IsExternalLink ? "_blank" : null)" rel="noopener noreferrer">@(certificate.IsExternalLink ? $"Chứng chỉ tại {certificate.FileName} ↗" : certificate.FileName)</a></li>
                         }
                     }
                 </ul>
@@ -228,13 +228,12 @@
         _error = _message = null;
         try
         {
-            var target = detail.Profile.ScheduledAcceptance is not null
-                ? detail.Profile.IsAcceptingNewMembers : !detail.Profile.IsAcceptingNewMembers;
-            var status = await Api.SetReadinessAsync(target);
+            var status = await Api.SetReadinessAsync(!detail.Profile.IsAcceptingNewMembers);
             await LoadProfileAsync();
-            _message = status.EffectiveDate > DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7))
-                ? $"Thay đổi có hiệu lực từ 00:00 ngày {status.EffectiveDate:dd/MM/yyyy}."
-                : "Đã hủy thay đổi trạng thái nhận học viên.";
+            _message = status.IsAcceptingNewMembers ? "Đã chuyển sang nhận học viên mới."
+                : status.ContractsNotified > 0
+                    ? $"Đã ngừng nhận học viên mới. {status.ContractsNotified} hội viên chưa bắt đầu tập được mời đổi huấn luyện viên trong 1 tuần."
+                    : "Đã ngừng nhận học viên mới.";
         }
         catch (AuthApiException ex) { _error = ex.Message; }
         finally { _saving = false; }
