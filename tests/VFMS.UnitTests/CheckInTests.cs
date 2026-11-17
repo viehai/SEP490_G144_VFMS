@@ -179,9 +179,9 @@ public sealed class CheckInTests
         var both = await service.KioskCheckInAsync(await QrScan(qr, "both"));
 
         Assert.Equal(403, refused.StatusCode);
-        Assert.EndsWith("Membership status: None.", refused.ErrorMessage);
+        Assert.EndsWith("Membership status: No gym plan.", refused.ErrorMessage);
         Assert.Equal(403, manual.StatusCode);
-        Assert.Equal("None", desk.MembershipStatus);
+        Assert.Equal("No gym plan", desk.MembershipStatus);
         Assert.Null(desk.ValidThrough);
         Assert.Equal(201, both.StatusCode);
         Assert.Equal(7, repo.Active.Single(c => c.MemberUserId == "both").MemberMembershipId);   // the gym plan, not the longer yoga one

@@ -27,6 +27,18 @@ internal static class MembershipRules
     public static List<MemberMembership> Gym(IEnumerable<MemberMembership> memberships) =>
         memberships.Where(m => m.PackageComponent.ComponentType == ComponentType.GYM).ToList();
 
+    /// <summary>
+    /// Status of the member's gym plans; "No gym plan" when they have none but another plan (e.g. yoga only) is usable,
+    /// so the kiosk and the front desk don't say "None" to someone who did buy a plan.
+    /// </summary>
+    public static string GymStatus(IReadOnlyCollection<MemberMembership> all, DateOnly today)
+    {
+        var status = Status(Gym(all), today);
+        return status == "None" && Usable(all, today) is not null ? NoGymPlan : status;
+    }
+
+    public const string NoGymPlan = "No gym plan";
+
     /// <summary>Active, None, Expired, or the status of the latest membership (Frozen, Suspended, ...).</summary>
     public static string Status(IReadOnlyCollection<MemberMembership> memberships, DateOnly today)
     {
@@ -143,7 +155,7 @@ public sealed class CheckInService : ICheckInService
             var gym = MembershipRules.Gym(r.Memberships);
             var usable = MembershipRules.Usable(gym, today);
             return new FrontDeskMemberResponse(r.User.UserId, r.User.FullName, r.User.PhoneNumber,
-                MembershipRules.Status(gym, today), (usable ?? gym.MaxBy(m => m.EndDate))?.EndDate, r.IsCheckedIn);
+                MembershipRules.GymStatus(r.Memberships, today), (usable ?? gym.MaxBy(m => m.EndDate))?.EndDate, r.IsCheckedIn);
         }).ToList());
     }
 
@@ -235,13 +247,13 @@ public sealed class CheckInService : ICheckInService
         var localNow = YogaTime.LocalNow(_clock);
         var today = DateOnly.FromDateTime(localNow);
         var user = await _repository.GetUserAsync(userId, cancellationToken);
-        var memberships = MembershipRules.Gym(await _repository.GetMembershipsAsync(userId, cancellationToken));
-        var membership = MembershipRules.Usable(memberships, today);
+        var all = await _repository.GetMembershipsAsync(userId, cancellationToken);
+        var membership = MembershipRules.Usable(MembershipRules.Gym(all), today);
         if (user is null)
             return Result<CheckInResultResponse>.Failure(GymAccessMessages.Denied, GymAccessMessages.DeniedCode, 403);
         if (membership is null)
             return Result<CheckInResultResponse>.Failure(
-                GymAccessMessages.DeniedWithStatus(MembershipRules.Status(memberships, today)), GymAccessMessages.DeniedCode, 403);
+                GymAccessMessages.DeniedWithStatus(MembershipRules.GymStatus(all, today)), GymAccessMessages.DeniedCode, 403);
         if (!InAccessWindow(membership.PackageComponent, TimeOnly.FromDateTime(localNow)))
             return Result<CheckInResultResponse>.Failure(GymAccessMessages.Denied, GymAccessMessages.DeniedCode, 403);
 
