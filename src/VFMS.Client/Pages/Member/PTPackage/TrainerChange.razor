@@ -1,0 +1,91 @@
+@page "/my-pt-packages/{ContractId:int}/change-trainer"
+@layout AccountLayout
+@attribute [Authorize(Roles = "Member")]
+@using VFMS.Client.Components.Operations
+@inject PersonalTrainingApiClient Api
+@inject NavigationManager Navigation
+
+<PageTitle>Đổi huấn luyện viên | Victor Fitness</PageTitle>
+<section class="workspace-page trainer-page trainer-stack">
+    <a class="trainer-back" href="@($"/my-pt-packages?contract={ContractId}")">← Gói PT của tôi</a>
+    <PageHeader Overline="VFMS / GÓI PT" Title="Đổi huấn luyện viên"
+                Description="Các buổi chưa tập chuyển sang huấn luyện viên mới cùng cấp; số buổi, giá và lượt bảo lưu giữ nguyên." />
+    <TrainerFeedback Error="@_error" Message="@_message" />
+    @if (_loading) { <p role="status">Đang tải hợp đồng…</p> }
+    else if (_contract is { } contract)
+    {
+        @if (contract.TrainerChangeDeadline is not { } deadline)
+        {
+            <p class="trainer-panel">Hợp đồng này hiện không trong thời gian đổi huấn luyện viên. Bạn cũng có thể đổi khi xin bảo lưu.</p>
+        }
+        else
+        {
+            <div class="trainer-panel trainer-stack">
+                <p>@contract.PackageName · huấn luyện viên hiện tại: <strong>@contract.TrainerName</strong> · hạn chọn đến @LocalTime(deadline)</p>
+                <ReplacementTrainerPicker ContractId="contract.Id" Disabled="_busy" Changed="Chosen" />
+                <label>Bắt đầu tập với huấn luyện viên mới từ ngày
+                    <input class="trainer-input" type="date" min="@Today.AddDays(1).ToString("yyyy-MM-dd")" @bind="_start" @bind:after="ClearPreview" disabled="@_busy" />
+                </label>
+                <div class="trainer-row">
+                    <button class="trainer-button" disabled="@(_busy || !Ready)" @onclick="PreviewAsync">Xem lịch mới</button>
+                    @if (_preview is { Conflicts.Count: 0 })
+                    {
+                        <button class="trainer-button trainer-primary" disabled="@_busy" @onclick="ConfirmAsync">Xác nhận đổi huấn luyện viên</button>
+                    }
+                </div>
+            </div>
+            @if (_preview is { } preview)
+            {
+                <div class="trainer-panel trainer-stack">
+                    <h2>Lịch dự kiến (@preview.Sessions.Count buổi, kết thúc @Date(preview.ExpiresOn))</h2>
+                    @if (preview.Conflicts.Count > 0)
+                    {
+                        <p class="trainer-feedback trainer-error" role="alert">@preview.Conflicts.Count ca đã có người giữ, trùng lịch hoặc đã qua. Hãy chọn ca hoặc ngày bắt đầu khác.</p>
+                    }
+                    <SlotList Slots="@preview.Sessions.Select(s => new PTCalendarSlot(0, s.Date, s.StartTime, s.EndTime,
+                        preview.Conflicts.Any(c => c.OriginalSessionId == s.OriginalSessionId) ? "Unavailable" : "Proposed")).ToArray()" />
+                </div>
+            }
+        }
+    }
+</section>
+
+@code {
+    [Parameter] public int ContractId { get; set; }
+    private PTContractResponse? _contract;
+    private PTTrainerChangePreview? _preview;
+    private (string TrainerId, int[] TemplateIds) _choice = ("", []);
+    private DateOnly _start = Today.AddDays(1);
+    private bool _loading = true, _busy;
+    private string? _error, _message;
+    private bool Ready => _choice.TrainerId.Length > 0 && _choice.TemplateIds.Length > 0;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        try { _contract = (await Api.ContractsAsync(ContractId)).SingleOrDefault(); }
+        catch (AuthApiException ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private void Chosen((string TrainerId, int[] TemplateIds) choice) { _choice = choice; ClearPreview(); }
+    private void ClearPreview() => _preview = null;
+    private PTTrainerChangeRequest Request => new(_choice.TrainerId, _start, _choice.TemplateIds);
+
+    private Task PreviewAsync() => RunAsync(async () => _preview = await Api.PreviewTrainerChangeAsync(ContractId, Request));
+
+    private Task ConfirmAsync() => RunAsync(async () =>
+    {
+        await Api.ChangeTrainerAsync(ContractId, Request);
+        Navigation.NavigateTo($"/my-pt-packages?contract={ContractId}");
+    });
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        if (_busy) return;
+        _busy = true;
+        _error = _message = null;
+        try { await action(); }
+        catch (AuthApiException ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+}

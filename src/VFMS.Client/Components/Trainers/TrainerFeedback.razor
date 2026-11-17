@@ -1,0 +1,12 @@
+@if (!string.IsNullOrWhiteSpace(Error))
+{
+    <p class="trainer-feedback trainer-error" role="alert">@Error</p>
+}
+@if (!string.IsNullOrWhiteSpace(Message))
+{
+    <p class="trainer-feedback" role="status">@Message</p>
+}
+@code {
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public string? Message { get; set; }
+}

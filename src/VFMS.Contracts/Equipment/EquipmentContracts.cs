@@ -2,13 +2,19 @@ namespace VFMS.Contracts.Equipment;
 
 // ── Categories (UC-76) ─────────────────────────────────────────
 
-public sealed record EquipmentCategoryRequest(string Name, string? Description = null);
+/// <summary>Code prefix: 2 to 5 capital letters, unique; equipment codes in the category are PREFIX-0001, PREFIX-0002...</summary>
+public sealed record EquipmentCategoryRequest(string Name, string? Description = null, string? CodePrefix = null);
 
-public sealed record EquipmentCategoryResponse(int Id, string Name, string? Description, int EquipmentCount);
+/// <summary><see cref="NextCode"/> is the code a new equipment in this category gets when its code is left blank.</summary>
+public sealed record EquipmentCategoryResponse(
+    int Id, string Name, string? Description, int EquipmentCount, string? CodePrefix = null, string? NextCode = null);
 
 // ── Equipment (UC-76) ──────────────────────────────────────────
 
-/// <summary>Create or update an equipment record. New equipment starts as "Operational".</summary>
+/// <summary>
+/// Create or update an equipment record. New equipment starts as "Operational". The category is required;
+/// a blank code is generated from the category prefix (PREFIX-0001), a typed code must follow the same format.
+/// </summary>
 public sealed record EquipmentRequest(
     string Name,
     int? CategoryId = null,

@@ -1,0 +1,58 @@
+<div class="trainer-row trainer-between">
+    <p class="trainer-muted" role="status">@Date(_monday) – @Date(WeekEnd)</p>
+    <div class="trainer-row" role="group" aria-label="Chuyển tuần lịch PT">
+        <button type="button" class="trainer-button" disabled="@(_monday <= _firstMonday)"
+                @onclick="() => ShowWeek(_monday.AddDays(-7))">← Tuần trước</button>
+        <button type="button" class="trainer-button" disabled="@(_monday == _currentMonday)"
+                @onclick="() => ShowWeek(_currentMonday)">Tuần này</button>
+        <button type="button" class="trainer-button" disabled="@(_monday >= _lastMonday)"
+                @onclick="() => ShowWeek(_monday.AddDays(7))">Tuần sau →</button>
+    </div>
+</div>
+<PTWeeklyGrid Slots="_weekSlots" WeekMonday="_monday" SelectedIds="SelectedIds"
+              SlotSelected="SlotSelected" SlotContent="SlotContent" />
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<PTCalendarSlot> Slots { get; set; } = [];
+    [Parameter, EditorRequired] public DateOnly StartDate { get; set; }
+    [Parameter] public IReadOnlyCollection<int> SelectedIds { get; set; } = [];
+    [Parameter] public EventCallback<PTWeeklySlot> SlotSelected { get; set; }
+    [Parameter] public RenderFragment<PTWeeklySlot>? SlotContent { get; set; }
+    [Parameter] public bool StartCurrentWeek { get; set; }
+
+    private DateOnly _monday;
+    private DateOnly _currentMonday;
+    private DateOnly _firstMonday;
+    private DateOnly _lastMonday;
+    private PTWeeklySlot[] _weekSlots = [];
+
+    private DateOnly WeekEnd => DateOnly.FromDayNumber(Math.Min(_monday.DayNumber + 6, DateOnly.MaxValue.DayNumber));
+
+    protected override void OnInitialized()
+    {
+        _currentMonday = MondayOf(Today);
+        var startMonday = MondayOf(StartDate);
+        _monday = StartCurrentWeek ? _currentMonday : startMonday;
+    }
+
+    protected override void OnParametersSet()
+    {
+        var startMonday = MondayOf(StartDate);
+        var firstSlotMonday = Slots.Count == 0 ? startMonday : MondayOf(Slots.Min(slot => slot.Date));
+        var lastSlotMonday = Slots.Count == 0 ? startMonday : MondayOf(Slots.Max(slot => slot.Date));
+        _firstMonday = firstSlotMonday < _currentMonday ? firstSlotMonday : _currentMonday;
+        _lastMonday = lastSlotMonday > _currentMonday ? lastSlotMonday : _currentMonday;
+        ShowWeek(_monday < _firstMonday ? _firstMonday : _monday > _lastMonday ? _lastMonday : _monday);
+    }
+
+    private void ShowWeek(DateOnly monday)
+    {
+        _monday = monday;
+        var end = WeekEnd;
+        _weekSlots = Slots.Where(slot => slot.Date >= monday && slot.Date <= end)
+            .Select(slot => new PTWeeklySlot(slot.TemplateId, slot.Date.DayOfWeek, slot.StartTime, slot.EndTime))
+            .ToArray();
+    }
+
+    private static DateOnly MondayOf(DateOnly date) => date.AddDays(-DayIndex(date.DayOfWeek));
+}

@@ -21,7 +21,7 @@
     @if (_formOpen)
     {
         <section class="@Ui.Card" aria-labelledby="product-form-title">
-            <h2 id="product-form-title" class="text-base font-bold text-[#242424]">@(_editingId is null ? "Thêm sản phẩm" : "Sửa sản phẩm")</h2>
+            <h2 id="product-form-title" class="text-base font-bold text-vfms-text">@(_editingId is null ? "Thêm sản phẩm" : "Sửa sản phẩm")</h2>
             <EditForm Model="_form" OnValidSubmit="SaveAsync" class="mt-4" novalidate>
                 <OperationsValidation TRequest="SupplementProductRequest" Validator="_validator" CreateRequest="CreateRequest" @ref="_validation" />
                 <ValidationSummary />
@@ -32,11 +32,11 @@
                     <div class="row-span-3 flex items-start justify-center">
                         @if (!string.IsNullOrWhiteSpace(_form.ImageUrl))
                         {
-                            <img src="@_form.ImageUrl" alt="Ảnh xem trước" class="h-36 w-36 rounded-lg border border-[#D8D1CD] object-cover" />
+                            <img src="@_form.ImageUrl" alt="Ảnh xem trước" class="h-36 w-36 rounded-lg border border-vfms-border object-cover" />
                         }
                         else
                         {
-                            <div class="flex h-36 w-36 items-center justify-center rounded-lg border border-dashed border-[#D8D1CD] text-xs text-[#8C8581]">Chưa có ảnh</div>
+                            <div class="flex h-36 w-36 items-center justify-center rounded-lg border border-dashed border-vfms-border text-xs text-vfms-text-muted">Chưa có ảnh</div>
                         }
                     </div>
                     <label class="@Ui.Label" for="product-category">Danh mục
@@ -68,7 +68,7 @@
 
     <section class="@Ui.ListCard" aria-labelledby="product-list-title" aria-busy="@_loading">
         <div class="@Ui.ListHeader">
-            <h2 id="product-list-title" class="mb-3 text-sm font-bold text-[#242424]">Sản phẩm</h2>
+            <h2 id="product-list-title" class="mb-3 text-sm font-bold text-vfms-text">Sản phẩm</h2>
             <form @onsubmit="() => LoadAsync(1)" @onsubmit:preventDefault>
                 <fieldset disabled="@Busy" class="flex flex-wrap items-end gap-3">
                     <label class="@Ui.Label w-full sm:w-64" for="product-search">Tìm kiếm
@@ -107,7 +107,7 @@
                             <tr @key="row.Id">
                                 <th scope="row">
                                     <div class="flex items-center gap-3">
-                                        @if (row.ImageUrl is { } image) { <img src="@image" alt="" class="h-10 w-10 flex-none rounded-md border border-[#D8D1CD] object-cover" loading="lazy" /> }
+                                        @if (row.ImageUrl is { } image) { <img src="@image" alt="" class="h-10 w-10 flex-none rounded-md border border-vfms-border object-cover" loading="lazy" /> }
                                         <span class="font-semibold">@row.Name</span>
                                     </div>
                                 </th>
@@ -115,9 +115,9 @@
                                 <td class="text-right whitespace-nowrap">@OperationsText.Money(row.UnitPrice)</td>
                                 <td><span class="@OperationsText.Badge(row.Status)">@OperationsText.Label(row.Status)</span></td>
                                 <td>
-                                    <div class="flex flex-wrap items-center gap-2">
+                                    <div class="flex flex-nowrap whitespace-nowrap items-center gap-2">
                                         <button type="button" class="@Ui.Button" disabled="@Busy" aria-label="Sửa @row.Name" @onclick="() => StartEdit(row)">Sửa</button>
-                                        <select class="rounded-lg border border-[#D8D1CD] bg-[#F8F5F2] px-2 py-1.5 text-xs font-semibold text-[#242424]" disabled="@Busy"
+                                        <select class="rounded-lg border border-vfms-border bg-vfms-surface px-2 py-1.5 text-xs font-semibold text-vfms-text" disabled="@Busy"
                                                 aria-label="Đổi trạng thái @row.Name" value="@row.Status" @onchange="args => ChangeStatusAsync(row, args.Value?.ToString())">
                                             @foreach (var status in OperationsText.ProductStatuses) { <option value="@status">@OperationsText.Label(status)</option> }
                                         </select>
@@ -132,7 +132,7 @@
         }
         else
         {
-            <p role="status" class="p-5 text-sm text-[#6F6966]">Chưa có sản phẩm phù hợp.</p>
+            <p role="status" class="p-5 text-sm text-vfms-text-secondary">Chưa có sản phẩm phù hợp.</p>
         }
     </section>
 </div>

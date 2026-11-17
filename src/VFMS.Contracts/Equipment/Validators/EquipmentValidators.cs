@@ -28,6 +28,9 @@ public sealed class EquipmentCategoryRequestValidator : AbstractValidator<Equipm
             .Must(name => !string.IsNullOrWhiteSpace(name)).WithMessage("The Name field is required.")
             .MaximumLength(150);
         RuleFor(x => x.Description).MaximumLength(500);
+        RuleFor(x => x.CodePrefix)
+            .Must(prefix => !string.IsNullOrWhiteSpace(prefix)).WithMessage("The Code Prefix field is required.")
+            .Matches(@"^\s*[A-Za-z]{2,5}\s*$").WithMessage("Code prefix must be 2 to 5 letters.");
     }
 }
 
@@ -38,7 +41,8 @@ public sealed class EquipmentRequestValidator : AbstractValidator<EquipmentReque
         RuleFor(x => x.Name)
             .Must(name => !string.IsNullOrWhiteSpace(name)).WithMessage("The Name field is required.")
             .MaximumLength(256);
-        RuleFor(x => x.CategoryId).GreaterThan(0).When(x => x.CategoryId.HasValue);
+        RuleFor(x => x.CategoryId)
+            .Must(id => id is > 0).WithMessage("The Category field is required.");
         RuleFor(x => x.Code).MaximumLength(50);
         RuleFor(x => x.Brand).MaximumLength(100);
         RuleFor(x => x.Model).MaximumLength(100);

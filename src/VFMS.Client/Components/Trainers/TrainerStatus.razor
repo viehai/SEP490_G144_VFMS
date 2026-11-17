@@ -1,0 +1,23 @@
+@* Semantic status colours (frontend guideline 6.E); always paired with text. *@
+<span class="trainer-status @Tone">@(Status switch
+    {
+        "Pending" => "Chờ duyệt", "UnderReview" => "Đang xem xét", "Interviewing" => "Đang phỏng vấn",
+        "Hired" => "Đã tuyển", "Approved" => "Đã duyệt", "Rejected" => "Từ chối",
+        "Booked" => "Đã đặt", "Available" => "Còn trống", "Past" => "Đã qua",
+        "Active" => "Đang hoạt động", "Frozen" => "Bảo lưu", "Completed" => "Hoàn thành",
+        "Scheduled" => "Đã lên lịch", "Cancelled" => "Đã hủy", "NoShow" => "Vắng mặt",
+        _ => VFMS.Client.Services.PTDisplay.Status(Status)
+    })</span>
+@code {
+    [Parameter, EditorRequired] public string Status { get; set; } = "";
+
+    private string Tone => Status switch
+    {
+        "Hired" or "Approved" or "Available" or "Active" or "Completed" or "AutoCompleted" or "Paid" => "trainer-status--success",
+        "Pending" or "UnderReview" or "Interviewing" or "Booked" or "Frozen" or "Scheduled" or "PendingPayment" or
+            "PendingFreeze" or "ReschedulePending" or "RescheduleRequested" or "MakeUpPending" or "MakeUpRequested" or
+            "CheckoutHold" or "FreezeHold" or "AwaitingConfirmation" or "RefundPending" => "trainer-status--pending",
+        "Rejected" or "NoShow" or "Expired" or "Disputed" or "RefundFailed" => "trainer-status--danger",
+        _ => "trainer-status--neutral"
+    };
+}

@@ -20,7 +20,7 @@
             <a href="/#featured-classes" class="@NavLinkCls">LỚP HỌC NỔI BẬT</a>
             <a href="/#pricing-memberships" class="@NavLinkCls">GÓI HỘI VIÊN</a>
             <a href="/yoga/schedule" class="@NavLinkCls">LỊCH TẬP YOGA</a>
-            <a href="/" class="@NavLinkCls">HUẤN LUYỆN VIÊN</a>
+            <a href="/trainers" class="@NavLinkCls">HUẤN LUYỆN VIÊN</a>
             <a href="/#explore-equipment" class="@NavLinkCls">TIỆN ÍCH &amp; DỊCH VỤ</a>
         </nav>
 
@@ -31,6 +31,10 @@
                     @if (auth.User.IsInRole("Manager"))
                     {
                         <a href="/manager/membership-plans" class="@ManagerLinkClass" aria-label="Quản lý gói hội viên">Quản lý</a>
+                    }
+                    @if (auth.User.IsInRole("PT"))
+                    {
+                        <a href="/pt/dashboard" class="@ManagerLinkClass" aria-label="Không gian làm việc huấn luyện viên">Khu PT</a>
                     }
                     @if (auth.User.IsInRole("Member"))
                     {
@@ -107,7 +111,8 @@
                     </h5>
                     <ul class="space-y-2.5 text-sm text-[#D8D1CD] font-['Inter',sans-serif]">
                         <li><a href="#" class="hover:text-white transition-colors">Gói Hội Viên Classic &amp; VIP</a></li>
-                        <li><a href="#" class="hover:text-white transition-colors">Huấn Luyện Viên Cá Nhân (PT 1-1)</a></li>
+                        <li><a href="/trainers" class="hover:text-white transition-colors">Huấn Luyện Viên Cá Nhân (PT 1-1)</a></li>
+                        <li><a href="/careers/trainer" class="hover:text-white transition-colors">Ứng Tuyển Huấn Luyện Viên</a></li>
                         <li><a href="#" class="hover:text-white transition-colors">Lớp Yoga &amp; Pilates Studio</a></li>
                         <li><a href="#" class="hover:text-white transition-colors">Khu Vực Powerlifting &amp; Olympic</a></li>
                         <li><a href="#" class="hover:text-white transition-colors">Tủ Locker &amp; Phòng Xông Hơi</a></li>

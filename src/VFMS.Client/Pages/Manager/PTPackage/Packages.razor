@@ -1,0 +1,295 @@
+@page "/manager/pt-packages"
+@layout ManagerAdminLayout
+@attribute [Authorize(Roles = "Manager")]
+@inject PersonalTrainingApiClient Api
+@inject IJSRuntime JS
+
+<PageTitle>Quản lý gói PT | Victor Fitness</PageTitle>
+
+<div class="workspace-page space-y-6">
+    <header class="flex flex-wrap items-end justify-between gap-4 border-b border-[#D8D1CD] pb-6">
+        <div>
+            <h1 class="text-3xl font-extrabold tracking-tight text-[#242424] sm:text-4xl">Quản lý gói PT<span class="text-[#B83A3A]">.</span></h1>
+            <p class="mt-2 text-sm text-[#6F6966]">Quản lý số buổi, chính sách bảo lưu, trạng thái mở bán và lượt đăng ký đang hoạt động.</p>
+        </div>
+        <button type="button" class="@PrimaryButton" disabled="@ListDisabled" @onclick="() => Edit(null)">Thêm gói mới</button>
+    </header>
+
+    <TrainerFeedback Error="@_error" Message="@_message" />
+    @if (_draft is { } draft)
+    {
+        <section class="rounded-xl border border-[#D8D1CD] bg-white p-5 shadow-sm sm:p-6" aria-labelledby="pt-package-editor">
+            <h2 id="pt-package-editor" class="border-b border-[#D8D1CD] pb-3 text-base font-bold text-[#242424]" tabindex="-1" @ref="_panelHeading">@(_selected is null ? "Thêm gói PT" : "Chỉnh sửa gói PT")</h2>
+            <form @key="draft" class="mt-4" @onsubmit="SaveAsync" @onsubmit:preventDefault>
+                <fieldset disabled="@_working" class="grid gap-4 text-sm font-semibold text-[#242424] sm:grid-cols-2">
+                    <label>Tên gói<input class="@Field" @bind="draft.Name" required maxlength="256" /></label>
+                    <label>Cấp PT
+                        <select class="@Field" @bind="draft.Level"><option>Junior</option><option>Senior</option><option>Master</option></select>
+                    </label>
+                    <label>Số buổi<input class="@Field" type="number" min="1" @bind="draft.Credits" required /></label>
+                    <label>Giá (₫)<input class="@Field" type="number" min="1" step="1" max="9999999999999999" @bind="draft.Price" required /></label>
+                    <label>Số ngày bảo lưu tối thiểu<input class="@Field" type="number" min="1" @bind="draft.Minimum" required /></label>
+                    <label>Tổng hạn mức bảo lưu (ngày)<input class="@Field" type="number" min="1" @bind="draft.Cap" required /></label>
+                    <label>Trạng thái
+                        <select class="@Field" @bind="draft.Active">
+                            <option value="true">Đang mở bán</option>
+                            <option value="false">Ngừng bán</option>
+                        </select>
+                    </label>
+                    <label class="sm:col-span-2">Mô tả<textarea class="@Field" rows="3" maxlength="500" @bind="draft.Description"></textarea></label>
+                    <div class="flex flex-wrap gap-3 pt-2 sm:col-span-2">
+                        <button type="submit" class="@PrimaryButton">@(_working ? "Đang lưu..." : "Lưu gói PT")</button>
+                        <button type="button" class="@Button" @onclick="ClosePanel">Hủy</button>
+                    </div>
+                </fieldset>
+            </form>
+        </section>
+    }
+    else if (_selected is { } package)
+    {
+        <section class="rounded-xl border border-[#D8D1CD] bg-white p-5 shadow-sm sm:p-6" aria-labelledby="pt-package-details">
+            <h2 id="pt-package-details" class="break-words border-b border-[#D8D1CD] pb-3 text-base font-bold text-[#242424]" tabindex="-1" @ref="_panelHeading">@package.Name</h2>
+            <dl class="mt-4 grid gap-4 text-sm sm:grid-cols-2">
+                <div><dt class="font-semibold text-[#6F6966]">Mã gói</dt><dd>@package.Code</dd></div>
+                <div><dt class="font-semibold text-[#6F6966]">Cấp PT</dt><dd>@package.TrainerLevel</dd></div>
+                <div><dt class="font-semibold text-[#6F6966]">Số buổi</dt><dd>@package.Credits buổi</dd></div>
+                <div><dt class="font-semibold text-[#6F6966]">Giá</dt><dd>@Money(package.Price)</dd></div>
+                <div><dt class="font-semibold text-[#6F6966]">Bảo lưu tối thiểu / hạn mức</dt><dd>@package.FreezeMinimumDays / @package.FreezeMaxTotalDays ngày</dd></div>
+                <div><dt class="font-semibold text-[#6F6966]">Lượt đăng ký đang hoạt động</dt><dd>@(package.SubscriberCount ?? 0)</dd></div>
+                <div><dt class="font-semibold text-[#6F6966]">Trạng thái</dt><dd>@SaleStatus(package.IsActive)</dd></div>
+                <div class="sm:col-span-2"><dt class="font-semibold text-[#6F6966]">Mô tả</dt><dd class="whitespace-pre-wrap break-words">@(package.Description ?? "—")</dd></div>
+            </dl>
+            <div class="mt-5 flex flex-wrap gap-3">
+                <button type="button" class="@PrimaryButton" @onclick="() => Edit(package)">Chỉnh sửa</button>
+                <button type="button" class="@Button" @onclick="ClosePanel">Đóng chi tiết</button>
+            </div>
+        </section>
+    }
+
+    <section class="overflow-hidden rounded-xl border border-[#D8D1CD] bg-white shadow-sm" aria-labelledby="pt-package-list" aria-busy="@(_loading || _working)">
+        <div class="border-b border-[#D8D1CD] bg-[#ECE8E4]/40 p-5">
+            <h2 id="pt-package-list" class="mb-3 text-sm font-bold text-[#242424]">Danh mục gói PT</h2>
+            <form @onsubmit="ApplyFilters" @onsubmit:preventDefault>
+                <fieldset disabled="@ListDisabled" class="flex flex-wrap items-end gap-3">
+                    <label class="w-full text-xs font-semibold text-[#242424] sm:w-64">
+                        Tìm theo tên
+                        <input type="search" @bind="_searchInput" class="@Field" maxlength="256" />
+                    </label>
+                    <label class="text-xs font-semibold text-[#242424]">
+                        Trạng thái
+                        <select @bind="_statusInput" class="@Field">
+                            <option value="">Tất cả</option>
+                            <option value="active">Đang mở bán</option>
+                            <option value="inactive">Ngừng bán</option>
+                        </select>
+                    </label>
+                    <button type="submit" class="@Button">Áp dụng</button>
+                </fieldset>
+            </form>
+        </div>
+        @if (_loading)
+        {
+            <p role="status" class="p-6 text-sm text-[#6F6966]">Đang tải danh mục gói PT...</p>
+        }
+        else if (_packages is null)
+        {
+            <div class="p-5"><button type="button" class="@Button" @onclick="LoadAsync">Tải lại</button></div>
+        }
+        else if (_filtered.Length == 0)
+        {
+            <p role="status" class="p-6 text-sm text-[#6F6966]">Không tìm thấy gói PT phù hợp.</p>
+        }
+        else
+        {
+            <div class="overflow-x-auto">
+                <table class="workspace-table min-w-[960px]">
+                    <thead>
+                        <tr><th scope="col">Tên gói</th><th scope="col">Số buổi</th><th scope="col">Giá</th><th scope="col">Cấp PT</th><th scope="col">Bảo lưu tối thiểu / hạn mức</th><th scope="col">Lượt đăng ký</th><th scope="col">Trạng thái</th><th scope="col">Thao tác</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in _filtered.Skip((_page - 1) * PageSize).Take(PageSize))
+                        {
+                            <tr @key="row.Id">
+                                <th scope="row" class="max-w-56 break-words">@row.Name <span class="block text-xs font-normal text-[#6F6966]">@row.Code</span></th>
+                                <td>@row.Credits buổi</td>
+                                <td class="whitespace-nowrap font-semibold text-[#B83A3A]">@Money(row.Price)</td>
+                                <td>@row.TrainerLevel</td>
+                                <td>@row.FreezeMinimumDays / @row.FreezeMaxTotalDays ngày</td>
+                                <td>@(row.SubscriberCount ?? 0)</td>
+                                <td><span class="inline-block whitespace-nowrap rounded-md border px-2.5 py-1 text-[11px] font-semibold @(row.IsActive ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-[#D8D1CD] bg-[#ECE8E4] text-[#6F6966]")">@SaleStatus(row.IsActive)</span></td>
+                                <td>
+                                    <div class="flex flex-wrap gap-2">
+                                        <button type="button" class="@Button" disabled="@ListDisabled" aria-label="Xem hoặc sửa @row.Name" @onclick="() => View(row)">Xem / Sửa</button>
+                                        <button type="button" class="@Button" disabled="@ListDisabled" @onclick="() => ChangeStatusAsync(row)">@(row.IsActive ? "Ngừng bán" : "Mở bán")</button>
+                                        <button type="button" class="@Button text-red-700 hover:bg-red-50" disabled="@ListDisabled" aria-label="Xóa @row.Name" @onclick="() => DeleteAsync(row)">Xóa</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <nav aria-label="Phân trang gói PT" class="flex flex-wrap items-center justify-between gap-3 border-t border-[#D8D1CD] p-4 text-xs font-medium text-[#6F6966]">
+                <p>Trang @_page / @PageCount · @_filtered.Length gói</p>
+                <div class="flex gap-2">
+                    <button type="button" class="@Button" disabled="@(ListDisabled || _page <= 1)" @onclick="() => _page--">Trang trước</button>
+                    <button type="button" class="@Button" disabled="@(ListDisabled || _page >= PageCount)" @onclick="() => _page++">Trang sau</button>
+                </div>
+            </nav>
+        }
+    </section>
+</div>
+
+@code {
+    private const int PageSize = 20;
+    private const string Field = "mt-1 block w-full rounded-lg border border-[#D8D1CD] bg-white px-3 py-2 text-sm font-normal text-[#242424] focus:border-[#B83A3A] focus:ring-2 focus:ring-[#B83A3A]/20 outline-none";
+    private const string Button = "rounded-lg border border-[#D8D1CD] bg-white px-3 py-1.5 text-xs font-semibold text-[#242424] hover:bg-[#ECE8E4] transition disabled:opacity-50";
+    private const string PrimaryButton = "rounded-lg bg-[#B83A3A] px-4 py-2 text-sm font-semibold text-white hover:bg-[#9F3030] transition shadow-sm disabled:opacity-50";
+
+    private PTPackageResponse[]? _packages;
+    private PTPackageResponse[] _filtered = [];
+    private PTPackageResponse? _selected;
+    private Draft? _draft;
+    private int _page = 1;
+    private string _searchInput = "", _statusInput = "";
+    private string _search = "", _status = "";
+    private bool _loading, _working, _focusPanel;
+    private string? _error, _message;
+    private ElementReference _panelHeading;
+
+    private int PageCount => Math.Max(1, (_filtered.Length + PageSize - 1) / PageSize);
+    private bool ListDisabled => _loading || _working || _draft is not null || _selected is not null;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_focusPanel)
+        {
+            _focusPanel = false;
+            await _panelHeading.FocusAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _packages = await Api.ManagerPackagesAsync();
+            FilterPackages();
+        }
+        catch (AuthApiException ex)
+        {
+            _packages = null;
+            _error = ex.Message;
+        }
+        finally { _loading = false; }
+    }
+
+    private void ApplyFilters()
+    {
+        _search = _searchInput.Trim();
+        _status = _statusInput;
+        _page = 1;
+        FilterPackages();
+    }
+
+    private void FilterPackages()
+    {
+        _filtered = (_packages ?? []).Where(p =>
+            p.Name.Contains(_search, StringComparison.CurrentCultureIgnoreCase) &&
+            (_status == "" || p.IsActive == (_status == "active"))).ToArray();
+        _page = Math.Min(_page, PageCount);
+    }
+
+    private void View(PTPackageResponse item)
+    {
+        _message = _error = null;
+        _selected = item;
+        _focusPanel = true;
+    }
+
+    private void Edit(PTPackageResponse? item)
+    {
+        _message = _error = null;
+        _selected = item;
+        _draft = item is null ? new() : new()
+        {
+            Name = item.Name, Description = item.Description, Credits = item.Credits,
+            Price = item.Price, Level = item.TrainerLevel, Minimum = item.FreezeMinimumDays,
+            Cap = item.FreezeMaxTotalDays, Active = item.IsActive
+        };
+        _focusPanel = true;
+    }
+
+    private void ClosePanel()
+    {
+        _selected = null;
+        _draft = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_working || _draft is not { } draft) return;
+        if (string.IsNullOrWhiteSpace(draft.Name) || draft.Minimum < 1 || draft.Cap < draft.Minimum)
+        {
+            _error = "Nhập tên gói và hạn mức bảo lưu hợp lệ.";
+            return;
+        }
+
+        await RunActionAsync(async () =>
+        {
+            await Api.SavePackageAsync(_selected?.Id, new(draft.Name.Trim(), draft.Description?.Trim(), draft.Credits,
+                draft.Price, draft.Level, draft.Minimum, draft.Cap, draft.Active));
+            ClosePanel();
+            _message = "Đã lưu gói PT.";
+            await LoadAsync();
+        });
+    }
+
+    private Task ChangeStatusAsync(PTPackageResponse item) => RunActionAsync(async () =>
+    {
+        await Api.SetPackageSaleStatusAsync(item.Id, !item.IsActive);
+        _message = item.IsActive ? "Đã ngừng bán gói PT." : "Đã mở bán gói PT.";
+        await LoadAsync();
+    });
+
+    private Task DeleteAsync(PTPackageResponse item) => RunActionAsync(async () =>
+    {
+        if (!await JS.InvokeAsync<bool>("confirm",
+            $"Xóa gói {item.Name}? Nếu gói đã có lịch sử đơn hàng hoặc đăng ký, hệ thống sẽ chuyển gói sang Ngừng bán."))
+            return;
+
+        var result = await Api.DeletePackageAsync(item.Id);
+        _message = result.KeptHistory
+            ? "Gói PT đã được chuyển sang Ngừng bán. Lịch sử đơn hàng và hợp đồng vẫn được lưu."
+            : "Đã xóa gói PT.";
+        await LoadAsync();
+    });
+
+    private async Task RunActionAsync(Func<Task> action)
+    {
+        if (_working) return;
+        _working = true;
+        _message = _error = null;
+        try { await action(); }
+        catch (AuthApiException ex) { _error = ex.Message; }
+        finally { _working = false; }
+    }
+
+    private static string SaleStatus(bool active) => active ? "Đang mở bán" : "Ngừng bán";
+
+    private sealed class Draft
+    {
+        public string Name { get; set; } = "";
+        public string? Description { get; set; }
+        public int Credits { get; set; } = 12;
+        public decimal Price { get; set; }
+        public string Level { get; set; } = "Junior";
+        public int Minimum { get; set; } = 7;
+        public int Cap { get; set; } = 15;
+        public bool Active { get; set; } = true;
+    }
+}

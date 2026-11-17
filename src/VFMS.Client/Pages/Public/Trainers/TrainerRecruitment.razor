@@ -1,0 +1,33 @@
+@page "/careers/trainer"
+@layout PublicLayout
+@inject TrainerApiClient Api
+<PageTitle>Ứng tuyển PT | Victor Fitness</PageTitle>
+<section class="trainer-page trainer-public trainer-narrow trainer-stack">
+    <a href="/trainers" class="trainer-back">← Danh sách huấn luyện viên</a>
+    <header>
+        <h1>Ứng tuyển huấn luyện viên PT hoặc Yoga</h1>
+        <p class="trainer-muted mt-2">Điền thông tin và gửi tệp hoặc link chứng chỉ để Manager xét duyệt hồ sơ.</p>
+    </header>
+    @if (_loading) { <p role="status">Đang kiểm tra trạng thái tuyển dụng…</p> }
+    else if (_status?.IsAcceptingApplications == false)
+    {
+        <p class="trainer-panel" role="status">Hiện tại phòng tập tạm dừng nhận hồ sơ ứng tuyển.</p>
+    }
+    else if (_status is not null)
+    {
+        <div class="trainer-panel"><TrainerApplicationForm /></div>
+    }
+    <TrainerFeedback Error="@_error" />
+</section>
+@code {
+    private TrainerRecruitmentStatus? _status;
+    private bool _loading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { _status = await Api.RecruitmentStatusAsync(); }
+        catch (AuthApiException ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+}

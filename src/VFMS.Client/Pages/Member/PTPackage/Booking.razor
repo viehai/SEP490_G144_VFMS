@@ -1,0 +1,191 @@
+@page "/pt-booking/{TrainerProfileId:int}"
+@layout PublicLayout
+@attribute [Authorize(Roles = "Customer,Member")]
+@inject TrainerApiClient Trainers
+@inject PersonalTrainingApiClient Api
+@inject NavigationManager Navigation
+<PageTitle>Chọn lịch và gói PT | Victor Fitness</PageTitle>
+
+<section class="trainer-page trainer-public trainer-stack">
+    <a class="trainer-back" href="/trainers">← Danh sách huấn luyện viên</a>
+    <header><h1>Chọn lịch và gói PT</h1><p class="trainer-muted">Chọn một ca cho mỗi ngày lặp. Lịch dự kiến chỉ được giữ khi bạn tiếp tục thanh toán.</p></header>
+    <TrainerFeedback Error="@_error" />
+    @if (_loading) { <p role="status">Đang tải gói và lịch…</p> }
+    else if (_trainer is { } trainer)
+    {
+        <section class="trainer-panel trainer-stack">
+            <h2>@trainer.Profile.FullName · @trainer.Profile.Level</h2>
+            @if (_packages.Length == 0) { <p>Chưa có gói đang mở bán cho cấp PT này.</p> }
+            else
+            {
+                <fieldset class="trainer-grid" disabled="@_busy">
+                    <label>Gói PT
+                        <select class="trainer-input" @bind="_packageId" @bind:after="ChangeScheduleAsync">
+                            @foreach (var package in _packages)
+                            {
+                                <option value="@package.Id">@package.Name · @package.Credits buổi · @Money(package.Price)</option>
+                            }
+                        </select>
+                    </label>
+                    <label>Ngày bắt đầu (thứ Hai)
+                        <input class="trainer-input" type="date" min="@FirstMonday.ToString("yyyy-MM-dd")"
+                               step="7" @bind="_start" @bind:after="ChangeScheduleAsync" aria-invalid="@(!ValidStart)" />
+                        @if (!ValidStart)
+                        {
+                            <span role="alert">Chọn thứ Hai chưa qua.</span>
+                        }
+                    </label>
+                </fieldset>
+                <PTWeeklyGrid Slots="_slots" SelectedIds="_selected.Values" SlotSelected="SelectSlot" Disabled="@(_busy || !ValidStart)" />
+                <div class="trainer-row">
+                    <span>@_selected.Count ngày lặp đã chọn</span>
+                    <button class="trainer-button trainer-primary" disabled="@(_busy || !CanPreview)" @onclick="PreviewAsync">Xem lịch dự kiến</button>
+                </div>
+            }
+        </section>
+        @if (_preview is { } preview && _booking is { } booking)
+        {
+            <section class="trainer-panel trainer-stack">
+                <h2>Lịch dự kiến</h2>
+                <strong>@trainer.Profile.FullName</strong>
+                <p>@preview.Sessions.Count buổi · Buổi cuối @Date(preview.ExpiresOn) · @Money(preview.Price)</p>
+                <PTPreviewCalendar @key="preview" Slots="preview.Sessions" StartDate="booking.StartDate" />
+                <button class="trainer-button trainer-primary" disabled="@(_busy || !CanPreview || preview.Sessions.Count == 0)"
+                        @onclick="() => HoldAsync(booking)">Giữ lịch và tiếp tục</button>
+                @if (_holdError is not null)
+                {
+                    <TrainerFeedback Error="@_holdError" />
+                    @if (_needsGym)
+                    {
+                        <a class="trainer-link" href="/#pricing-memberships">Xem gói Gym</a>
+                    }
+                }
+            </section>
+        }
+    }
+</section>
+
+@code {
+    [Parameter] public int TrainerProfileId { get; set; }
+    [SupplyParameterFromQuery(Name = "package")] public int? PackageId { get; set; }
+    private TrainerPublicDetail? _trainer;
+    private PTPackageResponse[] _packages = [];
+    private PTWeeklySlot[] _slots = [];
+    private readonly Dictionary<DayOfWeek, int> _selected = [];
+    private PTBookingPreview? _preview;
+    private PTBookingRequest? _booking;
+    private static DateOnly FirstMonday
+    {
+        get
+        {
+            var today = Today;
+            return today.AddDays((7 - DayIndex(today.DayOfWeek)) % 7);
+        }
+    }
+    private DateOnly _start = FirstMonday;
+    private int _packageId;
+    private bool _loading, _busy, _needsGym;
+    private string? _error, _holdError;
+    private bool ValidStart => _start >= FirstMonday && _start.DayOfWeek == DayOfWeek.Monday;
+
+    private bool CanPreview => ValidStart && _selected.Count > 0 && _selected.Values.All(id =>
+        _slots.Any(slot => slot.TemplateId == id && slot.BlockedReason is null));
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        _error = null;
+        _trainer = null;
+        _slots = [];
+        _selected.Clear();
+        ClearPreview();
+        try
+        {
+            var trainer = await Trainers.DetailAsync(TrainerProfileId);
+            if (trainer.IsOwnProfile)
+            {
+                _error = "Bạn không thể mua gói PT của chính mình.";
+                return;
+            }
+            _trainer = trainer;
+            _packages = (await Trainers.PackagesAsync()).Where(p => p.IsActive && p.TrainerLevel == trainer.Profile.Level).ToArray();
+            _packageId = _packages.FirstOrDefault(p => p.Id == PackageId)?.Id ?? _packages.FirstOrDefault()?.Id ?? 0;
+            if (_packageId != 0)
+                await RefreshSlotsAsync();
+        }
+        catch (AuthApiException ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private void ClearPreview() { _preview = null; _booking = null; _error = _holdError = null; }
+
+    private async Task RefreshSlotsAsync()
+    {
+        if (_trainer is null || !ValidStart)
+        {
+            _slots = [];
+            return;
+        }
+        _busy = true;
+        try
+        {
+            _slots = await Api.BookingSlotsAsync(new(_trainer.Profile.UserId, _packageId, _start, _selected.Values.ToArray()));
+        }
+        catch (AuthApiException ex) { _slots = []; _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task ChangeScheduleAsync()
+    {
+        ClearPreview();
+        _selected.Clear();
+        await RefreshSlotsAsync();
+    }
+
+    private async Task SelectSlot(PTWeeklySlot slot)
+    {
+        if (_busy || slot.BlockedReason is not null && !_selected.ContainsValue(slot.TemplateId)) return;
+        ClearPreview();
+        var day = slot.DayOfWeek;
+        if (_selected.GetValueOrDefault(day) == slot.TemplateId) _selected.Remove(day);
+        else _selected[day] = slot.TemplateId;
+        await RefreshSlotsAsync();
+    }
+    private Task PreviewAsync() => _trainer is null || !ValidStart ? Task.CompletedTask :
+        PreviewAsync(new PTBookingRequest(_trainer.Profile.UserId, _packageId, _start, _selected.Values.ToArray()));
+
+    private async Task PreviewAsync(PTBookingRequest request)
+    {
+        if (_busy || request.TemplateIds.Length == 0) return;
+        ClearPreview();
+        _busy = true;
+        try
+        {
+            _preview = await Api.PreviewAsync(request);
+            _booking = request;
+        }
+        catch (AuthApiException ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task HoldAsync(PTBookingRequest request)
+    {
+        if (_busy) return;
+        _busy = true;
+        _holdError = null;
+        _needsGym = false;
+        try
+        {
+            var order = await Api.HoldAsync(request);
+            Navigation.NavigateTo($"/pt-checkout/{Uri.EscapeDataString(order.OrderNumber)}");
+        }
+        catch (AuthApiException ex)
+        {
+            _holdError = ex.Message;
+            _needsGym = ex.ErrorCode == "PT_GYM_COVERAGE";
+            if (!_needsGym)
+                await RefreshSlotsAsync();
+        }
+        finally { _busy = false; }
+    }
+}

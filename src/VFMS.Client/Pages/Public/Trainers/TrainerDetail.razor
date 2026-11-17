@@ -1,0 +1,135 @@
+@page "/trainers/{Id:int}"
+@layout PublicLayout
+@inject TrainerApiClient Api
+<PageTitle>@(_detail?.Profile.FullName ?? "Hồ sơ huấn luyện viên") | Victor Fitness</PageTitle>
+
+<section class="trainer-page trainer-public trainer-stack">
+    <a class="trainer-back" href="/trainers">← Danh sách huấn luyện viên</a>
+    <TrainerFeedback Error="@_error" />
+    @if (_loading)
+    {
+        <h1>Hồ sơ huấn luyện viên</h1>
+        <p role="status">Đang tải hồ sơ…</p>
+    }
+    else if (_detail is { } detail)
+    {
+        <header class="trainer-panel trainer-stack">
+            <div class="trainer-row">
+                <TrainerAvatar Trainer="detail.Profile" />
+                <div>
+                    <h1>@detail.Profile.FullName</h1>
+                    <p class="trainer-muted">@detail.Profile.Specialty · @detail.Profile.Level · @detail.Profile.ExperienceYears năm kinh nghiệm</p>
+                    <p class="trainer-muted">@(detail.Profile.IsAcceptingNewMembers ? "Sẵn sàng nhận học viên" : "Không nhận học viên mới")</p>
+                </div>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(detail.Profile.Bio))
+            {
+                <p class="trainer-copy">@detail.Profile.Bio</p>
+            }
+            @if (detail.IsOwnProfile)
+            {
+                <a class="trainer-button trainer-primary" href="/pt/trainer-profile">Quản lý hồ sơ PT</a>
+            }
+            else
+            {
+                <div class="trainer-row">
+                    @if (detail.Profile.Specialty != "Yoga" && detail.Profile.IsAcceptingNewMembers)
+                    {
+                        <a class="trainer-button trainer-primary" href="@($"/trainers/{Id}/packages")">Khám phá gói PT</a>
+                    }
+                    @if (detail.HasActivePTContract)
+                    {
+                        <a class="trainer-button" href="@($"/trainers/{Id}/my-pt-schedule")">Xem lịch PT của tôi</a>
+                    }
+                </div>
+            }
+        </header>
+
+        <div class="trainer-grid">
+            <section class="trainer-panel trainer-stack">
+                <h2>Chứng chỉ đã xác minh</h2>
+                @if (detail.Certificates.Count == 0)
+                {
+                    <p class="trainer-muted">Chưa có chứng chỉ công khai.</p>
+                }
+                <ul class="trainer-list">
+                    @foreach (var file in detail.Certificates)
+                    {
+                        @if (Api.PublicAsset(file.DownloadUrl) is { } url)
+                        {
+                            <li><a href="@url" class="trainer-link trainer-copy" target="@(file.IsExternalLink ? "_blank" : null)" rel="noopener noreferrer">@(file.IsExternalLink ? $"Chứng chỉ tại {file.FileName} ↗" : file.FileName)</a></li>
+                        }
+                    }
+                </ul>
+            </section>
+            <section class="trainer-panel trainer-stack">
+                <h2>Đánh giá hội viên</h2>
+                @if (detail.Reviews.Count == 0)
+                {
+                    <p class="trainer-muted">Chưa có đánh giá.</p>
+                }
+                else
+                {
+                    <p class="trainer-status">Trung bình @detail.Profile.AverageRating.ToString("0.0") / 5 sao</p>
+                    <ul class="trainer-list">
+                        @foreach (var review in detail.Reviews)
+                        {
+                            <li><strong>@review.MemberName</strong> · @review.Rating / 5 sao<p class="trainer-copy">@review.Comment</p></li>
+                        }
+                    </ul>
+                    @if (detail.ReviewTotal > 20)
+                    {
+                        <Pager Page="detail.ReviewPage" TotalCount="detail.ReviewTotal" Noun="đánh giá"
+                               Disabled="_loadingReviews" OnPage="LoadReviewsAsync" />
+                    }
+                }
+            </section>
+        </div>
+
+        <TrainerWeeklyCalendar @key="detail.Profile.UserId" TrainerId="@detail.Profile.UserId" />
+    }
+    else
+    {
+        <h1>Hồ sơ huấn luyện viên</h1>
+    }
+</section>
+
+@code {
+    [Parameter] public int Id { get; set; }
+    private TrainerPublicDetail? _detail;
+    private bool _loading;
+    private bool _loadingReviews;
+    private string? _error;
+    private int _requestVersion;
+
+    private async Task LoadReviewsAsync(int page)
+    {
+        var version = _requestVersion;
+        _loadingReviews = true;
+        _error = null;
+        try
+        {
+            var detail = await Api.DetailAsync(Id, page);
+            if (version == _requestVersion) _detail = detail;
+        }
+        catch (AuthApiException ex) { if (version == _requestVersion) _error = ex.Message; }
+        finally { if (version == _requestVersion) _loadingReviews = false; }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var version = ++_requestVersion;
+        _loading = true;
+        _loadingReviews = false;
+        _detail = null;
+        _error = null;
+        try
+        {
+            var detail = await Api.DetailAsync(Id);
+            if (version != _requestVersion) return;
+            _detail = detail;
+        }
+        catch (AuthApiException ex) { if (version == _requestVersion) _error = ex.Message; }
+        finally { if (version == _requestVersion) _loading = false; }
+    }
+}

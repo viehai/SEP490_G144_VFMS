@@ -287,6 +287,9 @@ public sealed class UserAdministrationValidatorTests
             return Task.CompletedTask;
         }
 
+        public Task<bool> HasActiveYogaAssignmentsAsync(string userId, CancellationToken cancellationToken) =>
+            Task.FromResult(false);
+
         public Task ReplaceUserRolesAsync(
             ApplicationUser user,
             IReadOnlyCollection<int> roleIds,

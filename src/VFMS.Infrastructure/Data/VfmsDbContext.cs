@@ -292,6 +292,18 @@ public class VfmsDbContext : DbContext
             entity.Property(e => e.AmountReceived).HasColumnType("decimal(18,2)");
             entity.Property(e => e.PaymentStatus).HasConversion<string>().HasMaxLength(50);
             entity.Property(e => e.PaymentMethod).HasConversion<string>().HasMaxLength(50);
+            entity.HasIndex(e => new { e.LockerRentalContractId, e.LockerPurpose });
+            entity.Property(e => e.LockerPurpose).HasConversion<string>().HasMaxLength(20);
+            entity.Property(e => e.OverdueFees).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.KeyReplacementFee).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.RefundAmount).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.RefundReason).HasMaxLength(60);
+            entity.Property(e => e.RefundStatus).HasMaxLength(20);
+            entity.Property(e => e.RefundMethod).HasConversion<string>().HasMaxLength(20);
+            entity.Property(e => e.RefundedByUserId).HasMaxLength(450);
+            entity.Property(e => e.RefundReference).HasMaxLength(100);
+            entity.HasOne(e => e.LockerRentalContract).WithMany(e => e.Payments).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.SourcePaymentTransaction).WithMany().OnDelete(DeleteBehavior.Restrict);
 
             entity.HasOne(e => e.User)
                 .WithMany()
@@ -447,8 +459,8 @@ public class VfmsDbContext : DbContext
             entity.Property(e => e.CitizenId).HasMaxLength(12).IsRequired();
 
             entity.HasOne(e => e.Applicant)
-                .WithOne(u => u.TrainerApplication)
-                .HasForeignKey<TrainerApplication>(e => e.ApplicantUserId)
+                .WithMany(u => u.TrainerApplications)
+                .HasForeignKey(e => e.ApplicantUserId)
                 .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasOne(e => e.ReviewedByUser)
@@ -474,6 +486,8 @@ public class VfmsDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.SlotStatus).HasConversion<string>().HasMaxLength(20);
+            entity.HasIndex(e => new { e.PTUserId, e.DayOfWeek, e.StartTime })
+                .IsUnique().HasFilter("[DayOfWeek] IS NOT NULL AND [IsDeleted] = 0");
 
             entity.HasOne(e => e.PTUser)
                 .WithMany(u => u.PTAvailabilities)
@@ -486,6 +500,12 @@ public class VfmsDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.PurchasePrice).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(20)
+                .HasDefaultValue(VFMS.Domain.Enums.PTPurchaseStatus.Active);
+            entity.Property(e => e.PackageNameSnapshot).HasMaxLength(256);
+            entity.HasIndex(e => e.OrderId).IsUnique();
+            entity.HasOne(e => e.Order).WithMany().HasForeignKey(e => e.OrderId)
+                .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasOne(e => e.MemberMembership)
                 .WithMany()
@@ -507,7 +527,14 @@ public class VfmsDbContext : DbContext
         modelBuilder.Entity<PTSession>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.Property(e => e.SessionStatus).HasConversion<string>().HasMaxLength(20);
+            entity.Property(e => e.SessionStatus).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.StatusBeforeTrainerAbsenceReport).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.TrainerAbsenceReason).HasMaxLength(1000);
+            entity.Property(e => e.TrainerAbsenceReviewNote).HasMaxLength(1000);
+            entity.Property(e => e.CreditUnits).HasDefaultValue(1);
+            entity.Property(e => e.ProposedAdjustmentType).HasConversion<string>().HasMaxLength(20);
+            entity.HasIndex(e => new { e.PTUserId, e.SessionDate, e.StartTime });
+            entity.HasIndex(e => new { e.MemberUserId, e.SessionDate, e.StartTime });
 
             entity.HasOne(e => e.PTPurchase)
                 .WithMany(p => p.Sessions)
@@ -733,6 +760,8 @@ public class VfmsDbContext : DbContext
         modelBuilder.Entity<LockerPricingPolicy>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.Property(e => e.OverdueDailyFee).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.KeyReplacementFee).HasColumnType("decimal(18,2)");
             entity.Property(e => e.RentalType).HasConversion<string>().HasMaxLength(20);
             entity.Property(e => e.RentalPrice).HasColumnType("decimal(18,2)");
             entity.Property(e => e.DepositAmount).HasColumnType("decimal(18,2)");
@@ -744,6 +773,15 @@ public class VfmsDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.ContractNumber).IsUnique();
+            entity.HasIndex(e => new { e.CustomerUserId, e.ContractStatus });
+            entity.HasIndex(e => new { e.LockerId, e.ContractStatus });
+            entity.HasOne(e => e.ReplacementLocker).WithMany().OnDelete(DeleteBehavior.Restrict);
+            entity.Property(e => e.RentalTypeSnapshot).HasConversion<string>().HasMaxLength(20);
+            entity.Property(e => e.HandedOverByUserId).HasMaxLength(450);
+            entity.Property(e => e.SettledByUserId).HasMaxLength(450);
+            entity.Property(e => e.OverdueDailyFeeSnapshot).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.KeyReplacementFeeSnapshot).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.OutstandingAmount).HasColumnType("decimal(18,2)");
             entity.Property(e => e.ContractNumber).HasMaxLength(50).IsRequired();
             entity.Property(e => e.DepositAmount).HasColumnType("decimal(18,2)");
             entity.Property(e => e.RentalPrice).HasColumnType("decimal(18,2)");
@@ -770,6 +808,8 @@ public class VfmsDbContext : DbContext
         modelBuilder.Entity<LockerIncidentLog>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.Property(e => e.VerifiedByUserId).HasMaxLength(450);
+            entity.HasOne(e => e.LockerRentalContract).WithMany().OnDelete(DeleteBehavior.Restrict);
             entity.Property(e => e.IncidentType).HasConversion<string>().HasMaxLength(20);
             entity.Property(e => e.FineAmount).HasColumnType("decimal(18,2)");
 
@@ -929,6 +969,9 @@ public class VfmsDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.CategoryName).HasMaxLength(150).IsRequired();
             entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.CodePrefix).HasMaxLength(5);
+            entity.HasIndex(e => e.CodePrefix).IsUnique()
+                .HasFilter("[CodePrefix] IS NOT NULL AND [IsDeleted] = 0");
         });
 
         // ── Equipment ─────────────────────────────────────────────
@@ -1190,6 +1233,9 @@ public class VfmsDbContext : DbContext
         modelBuilder.Entity<TrainerReview>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.PTPurchaseId).IsUnique();
+            entity.HasOne(e => e.PTPurchase).WithMany().HasForeignKey(e => e.PTPurchaseId)
+                .OnDelete(DeleteBehavior.Restrict);
             entity.Property(e => e.ReviewStatus).HasConversion<string>().HasMaxLength(30);
 
             entity.HasOne(e => e.TrainerUser)
@@ -1215,7 +1261,7 @@ public class VfmsDbContext : DbContext
             entity.HasIndex(e => e.Word).IsUnique();
             entity.Property(e => e.Word).HasMaxLength(100).IsRequired();
 
-            entity.HasOne(e  => e.Admin)
+            entity.HasOne(e => e.Admin)
                 .WithMany()
                 .HasForeignKey(e => e.CreatedByUserId)
                 .OnDelete(DeleteBehavior.Restrict);
@@ -1260,6 +1306,8 @@ public class VfmsDbContext : DbContext
                 .HasForeignKey(e => e.BusinessReportSnapshotId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
+
+        TrainerModelConfiguration.Configure(modelBuilder);
 
         // ── TrainerProfile ────────────────────────────────────────
         // One profile per trainer. YogaClass.InstructorUserId points at ApplicationUsers only: a Yoga Instructor
