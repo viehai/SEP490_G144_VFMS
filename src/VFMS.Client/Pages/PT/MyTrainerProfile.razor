@@ -7,8 +7,9 @@
 @inject TrainerApiClient Api
 <PageTitle>Hồ sơ PT của tôi | Victor Fitness</PageTitle>
 
-<section class="trainer-page trainer-stack">
-    <h1>Hồ sơ PT của tôi</h1>
+<section class="workspace-page trainer-page trainer-stack">
+    <PageHeader Overline="VFMS / PT" Title="Hồ sơ PT của tôi"
+                Description="Cập nhật giới thiệu, ảnh đại diện, trạng thái nhận học viên và chứng chỉ." />
     <TrainerFeedback Error="@_error" Message="@_message" />
     @if (_loading) { <p role="status">Đang tải hồ sơ…</p> }
     else if (_profile is { } detail)
@@ -96,7 +97,7 @@
             else if (_history is { } history)
             {
                 <div class="trainer-scroll">
-                    <table class="trainer-table">
+                    <table class="workspace-table">
                         <thead><tr><th>Mã theo dõi</th><th>Lần nộp</th><th>Trạng thái</th><th>Ghi chú xét duyệt</th></tr></thead>
                         <tbody>
                             @foreach (var item in history.Items)

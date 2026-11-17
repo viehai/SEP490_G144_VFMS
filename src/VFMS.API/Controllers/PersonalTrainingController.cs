@@ -76,17 +76,17 @@ public sealed class PersonalTrainingController(PersonalTrainingService service, 
         AsUser(actor => service.DeletePackage(actor, id, ct));
 
     [HttpPost("schedule/preview")]
-    [Authorize(Roles = "Member")]
+    [Authorize(Roles = "Customer,Member")]
     public Task<IActionResult> Preview(PTBookingRequest request, CancellationToken ct) =>
         AsUser(actor => service.Preview(actor, request, ct));
 
     [HttpPost("schedule/booking-slots")]
-    [Authorize(Roles = "Member")]
+    [Authorize(Roles = "Customer,Member")]
     public Task<IActionResult> BookingSlots(PTBookingSlotsRequest request, CancellationToken ct) =>
         AsUser(actor => service.BookingSlots(actor, request, ct));
 
     [HttpPost("purchases")]
-    [Authorize(Roles = "Member")]
+    [Authorize(Roles = "Customer,Member")]
     public Task<IActionResult> Checkout(PTBookingRequest request, CancellationToken ct) =>
         AsUser(actor => service.Checkout(actor, request, ct));
 

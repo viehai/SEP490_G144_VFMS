@@ -8,9 +8,10 @@
 @inject TrainerApiClient Trainers
 <PageTitle>Gói và lịch PT của tôi | Victor Fitness</PageTitle>
 
-<section class="trainer-page trainer-stack">
-    <a class="trainer-link" href="/trainers">← Tìm huấn luyện viên</a>
-    <h1>@(Id.HasValue ? "Lịch PT của tôi" : "Gói PT của tôi")</h1>
+<section class="workspace-page trainer-page trainer-stack">
+    <a class="trainer-back" href="/trainers">← Tìm huấn luyện viên</a>
+    <PageHeader Overline="VFMS / GÓI PT" Title="@(Id.HasValue ? "Lịch PT của tôi" : "Gói PT của tôi")"
+                Description="Theo dõi tiến độ, đổi lịch, bảo lưu và đánh giá huấn luyện viên." />
     <TrainerFeedback Error="@_error" />
     @if (_loading) { <p role="status">Đang tải hợp đồng…</p> }
     else if (_contracts is null && _selected is null) { <button class="trainer-button" @onclick="() => LoadAsync()">Tải lại</button> }
@@ -35,6 +36,10 @@
                     <div class="trainer-row">
                         <a class="trainer-button" href="@($"/my-pt-packages/{selected.Id}/reschedule")">Xin đổi lịch</a>
                         <a class="trainer-button" href="@($"/my-pt-packages/{selected.Id}/freeze")">Bảo lưu PT</a>
+                        @if (selected.TrainerChangeDeadline is not null)
+                        {
+                            <a class="trainer-button trainer-primary" href="@($"/my-pt-packages/{selected.Id}/change-trainer")">Đổi huấn luyện viên</a>
+                        }
                     </div>
                     <ContractPanel @key="selected.Id" Contract="selected" TrainerName="@(selected.TrainerName ?? "Huấn luyện viên")" Changed="ReloadAsync" />
                 </div>

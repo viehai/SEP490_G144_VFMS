@@ -1,14 +1,13 @@
 @page "/pt/availability"
 @layout StaffPTLayout
 @attribute [Authorize(Roles = "PT")]
+@using VFMS.Client.Components.Operations
 @inject PersonalTrainingApiClient Api
 <PageTitle>Lịch tuần PT | Victor Fitness</PageTitle>
 
-<section class="trainer-page trainer-stack">
-    <header>
-        <h1>Lịch tuần PT</h1>
-        <p class="trainer-muted">Tích vào ô để mở ca 60 phút lặp lại hằng tuần.</p>
-    </header>
+<section class="workspace-page trainer-page trainer-stack">
+    <PageHeader Overline="VFMS / PT" Title="Lịch tuần PT"
+                Description="Mở hoặc đóng các ca lặp hằng tuần để hội viên chọn khi mua gói." />
     <TrainerFeedback Error="@_error" Message="@_message" />
     @if (_loading)
     {

@@ -90,7 +90,8 @@ public sealed partial class PersonalTrainingService
             p.TotalSessions, used, reserved, status == PTPurchaseStatus.Expired ? 0 : Math.Max(0, p.TotalSessions - used - reserved),
             Math.Max(0, p.TotalSessions - used),
             p.FreezeMinimumDaysSnapshot, p.FreezeMaxTotalDaysSnapshot, RemainingFreezeDays(p),
-            p.Sessions.OrderBy(s => s.SessionDate).ThenBy(s => s.StartTime).Select(s => SessionResponse(s, Now)).ToArray(),
+            p.Sessions.OrderBy(s => s.SessionDate).ThenBy(s => s.StartTime)
+                .Select(s => SessionResponse(s, Now) with { IsMakeUpUnit = MakeUpUnits(p).Contains(s) }).ToArray(),
             status == PTPurchaseStatus.PendingPayment ? p.Order?.OrderNumber : null,
             status == PTPurchaseStatus.PendingPayment && p.Order is { } order
                 ? DateTime.SpecifyKind(PaymentDeadline(order), DateTimeKind.Utc) : null,

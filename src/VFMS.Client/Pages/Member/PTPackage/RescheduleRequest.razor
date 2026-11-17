@@ -5,9 +5,10 @@
 @using VFMS.Client.Components.Operations
 
 <PageTitle>Xin đổi lịch PT | Victor Fitness</PageTitle>
-<section class="trainer-page trainer-stack">
+<section class="workspace-page trainer-page trainer-stack">
     <a class="trainer-link" href="@($"/my-pt-packages?contract={ContractId}")">← Gói PT của tôi</a>
-    <h1>Xin đổi lịch PT</h1>
+    <PageHeader Overline="VFMS / GÓI PT" Title="Xin đổi lịch PT"
+                Description="Chọn ca mới; lịch cũ được giữ cho đến khi huấn luyện viên đồng ý." />
     <p class="trainer-muted">Chọn buổi tập cần đổi, rồi chọn ca còn trống. Lịch cũ giữ nguyên cho tới khi PT chấp nhận.</p>
     <TrainerFeedback Error="@_error" />
     @if (_loading) { <p role="status">Đang tải lịch…</p> }

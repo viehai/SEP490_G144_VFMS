@@ -6,11 +6,9 @@
 @using VFMS.Client.Components.Operations
 
 <PageTitle>Tranh chấp điểm danh PT | Victor Fitness</PageTitle>
-<section class="trainer-page trainer-stack">
-    <header>
-        <h1>Tranh chấp điểm danh PT</h1>
-        <p class="trainer-muted mt-2">PT ghi có mặt nhưng hội viên báo PT vắng mặt. Xem hai bên rồi chọn kết quả cuối cùng.</p>
-    </header>
+<section class="workspace-page trainer-page trainer-stack">
+    <PageHeader Overline="VFMS / PERSONAL TRAINING" Title="Tranh chấp điểm danh"
+                Description="PT ghi có mặt nhưng hội viên báo PT vắng mặt. Xem hai bên rồi chọn kết quả cuối cùng." />
     <div class="trainer-row">
         <button class="trainer-button" aria-pressed="@(!_processed)" disabled="@_busy" @onclick="() => SwitchAsync(false)">Đang chờ</button>
         <button class="trainer-button" aria-pressed="@_processed" disabled="@_busy" @onclick="() => SwitchAsync(true)">Đã xử lý</button>

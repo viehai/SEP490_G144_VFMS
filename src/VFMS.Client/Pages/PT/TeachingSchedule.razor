@@ -1,12 +1,14 @@
 @page "/pt/teaching-schedule"
 @layout StaffPTLayout
 @attribute [Authorize(Roles = "PT")]
+@using VFMS.Client.Components.Operations
 @inject PersonalTrainingApiClient Api
 
 <PageTitle>Lịch dạy PT | Victor Fitness</PageTitle>
 
-<section class="trainer-page trainer-stack">
-    <h1>Lịch dạy PT</h1>
+<section class="workspace-page trainer-page trainer-stack">
+    <PageHeader Overline="VFMS / PT" Title="Lịch dạy PT"
+                Description="Các buổi dạy trong tuần theo thứ Hai đến Chủ nhật." />
     <section class="trainer-panel trainer-stack">
         <div class="trainer-row trainer-between">
             <p role="status">@Date(_monday) – @Date(_monday.AddDays(6))</p>

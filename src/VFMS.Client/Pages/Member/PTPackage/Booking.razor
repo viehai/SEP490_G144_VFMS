@@ -1,13 +1,13 @@
 @page "/pt-booking/{TrainerProfileId:int}"
 @layout PublicLayout
-@attribute [Authorize(Roles = "Member")]
+@attribute [Authorize(Roles = "Customer,Member")]
 @inject TrainerApiClient Trainers
 @inject PersonalTrainingApiClient Api
 @inject NavigationManager Navigation
 <PageTitle>Chọn lịch và gói PT | Victor Fitness</PageTitle>
 
 <section class="trainer-page trainer-public trainer-stack">
-    <a class="trainer-link" href="/trainers">← Danh sách huấn luyện viên</a>
+    <a class="trainer-back" href="/trainers">← Danh sách huấn luyện viên</a>
     <header><h1>Chọn lịch và gói PT</h1><p class="trainer-muted">Chọn một ca cho mỗi ngày lặp. Lịch dự kiến chỉ được giữ khi bạn tiếp tục thanh toán.</p></header>
     <TrainerFeedback Error="@_error" />
     @if (_loading) { <p role="status">Đang tải gói và lịch…</p> }

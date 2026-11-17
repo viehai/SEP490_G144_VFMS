@@ -1,12 +1,14 @@
 @page "/manager/trainer-applications"
 @layout ManagerAdminLayout
 @attribute [Authorize(Roles = "Manager")]
+@using VFMS.Client.Components.Operations
 @inject TrainerApiClient Api
 @inject IJSRuntime Js
 <PageTitle>Xét tuyển PT | Victor Fitness</PageTitle>
 
-<section class="trainer-page trainer-stack">
-    <header><h1>Hồ sơ huấn luyện viên</h1><p class="trainer-muted mt-2">Xét tuyển ứng viên và duyệt cập nhật chứng chỉ.</p></header>
+<section class="workspace-page trainer-page trainer-stack">
+    <PageHeader Overline="VFMS / TRAINERS" Title="Hồ sơ huấn luyện viên"
+                Description="Xét tuyển ứng viên và duyệt cập nhật chứng chỉ của huấn luyện viên." />
     <div class="trainer-panel trainer-row trainer-between">
         <span>Nhận hồ sơ ứng tuyển: <strong>@(_recruitmentStatus?.IsAcceptingApplications == true ? "Đang mở" : "Tạm dừng")</strong></span>
         <button type="button" class="trainer-button" disabled="@(_recruitmentStatus is null || Busy)" @onclick="ToggleRecruitmentAsync">
@@ -32,7 +34,7 @@
             else if (_list is { } list)
             {
                 <div class="trainer-scroll">
-                    <table class="trainer-table">
+                    <table class="workspace-table">
                         <thead><tr><th>Ứng viên</th><th>Loại</th><th>Trạng thái</th></tr></thead>
                         <tbody>
                             @foreach (var item in list.Items)

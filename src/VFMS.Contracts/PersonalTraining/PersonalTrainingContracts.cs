@@ -56,7 +56,11 @@ public sealed record PTAttendanceDispute(int SessionId, int ContractId, string M
 public sealed record PTSessionResponse(int Id, DateOnly Date, TimeOnly StartTime, TimeOnly EndTime,
     string Status, int CreditUnits, string? Note, DateTime? NoteUpdatedAt, PTProposalResponse? Proposal,
     DateTime? TrainerAbsenceReportedAt = null, bool? TrainerAbsenceApproved = null,
-    string? TrainerAbsenceReviewNote = null);
+    string? TrainerAbsenceReviewNote = null)
+{
+    /// <summary>Cancelled without penalty and not rebooked yet: a make-up can be proposed from it (GBR-14).</summary>
+    public bool IsMakeUpUnit { get; init; }
+}
 public sealed record PTContractResponse(int Id, string TrainerId, string MemberId, string? PackageName,
     string Status, DateOnly StartDate, DateOnly EndDate, int TotalCredits, int UsedCredits,
     int ReservedCredits, int AvailableCredits, int RemainingCredits,

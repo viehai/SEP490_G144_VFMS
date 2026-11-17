@@ -5,9 +5,10 @@
 @using VFMS.Client.Components.Operations
 
 <PageTitle>Bảo lưu gói PT | Victor Fitness</PageTitle>
-<section class="trainer-page trainer-stack">
+<section class="workspace-page trainer-page trainer-stack">
     <a class="trainer-link" href="@($"/my-pt-packages?contract={ContractId}")">← Gói PT của tôi</a>
-    <h1>Bảo lưu gói PT</h1>
+    <PageHeader Overline="VFMS / GÓI PT" Title="Bảo lưu gói PT"
+                Description="Chọn thời gian bảo lưu, lịch tập sau bảo lưu hoặc huấn luyện viên thay thế." />
     <TrainerFeedback Error="@_error" />
     @if (_loading) { <p role="status">Đang tải hợp đồng…</p> }
     else if (_contract is { } contract)

@@ -6,13 +6,13 @@
 <PageTitle>Thanh toán gói PT | Victor Fitness</PageTitle>
 
 <section class="trainer-page trainer-public trainer-narrow trainer-stack">
-    <a class="trainer-link" href="/my-pt-packages">← Gói PT của tôi</a>
+    <a class="trainer-back" href="/my-pt-packages">← Gói PT của tôi</a>
     <h1>Thanh toán gói PT</h1>
     <TrainerFeedback Error="@_error" />
     @if (_order is { } order)
     {
         <section class="trainer-panel trainer-stack">
-            <div class="trainer-row trainer-between"><h2>Đơn @order.OrderNumber</h2><span class="trainer-status">@Status(order.Status)</span></div>
+            <div class="trainer-row trainer-between"><h2>Đơn @order.OrderNumber</h2><TrainerStatus Status="@order.Status" /></div>
             <strong>@Money(order.AmountDue)</strong>
             @if (order.Status is "Pending" or "AwaitingConfirmation")
             {

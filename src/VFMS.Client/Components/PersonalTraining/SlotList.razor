@@ -11,7 +11,7 @@ else
             {
                 <tr><td>@Day(slot.Date.DayOfWeek), @Date(slot.Date)</td>
                     <td>@Time(slot.StartTime) – @Time(slot.EndTime)</td>
-                    <td><span class="trainer-status">@Status(slot.Status)</span></td></tr>
+                    <td><TrainerStatus Status="@slot.Status" /></td></tr>
             }
         </tbody>
     </table></div>

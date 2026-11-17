@@ -46,7 +46,9 @@
                             }
                             else if (auth.User.IsInRole("Customer"))
                             {
-                                <a class="trainer-button trainer-primary pt-plan-action" href="/#pricing-memberships">Xem gói Gym để đăng ký</a>
+                                @* UC 4.2: Customers preview the schedule; holding it needs an active Gym Membership (MSG-31). *@
+                                <a class="trainer-button trainer-primary pt-plan-action" href="@bookingUrl">Xem lịch dự kiến</a>
+                                <a class="trainer-link" href="/#pricing-memberships">Cần gói Gym để đăng ký</a>
                             }
                             else
                             {

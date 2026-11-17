@@ -28,7 +28,7 @@ public sealed partial class PersonalTrainingService
         if (request.TemplateIds.Length == 0 ||
             request.TemplateIds.Distinct().Count() != request.TemplateIds.Length)
             return Invalid<Booking>("Ngày bắt đầu hoặc mẫu lịch không hợp lệ.");
-        var member = await User(actor, UserRole.Member, ct);
+        var member = await User(actor, UserRole.Member, ct) ?? await User(actor, UserRole.Customer, ct);
         if (member is null)
             return Forbidden<Booking>();
         var trainer = await User(request.TrainerId, UserRole.PT, ct);
@@ -114,7 +114,7 @@ public sealed partial class PersonalTrainingService
     {
         if (!PersonalTrainingRules.CanStartOn(request.StartDate, Today))
             return Invalid<PTWeeklySlot[]>("Chọn tuần bắt đầu từ thứ Hai tuần sau trở đi; lịch phải được giữ chậm nhất vào thứ Sáu trước đó.");
-        var member = await User(actor, UserRole.Member, ct);
+        var member = await User(actor, UserRole.Member, ct) ?? await User(actor, UserRole.Customer, ct);
         if (member is null)
             return Forbidden<PTWeeklySlot[]>();
         var trainer = await User(request.TrainerId, UserRole.PT, ct);
