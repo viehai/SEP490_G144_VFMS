@@ -36,6 +36,8 @@ public interface ISupplementRepository : IAuditedRepository
     Task<bool> ProductNameExistsAsync(string name, int? excludeId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<string>> GetCategoriesAsync(
         IReadOnlyCollection<SupplementProductStatus> statuses, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<string>> GetBrandsAsync(
+        IReadOnlyCollection<SupplementProductStatus> statuses, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<SupplementProduct>> GetProductsAsync(IReadOnlyCollection<int> ids, CancellationToken cancellationToken = default);
 
     // Orders
@@ -59,6 +61,8 @@ public interface ISupplementProductService
     /// <summary>When <paramref name="storeView"/> is true, Inactive products are not found.</summary>
     Task<Result<SupplementProductResponse>> GetProductAsync(int id, bool storeView, CancellationToken cancellationToken = default);
     Task<Result<IReadOnlyList<string>>> GetCategoriesAsync(bool storeView, CancellationToken cancellationToken = default);
+    /// <summary>Brands that have at least one product in the view, A to Z, for the brand filter.</summary>
+    Task<Result<IReadOnlyList<string>>> GetBrandsAsync(bool storeView, CancellationToken cancellationToken = default);
 
     Task<Result<SupplementProductResponse>> CreateAsync(
         SupplementProductRequest request, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default);

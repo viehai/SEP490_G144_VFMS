@@ -50,6 +50,10 @@ public sealed class SupplementProductService : ISupplementProductService
         Result<IReadOnlyList<string>>.Success(
             await _repository.GetCategoriesAsync(storeView ? StoreStatuses : AllStatuses, cancellationToken));
 
+    public async Task<Result<IReadOnlyList<string>>> GetBrandsAsync(bool storeView, CancellationToken cancellationToken = default) =>
+        Result<IReadOnlyList<string>>.Success(
+            await _repository.GetBrandsAsync(storeView ? StoreStatuses : AllStatuses, cancellationToken));
+
     public async Task<Result<SupplementProductResponse>> CreateAsync(
         SupplementProductRequest request, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default)
     {

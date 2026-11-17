@@ -73,6 +73,15 @@ public sealed class SupplementRepository : AuditedRepositoryBase, ISupplementRep
             .OrderBy(c => c)
             .ToListAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<string>> GetBrandsAsync(
+        IReadOnlyCollection<SupplementProductStatus> statuses, CancellationToken cancellationToken = default) =>
+        await Context.SupplementProducts
+            .Where(p => statuses.Contains(p.ProductStatus) && p.Brand != null)
+            .Select(p => p.Brand!)
+            .Distinct()
+            .OrderBy(b => b)
+            .ToListAsync(cancellationToken);
+
     public async Task<IReadOnlyList<SupplementProduct>> GetProductsAsync(
         IReadOnlyCollection<int> ids, CancellationToken cancellationToken = default) =>
         await Context.SupplementProducts.AsNoTracking().Where(p => ids.Contains(p.Id)).ToListAsync(cancellationToken);

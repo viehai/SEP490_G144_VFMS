@@ -41,6 +41,16 @@ public sealed class SupplementProductsController : ControllerBase
     public async Task<IActionResult> GetCategories(CancellationToken cancellationToken) =>
         this.ToActionResult(await _service.GetCategoriesAsync(!IsManager, cancellationToken));
 
+    /// <summary>
+    /// Brands in use, for the brand filter. The store only lists brands with a product on sale
+    /// (Active or OutOfStock), so a brand whose products are all Inactive does not appear.
+    /// </summary>
+    [HttpGet("brands")]
+    [Authorize(Roles = ViewRoles)]
+    [ProducesResponseType(typeof(IReadOnlyList<string>), 200)]
+    public async Task<IActionResult> GetBrands(CancellationToken cancellationToken) =>
+        this.ToActionResult(await _service.GetBrandsAsync(!IsManager, cancellationToken));
+
     /// <summary>Manager list with every status.</summary>
     [HttpGet("manage")]
     [Authorize(Roles = "Manager")]
