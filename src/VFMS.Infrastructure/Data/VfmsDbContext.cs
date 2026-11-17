@@ -1094,6 +1094,10 @@ public class VfmsDbContext : DbContext
             entity.Property(e => e.ProductName).HasMaxLength(256).IsRequired();
             entity.Property(e => e.UnitPrice).HasColumnType("decimal(18,2)");
             entity.Property(e => e.ProductStatus).HasConversion<string>().HasMaxLength(20);
+            entity.Property(e => e.Brand).HasMaxLength(100);
+            entity.Property(e => e.Size).HasMaxLength(50);
+            entity.Property(e => e.Flavour).HasMaxLength(100);
+            entity.HasIndex(e => e.Brand);
         });
 
         // ── SupplementOrder ───────────────────────────────────────

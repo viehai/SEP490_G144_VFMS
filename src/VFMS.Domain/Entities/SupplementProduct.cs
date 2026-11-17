@@ -12,6 +12,11 @@ public class SupplementProduct : BaseEntity
     public string ProductName { get; set; } = string.Empty;
     public string? Description { get; set; }
     public string? CatalogCategory { get; set; }
+    /// <summary>Manufacturer brand, e.g. "Optimum Nutrition".</summary>
+    public string? Brand { get; set; }
+    /// <summary>Pack size as sold, e.g. "5 lbs (2.27 kg)" or "120 viên".</summary>
+    public string? Size { get; set; }
+    public string? Flavour { get; set; }
     public decimal UnitPrice { get; set; }
     public string? ImageUrl { get; set; }
     public SupplementProductStatus ProductStatus { get; set; } = SupplementProductStatus.Active;
