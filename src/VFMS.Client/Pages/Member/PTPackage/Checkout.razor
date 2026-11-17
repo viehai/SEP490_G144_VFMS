@@ -1,0 +1,184 @@
+@page "/pt-checkout/{OrderNumber}"
+@layout PublicLayout
+@attribute [Authorize(Roles = "Member")]
+@implements IDisposable
+@inject PersonalTrainingApiClient Api
+<PageTitle>Thanh toán gói PT | Victor Fitness</PageTitle>
+
+<section class="trainer-page trainer-public trainer-narrow trainer-stack">
+    <a class="trainer-back" href="/my-pt-packages">← Gói PT của tôi</a>
+    <h1>Thanh toán gói PT</h1>
+    <TrainerFeedback Error="@_error" />
+    @if (_order is { } order)
+    {
+        <section class="trainer-panel trainer-stack">
+            <div class="trainer-row trainer-between"><h2>Đơn @order.OrderNumber</h2><TrainerStatus Status="@order.Status" /></div>
+            <strong>@Money(order.AmountDue)</strong>
+            @if (order.Status is "Pending" or "AwaitingConfirmation")
+            {
+                <p>Hạn chuyển khoản @LocalTime(order.ExpiresAt) · Giữ lịch đến @LocalTime(order.HoldExpiresAt) (giờ Việt Nam)</p>
+                @if (order.Status == "Pending" && DateTime.UtcNow < order.ExpiresAt)
+                {
+                    @if (order.VietQr is { } qr)
+                    {
+                        <p>Còn @Countdown(order.ExpiresAt) để chuyển khoản đúng số tiền và nội dung.</p>
+                        @if (Uri.TryCreate(qr.ImageUrl, UriKind.Absolute, out var image) && image.Scheme == "https")
+                        {
+                            <img class="pt-qr" src="@image.AbsoluteUri" alt="Mã VietQR thanh toán gói PT" />
+                        }
+                        <dl class="pt-facts">
+                            <dt>Ngân hàng</dt><dd>@qr.BankId</dd>
+                            <dt>Số tài khoản</dt><dd>@qr.AccountNumber</dd>
+                            <dt>Chủ tài khoản</dt><dd>@qr.AccountName</dd>
+                            <dt>Nội dung</dt><dd>@qr.TransferContent</dd>
+                        </dl>
+                    }
+                    else
+                    {
+                        <form class="trainer-stack" @onsubmit="PayAsync" @onsubmit:preventDefault>
+                            <label>Voucher (không bắt buộc)<input class="trainer-input" maxlength="80" @bind="_voucher" disabled="@_busy" /></label>
+                            <button class="trainer-button trainer-primary" disabled="@_busy">Tạo mã VietQR</button>
+                        </form>
+                    }
+                    @if (order.CanSimulatePayment)
+                    {
+                        <div class="trainer-stack">
+                            <button type="button" class="trainer-button" disabled="@_busy" @onclick="ConfirmDemoPaymentAsync">Mô phỏng đã thanh toán (demo)</button>
+                            <small class="trainer-muted">Chỉ dùng trong môi trường phát triển. Không cần chuyển khoản.</small>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <p>Đã hết thời gian chuyển khoản. Hệ thống đang chờ xác nhận giao dịch đã thực hiện đúng hạn.</p>
+                }
+            }
+            else if (order.Status == "Paid")
+            {
+                <p>@(order.IsDemoPayment ? "Đã mô phỏng thanh toán và xác nhận lịch tập." : "Đã xác nhận lịch tập.")</p>
+                @if (!order.IsDemoPayment && order.InvoiceNumber is { } invoice)
+                {
+                    <p>Hóa đơn @invoice</p>
+                }
+                <a class="trainer-button trainer-primary" href="@($"/my-pt-packages?contract={order.ContractId}")">Xem hợp đồng và lịch tập</a>
+            }
+            else if (order.Status == "Expired")
+            {
+                <p>Đã hết thời gian giữ lịch. Nếu đã chuyển khoản, kiểm tra lại trạng thái tại đây.</p>
+                <a class="trainer-link" href="/trainers">Chọn lịch khác</a>
+            }
+            @if (order.Refunds is { Count: > 0 } refunds)
+            {
+                <section class="trainer-stack">
+                    <h3>Các khoản hoàn tiền</h3>
+                    <ul class="trainer-list">
+                        @foreach (var refund in refunds)
+                        {
+                            <li @key="refund.Id" class="trainer-row trainer-between">
+                                <span>@Money(refund.Amount) · @LocalTime(refund.ReceivedAt)</span>
+                                <span class="trainer-status">@(refund.Status == "Pending" ? "Chờ hoàn tiền" : Status(refund.Status == "Failed" ? "RefundFailed" : refund.Status))</span>
+                            </li>
+                        }
+                    </ul>
+                </section>
+            }
+            <button class="trainer-button" disabled="@_busy" @onclick="RefreshAsync">Kiểm tra trạng thái</button>
+        </section>
+    }
+    else if (_busy) { <p role="status">Đang tải đơn…</p> }
+    else { <button class="trainer-button" @onclick="RefreshAsync">Tải lại</button> }
+</section>
+
+@code {
+    [Parameter] public string OrderNumber { get; set; } = "";
+    private CancellationTokenSource? _lifetime;
+    private PTCheckoutResponse? _order;
+    private string _voucher = "";
+    private bool _busy;
+    private string? _error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        Dispose();
+        var lifetime = new CancellationTokenSource();
+        var ct = lifetime.Token;
+        _lifetime = lifetime;
+        _order = null;
+        _busy = false;
+        _voucher = "";
+        await RefreshAsync();
+        if (!ct.IsCancellationRequested)
+            _ = PollAsync(ct);
+    }
+
+    private async Task RefreshAsync()
+    {
+        if (_busy || _lifetime is null) return;
+        var ct = _lifetime.Token;
+        _busy = true;
+        try
+        {
+            var order = await Api.CheckoutAsync(OrderNumber, ct);
+            if (!ct.IsCancellationRequested) { _order = order; _error = null; }
+        }
+        catch (AuthApiException ex) when (!ct.IsCancellationRequested) { _error = ex.Message; }
+        catch (Exception ex) when (ct.IsCancellationRequested && ex is OperationCanceledException or AuthApiException) { }
+        finally { if (!ct.IsCancellationRequested) _busy = false; }
+    }
+
+    private async Task PayAsync()
+    {
+        if (_busy || _order is not { Status: "Pending", VietQr: null } order || DateTime.UtcNow >= order.ExpiresAt) return;
+        _busy = true;
+        _error = null;
+        var ct = _lifetime!.Token;
+        try
+        {
+            var updated = await Api.StartPaymentAsync(order.OrderNumber, new(string.IsNullOrWhiteSpace(_voucher) ? null : _voucher.Trim()));
+            if (!ct.IsCancellationRequested) _order = updated;
+        }
+        catch (AuthApiException ex) { if (!ct.IsCancellationRequested) _error = ex.Message; }
+        finally { if (!ct.IsCancellationRequested) _busy = false; }
+    }
+
+    private async Task ConfirmDemoPaymentAsync()
+    {
+        if (_busy || _lifetime is null || _order is not { CanSimulatePayment: true } order) return;
+        var ct = _lifetime.Token;
+        _busy = true;
+        _error = null;
+        try
+        {
+            var updated = await Api.ConfirmDemoPaymentAsync(order.OrderNumber, ct);
+            if (!ct.IsCancellationRequested) _order = updated;
+        }
+        catch (AuthApiException ex) when (!ct.IsCancellationRequested) { _error = ex.Message; }
+        catch (Exception ex) when (ct.IsCancellationRequested && ex is OperationCanceledException or AuthApiException) { }
+        finally { if (!ct.IsCancellationRequested) _busy = false; }
+    }
+
+    private async Task PollAsync(CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+        var seconds = 0;
+        try
+        {
+            while (_order?.Status is "Pending" or "AwaitingConfirmation" or "RefundPending" && await timer.WaitForNextTickAsync(ct))
+            {
+                if (++seconds % 4 == 0) await RefreshAsync();
+                if (!ct.IsCancellationRequested) await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+    }
+
+    private static string Countdown(DateTime until) =>
+        TimeSpan.FromSeconds(Math.Max(0, Math.Ceiling((until - DateTime.UtcNow).TotalSeconds))).ToString(@"mm\:ss");
+
+    public void Dispose()
+    {
+        _lifetime?.Cancel();
+        _lifetime?.Dispose();
+        _lifetime = null;
+    }
+}

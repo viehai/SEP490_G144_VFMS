@@ -5,7 +5,7 @@ namespace VFMS.Domain.Entities;
 
 /// <summary>
 /// PT package freeze request.
-/// Both Manager and the assigned PT can review and process PT freeze requests (UC-34, GBR-15).
+/// Manager reviews and processes PT freeze requests (UC-34, GBR-15).
 /// Approving cancels scheduled sessions inside the freeze window (GBR-17).
 /// </summary>
 public class PTFreeze : BaseEntity
@@ -18,8 +18,16 @@ public class PTFreeze : BaseEntity
     public DateOnly? ActualEndDate { get; set; }
     public PTFreezeRequestStatus RequestStatus { get; set; } = PTFreezeRequestStatus.Pending;
     public string? ReviewNote { get; set; }
+    public string? Reason { get; set; }
+    public string? SupportingDocumentUrl { get; set; }
+    public int? MinimumDaysSnapshot { get; set; }
+    public int? MaxDaysSnapshot { get; set; }
     public string? ReviewedByUserId { get; set; }
     public DateTime? ReviewedAt { get; set; }
+    /// <summary>Trainer who takes over the remaining sessions when the freeze is approved (GBR-99).</summary>
+    public string? ReplacementTrainerId { get; set; }
+    /// <summary>Last in-app reminder sent to Managers about this pending request (UC 4.9).</summary>
+    public DateTime? ManagerRemindedAt { get; set; }
 
     // ── Navigation Properties ──────────────────────────────────
     public PTPurchase PTPurchase { get; set; } = null!;

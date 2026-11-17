@@ -13,6 +13,8 @@ public class LockerPricingPolicy : BaseEntity
     public decimal RentalPrice { get; set; }
     /// <summary>Refundable key deposit (100,000 VND per GBR-19).</summary>
     public decimal DepositAmount { get; set; }
+    public decimal OverdueDailyFee { get; set; }
+    public decimal KeyReplacementFee { get; set; }
     public PolicyStatus PolicyStatus { get; set; } = PolicyStatus.Active;
 
     // ── Navigation Properties ──────────────────────────────────

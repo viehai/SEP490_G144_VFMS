@@ -16,6 +16,10 @@ public class LockerIncidentLog : BaseEntity
     public DateTime ReportedAt { get; set; }
     public DateTime? ResolvedAt { get; set; }
     public decimal? FineAmount { get; set; }
+    public int? LockerRentalContractId { get; set; }
+    public string? VerifiedByUserId { get; set; }
+    public DateTime? VerifiedAt { get; set; }
+    public LockerRentalContract? LockerRentalContract { get; set; }
 
     // ── Navigation Properties ──────────────────────────────────
     public Locker Locker { get; set; } = null!;

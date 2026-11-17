@@ -17,6 +17,7 @@ public class Gym : BaseEntity
     public TimeOnly? OpenTime { get; set; }
     public TimeOnly? CloseTime { get; set; }
     public bool IsAcceptingMembers { get; set; } = true;
+    public bool IsAcceptingTrainerApplications { get; set; } = true;
     public int RenewalAdvanceDays { get; set; } = DefaultRenewalAdvanceDays;
     public int RenewalGraceDays { get; set; } = DefaultRenewalGraceDays;
 

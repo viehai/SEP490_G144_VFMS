@@ -104,6 +104,8 @@ public sealed class MembershipPurchaseRepository(VfmsDbContext context) : IMembe
         return orders.IgnoreQueryFilters().Where(order => !order.IsDeleted && order.OrderStatus == OrderStatus.Pending &&
                 !order.PaymentTransaction!.IsDeleted &&
                 order.PaymentTransaction!.PaymentStatus == PaymentStatus.Pending &&
+                !context.PTPurchases.Any(p => p.OrderId == order.Id) &&
+                order.PaymentTransaction.LockerRentalContractId == null &&
                 ((order.Channel == OrderChannel.Online && order.CreatedAt <= onlineCutoff) ||
                  (order.Channel == OrderChannel.Counter && order.CreatedAt <= cashCutoff)))
             .OrderBy(order => order.CreatedAt).Take(100)

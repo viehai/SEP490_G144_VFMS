@@ -197,6 +197,10 @@ public sealed class UserAdministrationService : IUserAdministrationService
             return Result<UserAccountResponse>.Failure("Roles may only contain PT, YogaInstructor, Staff, or Manager.", "USER_INVALID_ROLE");
 
         var requestedRoles = requestedRoleNames.Cast<string>().ToArray();
+        if (requestedRoles.Contains(nameof(UserRole.PT)) &&
+            await _repository.HasActiveYogaAssignmentsAsync(userId, cancellationToken))
+            return Result<UserAccountResponse>.Failure("A Yoga instructor with active classes cannot be assigned the PT role.",
+                "TRAINER_TEACHING_ROLE_CONFLICT", 409);
         var roles = await _repository.GetRolesByNamesAsync(requestedRoles, cancellationToken);
         if (roles.Count != requestedRoles.Length)
             return Result<UserAccountResponse>.Failure("One or more roles are not configured.", "USER_ROLE_NOT_FOUND", 500);

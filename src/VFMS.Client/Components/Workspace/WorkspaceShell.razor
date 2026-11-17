@@ -5,11 +5,14 @@
         <div class="workspace-role"><span aria-hidden="true">@RoleMark</span><div><strong>@RoleName</strong><small>KHÔNG GIAN LÀM VIỆC</small></div></div>
         <p class="workspace-sidebar-label workspace-sidebar-label--menu">ĐIỀU HƯỚNG</p>
         <nav class="workspace-nav">
-            <NavLink href="@DashboardRoute" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">01</span> Tổng quan <span aria-hidden="true">↗</span></NavLink>
-            <a href="@(DashboardRoute + "#quick-actions")" class="workspace-nav-link"><span aria-hidden="true">02</span> Truy cập nhanh <span aria-hidden="true">↗</span></a>
-            @foreach (var (href, label) in FeatureLinks)
+            @if (Variant is not ("pt" or "member"))
             {
-                <NavLink href="@href" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">◼</span> @label <span aria-hidden="true">↗</span></NavLink>
+                <NavLink href="@DashboardRoute" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">01</span> Tổng quan <span aria-hidden="true">↗</span></NavLink>
+                <a href="@(DashboardRoute + "#quick-actions")" class="workspace-nav-link"><span aria-hidden="true">02</span> Truy cập nhanh <span aria-hidden="true">↗</span></a>
+                @foreach (var (href, label) in FeatureLinks)
+                {
+                    <NavLink href="@href" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">◼</span> @label <span aria-hidden="true">↗</span></NavLink>
+                }
             }
             <NavLink href="/profile" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">03</span> Hồ sơ cá nhân <span aria-hidden="true">↗</span></NavLink>
             <a href="/" class="workspace-nav-link"><span aria-hidden="true">04</span> Trang chủ <span aria-hidden="true">↗</span></a>
@@ -26,8 +29,29 @@
                     <NavLink href="/manager/supplement-products" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">12</span> Sản phẩm bổ sung <span aria-hidden="true">↗</span></NavLink>
                     <NavLink href="/manager/supplement-orders" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">13</span> Đơn bổ sung <span aria-hidden="true">↗</span></NavLink>
                     <NavLink href="/manager/membership-freeze-requests" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">14</span> Duyệt bảo lưu <span aria-hidden="true">↗</span></NavLink>
+                    <NavLink href="/manager/trainer-applications" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">15</span> Hồ sơ huấn luyện viên <span aria-hidden="true">↗</span></NavLink>
+                    <NavLink href="/manager/pt-packages" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">16</span> Quản lý gói PT <span aria-hidden="true">↗</span></NavLink>
+                    <NavLink href="/manager/pt-freeze-requests" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">17</span> Duyệt bảo lưu PT <span aria-hidden="true">↗</span></NavLink>
+                    <NavLink href="/manager/pt-attendance-disputes" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">18</span> Tranh chấp điểm danh <span aria-hidden="true">↗</span></NavLink>
                     <p class="workspace-sidebar-label mt-4 px-3">MARKETING</p>
-                    <NavLink href="/manager/promotions" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">15</span> Khuyến mãi <span aria-hidden="true">↗</span></NavLink>
+                    <NavLink href="/manager/promotions" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">18</span> Khuyến mãi <span aria-hidden="true">↗</span></NavLink>
+                </AuthorizeView>
+            }
+            @if (Variant == "pt")
+            {
+                <AuthorizeView Roles="PT">
+                    <NavLink href="/pt/trainer-profile" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active">Hồ sơ PT của tôi</NavLink>
+                    <a href="/pt/trainer-profile#pt-basic-profile" class="workspace-nav-link">Trạng thái nhận học viên</a>
+                    <NavLink href="/pt/availability" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active">Lịch tuần PT</NavLink>
+                    <NavLink href="/pt/assigned-members" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active">Hội viên được phân công</NavLink>
+                    <NavLink href="/pt/teaching-schedule" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active">Lịch dạy PT</NavLink>
+                </AuthorizeView>
+            }
+            @if (Variant == "member")
+            {
+                <AuthorizeView Roles="Member">
+                    <NavLink href="/my-memberships" Match="NavLinkMatch.Prefix" class="workspace-nav-link" ActiveClass="workspace-nav-link--active">Gói của tôi</NavLink>
+                    <NavLink href="/my-pt-packages" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active">Gói PT</NavLink>
                 </AuthorizeView>
             }
             @if (Variant == "staff")
@@ -70,8 +94,8 @@
     [Parameter] public string Variant { get; set; } = "staff";
     [Parameter] public bool IsPreview { get; set; } = true;
     [Parameter] public RenderFragment? ChildContent { get; set; }
-    private string RoleName => Variant switch { "admin" => "ADMIN", "manager" => "MANAGER", "pt" => "PERSONAL TRAINER", _ => "STAFF" };
-    private string RoleMark => Variant switch { "admin" => "AD", "manager" => "MG", "pt" => "PT", _ => "ST" };
+    private string RoleName => Variant switch { "admin" => "ADMIN", "manager" => "MANAGER", "pt" => "PERSONAL TRAINER", "member" => "HỘI VIÊN", _ => "STAFF" };
+    private string RoleMark => Variant switch { "admin" => "AD", "manager" => "MG", "pt" => "PT", "member" => "HV", _ => "ST" };
     private string DashboardRoute => Variant switch { "admin" => "/admin/dashboard", "manager" => "/manager/dashboard", "pt" => "/pt/dashboard", _ => "/staff/dashboard" };
     private (string Href, string Label)[] FeatureLinks => Variant switch
     {

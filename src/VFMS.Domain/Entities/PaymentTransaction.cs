@@ -18,10 +18,28 @@ public class PaymentTransaction : BaseEntity
     public PaymentStatus PaymentStatus { get; set; } = PaymentStatus.Pending;
     public DateTime? PaidAt { get; set; }
     public string? RawGatewayStatus { get; set; }
+    public int? LockerRentalContractId { get; set; }
+    public LockerPaymentPurpose? LockerPurpose { get; set; }
+    public int? SourcePaymentTransactionId { get; set; }
+    public DateTime? HoldExpiresAt { get; set; }
+    public DateTime? PaymentExpiresAt { get; set; }
+    public DateTime? RentalExpiryAtQuote { get; set; }
+    public int? RenewalMonths { get; set; }
+    public decimal? OverdueFees { get; set; }
+    public decimal? KeyReplacementFee { get; set; }
+    public decimal? RefundAmount { get; set; }
+    public string? RefundReason { get; set; }
+    public string? RefundStatus { get; set; }
+    public DateTime? RefundResolvedAt { get; set; }
+    public PaymentMethod? RefundMethod { get; set; }
+    public string? RefundedByUserId { get; set; }
+    public string? RefundReference { get; set; }
 
     // ── Navigation Properties ──────────────────────────────────
     public ApplicationUser User { get; set; } = null!;
     public Order Order { get; set; } = null!;
     public Invoice? Invoice { get; set; }
+    public LockerRentalContract? LockerRentalContract { get; set; }
+    public PaymentTransaction? SourcePaymentTransaction { get; set; }
 }
 
