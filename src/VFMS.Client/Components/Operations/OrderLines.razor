@@ -2,25 +2,35 @@
 
 @* Product lines and total of a supplement order. *@
 <div>
-    <ul class="divide-y divide-[#D8D1CD] rounded-lg border border-[#D8D1CD]">
+    <ul class="list-none divide-y divide-vfms-border rounded-lg border border-vfms-border p-0">
         @foreach (var item in Order.Items)
         {
             <li @key="item.Id" class="flex items-center gap-3 p-3">
-                @if (item.ImageUrl is { } image)
+                @if (item.ImageUrl is { } image && !_brokenImages.Contains(item.Id))
                 {
-                    <img src="@image" alt="" class="h-12 w-12 flex-none rounded-md border border-[#D8D1CD] object-cover" loading="lazy" />
+                    <img src="@image" alt="" class="h-12 w-12 flex-none rounded-md border border-vfms-border object-cover" loading="lazy" @onerror="() => _brokenImages.Add(item.Id)" />
+                }
+                else
+                {
+                    <span class="flex h-12 w-12 flex-none items-center justify-center rounded-md border border-vfms-border bg-vfms-surface-alt font-heading text-xs font-extrabold text-vfms-border-strong" aria-hidden="true">@Initials(item.ProductName)</span>
                 }
                 <div class="min-w-0 flex-1">
-                    <p class="truncate text-sm font-semibold text-[#242424]">@(item.ProductName ?? $"Sản phẩm #{item.ProductId}")</p>
-                    <p class="text-xs text-[#6F6966]">@item.Quantity × @OperationsText.Money(item.UnitPriceAtPurchase)</p>
+                    <p class="truncate text-sm font-semibold text-vfms-text">@(item.ProductName ?? $"Sản phẩm #{item.ProductId}")</p>
+                    <p class="text-xs text-vfms-text-secondary">@item.Quantity × @OperationsText.Money(item.UnitPriceAtPurchase)</p>
                 </div>
-                <p class="whitespace-nowrap text-sm font-semibold">@OperationsText.Money(item.LineTotal)</p>
+                <p class="whitespace-nowrap text-sm font-semibold text-vfms-text">@OperationsText.Money(item.LineTotal)</p>
             </li>
         }
     </ul>
-    <p class="mt-3 text-right text-sm">Tổng cộng: <span class="text-lg font-extrabold text-[#B83A3A]">@OperationsText.Money(Order.TotalAmount)</span></p>
+    <p class="mt-3 text-right text-sm text-vfms-text-secondary">Tổng cộng: <span class="font-heading text-lg font-extrabold text-vfms-text">@OperationsText.Money(Order.TotalAmount)</span></p>
 </div>
 
 @code {
     [Parameter, EditorRequired] public SupplementOrderResponse Order { get; set; } = default!;
+
+    private readonly HashSet<int> _brokenImages = [];
+
+    private static string Initials(string? name) => string.IsNullOrWhiteSpace(name)
+        ? "VF"
+        : string.Concat(name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(2).Select(word => char.ToUpperInvariant(word[0])));
 }
