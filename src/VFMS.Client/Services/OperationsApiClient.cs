@@ -112,6 +112,10 @@ public sealed class OperationsApiClient(HttpClient http, AuthSession session) : 
             ("sort", request.Sort),
             ("page", Number(request.Page)), ("pageSize", Number(request.PageSize))), ct);
 
+    /// <summary>One product as the store sees it; throws with 404 when it is Inactive or gone.</summary>
+    public Task<SupplementProductResponse> GetProductAsync(int id, CancellationToken ct = default) =>
+        SendAsync<SupplementProductResponse>(HttpMethod.Get, $"{ProductsPath}/{id}", ct);
+
     public Task<List<string>> GetProductCategoriesAsync(CancellationToken ct = default) =>
         SendAsync<List<string>>(HttpMethod.Get, $"{ProductsPath}/categories", ct);
 

@@ -1,12 +1,17 @@
 @page "/supplements"
 @layout PublicLayout
+@using System.Security.Claims
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using VFMS.Client.Services
 @using VFMS.Client.Components.Operations
 @using VFMS.Contracts.Common
 @using VFMS.Contracts.Supplements
 @using VFMS.Contracts.Supplements.Validators
 @attribute [Authorize(Roles = "Customer,Member")]
 @inject OperationsApiClient Api
+@inject IJSRuntime JS
+@inject AuthenticationStateProvider AuthState
 @implements IDisposable
 
 <PageTitle>Thực phẩm bổ sung | Victor Fitness</PageTitle>
@@ -133,7 +138,7 @@
                                     <span class="whitespace-nowrap font-heading text-base font-extrabold text-vfms-text">@OperationsText.Money(product.UnitPrice)</span>
                                     @if (product.CanOrder)
                                     {
-                                        <button type="button" class="whitespace-nowrap rounded-lg bg-vfms-primary px-3 py-1.5 text-xs font-bold text-white transition hover:bg-vfms-primary-hover" aria-label="Thêm @product.Name vào giỏ" @onclick="() => Add(product, 1)">+ Thêm</button>
+                                        <button type="button" class="whitespace-nowrap rounded-lg bg-vfms-primary px-3 py-1.5 text-xs font-bold text-white transition hover:bg-vfms-primary-hover" aria-label="Thêm @product.Name vào giỏ" @onclick="() => AddAsync(product, 1)">+ Thêm</button>
                                     }
                                 </div>
                             </div>
@@ -176,8 +181,8 @@
                                 <p class="text-xs text-vfms-text-secondary">@OperationsText.Money(line.Product.UnitPrice * line.Quantity)</p>
                             </div>
                             <input type="number" class="w-16 rounded-lg border border-vfms-border bg-vfms-bg px-2 py-1 text-sm text-vfms-text outline-none focus:border-vfms-primary" min="1" max="999" aria-label="Số lượng @line.Product.Name"
-                                   value="@line.Quantity" @onchange="args => SetQuantity(line, args.Value?.ToString())" />
-                            <button type="button" class="rounded-lg px-2 py-1 text-xs font-semibold text-vfms-text-secondary hover:bg-vfms-surface-alt hover:text-[#DC2626]" aria-label="Bỏ @line.Product.Name" @onclick="() => _cart.Remove(line)">Bỏ</button>
+                                   value="@line.Quantity" @onchange="args => SetQuantityAsync(line, args.Value?.ToString())" />
+                            <button type="button" class="rounded-lg px-2 py-1 text-xs font-semibold text-vfms-text-secondary hover:bg-vfms-surface-alt hover:text-[#DC2626]" aria-label="Bỏ @line.Product.Name" @onclick="() => RemoveAsync(line)">Bỏ</button>
                         </li>
                     }
                 </ul>
@@ -219,7 +224,7 @@
 
 @if (_detail is { } detail)
 {
-    <SupplementProductDetail Product="detail" OnClose="() => _detail = null" OnAdd="args => AddFromDetail(args.Product, args.Quantity)" />
+    <SupplementProductDetail Product="detail" OnClose="() => _detail = null" OnAdd="args => AddFromDetailAsync(args.Product, args.Quantity)" />
 }
 
 @code {
@@ -267,6 +272,8 @@
     private string? _notice, _error;
     private bool _loading, _working;
     private readonly HashSet<int> _brokenImages = [];
+    private SupplementCartStorage? _storage;
+    private string? _userId;
 
     /// <summary>Card overline: brand and product type, e.g. "Rule 1 · Whey Protein".</summary>
     private static string Overline(SupplementProductResponse product) =>
@@ -310,7 +317,44 @@
         catch (AuthApiException error) { _error = error.Message; }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
         await LoadAsync(1);
+        await RestoreCartAsync();
     }
+
+    /// <summary>
+    /// Brings back the cart saved for this user and checks each line against the store as it is now: products that
+    /// were withdrawn or ran out are dropped, and price changes are pointed out before checkout.
+    /// </summary>
+    private async Task RestoreCartAsync()
+    {
+        var user = (await AuthState.GetAuthenticationStateAsync()).User;
+        _userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (_userId is null) return;
+        _storage = new SupplementCartStorage(JS);
+        var saved = await _storage.LoadAsync(_userId);
+        if (saved.Count == 0) return;
+
+        var lookups = await Task.WhenAll(saved.Select(async line =>
+        {
+            try { return (line.ProductId, Product: (SupplementProductResponse?)await Api.GetProductAsync(line.ProductId, _lifetime.Token)); }
+            catch (AuthApiException error) when (error.StatusCode == System.Net.HttpStatusCode.NotFound) { return (line.ProductId, Product: null); }
+        }));
+        var result = SupplementCartStorage.Reconcile(saved, lookups.ToDictionary(x => x.ProductId, x => x.Product));
+        _cart.Clear();
+        _cart.AddRange(result.Lines.Select(line => new CartLine(line.Product) { Quantity = line.Quantity }));
+
+        var messages = new List<string>();
+        if (result.Removed.Count > 0)
+            messages.Add($"Đã bỏ khỏi giỏ vì không còn bán hoặc hết hàng: {string.Join(", ", result.Removed)}.");
+        if (result.PriceChanged.Count > 0)
+            messages.Add($"Giá đã thay đổi: {string.Join(", ", result.PriceChanged)}. Giỏ hàng đang dùng giá mới.");
+        if (messages.Count > 0) _notice = string.Join(" ", messages);
+        await SaveCartAsync();
+    }
+
+    private Task SaveCartAsync() => _storage is null || _userId is null
+        ? Task.CompletedTask
+        : _storage.SaveAsync(_userId, _cart.Select(line =>
+            new SupplementCartStorage.SavedLine(line.Product.Id, line.Quantity, line.Product.UnitPrice, line.Product.Name)));
 
     private PlaceSupplementOrderRequest CreateRequest()
     {
@@ -336,7 +380,7 @@
         finally { _loading = false; }
     }
 
-    private void Add(SupplementProductResponse product, int quantity)
+    private async Task AddAsync(SupplementProductResponse product, int quantity)
     {
         _placed = null;
         if (_cart.FirstOrDefault(line => line.Product.Id == product.Id) is { } line)
@@ -344,17 +388,25 @@
         else
             _cart.Add(new(product) { Quantity = Math.Clamp(quantity, 1, 999) });
         _notice = quantity == 1 ? $"Đã thêm \"{product.Name}\" vào giỏ." : $"Đã thêm {quantity} × \"{product.Name}\" vào giỏ.";
+        await SaveCartAsync();
     }
 
-    private void AddFromDetail(SupplementProductResponse product, int quantity)
+    private async Task AddFromDetailAsync(SupplementProductResponse product, int quantity)
     {
-        Add(product, quantity);
         _detail = null;
+        await AddAsync(product, quantity);
     }
 
-    private static void SetQuantity(CartLine line, string? value)
+    private Task RemoveAsync(CartLine line)
+    {
+        _cart.Remove(line);
+        return SaveCartAsync();
+    }
+
+    private Task SetQuantityAsync(CartLine line, string? value)
     {
         if (int.TryParse(value, out var quantity)) line.Quantity = Math.Clamp(quantity, 1, 999);
+        return SaveCartAsync();
     }
 
     private async Task PlaceAsync()
@@ -366,6 +418,7 @@
         {
             _placed = await Api.PlaceOrderAsync(CreateRequest(), _lifetime.Token);
             _cart.Clear();
+            await SaveCartAsync();
             _checkout.DeliveryNote = null;
         }
         catch (AuthApiException error)
