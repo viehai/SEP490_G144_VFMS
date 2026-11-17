@@ -104,7 +104,7 @@
                     @foreach (var product in list.Items)
                     {
                         <li @key="product.Id" class="flex min-w-0 flex-col overflow-hidden rounded-[10px] border border-vfms-border bg-vfms-surface transition hover:border-vfms-border-strong">
-                            <div class="relative aspect-[4/3] bg-white">
+                            <button type="button" class="relative block aspect-[4/3] w-full bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-vfms-primary" aria-label="Xem chi tiết @product.Name" @onclick="() => _detail = product">
                                 @if (product.ImageUrl is { } image && !_brokenImages.Contains(product.Id))
                                 {
                                     <img src="@image" alt="@product.Name" class="h-full w-full object-contain p-3" loading="lazy" @onerror="() => _brokenImages.Add(product.Id)" />
@@ -120,10 +120,10 @@
                                 {
                                     <span class="absolute left-3 top-3 @OperationsText.Badge(product.Status)">@OperationsText.Label(product.Status)</span>
                                 }
-                            </div>
+                            </button>
                             <div class="flex flex-1 flex-col gap-1.5 p-4">
                                 <p class="text-[10px] font-bold uppercase tracking-[0.16em] text-vfms-text-muted">@Overline(product)</p>
-                                <h2 class="font-heading text-sm font-bold leading-snug text-vfms-text">@product.Name</h2>
+                                <h2 class="font-heading text-sm font-bold leading-snug text-vfms-text"><button type="button" class="text-left hover:text-vfms-primary hover:underline underline-offset-2" @onclick="() => _detail = product">@product.Name</button></h2>
                                 @if (Variant(product) is { Length: > 0 } variant)
                                 {
                                     <p class="text-xs font-semibold text-vfms-text">@variant</p>
@@ -133,7 +133,7 @@
                                     <span class="whitespace-nowrap font-heading text-base font-extrabold text-vfms-text">@OperationsText.Money(product.UnitPrice)</span>
                                     @if (product.CanOrder)
                                     {
-                                        <button type="button" class="whitespace-nowrap rounded-lg bg-vfms-primary px-3 py-1.5 text-xs font-bold text-white transition hover:bg-vfms-primary-hover" aria-label="Thêm @product.Name vào giỏ" @onclick="() => Add(product)">+ Thêm</button>
+                                        <button type="button" class="whitespace-nowrap rounded-lg bg-vfms-primary px-3 py-1.5 text-xs font-bold text-white transition hover:bg-vfms-primary-hover" aria-label="Thêm @product.Name vào giỏ" @onclick="() => Add(product, 1)">+ Thêm</button>
                                     }
                                 </div>
                             </div>
@@ -217,6 +217,11 @@
     </div>
 </section>
 
+@if (_detail is { } detail)
+{
+    <SupplementProductDetail Product="detail" OnClose="() => _detail = null" OnAdd="args => AddFromDetail(args.Product, args.Quantity)" />
+}
+
 @code {
     private sealed class CartLine(SupplementProductResponse product)
     {
@@ -234,6 +239,7 @@
     private readonly List<CartLine> _cart = [];
     private PagedResponse<SupplementProductResponse>? _page;
     private SupplementOrderResponse? _placed;
+    private SupplementProductResponse? _detail;
     /// <summary>A price filter option; null bounds are open.</summary>
     private sealed record PriceRange(string Key, string Label, decimal? Min, decimal? Max);
 
@@ -330,14 +336,20 @@
         finally { _loading = false; }
     }
 
-    private void Add(SupplementProductResponse product)
+    private void Add(SupplementProductResponse product, int quantity)
     {
         _placed = null;
         if (_cart.FirstOrDefault(line => line.Product.Id == product.Id) is { } line)
-            line.Quantity = Math.Min(999, line.Quantity + 1);
+            line.Quantity = Math.Min(999, line.Quantity + quantity);
         else
-            _cart.Add(new(product));
-        _notice = $"Đã thêm \"{product.Name}\" vào giỏ.";
+            _cart.Add(new(product) { Quantity = Math.Clamp(quantity, 1, 999) });
+        _notice = quantity == 1 ? $"Đã thêm \"{product.Name}\" vào giỏ." : $"Đã thêm {quantity} × \"{product.Name}\" vào giỏ.";
+    }
+
+    private void AddFromDetail(SupplementProductResponse product, int quantity)
+    {
+        Add(product, quantity);
+        _detail = null;
     }
 
     private static void SetQuantity(CartLine line, string? value)
