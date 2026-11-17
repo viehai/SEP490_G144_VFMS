@@ -1,0 +1,35 @@
+@page "/my-pt-packages/{ContractId:int}/freeze"
+@layout AccountLayout
+@attribute [Authorize(Roles = "Member")]
+@inject PersonalTrainingApiClient Api
+@using VFMS.Client.Components.Operations
+
+<PageTitle>Bảo lưu gói PT | Victor Fitness</PageTitle>
+<section class="workspace-page trainer-page trainer-stack">
+    <a class="trainer-link" href="@($"/my-pt-packages?contract={ContractId}")">← Gói PT của tôi</a>
+    <PageHeader Overline="VFMS / GÓI PT" Title="Bảo lưu gói PT"
+                Description="Chọn thời gian bảo lưu, lịch tập sau bảo lưu hoặc huấn luyện viên thay thế." />
+    <TrainerFeedback Error="@_error" />
+    @if (_loading) { <p role="status">Đang tải hợp đồng…</p> }
+    else if (_contract is { } contract)
+    {
+        <p>@contract.PackageName · @contract.TrainerName</p>
+        <MemberFreezePanel Contract="contract" Changed="LoadAsync" />
+    }
+</section>
+
+@code {
+    [Parameter] public int ContractId { get; set; }
+    private PTContractResponse? _contract;
+    private bool _loading;
+    private string? _error;
+    protected override Task OnParametersSetAsync() => LoadAsync();
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try { _contract = (await Api.ContractsAsync(ContractId)).SingleOrDefault(); }
+        catch (AuthApiException ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+}

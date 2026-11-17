@@ -23,6 +23,8 @@
     <link href="css/auth.css" rel="stylesheet" />
     <link href="css/workspace.css" rel="stylesheet" />
     <link href="css/profile.css" rel="stylesheet" />
+    <link href="css/trainers.css?v=2" rel="stylesheet" />
+    <script src="js/trainer-files.js" defer></script>
     <style>
         html, body {
             overflow-x: hidden !important;
@@ -55,18 +57,25 @@
             theme: {
                 extend: {
                     colors: {
-                        /* Sage Athletic Minimalism design tokens */
-                        'vfms-primary':       '#5F6F52',
-                        'vfms-primary-hover': '#4E5D44',
-                        'vfms-primary-soft':  '#E8EDE3',
-                        'vfms-bg':            '#F7F4EC',
-                        'vfms-surface':       '#FFFFFF',
-                        'vfms-muted':         '#EEF1EA',
-                        'vfms-text':          '#383E43',
-                        'vfms-text-secondary':'#69706A',
-                        'vfms-text-subtle':   '#8A9089',
-                        'vfms-border':        '#D8DED2',
-                        'vfms-dark-olive':    '#3F493A',
+                        /* Soft Black + Muted Red + Warm Neutral design tokens */
+                        'vfms-bg':            '#F2EFEC',
+                        'vfms-surface':       '#F8F5F2',
+                        'vfms-surface-alt':   '#ECE8E4',
+                        'vfms-surface-strong':'#FFFFFF',
+                        'vfms-muted':         '#ECE8E4',
+                        'vfms-charcoal':      '#252323',
+                        'vfms-charcoal-soft': '#2B2928',
+                        'vfms-text':          '#242424',
+                        'vfms-text-secondary':'#6F6966',
+                        'vfms-text-subtle':   '#8C8581',
+                        'vfms-text-muted':    '#8C8581',
+                        'vfms-primary':       '#B83A3A',
+                        'vfms-primary-hover': '#9F3030',
+                        'vfms-primary-dark':  '#7F2929',
+                        'vfms-primary-soft':  '#F3E4E2',
+                        'vfms-border':        '#D8D1CD',
+                        'vfms-border-strong': '#C9C0BB',
+                        'vfms-dark-olive':    '#252323',
                         /* Semantic status */
                         'vfms-success': '#16A34A',
                         'vfms-warning': '#D97706',
@@ -86,6 +95,7 @@
     </div>
     <script src="js/auth.js"></script>
     <script src="js/freeze-documents.js"></script>
+    <script src="js/invoice-download.js"></script>
     <script src="_framework/blazor.webassembly.js" autostart="false"></script>
     <script>
         (async function () {

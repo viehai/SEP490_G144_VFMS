@@ -1,0 +1,284 @@
+@inject PersonalTrainingApiClient Api
+@using VFMS.Contracts.Common
+@using VFMS.Client.Components.Operations
+
+<section class="pt-session trainer-stack">
+    <h3>Bảo lưu gói PT</h3>
+    <TrainerFeedback Error="@_error" Message="@_message" />
+    @if (_busy) { <p role="status">Đang xử lý…</p> }
+    <p>Tối thiểu @Contract.FreezeMinimumDays ngày mỗi yêu cầu · Còn @Contract.RemainingFreezeDays / @Contract.FreezeMaxTotalDays ngày</p>
+    @if (_freezes is null && !_busy)
+    {
+        <button class="trainer-button" @onclick="LoadAsync">Tải lịch sử bảo lưu</button>
+    }
+    @if (CanRequest)
+    {
+        <button type="button" class="trainer-button" disabled="@_busy" @onclick="() => _showRequest = !_showRequest">Xin bảo lưu</button>
+        @if (_showRequest)
+        {
+            <form class="trainer-stack" @onsubmit="RequestAsync" @onsubmit:preventDefault>
+                <fieldset class="trainer-grid" disabled="@_busy">
+                    <label>Ngày bắt đầu bảo lưu<input type="date" class="trainer-input" min="@Today.ToString("yyyy-MM-dd")" @bind="_start" @bind:after="ClearProposal" /></label>
+                    <label>Ngày tập lại<input type="date" class="trainer-input" @bind="_resume" @bind:after="ClearProposal" /></label>
+                </fieldset>
+                <p class="trainer-muted">Số ngày bảo lưu: @Math.Max(0, _resume.DayNumber - _start.DayNumber). Ngày tập lại không tính vào kỳ bảo lưu.</p>
+                <label>Lý do<textarea class="trainer-input" rows="3" maxlength="1000" @bind="_reason" required disabled="@_busy"></textarea></label>
+                <label class="trainer-row"><input type="checkbox" @bind="_changeTrainer" @bind:after="ClearProposal" disabled="@_busy" />
+                    Đổi huấn luyện viên cho các buổi còn lại (không phát sinh thanh toán)</label>
+                @if (_changeTrainer)
+                {
+                    <ReplacementTrainerPicker ContractId="Contract.Id" Disabled="_busy" Changed="TrainerChosen" />
+                }
+                <div class="trainer-row">
+                    <button type="button" class="trainer-button" disabled="@_busy" @onclick="PreviewRequestAsync">Xem lịch sau bảo lưu</button>
+                    @if (_proposal is not null)
+                    {
+                        <button class="trainer-button trainer-primary" disabled="@_busy">Gửi yêu cầu bảo lưu</button>
+                    }
+                </div>
+                @if (_proposal is { } proposal)
+                {
+                    <div class="trainer-stack">
+                        <p>Hạn gói dự kiến @Date(proposal.ExpiresOn). Các ca dưới đây được giữ chỗ trong lúc chờ Manager duyệt.</p>
+                        @if (proposal.GymCoverageWarning)
+                        {
+                            <p class="trainer-feedback trainer-error" role="alert">Gói Gym của bạn hết hạn trước buổi cuối. Bạn cần gia hạn gói Gym để vào tập các buổi đó.</p>
+                        }
+                        @if (proposal.SessionsNeedingSlot.Count > 0)
+                        {
+                            <p class="trainer-feedback trainer-error" role="alert">Có @proposal.SessionsNeedingSlot.Count buổi chưa có ca trống. Chọn ngày giờ khác cho các buổi đó@(_changeTrainer ? " hoặc chọn mẫu lịch khác" : "") rồi xem lại.</p>
+                        }
+                        @foreach (var (id, draft) in _moves)
+                        {
+                            <fieldset class="trainer-row" disabled="@(_busy || _changeTrainer)" @key="id">
+                                <legend>Buổi #@id@(proposal.SessionsNeedingSlot.Contains(id) ? " · cần chọn ca" : "")</legend>
+                                <label>Ngày<input class="trainer-input" type="date" min="@_resume.ToString("yyyy-MM-dd")" @bind="draft.Date" @bind:after="MarkEdited" /></label>
+                                <label>Giờ<input class="trainer-input" type="time" step="3600" @bind="draft.Start" @bind:after="MarkEdited" /></label>
+                            </fieldset>
+                        }
+                        @if (_edited) { <p class="trainer-muted">Bạn đã đổi ca. Bấm "Xem lịch sau bảo lưu" để kiểm tra trước khi gửi.</p> }
+                    </div>
+                }
+            </form>
+        }
+    }
+    @if (_freezes is { } freezes)
+    {
+        @if (freezes.TotalCount == 0 && !CanRequest) { <p class="trainer-muted">Chưa có yêu cầu bảo lưu cho hợp đồng này.</p> }
+        @foreach (var freeze in freezes.Items)
+        {
+            <article class="pt-suggestion" @key="freeze.Id">
+                <div class="trainer-row trainer-between">
+                    <strong>@Date(freeze.StartDate) → @Date(freeze.ResumeDate)</strong>
+                    <TrainerStatus Status="@freeze.Status" />
+                </div>
+                <p class="trainer-copy">@freeze.Reason</p>
+                @if (!string.IsNullOrWhiteSpace(freeze.ReviewNote)) { <p class="trainer-copy">Phản hồi Manager: @freeze.ReviewNote</p> }
+                @if (freeze.ReplacementTrainerId is not null) { <p class="trainer-muted">Kèm đổi huấn luyện viên cho các buổi còn lại.</p> }
+                <div class="trainer-row">
+                    @if (freeze.Status == "Active" && Today < freeze.ResumeDate)
+                    {
+                        <button class="trainer-button" disabled="@_busy" @onclick="() => OpenEarlyResume(freeze)">Tập lại sớm</button>
+                    }
+                    @if (freeze.Status == "Pending" || freeze.Status == "Approved" && freeze.StartDate > Today && freeze.ReplacementTrainerId is null)
+                    {
+                        <button class="trainer-button" disabled="@_busy" @onclick="() => WithdrawAsync(freeze)">Rút yêu cầu</button>
+                    }
+                </div>
+            </article>
+        }
+        @if (freezes.TotalCount > freezes.PageSize)
+        {
+            <Pager Page="freezes.Page" PageSize="freezes.PageSize" TotalCount="freezes.TotalCount" Noun="yêu cầu" Disabled="_busy" OnPage="LoadPageAsync" />
+        }
+    }
+    @if (_early is { } early)
+    {
+        <form class="trainer-stack" @onsubmit="PreviewAsync" @onsubmit:preventDefault>
+            <h4>Tập lại sớm</h4>
+            <label>Ngày tập lại mới<input type="date" class="trainer-input" min="@Today.ToString("yyyy-MM-dd")"
+                max="@early.ResumeDate.AddDays(-1).ToString("yyyy-MM-dd")" @bind="_earlyDate" @bind:after="ClearPreview" disabled="@_busy" /></label>
+            <div class="trainer-row">
+                <button class="trainer-button" disabled="@_busy">Xem lịch điều chỉnh</button>
+                <button type="button" class="trainer-button" disabled="@_busy" @onclick="CloseEarlyResume">Đóng</button>
+            </div>
+        </form>
+        @if (_preview is { } preview)
+        {
+            <p>Hạn gói dự kiến @Date(preview.ExpiresOn) · Đã bảo lưu @preview.ActualFrozenDays ngày · Còn @preview.RemainingFreezeDays ngày</p>
+            @if (preview.UnavailableOriginalSlots.Count > 0) { <p>Có ca cũ không còn trống. Kiểm tra các buổi cần chọn ca mới.</p> }
+            <SlotList Slots="@preview.Sessions.Select(s => new PTCalendarSlot(0, s.Date, s.StartTime, s.EndTime, s.Status)).ToArray()" />
+            @foreach (var id in preview.SessionsNeedingNewSlot)
+            {
+                var session = preview.Sessions.FirstOrDefault(s => s.Id == id);
+                var move = _drafts[id];
+                <fieldset class="trainer-row" disabled="@_busy" @key="id">
+                    <legend>Chọn ca mới cho buổi @(session is null ? $"#{id}" : $"{Date(session.Date)} · {Time(session.StartTime)}")</legend>
+                    <label>Ngày<input class="trainer-input" type="date" min="@_earlyDate.ToString("yyyy-MM-dd")"
+                        @bind="move.Date" /></label>
+                    <label>Giờ bắt đầu<input class="trainer-input" type="time" @bind="move.Start" /></label>
+                </fieldset>
+            }
+            <div class="trainer-row">
+                @if (preview.SessionsNeedingNewSlot.Count > 0)
+                {
+                    <button class="trainer-button" disabled="@_busy" @onclick="PreviewMovesAsync">Kiểm tra các ca mới</button>
+                }
+                else
+                {
+                    <button class="trainer-button trainer-primary" disabled="@_busy" @onclick="ConfirmAsync">Xác nhận tập lại sớm</button>
+                }
+            </div>
+        }
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public PTContractResponse Contract { get; set; } = default!;
+    [Parameter] public EventCallback Changed { get; set; }
+    private PagedResponse<PTFreezeResponse>? _freezes;
+    private bool _hasLiveRequest;
+    private PTFreezeResponse? _early;
+    private PTEarlyResumePreview? _preview;
+    private readonly Dictionary<int, MoveDraft> _drafts = [];
+    private DateOnly _start = Today, _resume = Today.AddDays(1), _earlyDate = Today;
+    private bool _busy, _showRequest;
+    private string _reason = "";
+    private string? _error, _message;
+    private bool CanRequest => Contract.Status == "Active" && Contract.RemainingFreezeDays >= Contract.FreezeMinimumDays &&
+        Contract.FreezeMinimumDays > 0 && _freezes is not null && !_hasLiveRequest && !Contract.HasPendingOrApprovedFreeze;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+    private Task LoadAsync() => RunAsync(LoadHistoryAsync);
+    private Task LoadHistoryAsync() => ReadPageAsync(1);
+    private Task LoadPageAsync(int page) => RunAsync(() => ReadPageAsync(page));
+
+    private async Task ReadPageAsync(int page)
+    {
+        _freezes = await Api.MemberFreezePageAsync(Contract.Id, page);
+    }
+
+    private PTFreezeProposal? _proposal;
+    private readonly Dictionary<int, MoveDraft> _moves = [];
+    private bool _changeTrainer, _edited;
+    private (string TrainerId, int[] TemplateIds) _replacement = ("", []);
+
+    private void ClearProposal() { _proposal = null; _moves.Clear(); _edited = false; }
+    private void MarkEdited() => _edited = true;
+    private void TrainerChosen((string TrainerId, int[] TemplateIds) choice) { _replacement = choice; ClearProposal(); }
+
+    private string? RequestError()
+    {
+        var days = _resume.DayNumber - _start.DayNumber;
+        if (_start < Today || _start < Contract.StartDate || _start > Contract.EndDate ||
+            days < Contract.FreezeMinimumDays || days > Contract.RemainingFreezeDays || string.IsNullOrWhiteSpace(_reason))
+            return $"Kiểm tra lại ngày (từ {Contract.FreezeMinimumDays} đến {Contract.RemainingFreezeDays} ngày) và lý do bảo lưu.";
+        if (_changeTrainer && (_replacement.TrainerId.Length == 0 || _replacement.TemplateIds.Length == 0))
+            return "Chọn huấn luyện viên mới và ít nhất một ca trong tuần.";
+        return null;
+    }
+
+    private PTFreezeRequest BuildRequest() => _changeTrainer
+        ? new(_start, _resume, _reason.Trim(), null, _replacement.TrainerId, _replacement.TemplateIds)
+        : new(_start, _resume, _reason.Trim(), _moves.Where(m => m.Value.Date is not null && m.Value.Start is not null)
+            .Select(m => new PTEarlyResumeMove(m.Key, m.Value.Date!.Value, m.Value.Start!.Value)).ToArray());
+
+    private Task PreviewRequestAsync() => RunAsync(async () =>
+    {
+        if (RequestError() is { } problem) { _error = problem; return; }
+        _proposal = await Api.PreviewFreezeRequestAsync(Contract.Id, BuildRequest());
+        _edited = false;
+        _moves.Clear();
+        foreach (var planned in _proposal.Sessions)
+            _moves[planned.OriginalSessionId] = new() { Date = planned.Date, Start = planned.StartTime };
+        if (!_changeTrainer)
+            foreach (var id in _proposal.SessionsNeedingSlot)
+                _moves.TryAdd(id, new());
+    });
+
+    private Task WithdrawAsync(PTFreezeResponse freeze) => RunAsync(async () =>
+    {
+        await Api.WithdrawFreezeAsync(freeze.Id);
+        _hasLiveRequest = false;
+        await LoadHistoryAsync();
+        _message = "Đã rút yêu cầu bảo lưu. Lượt bảo lưu chưa bị tính.";
+        await Changed.InvokeAsync();
+    });
+
+    private Task RequestAsync() => RunAsync(async () =>
+    {
+        if (!CanRequest || RequestError() is not null || _proposal is null || _edited || _proposal.SessionsNeedingSlot.Count > 0)
+        {
+            _error = RequestError() ?? "Xem và kiểm tra lịch sau bảo lưu trước khi gửi.";
+            return;
+        }
+        await Api.RequestFreezeAsync(Contract.Id, BuildRequest());
+        ClearProposal();
+        _hasLiveRequest = true;
+        await LoadHistoryAsync();
+        _reason = "";
+        _showRequest = false;
+        _message = "Đã gửi yêu cầu bảo lưu.";
+        await Changed.InvokeAsync();
+    });
+
+    private void OpenEarlyResume(PTFreezeResponse freeze)
+    {
+        _early = freeze;
+        _earlyDate = Today;
+        ClearPreview();
+        _error = _message = null;
+    }
+
+    private void CloseEarlyResume() { _early = null; ClearPreview(); }
+    private void ClearPreview() { _preview = null; _drafts.Clear(); }
+    private Task PreviewAsync() => PreviewAsync([]);
+
+    private Task PreviewMovesAsync()
+    {
+        if (_preview is not { } preview || preview.SessionsNeedingNewSlot.Any(id => _drafts[id].Date is null || _drafts[id].Start is null))
+        {
+            _error = "Chọn ngày và giờ cho tất cả buổi cần đổi ca.";
+            return Task.CompletedTask;
+        }
+        var moves = preview.Moves.Concat(preview.SessionsNeedingNewSlot.Select(id =>
+            new PTEarlyResumeMove(id, _drafts[id].Date!.Value, _drafts[id].Start!.Value))).ToArray();
+        return PreviewAsync(moves);
+    }
+
+    private Task PreviewAsync(PTEarlyResumeMove[] moves) => _early is { } early
+        ? RunAsync(async () =>
+        {
+            _preview = await Api.PreviewResumeAsync(early.Id, new(_earlyDate, moves));
+            foreach (var id in _preview.SessionsNeedingNewSlot)
+                _drafts.TryAdd(id, new());
+        })
+        : Task.CompletedTask;
+
+    private Task ConfirmAsync() => _early is { } early && _preview is { SessionsNeedingNewSlot.Count: 0 } preview
+        ? RunAsync(async () =>
+        {
+            await Api.ConfirmResumeAsync(early.Id, new(preview.ResumeDate, preview.CurrentResumeDate, preview.Moves.ToArray()));
+            CloseEarlyResume();
+            _message = "Đã xác nhận tập lại sớm.";
+            await Changed.InvokeAsync();
+            await LoadHistoryAsync();
+        })
+        : Task.CompletedTask;
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        if (_busy) return;
+        _busy = true;
+        _message = _error = null;
+        try { await action(); }
+        catch (AuthApiException ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private sealed class MoveDraft
+    {
+        public DateOnly? Date { get; set; }
+        public TimeOnly? Start { get; set; }
+    }
+}

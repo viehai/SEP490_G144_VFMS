@@ -4,7 +4,7 @@ namespace VFMS.Contracts.Users.Validators;
 
 internal static class UserAccountRules
 {
-    public static readonly string[] StaffRoles = ["PT", "Staff", "Manager"];
+    public static readonly string[] StaffRoles = ["PT", "YogaInstructor", "Staff", "Manager"];
 
     public static void Apply<T>(
         AbstractValidator<T> validator,

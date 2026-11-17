@@ -4,7 +4,7 @@ using VFMS.Domain.Enums;
 namespace VFMS.Domain.Entities;
 
 /// <summary>
-/// Application user account. Covers all roles: Customer, Member, PT, Staff, Manager, Admin.
+/// Application user account. Covers all roles: Customer, Member, PT, YogaInstructor, Staff, Manager, Admin.
 /// Accounts must never be hard-deleted (GBR-33). Use <see cref="AccountStatus"/> transitions instead.
 /// </summary>
 public class ApplicationUser : BaseEntity
@@ -15,6 +15,9 @@ public class ApplicationUser : BaseEntity
     public string Email { get; set; } = string.Empty;
     public string PhoneNumber { get; set; } = string.Empty;
     public string PasswordHash { get; set; } = string.Empty;
+    // First-time onboarding only; login/refresh/logout do not consume these fields.
+    public string? PasswordSetupTokenHash { get; set; }
+    public DateTime? PasswordSetupExpiresAt { get; set; }
     public string? ResetTokenHash { get; set; }
     public DateTime? ResetTokenExpiresAt { get; set; }
     public string? AvatarUrl { get; set; }
@@ -42,7 +45,7 @@ public class ApplicationUser : BaseEntity
     public ICollection<CheckIn> CheckIns { get; set; } = [];
     public ICollection<QRCode> QRCodes { get; set; } = [];
     public FaceData? FaceData { get; set; }
-    public TrainerApplication? TrainerApplication { get; set; }
+    public ICollection<TrainerApplication> TrainerApplications { get; set; } = [];
     public TrainerProfile? TrainerProfile { get; set; }
     public ICollection<TrainerReview> TrainerReviewsGiven { get; set; } = [];
     public ICollection<LockerRentalContract> LockerContracts { get; set; } = [];

@@ -10,6 +10,6 @@ public sealed class CreateStaffRequestValidator : AbstractValidator<CreateStaffR
 
         RuleFor(x => x.RoleName)
             .Must(role => UserAccountRules.StaffRoles.Contains(role, StringComparer.OrdinalIgnoreCase))
-            .WithMessage("Role must be PT, Staff, or Manager.");
+            .WithMessage("Role must be PT, YogaInstructor, Staff, or Manager.");
     }
 }

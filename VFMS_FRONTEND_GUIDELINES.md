@@ -23,7 +23,8 @@ Report 3 governs functional and non-functional requirements. Use Case Diagrams (
 - `Pages/Auth/Login.razor` (`/auth/login`) and `Pages/Auth/Register.razor` (`/auth/register`) use `Layout/AuthLayout.razor` and `wwwroot/css/auth.css`. Both forms use shared validators from `VFMS.Contracts`; registration does not sign the user in automatically. Logout is a direct action through `Components/Auth/LogoutButton.razor`, without a separate page.
 - `wwwroot/index.html` hosts the startup screen and loads Tailwind through its CDN. The startup styles are in `wwwroot/css/splash.css`. There is currently no project-level `tailwind.config.js`.
 - Logo and equipment images used by Home are in `wwwroot/brand/`, `wwwroot/images/`, and `wwwroot/equipments/`.
-- **Home hero image convention:** use the local file `wwwroot/images/hero-bg.png`, referenced from Razor as `/images/hero-bg.png`. Do not apply `grayscale`, `contrast-*`, or `brightness-*` utility filters to this image. Render it with `object-cover` and preserve its natural warm gym lighting. If text readability needs support, use a separate CSS/Tailwind warm-ivory gradient overlay rather than permanently editing the image.
+- **Home hero image convention:** use the local file `wwwroot/images/hero-bg.png`, referenced from Razor as `/images/hero-bg.png`. Do not apply `grayscale`, `contrast-*`, or `brightness-*` utility filters to this image. Render it with `object-cover` and preserve its natural gym lighting. If text readability needs support, use a separate CSS/Tailwind overlay rather than permanently editing the image.
+- **Auth branding image convention:** use the local file `wwwroot/images/auth.png`, referenced as `/images/auth.png`, for the Login/Register branding panel. The asset should remain a realistic equipment still-life (kettlebell, dumbbells, rolled mat, towel, bottle, gym interior) with no generated faces, text, logo, baked-in red ribbon, or UI. Any darkening, red accent, logo, typography, or decorative ribbon belongs in the Auth layout/CSS so the source image remains reusable.
 - Signed-in Customers and Members see the active Gym membership plan catalog from `api/membership-plans` on Home. The remaining sample pricing, class, equipment, and facility-map data are illustrative. Use API-backed data for live operations.
 
 ### Running the authentication screens locally
@@ -31,6 +32,8 @@ Report 3 governs functional and non-functional requirements. Use Case Diagrams (
 - Start `VFMS.API` with its HTTPS profile and start `VFMS.Client`. The client's `wwwroot/appsettings.Development.json` sets `ApiBaseUrl` to `https://localhost:7148/`, matching the API launch profile. Update this setting when using a different API URL; never put secrets in client configuration.
 - The API allows the development client origins `https://localhost:7246` and `http://localhost:5273`. For other origins or deployment, set the API's `Cors:AllowedOrigins` array explicitly. Outside Development, the client defaults to its own origin unless `ApiBaseUrl` is configured in client settings.
 - Login accepts email or phone number. Unchecked "Remember me" stores the token session in session storage; checked stores it in local storage. Passwords are never persisted. `AuthSession` restores the session and rotates an expired access token through `api/auth/refresh` before returning authenticated state. Server-side authorization remains authoritative.
+- After sign-in, Login awaits the authenticated principal before choosing a destination through `AuthNavigation`. A safe local return URL takes precedence only when its actual page authorization permits the user; otherwise Admin, Manager, Staff, and PT go directly to their existing `/admin/dashboard`, `/manager/dashboard`, `/staff/dashboard`, or `/pt/dashboard`. Customer/Member default to Home and retain valid return destinations. Multi-role landing preference is **Admin → Manager → Staff → PT**, a navigation preference rather than inherited authorization. Restored workspace users visiting Login follow the same destination selection.
+- `App.razor` provides authentication state through the `CascadingAuthenticationState` component around the Router. Keep this single cascade source: service-based cascading in the current .NET 8 packages can fail when logout synchronously removes protected-route subscribers during notification.
 - Register sends `RegisterRequest` to `api/auth/register`, then shows a success screen linking to Login. Validation errors appear beside the relevant fields; API/network failures remain on the form so the user can retry. API-backed password reset and change screens are outside this implementation's current scope; the profile preview below includes only a local password-form demo.
 - Logout is available from authenticated public navigation. Clicking the button posts the current refresh token to `api/auth/logout` with a Bearer access token, refreshing access first if needed. Clear the in-memory session, session storage, and local storage, publish anonymous UI state, then return to Home. No confirmation or completion screen is shown. An API/network failure still ends the local session and returns Home; local cleanup alone does not guarantee server-side revocation.
 - **Authentication compliance gaps.** The API currently activates self-registered accounts immediately, while `UC-01` requires email verification before activation. The login flow checks existing account locks, while the failed-attempt lockout required by `GBR-27` is still pending. Logout currently revokes the submitted refresh token. Immediate access-token blacklisting under `GBR-28` is still pending.
@@ -38,12 +41,12 @@ Report 3 governs functional and non-functional requirements. Use Case Diagrams (
 
 ### Dashboard and profile UI previews
 
-- `Pages/Admin/AdminDashboard.razor` (`/admin/dashboard`) and `Pages/Manager/ManagerDashboard.razor` (`/manager/dashboard`) use `ManagerAdminLayout`. The existing black/red and slate/indigo preview colors are **legacy styling to be replaced** by the unified Sage Green / Warm Ivory design system in Section 6.
+- `Pages/Admin/AdminDashboard.razor` (`/admin/dashboard`) and `Pages/Manager/ManagerDashboard.razor` (`/manager/dashboard`) use `ManagerAdminLayout`. The existing black/red and slate/indigo preview colors are **legacy styling to be replaced** by the unified Soft Black / Muted Red / Warm Neutral design system in Section 6.
 - `Pages/Staff/StaffDashboard.razor` (`/staff/dashboard`) and `Pages/PT/PTDashboard.razor` (`/pt/dashboard`) use `StaffPTLayout`. The existing black/white preview styling is also **legacy styling to be replaced**. Each dashboard may retain its page header, stat cards, quick actions, and data panel structure while adopting the shared tokens and components.
-- `Pages/UserProfile.razor` (`/profile`) uses `PublicLayout`, sharing Home's top navigation and footer rather than a dashboard sidebar. Clicking the signed-in greeting opens Profile; a compact "Hồ sơ" link remains visible on smaller screens. Profile styles live in `wwwroot/css/profile.css`. Restyle the public navigation, profile controls, and footer with the shared Sage Green / Warm Ivory palette; avoid pitch-black page chrome.
+- `Pages/UserProfile.razor` (`/profile`) uses `PublicLayout`, sharing Home's top navigation and footer rather than a dashboard sidebar. Clicking the signed-in greeting opens Profile; a compact "Hồ sơ" link remains visible on smaller screens. Profile styles live in `wwwroot/css/profile.css`. Restyle the public navigation, profile controls, and footer with the shared Soft Black / Muted Red / Warm Neutral palette; avoid pitch-black page chrome and pure-white full-page surfaces.
 - Profile edits and the password form currently validate local mock data only. No profile or password API request is sent. Birthdate is a UI preview field and is not yet part of the existing profile DTO.
 - The two dashboard layouts reuse `Components/Workspace/WorkspaceShell.razor` and `wwwroot/css/workspace.css`. Keep Montserrat for headings/statistics and Inter for body text/forms, but replace the old `rounded-none`-everywhere convention with the restrained 8–12px radius rules in Section 6.
-- These routes deliberately expose **mock UI previews** with visible mock-data labels. Dashboards include a screen selector; quick actions change local preview panels without performing operational actions or granting roles. Before connecting real data, enforce the permission matrix with authenticated route handling and role-specific API authorization, and remove the preview selector. Do not infer permissions from the selected preview.
+- These dashboards retain **mock data** with visible labels, and quick actions change local preview panels without performing operational actions. Each dashboard now requires its matching authenticated role through `AuthorizeRouteView`; operational API authorization remains separate and authoritative. The cross-role preview selector has been removed, and workspace headers offer logout for switching accounts.
 - The Manager dashboard links to the live UC-11 page at `/manager/membership-plans`. The page and its management API both enforce the `Manager` role, and the backend audits plan changes. Checkout and membership freeze policy editing remain planned workflows.
 
 ### Planned organization
@@ -129,417 +132,627 @@ VFMS.Client/
 
 ---
 
-## 6. Design System & UI Vibe (Sage Athletic Minimalism / Warm Ivory Fitness)
+## 6. Design System & UI Vibe (Soft Black / Muted Red / Warm Neutral Fitness)
 
-The VFMS visual direction is a **bright, athletic, premium fitness product** using muted Sage Green, Warm Ivory, natural gym photography, restrained geometry, and enterprise-grade information hierarchy. The product must feel intentionally designed rather than like a generic AI-generated dashboard.
+The VFMS visual direction is a **strong but softened premium fitness product** built around charcoal typography, muted red accents, warm neutral surfaces, realistic gym photography, restrained geometry, and enterprise-grade information hierarchy. The product should feel athletic and intentional without becoming pitch-black, red-heavy, overly white, or obviously AI-generated.
 
 ### A. Global Color Tokens
 
-Use the same core brand tokens across Guest, Customer, Member, PT, Staff, Manager, Admin, Auth, and Kiosk experiences. Role differentiation should come from navigation labels, icons, permissions, data, and page context — **not from completely different brand palettes**.
+Use the same core brand tokens across Guest, Customer, Member, PT, Staff, Manager, Admin, Auth, and Kiosk experiences. Role differentiation should come from navigation, permissions, workflows, icons, labels, and data — **not from completely different color themes**.
 
-- **Primary Sage (`--color-primary`):** `#5F6F52`
-- **Primary Hover / Dark Sage (`--color-primary-hover`):** `#4E5D44`
-- **Primary Soft (`--color-primary-soft`):** `#E8EDE3`
-- **Warm Ivory App Background (`--bg-main`):** `#F7F4EC`
-- **White Surface (`--bg-surface`):** `#FFFFFF`
-- **Muted Section Background (`--bg-muted`):** `#EEF1EA`
-- **Primary Text (`--text-primary`):** `#383E43`
-- **Secondary Text (`--text-secondary`):** `#69706A`
-- **Subtle Text (`--text-muted`):** `#8A9089`
-- **Borders / Dividers (`--border-card`):** `#D8DED2`
-- **Dark Olive Surface (`--surface-dark`):** `#3F493A` — use sparingly for footer, high-emphasis banners, or compact contrast areas; never as the dominant app background.
-- **Focus Ring:** use `#5F6F52` with sufficient visible contrast.
+```css
+:root {
+    --vfms-bg: #F2EFEC;
 
-Do not reintroduce black/red, black/white, navy/indigo, purple/blue neon, or role-specific brand themes as the default visual system. Red remains reserved for destructive actions and error states.
+    --vfms-surface: #F8F5F2;
+    --vfms-surface-alt: #ECE8E4;
+    --vfms-surface-strong: #FFFFFF;
+
+    --vfms-charcoal: #252323;
+    --vfms-charcoal-soft: #2B2928;
+
+    --vfms-text: #242424;
+    --vfms-text-secondary: #6F6966;
+    --vfms-text-muted: #8C8581;
+
+    --vfms-primary: #B83A3A;
+    --vfms-primary-hover: #9F3030;
+    --vfms-primary-dark: #7F2929;
+    --vfms-primary-soft: #F3E4E2;
+
+    --vfms-border: #D8D1CD;
+    --vfms-border-strong: #C9C0BB;
+}
+```
+
+Recommended visual balance:
+- **70–80%** warm neutral / light surfaces.
+- **15–20%** charcoal / soft black.
+- **5–10%** muted red accents.
+
+Do not use pure black `#000000` as the default page background. Do not use neon red, purple/blue gradients, or role-specific brand palettes. The brand red is an accent color, not a replacement for semantic success/warning/error colors.
 
 ### B. Layout Direction by Product Area
 
 #### Public / Guest / Customer / Member
-- Use Warm Ivory or white as the dominant canvas.
-- Use full-width, high-quality **realistic gym photography** with natural lighting.
-- Avoid dark full-screen hero sections.
-- Use Sage Green only for important emphasis: primary CTA, active navigation, key numbers, selected states, icons, and small decorative rules.
-- Keep sections spacious with clear content hierarchy instead of placing every block inside a card.
+- Use `#F2EFEC`, `#F8F5F2`, and `#ECE8E4` as the dominant canvas.
+- Use realistic gym photography with natural or cinematic lighting.
+- Use charcoal for typography and muted red for CTA, active navigation, selected states, small section labels, dividers, and important links.
+- Avoid pure-white full-page backgrounds. White may be used selectively where stronger separation is needed.
+- Keep sections spacious and editorial without wrapping every block in a card.
 
 #### PT / Staff / Manager / Admin Back-Office
 - Use a **light enterprise dashboard** for every role.
-- Default sidebar: `#FFFFFF` or `#F7F4EC`, with a `#E8EDE3` active item and `#5F6F52` icon/accent.
-- Main content background: `#F7F4EC`.
-- Data surfaces and forms: `#FFFFFF`.
-- Use thin borders instead of heavy shadows.
-- Do not give Admin a black/red theme or Manager a navy/indigo theme. Destructive Admin actions may use red only at the action/status level.
+- App background: `#F2EFEC`.
+- Sidebar: `#F8F5F2`.
+- Active sidebar item: `#F3E4E2`.
+- Active icon/text: `#B83A3A`.
+- Cards, tables, and forms: normally `#F8F5F2`; use `#FFFFFF` only where stronger separation is useful.
+- Borders: `#D8D1CD`.
+- Do not restore separate black/red Admin, navy/indigo Manager, or black/white Staff/PT themes.
 - Keep management screens practical: page title + contextual description + toolbar + filters + data table/list + pagination + drawer/modal/form when appropriate.
 
 #### Auth
-- Keep Login/Register bright and consistent with the public brand.
-- Prefer a Warm Ivory / Sage branded illustration or photography area plus a white form surface.
-- Do not use a large pitch-black brand panel.
+Auth is allowed to be more brand-driven than the rest of the application, while still using the same tokens.
+
+Desktop Login/Register:
+- Use an approximate **66–68% branding/image panel + 32–34% form panel** split.
+- Left branding image: `/images/auth.png`.
+- The asset itself must contain **no text, no logo, no UI, and no baked-in effects**.
+- Apply charcoal darkening and red decorative elements in CSS/layout layers, not in the source image.
+- Use the actual Victor Fitness logo asset from the project.
+- Right panel background should be warm beige/warm gray (`#ECE8E4` or nearby), **not pure white**.
+- Auth card surface should be around `#F4F0ED`, with a restrained border and subtle shadow.
+- The form must not become the single brightest object on screen; visual attention should remain balanced between the branding image and form.
+- Login and Register must reuse the same Auth layout and visual system.
 
 #### Kiosk
-- Kiosk may use stronger contrast for distance readability, but it must still use Sage / Ivory / White as the primary identity.
-- Success, warning, and error states may use their semantic colors prominently.
+- Kiosk may use stronger contrast for distance readability.
+- Maintain charcoal / warm neutral / muted red brand identity.
+- Success, warning, and error colors remain semantic and may be more prominent when operationally necessary.
 
 ### C. Typography
 
-- **Headings, nav links, banners, major statistics, primary CTAs:** `'Montserrat', sans-serif`.
-  - Weight: `700`–`800`; `900` only for major hero headlines where it remains readable.
-  - Uppercase is acceptable for short hero headlines, navigation, labels, and primary CTAs.
-  - Avoid uppercase for paragraphs, tables, long form labels, and dense admin content.
+- **Headings, navigation, banners, major statistics, hero/auth branding, primary CTAs:** `'Montserrat', sans-serif`.
+  - Weight: `700`–`800`; `900` only for short major statements where it remains readable.
+  - Uppercase is appropriate for short headlines, labels, navigation, and CTA text.
 - **Body copy, tables, forms, validation messages:** `'Inter', sans-serif`, `400`–`500`.
-- Use typography and spacing to establish hierarchy instead of relying on excessive borders, cards, gradients, or oversized decorative elements.
+- Avoid oversized typography used only to mimic AI landing-page aesthetics.
+- Use type scale, spacing, and contrast to create hierarchy instead of filling the page with cards or decoration.
 
 ### D. Geometry, Shadows & Components
 
-- **Radius:**
-  - Buttons / inputs / selects: `8px`
-  - Cards / panels / modals / drawers: `10px`–`12px`
-  - Pills / status badges: full pill radius only where semantically appropriate
-- Do not use extreme `20px+` rounding throughout the product.
-- Do not use `rounded-none` globally.
-- Use subtle border-first surfaces. If a shadow is needed, keep it soft and low elevation.
-- Avoid black offset shadows, glassmorphism, glow, neon, and excessive gradients.
+- Buttons / inputs / selects: `8px` radius.
+- Cards / panels / modals / drawers: `10px`–`12px`.
+- Auth card may use `12px`–`14px`.
+- Status badges may use a pill shape when semantically appropriate.
+- Avoid excessive `rounded-2xl` / `rounded-3xl`.
+- Prefer border-first surfaces.
+- Shadows should be soft and low elevation.
+- Avoid black offset shadows, glow, neon, and strong glassmorphism.
 - Use line icons with consistent stroke weight.
 
 #### Buttons
-- Primary: Sage `#5F6F52`, white text; hover `#4E5D44`.
-- Secondary: white or transparent surface, Sage border/text.
-- Tertiary: text/icon button with restrained hover background.
-- Destructive: semantic red; never use red as a general brand accent.
-- Keep labels concise and action-oriented.
+- Primary: `#B83A3A`, white text.
+- Primary hover: `#9F3030`.
+- Strong/pressed state: `#7F2929`.
+- Secondary: transparent or warm surface with `#C9C0BB` border and charcoal text.
+- Destructive: semantic red when the action is actually destructive; do not confuse brand red with error semantics.
+- No default gradient buttons.
 
 #### Cards
-- Use cards only when grouping content adds meaning.
-- Prefer white surfaces with `#D8DED2` borders.
-- Avoid filling dashboard pages with repetitive KPI cards that do not aid decisions.
-- Important metrics may use a subtle Sage icon, label, or number accent without tinting the whole card green.
+- Default: `#F8F5F2` with `#D8D1CD` border.
+- Selected/emphasized: `#F3E4E2` with muted red border/accent.
+- Use cards only when grouping content improves comprehension.
+- Do not fill dashboards with repetitive empty KPI cards.
 
 #### Tables
-- White surface, thin separators, clear column labels, comfortable row height.
-- Use a subtle `#EEF1EA` header or hover state.
-- Keep actions compact and predictable.
-- On smaller screens, switch to structured stacked rows/cards only when a table would become unusable.
+- Table surface: `#F8F5F2`.
+- Header: `#ECE8E4`.
+- Hover row: approximately `#F3EDEA`.
+- Divider: `#D8D1CD`.
+- Keep actions compact.
+- Do not make the full table header red.
 
-### E. Status Colors (`StatusBadge.razor`)
+#### Forms
+- Input surface: `#F8F5F2` or `#E9E3DF` depending on context.
+- Border: `#D8D1CD` / `#D2CAC5`.
+- Disabled surface: `#ECE8E4`.
+- Focus: muted red `#B83A3A`, with a restrained focus ring.
+- Validation messages remain near the relevant field.
+- Loading and disabled states must remain obvious.
 
-Status color is semantic and must always be paired with text and/or icon:
+### E. Semantic Status Colors (`StatusBadge.razor`)
+
+Brand red does **not** replace semantic state colors.
 
 - **Active / Approved / Confirmed / Completed / Paid / Available:** `#16A34A`
 - **Pending / Processing / Frozen / Scheduled / Waitlisted:** `#D97706`
 - **Rejected / Expired / NoShow / Overdue / Locked / Escalated:** `#DC2626`
 - **Cancelled / Inactive / Archived / Retired:** `#6B7280`
 
-These colors do not replace the Sage brand palette; they are used only for state communication.
+Prefer tinted badge backgrounds with readable foreground text. Always pair color with text and/or icon.
 
 ### F. Home Hero & Public Landing Page
-
-The Home hero is the primary visual reference for the new brand direction.
 
 - Hero image file: **`wwwroot/images/hero-bg.png`**
 - Razor source: **`/images/hero-bg.png`**
 - Render with `w-full h-full object-cover`.
-- Do **not** apply `grayscale`, `contrast-*`, `brightness-*`, heavy dark overlays, or filters that turn the image black.
-- The hero may use the image full-bleed across the available hero area.
-- Keep the athlete / equipment composition naturally visible.
-- Place hero copy on top of the image only when readability is sufficient.
-- If extra readability is required, use a **separate overlay layer** such as a warm-ivory gradient from the left, e.g. strong ivory at the far left fading to transparent around 55–60% width. Do not bake this gradient into the image asset.
-- Keep the header transparent or lightly tinted at the top of the hero; on scroll, transition to a light Warm Ivory / white floating navigation surface with Sage active states. Do not switch to a pitch-black floating bar.
-- Primary hero CTA uses Sage Green; secondary CTA uses a transparent/white surface with Sage border.
-- Keep the page visually athletic through photography, typography, strong cropping, spacing, and content — not through black backgrounds.
+- Do not apply `grayscale`, `contrast-*`, or `brightness-*` filters that destroy the photo.
+- Use the image full-bleed where appropriate.
+- If text readability needs support, add a separate warm-neutral/charcoal overlay layer. Do not permanently edit the asset.
+- Hero typography should use charcoal/near-black and muted red where the image is light enough; when placed over dark photography, use warm white with muted red emphasis.
+- Primary hero CTA: muted red.
+- Secondary CTA: transparent/warm surface with restrained border.
+- Keep the page athletic through photography, typography, composition, and content — not by making the whole screen black.
 
-### G. Public Home Interactions
+### G. Public Navigation & Shrinking Navbar
 
-- **Header:** Reuse `PublicLayout.razor`. Top-of-page navigation may overlay the hero, but text/icons must remain readable. On scroll, use a light floating bar with subtle border/shadow and Sage active/hover states.
-- **Startup screen:** Keep the Victor Fitness splash, but style it with Warm Ivory / White / Sage instead of full black. Fade out when Blazor is ready. Show a readable error state if startup fails; do not invent progress percentages or enforce a fixed delay.
-- **Facility map:** Keep the map within Home. Use white or Warm Ivory background, muted grey/Sage lines, a soft Sage hover fill, and a deeper Sage selected state with white text. Maintain keyboard accessibility and selected-area details.
-- **Motion and responsiveness:** Adapt layouts to phone and desktop, maintain visible keyboard focus and readable contrast, and respect `prefers-reduced-motion`. Decorative movement must never be required to understand content.
+`PublicLayout.razor` uses two visual states:
 
-### H. Anti-"AI Generated" Rules
+#### At top / before scrolling
+- Full width.
+- No corner radius.
+- Background: `#F2EFEC`.
+- Border-bottom: `#D8D1CD`.
+- No heavy shadow.
+- Logo left, navigation truly centered, account actions right.
 
-Avoid these patterns across the entire system:
-- dark full-page backgrounds by default;
+#### Scrolled / floating state
+- Shrink slightly and center the navbar.
+- Desktop target: `width: calc(100% - 48px)`, `max-width: 1500px`, `top: 14px`, radius around `16px`.
+- Background:
+
+```css
+background: rgba(242, 239, 236, 0.94);
+backdrop-filter: blur(10px);
+-webkit-backdrop-filter: blur(10px);
+border: 1px solid rgba(37, 35, 35, 0.08);
+box-shadow: 0 8px 24px rgba(37, 35, 35, 0.08);
+```
+
+- Active/hover navigation: `#B83A3A`.
+- Primary public CTA: `#B83A3A`.
+- Keep translucency restrained; do not turn the navbar into obvious glassmorphism.
+
+### H. Auth Image & Login/Register Composition
+
+The Auth screen uses the source image:
+
+- **File:** `wwwroot/images/auth.png`
+- **URL:** `/images/auth.png`
+
+The source image is a reusable equipment still-life and must remain free of:
+- text;
+- Victor Fitness logo;
+- red ribbons;
+- UI controls;
+- baked-in dark gradient;
+- generated people/faces.
+
+Recommended left-panel treatment:
+
+```css
+background-image:
+    linear-gradient(
+        90deg,
+        rgba(30, 27, 26, 0.92) 0%,
+        rgba(30, 27, 26, 0.72) 38%,
+        rgba(30, 27, 26, 0.25) 70%,
+        rgba(30, 27, 26, 0.05) 100%
+    ),
+    url('/images/auth.png');
+background-size: cover;
+background-position: center;
+```
+
+Branding content over the image:
+- Actual Victor Fitness logo in the upper-left.
+- Eyebrow: `VICTOR FITNESS / ESTABLISH YOUR STANDARD`.
+- Headline:
+  - `KỶ LUẬT.`
+  - `SỨC MẠNH.`
+  - `BẢN LĨNH.`
+- First two lines: warm white.
+- `BẢN LĨNH.`: muted red.
+- Supporting text: `Mỗi buổi tập là một bước tiến. Bắt đầu hành trình của bạn cùng Victor Fitness.`
+- Bottom labels: `V-FITNESS MANAGEMENT` and `MOVE WITH PURPOSE ↗`.
+- A restrained red geometric/ribbon accent may be rendered as a separate CSS element.
+
+Right panel:
+- Background around `#ECE8E4`, not white.
+- Auth card around `#F4F0ED`.
+- Input surface around `#E9E3DF`.
+- Login CTA uses `#B83A3A`.
+- Register reuses the same Auth layout and image treatment.
+- On mobile, collapse to a compact branding image/header followed by the form; do not preserve the 2-column split.
+
+### I. Facility Map
+
+- Base surface: `#F8F5F2`.
+- Stroke: approximately `#9A918C`.
+- Hover: `#F3E4E2`.
+- Selected: `#B83A3A`.
+- Selected text: white.
+- Preserve keyboard accessibility, hover/click behavior, and selected-area details.
+
+### J. Anti-"AI Generated" Rules
+
+Avoid:
+- pure-white pages with one giant floating card as the only focal point;
+- full-page pitch-black backgrounds by default;
+- neon red;
 - purple/blue gradients;
-- neon glow;
-- glassmorphism;
-- excessive gradient buttons;
-- every section wrapped in a rounded card;
+- glow;
+- glassmorphism-heavy panels;
+- decorative gradient buttons;
+- excessive rounded cards;
+- every section wrapped in a card;
 - giant empty KPI tiles;
-- excessive `rounded-2xl` / `rounded-3xl`;
-- generic dashboard layouts repeated unchanged for every role;
-- fake analytics or decorative charts without business value;
-- overuse of icons where text is clearer;
-- arbitrary animations;
-- inconsistent colors between roles.
+- fake analytics/charts without business value;
+- repetitive spacing that makes every section look templated;
+- generated people/faces when a real gym/equipment photograph can do the job;
+- AI-generated logos instead of project logo assets;
+- role-specific themes that break the shared brand system.
 
 Prefer:
-- natural gym photography;
-- strong but restrained editorial composition;
-- consistent spacing;
-- real data tables and task-oriented forms;
-- role-specific workflows within one shared brand system;
-- clear page hierarchy and realistic content;
-- small, purposeful Sage accents.
+- realistic gym photography or equipment still-life;
+- warm neutral surfaces;
+- charcoal typography;
+- small purposeful muted red accents;
+- editorial but practical composition;
+- real task-oriented tables and forms;
+- meaningful whitespace;
+- visual hierarchy that balances imagery and functional UI.
 
 ---
 
 ## 7. AI Agent Prompt (For UI Code Generation)
 
-*When using an AI assistant (Cursor, GitHub Copilot, Claude, ChatGPT, Gemini, Codex) to redesign or generate Blazor UI, provide the prompt below together with this guideline file.*
+*When using an AI assistant (Cursor, GitHub Copilot, Claude, ChatGPT, Gemini, Codex), provide this guideline file as the source of truth. Execute the redesign in phases rather than rewriting the entire frontend blindly.*
 
 **[BEGIN PROMPT FOR AI AGENT]**
 
 Bạn là Senior Blazor WebAssembly Frontend Developer (.NET 8 + Tailwind CSS) đồng thời là Senior UI/UX Product Designer.
 
-Nhiệm vụ của bạn là **redesign toàn bộ giao diện `VFMS.Client` theo một design system thống nhất**, nhưng TUYỆT ĐỐI không làm thay đổi business logic, API contract, authorization, validation, routing hoặc các workflow hiện có.
+Nhiệm vụ là redesign `VFMS.Client` theo design system **Soft Black + Muted Red + Warm Neutral**, nhưng TUYỆT ĐỐI không làm thay đổi business logic, API contract, authorization, validation, routing hoặc workflow hiện có.
 
-### 1. RÀNG BUỘC KIẾN TRÚC — KHÔNG ĐƯỢC PHÁ VỠ
+### 1. RÀNG BUỘC KIẾN TRÚC
 
-- Dự án là Blazor WebAssembly .NET 8.
+- Dự án: Blazor WebAssembly .NET 8.
 - Chỉ reference `VFMS.Contracts` cho DTO, validator và system message dùng chung.
 - Không reference trực tiếp `VFMS.Domain`, `VFMS.Application`, `VFMS.Infrastructure`.
-- Giữ nguyên các typed `HttpClient` service và REST API hiện có.
-- Giữ nguyên `<AuthorizeView Roles="...">`, route authorization và role-based navigation đang có.
-- Backend vẫn là source of truth cho authorization, business rules, payment confirmation và persistence.
-- Không tự ý tạo API giả, field giả, quyền giả hoặc business rule mới.
-- Không thay đổi luồng nghiệp vụ chỉ để phù hợp giao diện.
-- Các trang mock/preview phải tiếp tục được ghi rõ là mock cho đến khi được nối API thật.
+- Giữ nguyên typed `HttpClient`, REST API, event handler, binding, validators và auth flow.
+- Giữ nguyên `<AuthorizeView Roles="...">`, route authorization và role-based navigation.
+- Backend là source of truth cho authorization, business rules, payment confirmation và persistence.
+- Không tự tạo API, DTO field, permission hoặc business rule mới.
+- Mock/preview data phải tiếp tục được ghi rõ là mock.
 
-### 2. DESIGN DIRECTION MỚI — SAGE ATHLETIC MINIMALISM
+### 2. PHASE 1 — MIGRATE TONE MÀU TOÀN HỆ THỐNG
 
-Loại bỏ toàn bộ phong cách dark/black-heavy hiện tại.
+Thực hiện **design-token/color migration trước**, chưa redesign sâu Login/Register.
 
-Toàn bộ Guest, Customer, Member, PT, Staff, Manager và Admin phải dùng chung một brand system:
+Core tokens:
 
-- Primary Sage: `#5F6F52`
-- Primary Hover: `#4E5D44`
-- Soft Sage: `#E8EDE3`
-- Warm Ivory Background: `#F7F4EC`
-- White Surface: `#FFFFFF`
-- Muted Section: `#EEF1EA`
-- Primary Text: `#383E43`
-- Secondary Text: `#69706A`
-- Border: `#D8DED2`
+```css
+:root {
+    --vfms-bg: #F2EFEC;
+    --vfms-surface: #F8F5F2;
+    --vfms-surface-alt: #ECE8E4;
+    --vfms-surface-strong: #FFFFFF;
 
-Không tạo theme đen/đỏ riêng cho Admin.
-Không tạo theme navy/indigo riêng cho Manager.
-Không tạo theme đen/trắng riêng cho Staff/PT.
+    --vfms-charcoal: #252323;
+    --vfms-charcoal-soft: #2B2928;
 
-Khác biệt giữa các role phải đến từ navigation, permission, workflow, icon và dữ liệu — không phải đổi toàn bộ màu thương hiệu.
+    --vfms-text: #242424;
+    --vfms-text-secondary: #6F6966;
+    --vfms-text-muted: #8C8581;
 
-### 3. HERO HOME — BẮT BUỘC DÙNG ẢNH LOCAL
+    --vfms-primary: #B83A3A;
+    --vfms-primary-hover: #9F3030;
+    --vfms-primary-dark: #7F2929;
+    --vfms-primary-soft: #F3E4E2;
 
-Home hero phải dùng:
+    --vfms-border: #D8D1CD;
+    --vfms-border-strong: #C9C0BB;
+}
+```
 
-`wwwroot/images/hero-bg.png`
+Nguyên tắc:
+- warm neutral là màu nền chủ đạo;
+- charcoal là màu chữ/dark surface;
+- muted red chỉ là accent;
+- không dùng pure white cho toàn page;
+- không dùng pure black làm default background;
+- không dùng neon/glow/purple-blue gradient/glassmorphism.
 
-và trong Razor:
+Migrate lần lượt:
+1. shared/global styles và tokens;
+2. reusable UI components;
+3. `PublicLayout`;
+4. public pages/Home;
+5. `WorkspaceShell`;
+6. `ManagerAdminLayout`;
+7. `StaffPTLayout`;
+8. dashboards;
+9. CRUD/management pages;
+10. profile/member/transaction pages.
 
-`/images/hero-bg.png`
+Không redesign Auth sâu trong Phase 1; chỉ đảm bảo Auth không còn phụ thuộc Sage tokens cũ.
 
-Yêu cầu:
+### 3. PUBLIC NAVBAR / SHRINKING HEADER
+
+At top:
+- full width;
+- background `#F2EFEC`;
+- no radius;
+- light bottom border;
+- no heavy shadow.
+
+Scrolled:
+- centered shrinking navbar;
+- `width: calc(100% - 48px)`;
+- `max-width: 1500px`;
+- `top: 14px`;
+- radius around `16px`;
+- background `rgba(242,239,236,0.94)`;
+- blur `10px`;
+- subtle charcoal border/shadow;
+- active/hover `#B83A3A`.
+
+Do not use a black floating navbar.
+
+### 4. HOME
+
+Use:
+- `/images/hero-bg.png`
 - `object-cover`
-- full-width / full hero image
-- giữ màu ảnh tự nhiên
-- KHÔNG dùng `grayscale`
-- KHÔNG dùng `contrast-*`
-- KHÔNG dùng `brightness-*`
-- KHÔNG phủ overlay đen nặng
+- natural photo color
 
-Nếu chữ khó đọc, tạo một layer gradient riêng:
-- Warm Ivory `#F7F4EC` đậm ở bên trái
-- fade mượt sang transparent khoảng 55–60% chiều rộng
-- không chỉnh gradient trực tiếp vào file ảnh
+Do not use:
+- `grayscale`
+- destructive brightness/contrast filters
+- heavy black overlays
 
-Hero phải sáng, premium, athletic và realistic.
-Không được quay lại kiểu hero đen toàn màn hình.
+If copy needs contrast, use a separate CSS overlay.
 
-### 4. PUBLIC WEBSITE
+Primary CTA: muted red.
+Secondary CTA: warm surface/transparent with restrained border.
 
-Redesign:
-- `PublicLayout`
-- Home
-- public navigation
-- footer
-- membership section
-- class section
-- equipment/facility sections
-- facility map
-- Profile
-- Login/Register layouts
+### 5. DASHBOARD / CRUD
 
-Hướng thiết kế:
-- nhiều khoảng trắng;
-- ảnh gym thật là visual chủ đạo;
-- Sage chỉ dùng để nhấn;
-- CTA chính màu Sage;
-- CTA phụ viền Sage;
-- section nền Warm Ivory / White luân phiên nhẹ;
-- không nhét tất cả content vào card;
-- không dùng gradient/neon/glassmorphism.
+All roles share the same brand tokens.
 
-Header:
-- trên hero có thể transparent;
-- khi scroll chuyển thành floating light header màu white/ivory;
-- active nav dùng Soft Sage + Sage text;
-- không dùng floating navbar màu đen.
+Main background:
+`#F2EFEC`
 
-### 5. DASHBOARD CHO TẤT CẢ ROLE
+Sidebar:
+`#F8F5F2`
 
-Redesign `WorkspaceShell`, `ManagerAdminLayout`, `StaffPTLayout` và các dashboard theo light enterprise UI.
+Active sidebar:
+`#F3E4E2`
 
-Mặc định:
-- App background `#F7F4EC`
-- Sidebar white hoặc Warm Ivory
-- Active sidebar item `#E8EDE3`
-- Active icon/text `#5F6F52`
-- Main cards / tables / forms white
-- Border `#D8DED2`
-- Text `#383E43`
+Active text/icon:
+`#B83A3A`
 
-Dashboard phải task-oriented:
-- page header;
-- mô tả ngắn;
-- action chính;
-- KPI chỉ khi thực sự hữu ích;
-- data table/list;
-- filters/search;
-- pagination;
-- empty/loading/error/success states.
+Cards/tables/forms:
+`#F8F5F2`
 
-Không tạo hàng loạt card chỉ để lấp khoảng trống.
-Không thêm chart nếu workflow không cần.
-Không dùng màu role-specific làm brand theme.
+Border:
+`#D8D1CD`
 
-### 6. COMPONENT SYSTEM
+Do not recreate:
+- black/red Admin theme;
+- navy/indigo Manager theme;
+- black/white Staff/PT theme.
 
-Dùng component reusable và nhất quán.
+Role identity comes from workflow, navigation and permissions, not palette.
+
+### 6. COMPONENTS
 
 Radius:
-- Button/input/select: `8px`
-- Card/panel/modal/drawer: `10px–12px`
-- Status badge: pill khi phù hợp
+- button/input/select: 8px
+- cards/panels/modals: 10–12px
 
-Không dùng `rounded-none` toàn hệ thống.
-Không dùng `rounded-2xl/3xl` tràn lan.
+Primary button:
+`#B83A3A`
 
-Shadow:
-- ưu tiên border;
-- shadow chỉ rất nhẹ khi cần elevation;
-- không dùng black offset shadow;
-- không glow.
+Hover:
+`#9F3030`
 
-Buttons:
-- Primary: `#5F6F52`, text white
-- Hover: `#4E5D44`
-- Secondary: white/transparent + Sage border
-- Destructive: red semantic only
+Selected card:
+soft red background `#F3E4E2`
 
 Tables:
-- white;
-- header/hover `#EEF1EA`;
-- divider mỏng;
-- action compact;
-- responsive hợp lý.
+- warm surface
+- neutral header
+- muted red only for focused/active actions
 
 Forms:
-- label rõ;
-- input white;
-- border `#D8DED2`;
-- focus Sage;
-- validation message ngay cạnh field;
-- disabled/loading state rõ.
+- warm inputs
+- muted red focus
+- visible validation
+- clear disabled/loading states
 
-### 7. TYPOGRAPHY
+Keep semantic colors:
+- success `#16A34A`
+- warning `#D97706`
+- error `#DC2626`
+- inactive `#6B7280`
 
-Headings / nav / major CTA:
-- Montserrat
-- 700–800
-- 900 chỉ cho hero headline nếu cần
+### 7. FACILITY MAP
 
-Body / form / table:
-- Inter
-- 400–500
+Default:
+`#F8F5F2`
 
-Không uppercase đoạn văn dài.
-Không dùng typography quá to chỉ để tạo cảm giác “modern AI landing page”.
+Stroke:
+`#9A918C`
 
-### 8. STATUS COLORS
+Hover:
+`#F3E4E2`
 
-Giữ semantic colors:
-- Success / Active / Approved / Paid: `#16A34A`
-- Pending / Processing / Frozen / Waitlisted: `#D97706`
-- Error / Rejected / Locked / Overdue: `#DC2626`
-- Inactive / Cancelled / Archived: `#6B7280`
+Selected:
+`#B83A3A`
 
-Luôn đi kèm text/icon; không dựa vào màu duy nhất.
+Selected text:
+white
 
-### 9. GIỮ NGUYÊN WORKFLOW VÀ TRẠNG THÁI UI
+Preserve all existing SVG/interactions.
 
-Mọi trang async phải xử lý:
+### 8. PHASE 2 — REDESIGN LOGIN & REGISTER RIÊNG
+
+Only start this phase after Phase 1 builds successfully.
+
+Auth files:
+- `Pages/Auth/Login.razor`
+- `Pages/Auth/Register.razor`
+- `Layout/AuthLayout.razor`
+- `wwwroot/css/auth.css`
+- shared Auth components if needed
+
+Use local image:
+
+`wwwroot/images/auth.png`
+
+Razor/CSS URL:
+
+`/images/auth.png`
+
+Do not generate or download another Auth image.
+
+The source image must remain an equipment-only photograph. Do not add people/faces to it.
+
+#### Desktop composition
+
+Split approximately:
+- left 66–68%;
+- right 32–34%.
+
+Left:
+- full-cover `/images/auth.png`;
+- separate charcoal overlay;
+- actual project Victor Fitness logo at upper-left;
+- eyebrow:
+  `VICTOR FITNESS / ESTABLISH YOUR STANDARD`
+- headline:
+  `KỶ LUẬT.`
+  `SỨC MẠNH.`
+  `BẢN LĨNH.`
+- first two lines warm white;
+- `BẢN LĨNH.` muted red;
+- supporting copy:
+  `Mỗi buổi tập là một bước tiến.`
+  `Bắt đầu hành trình của bạn cùng Victor Fitness.`
+- bottom:
+  `V-FITNESS MANAGEMENT`
+  `MOVE WITH PURPOSE ↗`
+- optional restrained red CSS ribbon/accent.
+
+Do not bake any of those elements into the image.
+
+#### Right Auth panel
+
+Background:
+`#ECE8E4`
+
+Top:
+- `← TRỞ VỀ TRANG CHỦ`
+- `VICTOR FITNESS`
+
+Login card:
+- width about 380–420px;
+- surface `#F4F0ED`;
+- border around `#D2CAC5`;
+- radius about 12px;
+- extremely subtle shadow.
+
+Do not use a pure-white card.
+
+Login content:
+- eyebrow `TÀI KHOẢN / ĐĂNG NHẬP`
+- heading:
+  `CHÀO MỪNG`
+  `TRỞ LẠI.`
+- existing email/phone field
+- existing password field
+- existing remember-me behavior
+- primary button `#B83A3A`
+- existing Register link
+
+Keep all current validation/API/auth behavior intact.
+
+#### Register
+
+Reuse the same `AuthLayout` and `/images/auth.png`.
+
+Use heading:
+`BẮT ĐẦU`
+`HÀNH TRÌNH.`
+
+Do not create a separate visual theme.
+
+If Register is taller than the viewport:
+- allow the right/form panel to scroll;
+- keep the branding panel stable where practical.
+
+#### Mobile Auth
+
+Do not keep a 2-column layout.
+Use:
+1. compact brand/photo area;
+2. form below.
+
+Keep logo and core branding visible without oversized typography.
+
+### 9. ANTI-AI CHECKLIST
+
+Before completing any page, remove:
+- pure-white page + oversized floating card;
+- pitch-black full-page defaults;
+- neon/glow;
+- purple/blue gradients;
+- obvious glassmorphism;
+- decorative charts;
+- excessive rounded corners;
+- card-for-everything layouts;
+- repetitive template spacing;
+- generated human imagery;
+- fake logo variants;
+- arbitrary animations.
+
+Prefer:
+- real/local gym photography;
+- warm neutral surfaces;
+- charcoal typography;
+- muted red emphasis;
+- task-focused layouts;
+- restrained decoration.
+
+### 10. WORKFLOW / UI STATES
+
+Every async page must support:
 - Loading
-- Empty (`MSG-01` nếu phù hợp)
-- Error (`MSG-xx` đúng context)
+- Empty (`MSG-01` where appropriate)
+- Error (`MSG-xx` in context)
 - Success
 
-Khi submit:
+On submit:
 - disable action;
-- tránh double-submit;
-- hiển thị feedback rõ.
+- prevent double-submit;
+- show clear feedback.
 
-Giữ nguyên các workflow hiện có và planned workflow trong guideline:
-- authentication;
-- membership plans;
-- cart GYM/PT/YOGA;
-- VietQR checkout;
-- membership freeze;
-- PT scheduling;
-- Yoga booking/waitlist/attendance;
-- locker;
-- FaceID/Kiosk;
-- AI workout;
-- equipment;
-- procurement;
-- supplements;
-- competitions;
-- moderation.
+Preserve all current and planned workflows described in this guideline. Do not infer that planned workflows are implemented.
 
-Không tự suy diễn implementation đã tồn tại nếu guideline nói đó mới là planned workflow.
+### 11. EXECUTION ORDER
 
-### 10. ANTI-AI UI CHECKLIST
-
-Trước khi hoàn thành bất kỳ page nào, tự kiểm tra và loại bỏ:
-- nền đen phủ toàn page;
-- purple/blue gradient;
-- neon;
-- glow;
-- glassmorphism;
-- gradient button không cần thiết;
-- card bo tròn quá lớn;
-- card ở mọi section;
-- chart trang trí;
-- icon thừa;
-- spacing quá đều theo kiểu template;
-- cùng một dashboard layout copy-paste cho mọi role;
-- fake data không được đánh dấu mock;
-- màu sắc không thuộc design tokens.
-
-Mục tiêu cuối cùng:
-**VFMS phải nhìn như một sản phẩm quản lý phòng gym thật: sáng, mạnh mẽ, premium, thực dụng, đồng bộ, dễ đọc và có chủ đích — không giống giao diện được AI generate hàng loạt.**
-
-### 11. CÁCH THỰC HIỆN
-
-Khi sửa code:
-1. Đọc component/layout hiện tại trước khi thay.
-2. Giữ logic, event handler, binding, API call, validation và authorization.
-3. Ưu tiên tạo/reuse design tokens và shared components trước.
-4. Sau đó restyle theo thứ tự:
-   - `PublicLayout` + Home hero
-   - Auth
-   - WorkspaceShell + role layouts
-   - shared components
-   - dashboards
-   - CRUD/management screens
-   - profile/public supporting pages
-5. Không xoá chức năng đang hoạt động chỉ vì chưa phù hợp visual.
-6. Sau mỗi nhóm thay đổi, đảm bảo project vẫn build được.
+1. Read existing components before editing.
+2. Preserve logic/API/validation/authorization.
+3. Complete Phase 1 token migration.
+4. Build project and fix compile issues.
+5. Report Phase 1 files changed.
+6. Then complete Phase 2 Auth redesign.
+7. Build again.
+8. Verify Login, Register, desktop and mobile layouts.
+9. Report all files changed and build result.
 
 **[END PROMPT FOR AI AGENT]**

@@ -71,7 +71,7 @@ public static class OperationsText
                 => "border-amber-200 bg-amber-50 text-amber-800",
             "Damaged" or "Escalated" or "Rejected" or "Reported" or "Pending" or "OutOfStock" or "Safety"
                 => "border-red-200 bg-red-50 text-red-800",
-            _ => "border-[#D8DED2] bg-[#EEF1EA] text-[#69706A]"
+            _ => "border-[#D8D1CD] bg-[#ECE8E4] text-[#6F6966]"
         };
 
     /// <summary>Vietnamese text for an API error code, or null to keep the server's message.</summary>

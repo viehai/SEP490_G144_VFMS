@@ -1,0 +1,118 @@
+@page "/trainers/{Id:int}/packages"
+@layout PublicLayout
+@inject TrainerApiClient Api
+<PageTitle>Gói PT | Victor Fitness</PageTitle>
+
+<section class="trainer-page trainer-public trainer-stack">
+    <a class="trainer-link" href="@($"/trainers/{Id}")">← Hồ sơ huấn luyện viên</a>
+    <header>
+        <h1>@(_trainer is { } trainer ? $"Gói PT {trainer.Profile.Level}" : "Gói PT")</h1>
+        @if (_trainer is { } detail)
+        {
+            <p class="trainer-muted">Tập cùng @detail.Profile.FullName</p>
+        }
+    </header>
+    <TrainerFeedback Error="@_error" />
+    @if (_loading)
+    {
+        <p role="status">Đang tải gói PT…</p>
+    }
+    else if (_trainer?.IsOwnProfile == true)
+    {
+        <a class="trainer-button trainer-primary" href="/pt/trainer-profile">Quản lý hồ sơ PT</a>
+    }
+    else if (_packages is { Length: 0 })
+    {
+        <p class="trainer-panel">Chưa có gói đang mở bán cho cấp PT này.</p>
+    }
+    else if (_packages is { } packages)
+    {
+        <p class="trainer-muted">Bạn cần gói Gym đang hoạt động khi giữ chỗ và quyền vào gym hợp lệ vào ngày tập.</p>
+        <div class="pt-plan-grid">
+            @foreach (var package in packages.Skip((_page - 1) * 20).Take(20))
+            {
+                var bookingUrl = $"/pt-booking/{Id}?package={package.Id}";
+                <article class="trainer-panel pt-plan-card" @key="package.Id">
+                    <div>
+                        <h2>@package.Name</h2>
+                        <p class="trainer-muted">@package.Credits buổi · 60 phút mỗi buổi</p>
+                    </div>
+                    <strong class="pt-plan-price">@Money(package.Price)</strong>
+                    <AuthorizeView>
+                        <Authorized Context="auth">
+                            @if (auth.User.IsInRole("Member"))
+                            {
+                                <a class="trainer-button trainer-primary pt-plan-action" href="@bookingUrl">Đăng ký gói PT</a>
+                            }
+                            else if (auth.User.IsInRole("Customer"))
+                            {
+                                @* UC 4.2: Customers preview the schedule; holding it needs an active Gym Membership (MSG-31). *@
+                                <a class="trainer-button trainer-primary pt-plan-action" href="@bookingUrl">Xem lịch dự kiến</a>
+                                <a class="trainer-link" href="/#pricing-memberships">Cần gói Gym để đăng ký</a>
+                            }
+                            else
+                            {
+                                <p class="trainer-muted">Đăng ký dành cho tài khoản hội viên.</p>
+                            }
+                        </Authorized>
+                        <NotAuthorized>
+                            <a class="trainer-button trainer-primary pt-plan-action" href="@($"/auth/login?returnUrl={Uri.EscapeDataString($"/trainers/{Id}/packages")}")">Đăng nhập để đăng ký</a>
+                        </NotAuthorized>
+                    </AuthorizeView>
+                    @if (!string.IsNullOrWhiteSpace(package.Description))
+                    {
+                        <p class="trainer-copy">@package.Description</p>
+                    }
+                    <dl class="pt-plan-terms">
+                        <div><dt>Bảo lưu tối thiểu</dt><dd>@package.FreezeMinimumDays ngày</dd></div>
+                        <div><dt>Tổng hạn mức bảo lưu</dt><dd>@package.FreezeMaxTotalDays ngày</dd></div>
+                    </dl>
+                </article>
+            }
+        </div>
+        @if (packages.Length > 20)
+        {
+            <Pager Page="_page" TotalCount="packages.Length" Noun="gói" OnPage="page => _page = page" />
+        }
+    }
+    else if (_error is not null)
+    {
+        <button type="button" class="trainer-button" @onclick="LoadAsync">Tải lại gói PT</button>
+    }
+</section>
+
+@code {
+    private int _page = 1;
+    [Parameter] public int Id { get; set; }
+    private TrainerPublicDetail? _trainer;
+    private PTPackageResponse[]? _packages;
+    private string? _error;
+    private bool _loading;
+    private int _version;
+
+    protected override Task OnParametersSetAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _page = 1;
+        var version = ++_version;
+        _loading = true;
+        _trainer = null;
+        _packages = null;
+        _error = null;
+        try
+        {
+            var trainer = await Api.DetailAsync(Id);
+            if (version != _version) return;
+            _trainer = trainer;
+            if (trainer.IsOwnProfile) return;
+
+            var packages = await Api.PackagesAsync();
+            if (version == _version)
+                _packages = packages.Where(package => package.IsActive && package.TrainerLevel == trainer.Profile.Level)
+                    .OrderBy(package => package.Price).ThenBy(package => package.Id).ToArray();
+        }
+        catch (AuthApiException ex) { if (version == _version) _error = ex.Message; }
+        finally { if (version == _version) _loading = false; }
+    }
+}

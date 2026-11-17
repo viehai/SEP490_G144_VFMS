@@ -106,6 +106,10 @@ public sealed class UserAdministrationRepository : IUserAdministrationRepository
         await _context.SaveChangesAsync(cancellationToken);
     }
 
+    public Task<bool> HasActiveYogaAssignmentsAsync(string userId, CancellationToken cancellationToken) =>
+        _context.YogaClasses.AnyAsync(c => !c.IsDeleted && c.InstructorUserId == userId &&
+            (c.ClassStatus == YogaClassStatus.Draft || c.ClassStatus == YogaClassStatus.Published), cancellationToken);
+
     public async Task ReplaceUserRolesAsync(
         ApplicationUser user,
         IReadOnlyCollection<int> roleIds,

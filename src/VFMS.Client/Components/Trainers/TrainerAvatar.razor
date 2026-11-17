@@ -1,0 +1,14 @@
+@inject TrainerApiClient Api
+@if (Api.PublicAsset(Trainer.AvatarUrl) is { } url)
+{
+    <img src="@url" alt="Ảnh của @Trainer.FullName" referrerpolicy="no-referrer" class="trainer-avatar" />
+}
+else
+{
+    <span class="trainer-avatar" aria-hidden="true">@Initial</span>
+}
+@code {
+    [Parameter, EditorRequired] public TrainerProfileResponse Trainer { get; set; } = default!;
+    private string Initial => string.Concat(Trainer.FullName.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+        .TakeLast(2).Select(part => char.ToUpperInvariant(part[0])));
+}

@@ -10,7 +10,14 @@ namespace VFMS.Domain.Entities;
 /// </summary>
 public class TrainerProfile : BaseEntity
 {
+    public string Specialty { get; set; } = string.Empty;
+    public string Gender { get; set; } = string.Empty;
+    public int ExperienceYears { get; set; }
+    public string CertificatesJson { get; set; } = "[]";
+    public string? AvatarJson { get; set; }
     public string PTUserId { get; set; } = string.Empty;
+    /// <summary>Citizen ID (CCCD) copied from the hired application; verified on ProfileUpdate (UC-3.2, UC-3.3).</summary>
+    public string? CitizenId { get; set; }
     public string? Bio { get; set; }
     public string? AvatarUrl { get; set; }
     public string? CertificateUrl { get; set; }
@@ -18,12 +25,14 @@ public class TrainerProfile : BaseEntity
     /// <summary>Commission tier identifier (configured upon hiring, GBR-04).</summary>
     public string? CommissionTier { get; set; }
     public bool IsActive { get; set; } = true;
+    public bool AcceptingNewMembers { get; set; }
+    /// <summary>First day of the current 'Not Accepting' period; null while accepting (GBR-98).</summary>
+    public DateOnly? NotAcceptingSince { get; set; }
 
     // ── Navigation Properties ──────────────────────────────────
     public ApplicationUser PTUser { get; set; } = null!;
     public ICollection<PTAvailability> Availabilities { get; set; } = [];
     public ICollection<PTPurchase> PTPurchases { get; set; } = [];
     public ICollection<TrainerReview> Reviews { get; set; } = [];
-    public ICollection<YogaClass> AssignedYogaClasses { get; set; } = [];
 }
 

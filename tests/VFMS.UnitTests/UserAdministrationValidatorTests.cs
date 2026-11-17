@@ -16,6 +16,7 @@ public sealed class UserAdministrationValidatorTests
 {
     [Theory]
     [InlineData("PT")]
+    [InlineData("YogaInstructor")]
     [InlineData("Staff")]
     [InlineData("Manager")]
     public void CreateStaffAcceptsAssignableRoles(string role)
@@ -285,6 +286,9 @@ public sealed class UserAdministrationValidatorTests
             CreatedUser = user;
             return Task.CompletedTask;
         }
+
+        public Task<bool> HasActiveYogaAssignmentsAsync(string userId, CancellationToken cancellationToken) =>
+            Task.FromResult(false);
 
         public Task ReplaceUserRolesAsync(
             ApplicationUser user,

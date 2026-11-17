@@ -15,6 +15,9 @@ public class PackageComponent : BaseEntity
     public int? DurationMonths { get; set; }
     public int? SessionCount { get; set; }
     public int? YogaClassTypeId { get; set; }
+    public TrainerLevel? ApplicableTrainerLevel { get; set; }
+    public int? PTFreezeMinimumDays { get; set; }
+    public int? PTFreezeMaxTotalDays { get; set; }
 
     // ── Freeze configuration (component-level overrides for GBR-40/41/42) ──
     public bool AllowFreeze { get; set; } = false;

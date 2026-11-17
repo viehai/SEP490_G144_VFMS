@@ -1,5 +1,74 @@
+:root {
+    /* ============================================================== */
+    /* 1. PRIMITIVE TOKENS                                            */
+    /* ============================================================== */
+    --red-500: #B83A3A;
+    --red-600: #9F3030;
+    --red-700: #7F2929;
+    --red-50:  #F3E4E2;
+
+    --neutral-50:  #F8F5F2;
+    --neutral-100: #F2EFEC;
+    --neutral-200: #ECE8E4;
+
+    --charcoal-800: #2B2928;
+    --charcoal-900: #252323;
+
+    /* ============================================================== */
+    /* 2. SEMANTIC TOKENS                                             */
+    /* ============================================================== */
+    --vfms-bg: #F2EFEC;
+    --vfms-surface: #F8F5F2;
+    --vfms-surface-alt: #ECE8E4;
+    --vfms-surface-strong: #FFFFFF;
+
+    --vfms-charcoal: #252323;
+    --vfms-charcoal-soft: #2B2928;
+
+    --vfms-text: #242424;
+    --vfms-text-secondary: #6F6966;
+    --vfms-text-muted: #8C8581;
+
+    --vfms-primary: #B83A3A;
+    --vfms-primary-hover: #9F3030;
+    --vfms-primary-dark: #7F2929;
+    --vfms-primary-soft: #F3E4E2;
+
+    --vfms-border: #D8D1CD;
+    --vfms-border-strong: #C9C0BB;
+
+    --vfms-success: #16A34A;
+    --vfms-warning: #D97706;
+    --vfms-error:   #DC2626;
+    --vfms-neutral: #6B7280;
+
+    /* ============================================================== */
+    /* 3. COMPONENT TOKENS                                            */
+    /* ============================================================== */
+    --button-primary-bg: var(--vfms-primary);
+    --button-primary-hover: var(--vfms-primary-hover);
+    --button-primary-text: #FFFFFF;
+
+    --input-bg: var(--vfms-surface);
+    --input-border: var(--vfms-border);
+    --input-focus: var(--vfms-primary);
+    --input-disabled: var(--vfms-surface-alt);
+
+    --card-bg: var(--vfms-surface);
+    --card-border: var(--vfms-border);
+    --card-selected-bg: var(--vfms-primary-soft);
+    --card-selected-border: var(--vfms-primary);
+
+    --table-header-bg: var(--vfms-surface-alt);
+    --table-row-bg: var(--vfms-surface);
+    --table-row-hover: #F3EDEA;
+    --table-border: var(--vfms-border);
+}
+
 html, body {
-    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background-color: var(--vfms-bg);
+    color: var(--vfms-text);
 }
 
 h1:focus {
@@ -7,17 +76,24 @@ h1:focus {
 }
 
 a, .btn-link {
-    color: #0071c1;
+    color: var(--vfms-primary);
+}
+a:hover, .btn-link:hover {
+    color: var(--vfms-primary-hover);
 }
 
 .btn-primary {
     color: #fff;
-    background-color: #1b6ec2;
-    border-color: #1861ac;
+    background-color: var(--vfms-primary);
+    border-color: var(--vfms-primary);
+}
+.btn-primary:hover {
+    background-color: var(--vfms-primary-hover);
+    border-color: var(--vfms-primary-hover);
 }
 
 .btn:focus, .btn:active:focus, .btn-link.nav-link:focus, .form-control:focus, .form-check-input:focus {
-  box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem #258cfb;
+    box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem rgba(184, 58, 58, 0.25);
 }
 
 .content {

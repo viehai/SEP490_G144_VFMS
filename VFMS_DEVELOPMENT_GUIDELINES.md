@@ -4,7 +4,7 @@
 
 These guidelines define the shared architectural, coding, and collaboration conventions for the **Victor Fitness and Gym Management System (VFMS)** (`SEP490_G144_VFMS`). Report 3 is the authority for functional and non-functional requirements and defines 87 Use Cases across 13 feature groups/modules (`UC-01` through `UC-87`). Use Case Diagrams document actor associations. Report 4 and the Entity Relationship Diagram (ERD) inform architecture and data design, and the current source code establishes implementation status.
 
-Reference documents are listed in precedence order for requirements, actor assignments, and design. [Report 3 SRS](https://drive.google.com/file/d/1ikvvPj3Q224wwM_5xqCjP680q0noxfZP/view), [Latest standalone Use Case Diagram](https://drive.google.com/file/d/1UHzNJp126lZMapU8gWvM-cAEkYpmhZ2z/view), [Report 4 SDS](https://drive.google.com/file/d/1ITngkoOxluYMKFVV-Zt4n0e37CfFHTHf/view), [ERD](VFMS%20Erd.drawio.svg).
+Reference documents are listed in precedence order for requirements, actor assignments, and design: [Project Google Drive Folder](https://drive.google.com/drive/folders/1Qh4CoAJSlqmHqBLVSGVyeZlqqOL1xCQe), [Report 3 SRS](https://drive.google.com/file/d/1ikvvPj3Q224wwM_5xqCjP680q0noxfZP/view), [Latest standalone Use Case Diagram](https://drive.google.com/file/d/1UHzNJp126lZMapU8gWvM-cAEkYpmhZ2z/view), [Report 4 SDS](https://drive.google.com/file/d/1ITngkoOxluYMKFVV-Zt4n0e37CfFHTHf/view), [ERD](VFMS%20Erd.drawio.svg).
 
 ## 2. Technology Stack
 

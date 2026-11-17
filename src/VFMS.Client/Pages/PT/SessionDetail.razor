@@ -1,0 +1,114 @@
+@page "/pt/contracts/{ContractId:int}/sessions/{SessionId:int}"
+@layout StaffPTLayout
+@attribute [Authorize(Roles = "PT")]
+@inject PersonalTrainingApiClient Api
+@using VFMS.Client.Components.Operations
+
+<PageTitle>Chi tiết ca học PT | Victor Fitness</PageTitle>
+<section class="workspace-page trainer-page trainer-stack">
+    <a class="trainer-back" href="@($"/pt/assigned-members/{ContractId}")">← Lịch và tiến độ tập</a>
+    <PageHeader Overline="VFMS / PT" Title="Chi tiết ca học"
+                Description="Điểm danh trong ngày, ghi chú buổi tập và đề xuất buổi bù." />
+    <TrainerFeedback Error="@_error" Message="@_message" />
+    @if (_loading) { <p role="status">Đang tải ca học…</p> }
+    else if (_session is { } session)
+    {
+        <article class="trainer-panel trainer-stack">
+            <h2>@_contract?.MemberName</h2>
+            <p>@Day(session.Date.DayOfWeek), @Date(session.Date) · @Time(session.StartTime) – @Time(session.EndTime)</p>
+            <div class="trainer-row"><TrainerStatus Status="@session.Status" /><span class="trainer-muted">Tính @session.CreditUnits buổi</span></div>
+            @if (CanRecord(session))
+            {
+                <p class="trainer-muted">@(session.Status is "Completed" or "NoShow" ? "Có thể sửa điểm danh đến hết hôm nay." :
+                    session.Status == "PendingFreeze" ? "Buổi đang chờ duyệt bảo lưu: ghi vắng mặt không bị trừ buổi." :
+                    "Điểm danh trong hôm nay. Sau 20:00 hệ thống sẽ nhắc nếu chưa điểm danh.")</p>
+                <div class="trainer-row">
+                    <button class="trainer-button trainer-primary" disabled="@(_busy || session.Status == "Completed")" @onclick="() => AttendanceAsync(true)">Hội viên có mặt</button>
+                    @if (session.Status != "PendingFreeze")
+                    {
+                        <button class="trainer-button" disabled="@(_busy || session.Status == "NoShow")" @onclick="() => AttendanceAsync(false)">Hội viên vắng mặt</button>
+                    }
+                </div>
+            }
+            @if (session.Status == "Disputed")
+            {
+                <p class="trainer-feedback" role="status">Hội viên báo PT vắng mặt trong khi bạn ghi có mặt. Manager sẽ xem xét và thông báo kết quả.</p>
+            }
+            @if (session.Status is "Completed" or "AutoCompleted")
+            {
+                <form class="trainer-stack" @onsubmit="SaveNoteAsync" @onsubmit:preventDefault>
+                    <label>Ghi chú buổi tập<textarea class="trainer-input" rows="5" maxlength="2000" @bind="_note" required disabled="@_busy"></textarea></label>
+                    <button class="trainer-button trainer-primary" disabled="@_busy">Lưu ghi chú</button>
+                </form>
+                @if (session.NoteUpdatedAt is { } updated) { <p class="trainer-muted">Cập nhật @LocalTime(updated)</p> }
+            }
+            @if (session.IsMakeUpUnit)
+            {
+                <form class="trainer-stack" @onsubmit="ProposeMakeUpAsync" @onsubmit:preventDefault>
+                    <h3>Đề xuất buổi bù</h3>
+                    <p class="trainer-muted">Dùng được đến @(_contract?.MakeUpDeadline is { } deadline ? Date(deadline) : "hạn tập bù"). Hội viên sẽ xác nhận.</p>
+                    <fieldset class="trainer-grid" disabled="@_busy">
+                        <label>Ngày tập mới<input class="trainer-input" type="date" min="@Today.ToString("yyyy-MM-dd")" @bind="_makeUpDate" /></label>
+                        <label>Giờ bắt đầu
+                            <select class="trainer-input" @bind="_makeUpHour">
+                                @for (var hour = 5; hour <= 22; hour++) { <option value="@hour">@($"{hour:00}:00")</option> }
+                            </select>
+                        </label>
+                    </fieldset>
+                    <button class="trainer-button trainer-primary" disabled="@_busy">Gửi đề xuất cho hội viên</button>
+                </form>
+            }
+        </article>
+    }
+</section>
+
+@code {
+    [Parameter] public int ContractId { get; set; }
+    [Parameter] public int SessionId { get; set; }
+    private PTContractResponse? _contract;
+    private PTSessionResponse? _session;
+    private string _note = "";
+    private DateOnly _makeUpDate = Today.AddDays(1);
+    private int _makeUpHour = 9;
+    private string? _error, _message;
+    private bool _loading, _busy;
+
+    protected override Task OnParametersSetAsync() => LoadAsync();
+
+    // GBR-97: attendance is recorded after the session ends, on the session day, and can be edited that day.
+    private static bool CanRecord(PTSessionResponse s) => s.Date == Today &&
+        s.Date.ToDateTime(s.EndTime) <= DateTime.UtcNow.AddHours(7) &&
+        s.Status is "Scheduled" or "ReschedulePending" or "RescheduleRequested" or "Completed" or "NoShow" or "PendingFreeze";
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _contract = (await Api.ContractsAsync(ContractId)).SingleOrDefault();
+            _session = _contract?.Sessions.SingleOrDefault(s => s.Id == SessionId);
+            _note = _session?.Note ?? "";
+            if (_session is null) _error = "Không tìm thấy ca học trong hợp đồng này.";
+        }
+        catch (AuthApiException ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private Task AttendanceAsync(bool attended) => RunAsync(async () =>
+        await Api.AttendanceAsync(SessionId, attended), "Đã lưu điểm danh.");
+
+    private Task SaveNoteAsync() => RunAsync(async () =>
+        await Api.NoteAsync(SessionId, new(_note.Trim())), "Đã lưu ghi chú.");
+    private Task ProposeMakeUpAsync() => RunAsync(async () =>
+        await Api.ProposeMakeUpAsync(SessionId, new(_makeUpDate, new TimeOnly(_makeUpHour, 0))), "Đã gửi đề xuất buổi bù.");
+
+    private async Task RunAsync(Func<Task> action, string message)
+    {
+        if (_busy) return;
+        _busy = true;
+        _error = _message = null;
+        try { await action(); _message = message; await LoadAsync(); }
+        catch (AuthApiException ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+}

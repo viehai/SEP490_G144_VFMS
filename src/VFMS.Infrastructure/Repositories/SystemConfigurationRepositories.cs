@@ -55,6 +55,7 @@ public sealed class BusinessReportRepository : AuditedRepositoryBase, IBusinessR
         // Membership revenue: money received for paid membership orders, by payment time.
         var membershipRevenue = await Context.PaymentTransactions.AsNoTracking()
             .Where(p => p.PaymentStatus == PaymentStatus.Paid && p.Order.OrderStatus == OrderStatus.Paid &&
+                        p.SourcePaymentTransactionId == null && p.LockerRentalContractId == null &&
                         p.PaidAt >= startUtc && p.PaidAt < endUtcExclusive)
             .SumAsync(p => (decimal?)p.AmountReceived, cancellationToken) ?? 0m;
 
@@ -88,6 +89,8 @@ public sealed class BusinessReportRepository : AuditedRepositoryBase, IBusinessR
         var totalLockers = await Context.Lockers.AsNoTracking().CountAsync(cancellationToken);
         var occupiedLockers = await Context.LockerRentalContracts.AsNoTracking()
             .Where(c => c.StartDate <= end && c.EndDate >= start && (c.CancelledAt == null || c.CancelledAt >= startUtc))
+            .Where(c => c.HandedOverAt != null || (c.ContractStatus != LockerContractStatus.PendingPayment &&
+                c.ContractStatus != LockerContractStatus.PendingHandover && c.ContractStatus != LockerContractStatus.Cancelled))
             .Select(c => c.LockerId)
             .Distinct()
             .CountAsync(cancellationToken);

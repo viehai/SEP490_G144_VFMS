@@ -1,0 +1,112 @@
+@page "/yoga/schedule"
+@layout PublicLayout
+@using VFMS.Contracts.Yoga
+@inject VfmsApiClient Api
+
+<PageTitle>Lịch Yoga | Victor Fitness</PageTitle>
+
+<div class="mx-auto max-w-6xl space-y-8 px-4 py-28 font-['Inter',sans-serif] text-[#242424] sm:px-6">
+    <header class="border-b border-[#D8D1CD] pb-7">
+        <p class="mb-3 text-[10px] font-bold tracking-[.18em] text-[#B83A3A]">VICTOR FITNESS / YOGA</p>
+        <h1 class="font-['Montserrat'] text-3xl font-extrabold uppercase tracking-tight text-[#242424] sm:text-4xl">Thời khóa biểu Yoga<span class="text-[#B83A3A]">.</span></h1>
+        <p class="mt-3 max-w-2xl text-sm leading-6 text-[#6F6966]">Lịch các buổi yoga đã công bố và số chỗ còn trống.</p>
+    </header>
+
+    <section class="flex flex-wrap items-end gap-3" aria-label="Bộ lọc">
+        <button type="button" class="border border-[#D8D1CD] bg-[#F8F5F2] hover:bg-[#ECE8E4] px-4 py-2 text-xs font-bold uppercase rounded-lg text-[#242424] transition-colors" @onclick="() => Move(-7)" aria-label="Tuần trước">←</button>
+        <p class="min-w-48 text-sm font-semibold text-[#242424]">@_from.ToString("dd/MM/yyyy") – @_from.AddDays(6).ToString("dd/MM/yyyy")</p>
+        <button type="button" class="border border-[#D8D1CD] bg-[#F8F5F2] hover:bg-[#ECE8E4] px-4 py-2 text-xs font-bold uppercase rounded-lg text-[#242424] transition-colors" @onclick="() => Move(7)" aria-label="Tuần sau">→</button>
+        <label class="text-xs font-semibold text-[#242424]">Độ khó
+            <select class="ml-2 border border-[#D8D1CD] bg-[#F8F5F2] px-3 py-2 text-sm rounded-lg text-[#242424] focus:border-[#B83A3A] outline-none" @bind="_difficulty" @bind:after="Load">
+                <option value="">Tất cả</option><option>Beginner</option><option>Intermediate</option><option>Advanced</option>
+            </select>
+        </label>
+        <label class="text-xs font-semibold text-[#242424]">Huấn luyện viên
+            <select class="ml-2 border border-[#D8D1CD] bg-[#F8F5F2] px-3 py-2 text-sm rounded-lg text-[#242424] focus:border-[#B83A3A] outline-none" @bind="_instructor" @bind:after="Load">
+                <option value="">Tất cả</option>
+                @foreach (var i in _instructors) { <option value="@i.UserId">@i.FullName</option> }
+            </select>
+        </label>
+    </section>
+
+    @if (_error is not null)
+    {
+        <p role="alert" class="border border-red-200 bg-red-50 px-4 py-3 text-sm text-[#DC2626] rounded-xl">@_error</p>
+    }
+    else if (_loading)
+    {
+        <p class="text-sm text-[#6F6966]">Đang tải…</p>
+    }
+    else if (_sessions.Count == 0)
+    {
+        <p class="border border-[#D8D1CD] bg-[#F8F5F2] px-5 py-6 text-sm rounded-xl text-[#6F6966]">Không tìm thấy buổi học phù hợp.</p>
+    }
+    else
+    {
+        <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3" aria-live="polite">
+            @foreach (var day in _sessions.GroupBy(s => s.ScheduledDate))
+            {
+                <section class="border border-[#D8D1CD] bg-[#F8F5F2] rounded-xl overflow-hidden shadow-sm">
+                    <h2 class="border-b border-[#D8D1CD] bg-[#ECE8E4] px-4 py-3 font-['Montserrat'] text-xs font-extrabold uppercase tracking-wider text-[#242424]">@day.Key.ToString("dddd dd/MM")</h2>
+                    <ul class="divide-y divide-[#D8D1CD]">
+                        @foreach (var s in day)
+                        {
+                            <li class="px-4 py-4 hover:bg-[#F3EDEA] transition-colors">
+                                <div class="flex items-start justify-between gap-3">
+                                    <div>
+                                        <p class="font-semibold text-[#242424]">@s.ClassName</p>
+                                        <p class="text-xs text-[#6F6966]">@s.StartTime.ToString("HH:mm")–@s.EndTime.ToString("HH:mm") · @s.TypeName · @s.DifficultyLevel</p>
+                                        <p class="text-xs text-[#6F6966]">@s.StudioName (tầng @s.FloorNumber) · @s.InstructorName</p>
+                                    </div>
+                                    @if (s.FreeSeats > 0)
+                                    {
+                                        <StatusBadge Status="Available" Label="@($"Còn {s.FreeSeats} chỗ")" />
+                                    }
+                                    else
+                                    {
+                                        <StatusBadge Status="Full" Label="Hết chỗ · Waitlist" />
+                                    }
+                                </div>
+                            </li>
+                        }
+                    </ul>
+                </section>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private DateOnly _from;
+    private string _difficulty = string.Empty, _instructor = string.Empty;
+    private bool _loading = true;
+    private string? _error;
+    private List<YogaSessionResponse> _sessions = [];
+    private List<YogaInstructorResponse> _instructors = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7));
+        _from = today.AddDays(-(((int)today.DayOfWeek + 6) % 7));
+        try { _instructors = await Api.GetAsync<List<YogaInstructorResponse>>("api/yoga/instructors"); }
+        catch (ApiException) { /* filter stays empty */ }
+        await Load();
+    }
+
+    private async Task Move(int days) { _from = _from.AddDays(days); await Load(); }
+
+    private async Task Load()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            var query = $"api/yoga/schedule?from={_from:yyyy-MM-dd}&to={_from.AddDays(6):yyyy-MM-dd}" +
+                        (_difficulty.Length > 0 ? $"&difficultyLevel={_difficulty}" : "") +
+                        (_instructor.Length > 0 ? $"&instructorUserId={Uri.EscapeDataString(_instructor)}" : "");
+            _sessions = await Api.GetAsync<List<YogaSessionResponse>>(query);
+        }
+        catch (ApiException ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+}

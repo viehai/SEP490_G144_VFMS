@@ -1,0 +1,35 @@
+@page "/my-pt-packages/{ContractId:int}/reschedule"
+@layout AccountLayout
+@attribute [Authorize(Roles = "Member")]
+@inject PersonalTrainingApiClient Api
+@using VFMS.Client.Components.Operations
+
+<PageTitle>Xin đổi lịch PT | Victor Fitness</PageTitle>
+<section class="workspace-page trainer-page trainer-stack">
+    <a class="trainer-link" href="@($"/my-pt-packages?contract={ContractId}")">← Gói PT của tôi</a>
+    <PageHeader Overline="VFMS / GÓI PT" Title="Xin đổi lịch PT"
+                Description="Chọn ca mới; lịch cũ được giữ cho đến khi huấn luyện viên đồng ý." />
+    <p class="trainer-muted">Chọn buổi tập cần đổi, rồi chọn ca còn trống. Lịch cũ giữ nguyên cho tới khi PT chấp nhận.</p>
+    <TrainerFeedback Error="@_error" />
+    @if (_loading) { <p role="status">Đang tải lịch…</p> }
+    else if (_contract is { } contract)
+    {
+        <ContractPanel Contract="contract" TrainerName="@contract.TrainerName" IsReschedulePage="true" Changed="LoadAsync" />
+    }
+</section>
+
+@code {
+    [Parameter] public int ContractId { get; set; }
+    private PTContractResponse? _contract;
+    private bool _loading;
+    private string? _error;
+    protected override Task OnParametersSetAsync() => LoadAsync();
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try { _contract = (await Api.ContractsAsync(ContractId)).SingleOrDefault(); }
+        catch (AuthApiException ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+}

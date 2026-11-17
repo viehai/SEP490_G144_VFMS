@@ -142,14 +142,17 @@ public enum TrainerApplicationStatus
     UnderReview,
     Approved,
     Rejected,
-    Blacklisted
+    Blacklisted,
+    Interviewing,
+    Hired
 }
 
 public enum TrainerLevel
 {
     Junior,
     Senior,
-    Expert
+    Expert,
+    Master
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -161,7 +164,37 @@ public enum PTSessionStatus
     Scheduled,
     Completed,
     Cancelled,
-    NoShow
+    NoShow,
+    CheckoutHold,
+    ReschedulePending,
+    PendingFreeze,
+    MakeUpPending,
+    RescheduleRequested,
+    TrainerAbsentReported,
+    /// <summary>Nobody recorded attendance by the end of the session day; counts as used (GBR-97).</summary>
+    AutoCompleted,
+    /// <summary>PT recorded Present but the Member reported PT Absent; the Manager decides (UC 4.11).</summary>
+    Disputed,
+    /// <summary>Post-freeze slot held while the freeze request awaits the Manager (GBR-09).</summary>
+    FreezeHold,
+    /// <summary>Make-up appointment proposed by the Member; the PT accepts or declines (UC 4.7).</summary>
+    MakeUpRequested
+}
+
+public enum PTPurchaseStatus
+{
+    Active,
+    PendingPayment,
+    Completed,
+    Expired,
+    Frozen
+}
+
+public enum PTAdjustmentType
+{
+    Reschedule,
+    DoubleSession,
+    Cancellation
 }
 
 public enum SlotStatus
@@ -178,7 +211,9 @@ public enum PTFreezeRequestStatus
     Rejected,
     Active,
     Completed,
-    Expired
+    Expired,
+    /// <summary>Withdrawn by the Member before the freeze started; not counted as used (UC 4.8).</summary>
+    Withdrawn
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -190,7 +225,9 @@ public enum YogaClassStatus
     Draft,
     Published,
     Cancelled,
-    Completed
+    Completed,
+    Open,
+    Full
 }
 
 public enum YogaScheduleStatus
@@ -255,7 +292,9 @@ public enum RentalType
 {
     Monthly,
     Quarterly,
-    Yearly
+    Yearly,
+    Daily,
+    HalfYearly
 }
 
 public enum LockerContractStatus
@@ -263,7 +302,19 @@ public enum LockerContractStatus
     Active,
     Expired,
     Terminated,
-    Overdue
+    Overdue,
+    PendingPayment,
+    PendingHandover,
+    Cancelled,
+    Abandoned
+}
+
+public enum LockerPaymentPurpose
+{
+    Rental,
+    Renewal,
+    Settlement,
+    UnappliedTransfer
 }
 
 public enum LockerIncidentType
@@ -442,6 +493,8 @@ public enum NotificationType
     FreezeApproval,
     PTSessionReminder,
     YogaBookingConfirmed,
+    YogaSessionChanged,
+    YogaSessionCancelled,
     PaymentConfirmed,
     EquipmentIssueUpdate,
     CompetitionResult,

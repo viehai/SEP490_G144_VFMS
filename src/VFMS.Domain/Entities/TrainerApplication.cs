@@ -7,10 +7,21 @@ namespace VFMS.Domain.Entities;
 /// Trainer recruitment application submitted by a Guest or Customer.
 /// Submitting does NOT create an account (GBR-02).
 /// Only upon <c>Hired</c> status does the system provision a PT user account (UC-23).
-/// Enforces 30-day duplicate cooldown per CCCD/Email (GBR-03).
+/// Enforces a 10-minute waiting period per CCCD/Email between submissions (GBR-03).
 /// </summary>
 public class TrainerApplication : BaseEntity
 {
+    public string ApplicationType { get; set; } = "Recruitment";
+    public string CertificatesJson { get; set; } = "[]";
+    public string EmailQueueJson { get; set; } = "[]";
+    public string TrackingCode { get; set; } = string.Empty;
+    public DateOnly? DateOfBirth { get; set; }
+    public string Gender { get; set; } = string.Empty;
+    public string Specialty { get; set; } = string.Empty;
+    public int ExperienceYears { get; set; }
+    public string Bio { get; set; } = string.Empty;
+    public DateTime? ConsentAt { get; set; }
+    public string? HiredUserId { get; set; }
     public string? ApplicantUserId { get; set; }   // null if submitted as Guest
     public string FullName { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
@@ -24,6 +35,7 @@ public class TrainerApplication : BaseEntity
     public string? ReviewedByUserId { get; set; }
     public DateTime? ReviewedAt { get; set; }
     public string? ReviewNote { get; set; }
+    public string? InterviewNote { get; set; }
 
     // ── Navigation Properties ──────────────────────────────────
     public ApplicationUser? Applicant { get; set; }
