@@ -51,6 +51,35 @@
                     </select>
                 }
             </form>
+            <div class="flex flex-wrap items-center gap-3" role="group" aria-label="Bộ lọc sản phẩm">
+                @if (_brands.Count > 0)
+                {
+                    <label class="sr-only" for="store-brand">Thương hiệu</label>
+                    <select id="store-brand" class="rounded-lg border border-vfms-border bg-vfms-surface px-3 py-2 text-sm text-vfms-text outline-none focus:border-vfms-primary" disabled="@_loading"
+                            value="@_brand" @onchange="args => FilterAsync(() => _brand = args.Value?.ToString() ?? string.Empty)">
+                        <option value="">Mọi thương hiệu</option>
+                        @foreach (var brand in _brands) { <option value="@brand">@brand</option> }
+                    </select>
+                }
+                <label class="sr-only" for="store-price">Khoảng giá</label>
+                <select id="store-price" class="rounded-lg border border-vfms-border bg-vfms-surface px-3 py-2 text-sm text-vfms-text outline-none focus:border-vfms-primary" disabled="@_loading"
+                        value="@_price" @onchange="args => FilterAsync(() => _price = args.Value?.ToString() ?? string.Empty)">
+                    @foreach (var range in PriceRanges) { <option value="@range.Key">@range.Label</option> }
+                </select>
+                <label class="sr-only" for="store-sort">Sắp xếp</label>
+                <select id="store-sort" class="rounded-lg border border-vfms-border bg-vfms-surface px-3 py-2 text-sm text-vfms-text outline-none focus:border-vfms-primary" disabled="@_loading"
+                        value="@_sort" @onchange="args => FilterAsync(() => _sort = args.Value?.ToString() ?? DefaultSort)">
+                    @foreach (var (value, label) in Sorts) { <option value="@value">@label</option> }
+                </select>
+                @if (_page is { } found)
+                {
+                    <span class="text-xs text-vfms-text-secondary" role="status">@found.TotalCount sản phẩm</span>
+                }
+                @if (HasFilters)
+                {
+                    <button type="button" class="text-xs font-semibold text-vfms-primary underline-offset-2 hover:underline" disabled="@_loading" @onclick="ClearFiltersAsync">Xóa bộ lọc</button>
+                }
+            </div>
             @if (_categories.Count is > 0 and <= MaxCategoryChips)
             {
                 <div class="flex flex-wrap gap-2" role="group" aria-label="Lọc theo danh mục">
@@ -115,7 +144,7 @@
             {
                 <div class="space-y-3 rounded-[12px] border border-vfms-border bg-vfms-surface p-8 text-center">
                     <p role="status" class="text-sm text-vfms-text-secondary">Không có sản phẩm phù hợp.</p>
-                    @if (!string.IsNullOrEmpty(_category) || !string.IsNullOrWhiteSpace(_search))
+                    @if (HasFilters)
                     {
                         <button type="button" class="@Ui.Button" @onclick="ClearFiltersAsync">Xem tất cả sản phẩm</button>
                     }
@@ -193,6 +222,7 @@
 
     private const int PageSize = 12;
     private const int MaxCategoryChips = 8;
+    private const string DefaultSort = "name";
     private readonly CancellationTokenSource _lifetime = new();
     private readonly CheckoutModel _checkout = new();
     private readonly PlaceSupplementOrderRequestValidator _validator = new();
@@ -200,8 +230,30 @@
     private readonly List<CartLine> _cart = [];
     private PagedResponse<SupplementProductResponse>? _page;
     private SupplementOrderResponse? _placed;
+    /// <summary>A price filter option; null bounds are open.</summary>
+    private sealed record PriceRange(string Key, string Label, decimal? Min, decimal? Max);
+
+    private static readonly PriceRange[] PriceRanges =
+    [
+        new("", "Mọi mức giá", null, null),
+        new("u500", "Dưới 500.000 ₫", null, 499_999),
+        new("500-1000", "500.000 – 1.000.000 ₫", 500_000, 1_000_000),
+        new("1000-1500", "1.000.000 – 1.500.000 ₫", 1_000_001, 1_500_000),
+        new("o1500", "Trên 1.500.000 ₫", 1_500_001, null),
+    ];
+
+    private static readonly (string Value, string Label)[] Sorts =
+    [
+        ("name", "Tên A → Z"),
+        ("price_asc", "Giá thấp → cao"),
+        ("price_desc", "Giá cao → thấp"),
+        ("newest", "Mới nhất"),
+    ];
+
     private List<string> _categories = [];
-    private string _search = "", _category = "";
+    private List<string> _brands = [];
+    private string _search = "", _category = "", _brand = "", _price = "", _sort = DefaultSort;
+    private bool HasFilters => !string.IsNullOrWhiteSpace(_search) || _category != "" || _brand != "" || _price != "" || _sort != DefaultSort;
     private string? _notice, _error;
     private bool _loading, _working;
     private readonly HashSet<int> _brokenImages = [];
@@ -216,16 +268,27 @@
         return LoadAsync(1);
     }
 
+    /// <summary>Applies one filter change and goes back to the first page.</summary>
+    private Task FilterAsync(Action change)
+    {
+        change();
+        return LoadAsync(1);
+    }
+
     private Task ClearFiltersAsync()
     {
-        _category = "";
-        _search = "";
+        _category = _search = _brand = _price = "";
+        _sort = DefaultSort;
         return LoadAsync(1);
     }
 
     protected override async Task OnInitializedAsync()
     {
-        try { _categories = await Api.GetProductCategoriesAsync(_lifetime.Token); }
+        try
+        {
+            _categories = await Api.GetProductCategoriesAsync(_lifetime.Token);
+            _brands = await Api.GetProductBrandsAsync(_lifetime.Token);
+        }
         catch (AuthApiException error) { _error = error.Message; }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
         await LoadAsync(1);
@@ -244,8 +307,11 @@
         _loading = true;
         try
         {
+            var range = PriceRanges.FirstOrDefault(r => r.Key == _price) ?? PriceRanges[0];
             _page = await Api.GetProductsAsync(new(string.IsNullOrWhiteSpace(_search) ? null : _search.Trim(),
-                string.IsNullOrEmpty(_category) ? null : _category, null, page, PageSize), manage: false, _lifetime.Token);
+                string.IsNullOrEmpty(_category) ? null : _category, null, page, PageSize,
+                Brand: string.IsNullOrEmpty(_brand) ? null : _brand, MinPrice: range.Min, MaxPrice: range.Max, Sort: _sort),
+                manage: false, _lifetime.Token);
         }
         catch (AuthApiException error) { _error = error.Message; }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
