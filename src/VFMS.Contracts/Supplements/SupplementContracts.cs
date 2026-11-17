@@ -4,7 +4,7 @@ namespace VFMS.Contracts.Supplements;
 
 /// <summary>
 /// Create or edit a supplement product (UC-83). Status: Active (default), Inactive or OutOfStock.
-/// The image is a link to a png, jpg or jpeg file.
+/// The image is a link to a png, jpg or jpeg file. Brand, Size (pack size, e.g. "5 lbs") and Flavour are optional.
 /// </summary>
 public sealed record SupplementProductRequest(
     string Name,
@@ -12,7 +12,10 @@ public sealed record SupplementProductRequest(
     string ImageUrl,
     decimal UnitPrice,
     string? Category = null,
-    string Status = "Active"
+    string Status = "Active",
+    string? Brand = null,
+    string? Size = null,
+    string? Flavour = null
 );
 
 public sealed record SupplementProductStatusRequest(string Status);
@@ -39,7 +42,10 @@ public sealed record SupplementProductResponse(
     string Status,
     bool CanOrder,
     DateTime CreatedAt,
-    DateTime UpdatedAt
+    DateTime UpdatedAt,
+    string? Brand = null,
+    string? Size = null,
+    string? Flavour = null
 );
 
 // ── Orders (UC-78..82) ───────────────────────────────────────────

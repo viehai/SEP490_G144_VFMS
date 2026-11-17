@@ -46,6 +46,9 @@ public sealed class SupplementProductRequestValidator : AbstractValidator<Supple
         RuleFor(x => x.UnitPrice).InclusiveBetween(1m, 1_000_000_000m)
             .WithMessage("Unit price must be at least 1 VND.");
         RuleFor(x => x.Category).MaximumLength(100);
+        RuleFor(x => x.Brand).MaximumLength(100);
+        RuleFor(x => x.Size).MaximumLength(50);
+        RuleFor(x => x.Flavour).MaximumLength(100);
         RuleFor(x => x.Status)
             .Must(s => SupplementRules.IsOneOf(s, SupplementRules.ProductStatuses))
             .WithMessage("Status must be Active, Inactive or OutOfStock.");

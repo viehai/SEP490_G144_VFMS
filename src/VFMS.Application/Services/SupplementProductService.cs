@@ -133,6 +133,9 @@ public sealed class SupplementProductService : ISupplementProductService
         product.ProductName = name;
         product.Description = request.Description.Trim();
         product.CatalogCategory = EquipmentService.Clean(request.Category);
+        product.Brand = EquipmentService.Clean(request.Brand);
+        product.Size = EquipmentService.Clean(request.Size);
+        product.Flavour = EquipmentService.Clean(request.Flavour);
         product.ImageUrl = request.ImageUrl.Trim();
         product.UnitPrice = request.UnitPrice;
         product.ProductStatus = status;
@@ -141,7 +144,7 @@ public sealed class SupplementProductService : ISupplementProductService
     private static string CleanName(string name) => string.Join(' ', name.Split(' ', StringSplitOptions.RemoveEmptyEntries));
 
     private static string Describe(SupplementProduct p) =>
-        $"Name={p.ProductName}; Category={p.CatalogCategory}; Price={p.UnitPrice}; Status={p.ProductStatus}";
+        $"Name={p.ProductName}; Brand={p.Brand}; Category={p.CatalogCategory}; Size={p.Size}; Flavour={p.Flavour}; Price={p.UnitPrice}; Status={p.ProductStatus}";
 
     private static Result<SupplementProductResponse> NotFound() =>
         Result<SupplementProductResponse>.Failure("Supplement product was not found.", "SUPPLEMENT_PRODUCT_NOT_FOUND", 404);
