@@ -13,23 +13,48 @@ public sealed class SupplementRepository : AuditedRepositoryBase, ISupplementRep
     // ── Products ─────────────────────────────────────────────────
 
     public async Task<(IReadOnlyList<SupplementProduct> Items, int TotalCount)> SearchProductsAsync(
-        IReadOnlyCollection<SupplementProductStatus> statuses, string? category, string? search,
-        int page, int pageSize, CancellationToken cancellationToken = default)
+        SupplementProductQuery filter, CancellationToken cancellationToken = default)
     {
+        var statuses = filter.Statuses;
         var query = Context.SupplementProducts.AsNoTracking().Where(p => statuses.Contains(p.ProductStatus));
-        if (category is not null)
+        if (filter.Category is { } category)
             query = query.Where(p => p.CatalogCategory == category);
-        if (search is not null)
+        if (filter.Brand is { } brand)
+            query = query.Where(p => p.Brand == brand);
+        if (filter.MinPrice is { } min)
+            query = query.Where(p => p.UnitPrice >= min);
+        if (filter.MaxPrice is { } max)
+            query = query.Where(p => p.UnitPrice <= max);
+        if (filter.Search is { } search)
             query = query.Where(p => p.ProductName.Contains(search) ||
                                      (p.Brand != null && p.Brand.Contains(search)) ||
                                      (p.CatalogCategory != null && p.CatalogCategory.Contains(search)));
 
         var total = await query.CountAsync(cancellationToken);
-        var items = await query
-            .OrderBy(p => p.ProductName).ThenBy(p => p.Id)
-            .Skip((page - 1) * pageSize).Take(pageSize)
+        var items = await Order(query, filter)
+            .Skip((filter.Page - 1) * filter.PageSize).Take(filter.PageSize)
             .ToListAsync(cancellationToken);
         return (items, total);
+    }
+
+    /// <summary>
+    /// Applies the requested order. When <see cref="SupplementProductQuery.AvailableFirst"/> is set,
+    /// products that can be bought come before OutOfStock ones whatever the sort.
+    /// The product id is the final tie-break so pages never overlap.
+    /// </summary>
+    private static IQueryable<SupplementProduct> Order(IQueryable<SupplementProduct> query, SupplementProductQuery filter)
+    {
+        var ordered = filter.AvailableFirst
+            ? query.OrderBy(p => p.ProductStatus == SupplementProductStatus.OutOfStock ? 1 : 0)
+            : query.OrderBy(p => 0);
+        ordered = filter.Sort switch
+        {
+            SupplementProductSort.PriceAscending => ordered.ThenBy(p => p.UnitPrice).ThenBy(p => p.ProductName),
+            SupplementProductSort.PriceDescending => ordered.ThenByDescending(p => p.UnitPrice).ThenBy(p => p.ProductName),
+            SupplementProductSort.Newest => ordered.ThenByDescending(p => p.CreatedAt),
+            _ => ordered.ThenBy(p => p.ProductName),
+        };
+        return ordered.ThenBy(p => p.Id);
     }
 
     public Task<SupplementProduct?> GetProductAsync(int id, CancellationToken cancellationToken = default) =>

@@ -23,13 +23,19 @@ public sealed record SupplementProductStatusRequest(string Status);
 /// <summary>
 /// Product search. The store (Customer, Member) only ever sees Active and OutOfStock products;
 /// the Manager can also filter by any status.
+/// Brand is an exact match; MinPrice and MaxPrice are inclusive, in VND.
+/// Sort is one of name (default), price_asc, price_desc or newest.
 /// </summary>
 public sealed record SupplementProductListRequest(
     string? Search = null,
     string? Category = null,
     string? Status = null,
     int Page = 1,
-    int PageSize = 20
+    int PageSize = 20,
+    string? Brand = null,
+    decimal? MinPrice = null,
+    decimal? MaxPrice = null,
+    string? Sort = null
 );
 
 public sealed record SupplementProductResponse(

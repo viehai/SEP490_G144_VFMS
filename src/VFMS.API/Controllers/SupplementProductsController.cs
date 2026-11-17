@@ -27,7 +27,7 @@ public sealed class SupplementProductsController : ControllerBase
         _service = service;
     }
 
-    /// <summary>Store list (Active and OutOfStock), filtered by keyword and category.</summary>
+    /// <summary>Store list (Active and OutOfStock), filtered by keyword, category, brand and price range, with a sort.</summary>
     [HttpGet]
     [Authorize(Roles = StoreRoles)]
     [ProducesResponseType(typeof(PagedResponse<SupplementProductResponse>), 200)]

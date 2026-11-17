@@ -121,9 +121,18 @@ public sealed class SupplementProductService : ISupplementProductService
             statuses = statuses.Contains(parsed) ? [parsed] : [];
         }
 
-        var (items, total) = await _repository.SearchProductsAsync(
-            statuses, EquipmentService.Clean(request.Category), EquipmentService.Clean(request.Search),
-            request.Page, request.PageSize, cancellationToken);
+        var query = new SupplementProductQuery(
+            statuses,
+            EquipmentService.Clean(request.Category),
+            EquipmentService.Clean(request.Search),
+            EquipmentService.Clean(request.Brand),
+            request.MinPrice,
+            request.MaxPrice,
+            ParseSort(request.Sort),
+            AvailableFirst: storeView,
+            request.Page,
+            request.PageSize);
+        var (items, total) = await _repository.SearchProductsAsync(query, cancellationToken);
         return Result<PagedResponse<SupplementProductResponse>>.Success(new PagedResponse<SupplementProductResponse>(
             request.Page, request.PageSize, total, items.Select(_mapper.Map<SupplementProductResponse>).ToArray()));
     }
@@ -140,6 +149,15 @@ public sealed class SupplementProductService : ISupplementProductService
         product.UnitPrice = request.UnitPrice;
         product.ProductStatus = status;
     }
+
+    /// <summary>Maps the API sort value; anything blank or unknown sorts by name.</summary>
+    private static SupplementProductSort ParseSort(string? sort) => sort?.Trim().ToLowerInvariant() switch
+    {
+        "price_asc" => SupplementProductSort.PriceAscending,
+        "price_desc" => SupplementProductSort.PriceDescending,
+        "newest" => SupplementProductSort.Newest,
+        _ => SupplementProductSort.Name,
+    };
 
     private static string CleanName(string name) => string.Join(' ', name.Split(' ', StringSplitOptions.RemoveEmptyEntries));
 

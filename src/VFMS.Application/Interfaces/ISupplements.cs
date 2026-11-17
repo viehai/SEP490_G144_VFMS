@@ -5,12 +5,33 @@ using VFMS.Domain.Enums;
 
 namespace VFMS.Application.Interfaces;
 
+/// <summary>Product list order. The store also puts Active before OutOfStock (see <see cref="SupplementProductQuery.AvailableFirst"/>).</summary>
+public enum SupplementProductSort
+{
+    Name,
+    PriceAscending,
+    PriceDescending,
+    Newest
+}
+
+/// <summary>Filters for a product search. Text filters are already trimmed; null means "any".</summary>
+public sealed record SupplementProductQuery(
+    IReadOnlyCollection<SupplementProductStatus> Statuses,
+    string? Category,
+    string? Search,
+    string? Brand,
+    decimal? MinPrice,
+    decimal? MaxPrice,
+    SupplementProductSort Sort,
+    bool AvailableFirst,
+    int Page,
+    int PageSize);
+
 public interface ISupplementRepository : IAuditedRepository
 {
     // Products
     Task<(IReadOnlyList<SupplementProduct> Items, int TotalCount)> SearchProductsAsync(
-        IReadOnlyCollection<SupplementProductStatus> statuses, string? category, string? search,
-        int page, int pageSize, CancellationToken cancellationToken = default);
+        SupplementProductQuery query, CancellationToken cancellationToken = default);
     Task<SupplementProduct?> GetProductAsync(int id, CancellationToken cancellationToken = default);
     Task<bool> ProductNameExistsAsync(string name, int? excludeId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<string>> GetCategoriesAsync(
