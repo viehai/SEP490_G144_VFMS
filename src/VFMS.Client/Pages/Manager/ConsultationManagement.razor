@@ -13,42 +13,78 @@
         <p class="text-xs font-bold tracking-wider text-[#B83A3A]">VFMS / LIVE CONSULTATION</p>
         <h1 class="mt-2 text-3xl font-extrabold text-[#242424]">Hội thoại tư vấn.</h1>
     </header>
-    @if (_error is not null) { <p role="alert" class="rounded-lg border border-red-300 bg-red-50 p-3 text-sm">@_error</p> }
+    @if (!string.IsNullOrWhiteSpace(_error)) { <p role="alert" class="rounded-lg border border-red-300 bg-red-50 p-3 text-sm">@_error</p> }
     @if (_loading) { <p>Đang tải hội thoại...</p> }
-    else if (_page is { Items.Count: > 0 } page)
+    else if (_page is { Items.Count: > 0 } conversationPage)
     {
-        <div class="grid gap-4 lg:grid-cols-[320px_1fr]">
-            <div class="divide-y divide-[#D8D1CD] rounded-xl border border-[#D8D1CD] bg-[#F8F5F2]">
-                @foreach (var conversation in page.Items)
+        <div class="grid min-h-[560px] grid-rows-[220px_minmax(0,1fr)] overflow-hidden rounded-2xl border border-[#D8D1CD] bg-white shadow-sm lg:h-[min(72vh,760px)] lg:grid-cols-[320px_minmax(0,1fr)] lg:grid-rows-1">
+            <aside class="flex min-h-0 flex-col border-b border-[#D8D1CD] bg-[#FAF8F6] lg:border-b-0 lg:border-r">
+                <div class="border-b border-[#D8D1CD] p-4">
+                    <h2 class="text-sm font-bold">Hộp thư tư vấn</h2>
+                    <p class="mt-1 text-xs text-[#6F6966]">@conversationPage.TotalCount cuộc trò chuyện</p>
+                </div>
+                <div class="min-h-0 flex-1 divide-y divide-[#E8E2DE] overflow-y-auto">
+                @foreach (var conversation in conversationPage.Items)
                 {
-                    <button type="button" class="block w-full p-4 text-left hover:bg-[#F3EDEA]" @onclick="() => SelectAsync(conversation.Id)">
-                        <b class="text-sm">@conversation.Subject</b>
-                        <span class="block text-xs text-[#6F6966]">@conversation.CustomerName · @conversation.Status</span>
+                    <button type="button"
+                            class="block w-full px-4 py-3 text-left hover:bg-white @(_selected?.Id == conversation.Id ? "bg-white shadow-[inset_3px_0_0_#B83A3A]" : "")"
+                            @onclick="() => SelectAsync(conversation.Id)">
+                        <span class="flex items-center justify-between gap-2">
+                            <b class="truncate text-sm">@conversation.Subject</b>
+                            <span class="shrink-0 rounded-full bg-[#F2EFEC] px-2 py-1 text-[10px] font-semibold text-[#6F6966]">@StatusLabel(conversation.Status)</span>
+                        </span>
+                        <span class="mt-1 block text-xs text-[#6F6966]">@conversation.CustomerName</span>
+                        <span class="mt-1 block truncate text-xs text-[#6F6966]">
+                            @(conversation.Messages.OrderByDescending(message => message.CreatedAt).FirstOrDefault()?.Content ?? "Chưa có tin nhắn")
+                        </span>
                     </button>
                 }
-            </div>
+                </div>
+            </aside>
             @if (_selected is not null)
             {
-                <section class="rounded-xl border border-[#D8D1CD] bg-[#F8F5F2] p-5">
-                    <h2 class="font-bold">@_selected.Subject</h2>
-                    <div class="my-4 max-h-96 space-y-3 overflow-y-auto">
-                        @foreach (var message in _selected.Messages)
+                <section class="flex min-h-0 min-w-0 flex-col bg-white">
+                    <header class="flex items-center justify-between gap-3 border-b border-[#E8E2DE] px-4 py-3 sm:px-6">
+                        <div class="min-w-0">
+                            <h2 class="truncate font-bold">@_selected.Subject</h2>
+                            <p class="mt-1 text-xs text-[#6F6966]">@_selected.CustomerName · @StatusLabel(_selected.Status)</p>
+                        </div>
+                        <button type="button" class="shrink-0 rounded-lg border border-[#D8D1CD] px-3 py-2 text-xs font-semibold hover:bg-[#F8F5F2]"
+                                disabled="@Busy" @onclick="RefreshSelectedAsync">Làm mới</button>
+                    </header>
+                    <div class="flex-1 space-y-4 overflow-y-auto bg-[#FCFBFA] p-4 sm:p-6">
+                        @foreach (var message in _selected.Messages.OrderBy(message => message.CreatedAt))
                         {
-                            <div class="rounded-lg border border-[#D8D1CD] bg-white p-3">
-                                <p class="text-xs font-bold">@message.SenderName</p>
-                                <p class="mt-1 text-sm">@message.Content</p>
+                            var isManager = message.SenderUserId != _selected.CustomerUserId;
+                            <div class="flex @(isManager ? "justify-end" : "justify-start")">
+                                <div class="max-w-[85%] rounded-2xl @(isManager ? "rounded-br-md bg-[#B83A3A] text-white" : "rounded-bl-md border border-[#E8E2DE] bg-white text-[#242424]") px-4 py-3 shadow-sm sm:max-w-[75%]">
+                                    <p class="text-[11px] font-bold @(isManager ? "text-white/80" : "text-[#6F6966]")">@message.SenderName</p>
+                                    <p class="mt-1 whitespace-pre-wrap break-words text-sm">@message.Content</p>
+                                    <p class="mt-2 text-right text-[10px] @(isManager ? "text-white/70" : "text-[#8C8581]")">@message.CreatedAt.ToLocalTime().ToString("dd/MM HH:mm")</p>
+                                </div>
                             </div>
                         }
                     </div>
                     @if (_selected.Status != "Closed")
                     {
-                        <form @onsubmit="SendAsync" @onsubmit:preventDefault class="flex gap-2">
-                            <input class="min-w-0 flex-1 rounded-lg border border-[#D8D1CD] px-3 py-2 text-sm" @bind="_message" maxlength="2000" />
-                            <button type="submit" class="rounded-lg bg-[#B83A3A] px-4 py-2 text-sm font-bold text-white" disabled="@Busy">Gửi</button>
-                            <button type="button" class="rounded-lg border px-3 py-2 text-sm" disabled="@Busy" @onclick="CloseAsync">Đóng</button>
+                        <form @onsubmit="SendAsync" @onsubmit:preventDefault class="flex items-end gap-2 border-t border-[#E8E2DE] bg-white p-3 sm:p-4">
+                            <textarea aria-label="Tin nhắn" class="max-h-28 min-h-11 min-w-0 flex-1 resize-y rounded-xl border border-[#D8D1CD] px-4 py-3 text-sm focus:border-[#B83A3A] focus:outline-none"
+                                      rows="1" @bind="_message" maxlength="2000" placeholder="Nhập tin nhắn trả lời..."></textarea>
+                            <button type="submit" class="rounded-xl bg-[#B83A3A] px-5 py-3 text-sm font-bold text-white hover:bg-[#9F3030]"
+                                    disabled="@Busy || string.IsNullOrWhiteSpace(_message)">Gửi</button>
+                            <button type="button" class="rounded-xl border border-[#D8D1CD] px-3 py-3 text-sm font-semibold hover:bg-[#F8F5F2]"
+                                    disabled="@Busy" @onclick="CloseAsync">Đóng</button>
                         </form>
                     }
+                    else
+                    {
+                        <p class="border-t border-[#E8E2DE] bg-[#F8F5F2] p-4 text-center text-sm text-[#6F6966]">Cuộc trò chuyện đã đóng.</p>
+                    }
                 </section>
+            }
+            else
+            {
+                <div class="flex items-center justify-center p-8 text-center text-sm text-[#6F6966]">Chọn cuộc trò chuyện để xem và trả lời tin nhắn.</div>
             }
         </div>
     }
@@ -59,7 +95,8 @@
     private readonly CancellationTokenSource _lifetime = new();
     private PagedResponse<ConsultationConversationResponse>? _page;
     private ConsultationConversationResponse? _selected;
-    private string _message = "", _error = "";
+    private string _message = "";
+    private string? _error;
     private bool _loading, _working;
     private bool Busy => _loading || _working;
     protected override Task OnInitializedAsync() => LoadAsync();
@@ -67,6 +104,7 @@
     private async Task LoadAsync()
     {
         _loading = true;
+        _error = null;
         try
         {
             _page = await Api.GetConsultationsAsync(new(null, null, 1, 100), _lifetime.Token);
@@ -78,14 +116,20 @@
 
     private async Task SelectAsync(int id)
     {
-        _selected = await Api.GetConsultationAsync(id, _lifetime.Token);
-        _message = "";
+        _error = null;
+        try
+        {
+            _selected = await Api.GetConsultationAsync(id, _lifetime.Token);
+            _message = "";
+        }
+        catch (AuthApiException error) { _error = error.Message; }
     }
 
     private async Task SendAsync()
     {
         if (_selected is null || string.IsNullOrWhiteSpace(_message)) return;
         _working = true;
+        _error = null;
         try
         {
             _selected = await Api.SendConsultationMessageAsync(_selected.Id, new(_message.Trim()), _lifetime.Token);
@@ -99,10 +143,18 @@
     {
         if (_selected is null) return;
         _working = true;
+        _error = null;
         try { _selected = await Api.CloseConsultationAsync(_selected.Id, _lifetime.Token); await LoadAsync(); }
         catch (AuthApiException error) { _error = error.Message; }
         finally { _working = false; }
     }
+
+    private async Task RefreshSelectedAsync()
+    {
+        if (_selected is not null) await SelectAsync(_selected.Id);
+    }
+
+    private static string StatusLabel(string status) => status == "Closed" ? "Đã đóng" : "Đang xử lý";
 
     public void Dispose() { _lifetime.Cancel(); _lifetime.Dispose(); }
 }

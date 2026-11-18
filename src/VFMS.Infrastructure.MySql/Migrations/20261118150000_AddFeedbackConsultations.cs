@@ -1,8 +1,11 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Metadata;
 
 namespace VFMS.Infrastructure.MySql.Migrations;
 
+[DbContext(typeof(VfmsMySqlDbContext))]
+[Migration("20261118150000_AddFeedbackConsultations")]
 public partial class AddFeedbackConsultations : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
