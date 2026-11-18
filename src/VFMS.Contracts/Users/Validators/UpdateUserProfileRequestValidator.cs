@@ -19,5 +19,11 @@ public sealed class UpdateUserProfileRequestValidator : AbstractValidator<Update
                 Uri.TryCreate(url, UriKind.Absolute, out var parsed) &&
                 (parsed.Scheme == Uri.UriSchemeHttps || parsed.Scheme == Uri.UriSchemeHttp))
             .WithMessage("Avatar URL must be a valid HTTP or HTTPS URL.");
+
+        RuleFor(x => x.DateOfBirth)
+            .Must(dob => !dob.HasValue ||
+                (dob.Value >= new DateOnly(1900, 1, 1) &&
+                 dob.Value < DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7))))
+            .WithMessage("Date of birth must be a valid date before today.");
     }
 }

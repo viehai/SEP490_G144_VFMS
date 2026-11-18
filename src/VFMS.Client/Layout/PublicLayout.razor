@@ -3,22 +3,22 @@
 @inject NavigationManager Navigation
 @implements IAsyncDisposable
 
-<div class="min-h-screen flex flex-col bg-[#F2EFEC] text-[#242424] font-['Inter',sans-serif] w-full max-w-full overflow-x-hidden">
+<div class="min-h-screen flex flex-col bg-[#F2EFEC] text-[#252323] font-['Inter',sans-serif] w-full max-w-full overflow-x-hidden">
     
     <!-- ============================================================== -->
-    <!-- PUBLIC NAVBAR (Charcoal text, Frosted Warm Neutral on scroll)  -->
+    <!-- PUBLIC NAVBAR (Warm Neutral + Charcoal, Shrinking on scroll)   -->
     <!-- ============================================================== -->
     <header id="vfms-navbar" @ref="_navbar" class="public-navbar">
         
         <!-- Brand Logo -->
-        <a href="/" class="public-navbar__logo flex items-center gap-2.5 flex-shrink-0 group whitespace-nowrap" aria-label="Victor Fitness - Trang chủ">
-            <img src="/brand/logo-dark.png" alt="Victor Fitness" class="w-24 sm:w-32 h-10 object-contain transition-opacity duration-300 group-hover:opacity-80" />
+        <a href="/" class="public-navbar__logo inline-flex items-center min-h-[44px] flex-shrink-0 group whitespace-nowrap" aria-label="Victor Fitness - Trang chủ">
+            <img src="/brand/logo-dark.png" alt="Victor Fitness" class="h-9 sm:h-10 w-auto object-contain object-left transition-opacity duration-200 group-hover:opacity-80" />
         </a>
 
         <!-- Menu Links -->
-        <nav class="public-navbar__nav hidden xl:flex items-center font-['Montserrat',sans-serif] text-[11px] 2xl:text-xs font-bold uppercase tracking-wider whitespace-nowrap" aria-label="Điều hướng chính">
+        <nav class="public-navbar__nav hidden xl:flex items-center font-['Montserrat',sans-serif] text-[11px] 2xl:text-xs font-bold uppercase tracking-[0.09em] whitespace-nowrap" aria-label="Điều hướng chính">
             <a href="/#featured-classes" class="@NavLinkCls">LỚP HỌC NỔI BẬT</a>
-            <a href="/#pricing-memberships" class="@NavLinkCls">GÓI HỘI VIÊN</a>
+            <a href="/membership-plans" class="@NavLinkCls">GÓI HỘI VIÊN</a>
             <a href="/yoga/schedule" class="@NavLinkCls">LỊCH TẬP YOGA</a>
             <a href="/trainers" class="@NavLinkCls">HUẤN LUYỆN VIÊN</a>
             <a href="/#explore-equipment" class="@NavLinkCls">TIỆN ÍCH &amp; DỊCH VỤ</a>
@@ -172,13 +172,13 @@
     private readonly string _navigationId = Guid.NewGuid().ToString("N");
     private bool _disposed;
     private bool IsHome => string.IsNullOrEmpty(Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].Trim('/'));
-    private string NavLinkCls => "text-[#242424] hover:text-[#B83A3A] font-bold transition-colors";
-    private string ManagerLinkClass => "text-[10px] font-bold uppercase text-[#242424] hover:text-[#B83A3A] transition-colors";
-    private string MyMembershipsClass => "max-w-12 whitespace-normal text-center text-[10px] font-bold uppercase leading-tight text-[#242424] hover:text-[#B83A3A] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 sm:max-w-none sm:whitespace-nowrap sm:text-[11px]";
-    private string ProfileLinkClass => "inline-block max-w-40 truncate font-['Montserrat',sans-serif] text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-[#242424] hover:text-[#B83A3A] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4";
-    private string LogoutBtnClass => "bg-[#B83A3A] hover:bg-[#9F3030] text-white font-['Montserrat',sans-serif] font-bold text-[11px] xl:text-xs uppercase tracking-wider px-3.5 py-2 rounded-lg transition-colors shadow-sm disabled:opacity-60";
-    private string LoginLinkClass => "hidden sm:inline-block font-['Montserrat',sans-serif] text-[11px] xl:text-xs font-bold uppercase tracking-wider text-[#242424] hover:text-[#B83A3A] px-3 py-1.5 transition-colors";
-    private string RegisterLinkClass => "bg-[#B83A3A] hover:bg-[#9F3030] text-white font-['Montserrat',sans-serif] font-bold text-[11px] xl:text-xs uppercase tracking-wider px-4 py-2 transition-all duration-200 rounded-lg shadow-sm";
+    private string NavLinkCls => "inline-flex items-center min-h-[44px] text-[#252323] hover:text-[#B83A3A] font-bold transition-colors";
+    private string ManagerLinkClass => "inline-flex items-center min-h-[44px] font-['Montserrat',sans-serif] text-[10px] font-bold uppercase tracking-[0.08em] text-[#252323] hover:text-[#B83A3A] transition-colors";
+    private string MyMembershipsClass => "inline-flex items-center justify-center min-h-[44px] max-w-12 whitespace-normal text-center font-['Montserrat',sans-serif] text-[10px] font-bold uppercase leading-tight tracking-[0.06em] text-[#252323] hover:text-[#B83A3A] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 sm:max-w-none sm:whitespace-nowrap sm:text-[11px]";
+    private string ProfileLinkClass => "inline-flex items-center min-h-[44px] max-w-40 truncate font-['Montserrat',sans-serif] text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.08em] text-[#252323] hover:text-[#B83A3A] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4";
+    private string LogoutBtnClass => "inline-flex items-center justify-center min-h-[44px] bg-[#B83A3A] hover:bg-[#9F3030] active:bg-[#7F2929] text-white font-['Montserrat',sans-serif] font-extrabold text-[11px] xl:text-xs uppercase tracking-[0.08em] px-4 py-2 rounded-lg transition-colors disabled:opacity-60";
+    private string LoginLinkClass => "hidden sm:inline-flex items-center min-h-[44px] font-['Montserrat',sans-serif] text-[11px] xl:text-xs font-bold uppercase tracking-[0.08em] text-[#252323] hover:text-[#B83A3A] px-3 transition-colors";
+    private string RegisterLinkClass => "inline-flex items-center justify-center min-h-[44px] bg-[#B83A3A] hover:bg-[#9F3030] active:bg-[#7F2929] text-white font-['Montserrat',sans-serif] font-extrabold text-[11px] xl:text-xs uppercase tracking-[0.08em] px-4 sm:px-5 py-2 transition-colors duration-200 rounded-lg";
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
