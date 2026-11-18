@@ -14,7 +14,11 @@ public sealed class UserAdministrationMapping : IRegister
                 : source.Email)
             .Map(destination => destination.AccountStatus, source => source.AccountStatus.ToString())
             .Map(destination => destination.Roles, source =>
-                source.UserRoles.Select(userRole => userRole.Role.RoleName).Order().ToArray());
+                source.UserRoles
+                    .Where(userRole => !userRole.IsDeleted && userRole.Role != null && !userRole.Role.IsDeleted)
+                    .Select(userRole => userRole.Role.RoleName)
+                    .Order()
+                    .ToArray());
 
         config.NewConfig<ApplicationUser, UserProfileResponse>()
             .Map(destination => destination.Email, source => source.Email.EndsWith("@walkin.invalid")
@@ -22,6 +26,15 @@ public sealed class UserAdministrationMapping : IRegister
                 : source.Email)
             .Map(destination => destination.AccountStatus, source => source.AccountStatus.ToString())
             .Map(destination => destination.Roles, source =>
-                source.UserRoles.Select(userRole => userRole.Role.RoleName).Order().ToArray());
+                source.UserRoles
+                    .Where(userRole => !userRole.IsDeleted && userRole.Role != null && !userRole.Role.IsDeleted)
+                    .Select(userRole => userRole.Role.RoleName)
+                    .Order()
+                    .ToArray())
+            .Map(destination => destination.CreatedAt, source => source.CreatedAt)
+            .Map(destination => destination.DateOfBirth, source =>
+                source.PhysicalProfile != null && !source.PhysicalProfile.IsDeleted
+                    ? source.PhysicalProfile.DateOfBirth
+                    : null);
     }
 }

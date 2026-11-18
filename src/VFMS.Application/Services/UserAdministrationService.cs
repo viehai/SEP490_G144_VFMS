@@ -87,6 +87,15 @@ public sealed class UserAdministrationService : IUserAdministrationService
         user.FullName = request.FullName.Trim();
         user.PhoneNumber = phoneNumber;
         user.AvatarUrl = string.IsNullOrWhiteSpace(request.AvatarUrl) ? null : request.AvatarUrl.Trim();
+        if (request.DateOfBirth.HasValue)
+        {
+            user.PhysicalProfile ??= new PhysicalProfile { MemberUserId = user.UserId };
+            user.PhysicalProfile.DateOfBirth = request.DateOfBirth.Value;
+        }
+        else if (user.PhysicalProfile is not null)
+        {
+            user.PhysicalProfile.DateOfBirth = null;
+        }
         await _repository.UpdateUserAsync(user, cancellationToken);
 
         return Result<UserProfileResponse>.Success(_mapper.Map<UserProfileResponse>(user));
