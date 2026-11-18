@@ -1,0 +1,108 @@
+@page "/manager/consultations"
+@layout ManagerAdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using VFMS.Contracts.Common
+@using VFMS.Contracts.Consultations
+@attribute [Authorize(Roles = "Manager")]
+@inject SystemAdministrationApiClient Api
+@implements IDisposable
+
+<PageTitle>Tư vấn khách hàng | Victor Fitness</PageTitle>
+<div class="workspace-page space-y-6">
+    <header class="border-b border-[#D8D1CD] pb-6">
+        <p class="text-xs font-bold tracking-wider text-[#B83A3A]">VFMS / LIVE CONSULTATION</p>
+        <h1 class="mt-2 text-3xl font-extrabold text-[#242424]">Hội thoại tư vấn.</h1>
+    </header>
+    @if (_error is not null) { <p role="alert" class="rounded-lg border border-red-300 bg-red-50 p-3 text-sm">@_error</p> }
+    @if (_loading) { <p>Đang tải hội thoại...</p> }
+    else if (_page is { Items.Count: > 0 } page)
+    {
+        <div class="grid gap-4 lg:grid-cols-[320px_1fr]">
+            <div class="divide-y divide-[#D8D1CD] rounded-xl border border-[#D8D1CD] bg-[#F8F5F2]">
+                @foreach (var conversation in page.Items)
+                {
+                    <button type="button" class="block w-full p-4 text-left hover:bg-[#F3EDEA]" @onclick="() => SelectAsync(conversation.Id)">
+                        <b class="text-sm">@conversation.Subject</b>
+                        <span class="block text-xs text-[#6F6966]">@conversation.CustomerName · @conversation.Status</span>
+                    </button>
+                }
+            </div>
+            @if (_selected is not null)
+            {
+                <section class="rounded-xl border border-[#D8D1CD] bg-[#F8F5F2] p-5">
+                    <h2 class="font-bold">@_selected.Subject</h2>
+                    <div class="my-4 max-h-96 space-y-3 overflow-y-auto">
+                        @foreach (var message in _selected.Messages)
+                        {
+                            <div class="rounded-lg border border-[#D8D1CD] bg-white p-3">
+                                <p class="text-xs font-bold">@message.SenderName</p>
+                                <p class="mt-1 text-sm">@message.Content</p>
+                            </div>
+                        }
+                    </div>
+                    @if (_selected.Status != "Closed")
+                    {
+                        <form @onsubmit="SendAsync" @onsubmit:preventDefault class="flex gap-2">
+                            <input class="min-w-0 flex-1 rounded-lg border border-[#D8D1CD] px-3 py-2 text-sm" @bind="_message" maxlength="2000" />
+                            <button type="submit" class="rounded-lg bg-[#B83A3A] px-4 py-2 text-sm font-bold text-white" disabled="@Busy">Gửi</button>
+                            <button type="button" class="rounded-lg border px-3 py-2 text-sm" disabled="@Busy" @onclick="CloseAsync">Đóng</button>
+                        </form>
+                    }
+                </section>
+            }
+        </div>
+    }
+    else { <p>Chưa có cuộc tư vấn.</p> }
+</div>
+
+@code {
+    private readonly CancellationTokenSource _lifetime = new();
+    private PagedResponse<ConsultationConversationResponse>? _page;
+    private ConsultationConversationResponse? _selected;
+    private string _message = "", _error = "";
+    private bool _loading, _working;
+    private bool Busy => _loading || _working;
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _page = await Api.GetConsultationsAsync(new(null, null, 1, 100), _lifetime.Token);
+            if (_page.Items.Count > 0 && _selected is null) await SelectAsync(_page.Items.First().Id);
+        }
+        catch (AuthApiException error) { _error = error.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task SelectAsync(int id)
+    {
+        _selected = await Api.GetConsultationAsync(id, _lifetime.Token);
+        _message = "";
+    }
+
+    private async Task SendAsync()
+    {
+        if (_selected is null || string.IsNullOrWhiteSpace(_message)) return;
+        _working = true;
+        try
+        {
+            _selected = await Api.SendConsultationMessageAsync(_selected.Id, new(_message.Trim()), _lifetime.Token);
+            _message = "";
+        }
+        catch (AuthApiException error) { _error = error.Message; }
+        finally { _working = false; }
+    }
+
+    private async Task CloseAsync()
+    {
+        if (_selected is null) return;
+        _working = true;
+        try { _selected = await Api.CloseConsultationAsync(_selected.Id, _lifetime.Token); await LoadAsync(); }
+        catch (AuthApiException error) { _error = error.Message; }
+        finally { _working = false; }
+    }
+
+    public void Dispose() { _lifetime.Cancel(); _lifetime.Dispose(); }
+}
