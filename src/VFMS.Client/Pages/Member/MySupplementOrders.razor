@@ -29,10 +29,24 @@
         </div>
         @if (!_ongoing)
         {
-            <select class="mb-2 rounded-lg border border-vfms-border bg-vfms-surface px-3 py-1.5 text-xs font-semibold text-vfms-text outline-none focus:border-vfms-primary" aria-label="Lọc trạng thái" @bind="_status" @bind:after="() => LoadAsync(1)">
+            <div class="mb-2 flex flex-wrap items-center gap-2">
+            <select aria-label="Khoảng thời gian" class="rounded-lg border border-vfms-border bg-vfms-surface px-3 py-1.5 text-xs font-semibold text-vfms-text outline-none focus:border-vfms-primary" value="@_period" @onchange="args => PeriodAsync(args.Value?.ToString() ?? string.Empty)">
+                @foreach (var (key, label) in Periods) { <option value="@key">@label</option> }
+            </select>
+            @if (_period == CustomPeriod)
+            {
+                <label class="flex items-center gap-1 text-xs text-vfms-text-secondary">Từ
+                    <input type="date" class="rounded-lg border border-vfms-border bg-vfms-surface px-3 py-1.5 text-xs font-semibold text-vfms-text outline-none focus:border-vfms-primary" max="@Iso(_to ?? Today)" @bind="_from" @bind:after="DatesChangedAsync" />
+                </label>
+                <label class="flex items-center gap-1 text-xs text-vfms-text-secondary">đến
+                    <input type="date" class="rounded-lg border border-vfms-border bg-vfms-surface px-3 py-1.5 text-xs font-semibold text-vfms-text outline-none focus:border-vfms-primary" min="@Iso(_from)" max="@Iso(Today)" @bind="_to" @bind:after="DatesChangedAsync" />
+                </label>
+            }
+            <select class="rounded-lg border border-vfms-border bg-vfms-surface px-3 py-1.5 text-xs font-semibold text-vfms-text outline-none focus:border-vfms-primary" aria-label="Lọc trạng thái" @bind="_status" @bind:after="() => LoadAsync(1)">
                 <option value="">Mọi trạng thái</option>
                 @foreach (var status in OperationsText.OrderStatuses) { <option value="@status">@OperationsText.Label(status)</option> }
             </select>
+            </div>
         }
     </div>
 
@@ -85,7 +99,7 @@
     else
     {
         <div class="space-y-3 rounded-[12px] border border-vfms-border bg-vfms-surface p-8 text-center">
-            <p role="status" class="text-sm text-vfms-text-secondary">@(_ongoing ? "Không có đơn nào đang xử lý." : "Chưa có đơn hàng.")</p>
+            <p role="status" class="text-sm text-vfms-text-secondary">@(_ongoing ? "Không có đơn nào đang xử lý." : HistoryFiltered ? "Không có đơn nào trong khoảng thời gian hoặc trạng thái đã chọn." : "Chưa có đơn hàng.")</p>
             <a href="/supplements" class="@Ui.PrimaryButton inline-block">Đến cửa hàng</a>
         </div>
     }
@@ -96,6 +110,46 @@
     private readonly CancellationTokenSource _lifetime = new();
     private PagedResponse<SupplementOrderResponse>? _page;
     private string _status = "";
+    private const string CustomPeriod = "custom";
+
+    /// <summary>History periods. Dates are Vietnam dates; the API treats "to" as the whole day.</summary>
+    private static readonly (string Key, string Label)[] Periods =
+    [
+        ("", "Mọi thời gian"),
+        ("30", "30 ngày qua"),
+        ("90", "3 tháng qua"),
+        ("365", "12 tháng qua"),
+        (CustomPeriod, "Chọn ngày..."),
+    ];
+
+    private string _period = "";
+    private DateOnly? _from, _to;
+    private static DateOnly Today => DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7));
+    private bool HistoryFiltered => _status != "" || _from.HasValue || _to.HasValue;
+
+    private static string? Iso(DateOnly? date) => date?.ToString("yyyy-MM-dd");
+
+    private Task PeriodAsync(string period)
+    {
+        _period = period;
+        if (int.TryParse(period, out var days))
+        {
+            _from = Today.AddDays(-days + 1);
+            _to = null;
+        }
+        else if (period != CustomPeriod)
+        {
+            _from = _to = null;
+        }
+        return LoadAsync(1);
+    }
+
+    private Task DatesChangedAsync()
+    {
+        // Swap a reversed range instead of showing an error: the shopper clearly meant the days in between.
+        if (_from > _to) (_from, _to) = (_to, _from);
+        return LoadAsync(1);
+    }
     private string? _notice, _error;
     private int? _confirmCancelId;
     private bool _ongoing = true, _loading, _working;
@@ -110,7 +164,8 @@
     private Task SwitchAsync(bool ongoing)
     {
         _ongoing = ongoing;
-        _status = "";
+        _status = _period = "";
+        _from = _to = null;
         return LoadAsync(1);
     }
 
@@ -121,7 +176,7 @@
         {
             _page = _ongoing
                 ? await Api.GetOngoingOrdersAsync(page, PageSize, _lifetime.Token)
-                : await Api.GetOrdersAsync(new(string.IsNullOrEmpty(_status) ? null : _status, Page: page, PageSize: PageSize), mine: true, _lifetime.Token);
+                : await Api.GetOrdersAsync(new(string.IsNullOrEmpty(_status) ? null : _status, _from, _to, Page: page, PageSize: PageSize), mine: true, _lifetime.Token);
         }
         catch (AuthApiException error) { _error = error.Message; }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
