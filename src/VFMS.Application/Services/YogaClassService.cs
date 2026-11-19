@@ -166,6 +166,10 @@ public sealed class YogaClassService : IYogaClassService
                 "YOGA_PUBLISH_TOO_LATE");
         if (yogaClass.RegistrationDeadline <= _clock.GetUtcNow().UtcDateTime)
             return Result<YogaClassResponse>.Failure("The registration deadline has already passed.", "YOGA_DEADLINE_PASSED");
+        if (!(await ActiveInstructorIdsAsync(cancellationToken)).Contains(yogaClass.InstructorUserId))
+            return Result<YogaClassResponse>.Failure(
+                "The class instructor is not an active yoga instructor. Assign an active instructor before publishing.",
+                "YOGA_INSTRUCTOR_INACTIVE");
 
         var before = Describe(yogaClass);
         yogaClass.ClassStatus = YogaClassStatus.Open;
@@ -309,8 +313,11 @@ public sealed class YogaClassService : IYogaClassService
         if (to < from || to.DayNumber - from.DayNumber > 62)
             return Result<IReadOnlyList<YogaSessionResponse>>.Failure("Choose a date range of up to 62 days.", "YOGA_INVALID_RANGE");
 
+        // A class whose trainer is no longer an active yoga instructor is hidden as a whole.
+        var teaching = await ActiveInstructorIdsAsync(cancellationToken);
         var sessions = (await _repository.GetSessionsAsync(from, to, cancellationToken))
             .Where(s => s.ScheduleStatus != YogaScheduleStatus.Cancelled && PublishedStatuses.Contains(s.YogaClass.ClassStatus))
+            .Where(s => teaching.Contains(s.YogaClass.InstructorUserId))
             .Where(s => Matches(s, query))
             .ToArray();
         var names = await _repository.GetUserNamesAsync(sessions.Select(s => InstructorOf(s, s.YogaClass)), cancellationToken);
@@ -343,6 +350,9 @@ public sealed class YogaClassService : IYogaClassService
     }
 
     // ── Rules ────────────────────────────────────────────────────
+
+    private async Task<HashSet<string>> ActiveInstructorIdsAsync(CancellationToken cancellationToken) =>
+        (await _repository.GetUsersInRoleAsync(InstructorRole, cancellationToken)).Select(u => u.UserId).ToHashSet();
 
     private async Task<Result<YogaClassResponse>?> ValidateClassReferencesAsync(YogaClassRequest request, CancellationToken cancellationToken)
     {

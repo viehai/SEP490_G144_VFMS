@@ -102,7 +102,7 @@ public sealed class YogaRepository : AuditedRepositoryBase, IYogaRepository
 
     public async Task<IReadOnlyList<ApplicationUser>> GetUsersInRoleAsync(string roleName, CancellationToken cancellationToken = default) =>
         await Context.ApplicationUserRoles.AsNoTracking()
-            .Where(ur => ur.Role.RoleName == roleName && ur.User.AccountStatus == AccountStatus.Active)
+            .Where(ur => ur.Role.RoleName == roleName && ur.User.AccountStatus == AccountStatus.Active && !ur.User.IsBanned)
             .Select(ur => ur.User)
             .Distinct()
             .ToListAsync(cancellationToken);

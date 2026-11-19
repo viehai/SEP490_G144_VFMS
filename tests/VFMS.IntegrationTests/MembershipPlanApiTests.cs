@@ -145,10 +145,12 @@ public sealed class MembershipPlanApiTests : IAsyncLifetime
     [InlineData(YogaClassStatus.Draft, 7)]          // not published
     [InlineData(YogaClassStatus.Cancelled, 7)]
     [InlineData(YogaClassStatus.Open, -1)]          // registration closed
-    public async Task YogaPlanIsHiddenFromTheCatalogWhileNoYogaClassCanBeBooked(YogaClassStatus? status, int deadlineDays)
+    [InlineData(YogaClassStatus.Open, 7, false)]    // the class's trainer is not an active yoga instructor
+    public async Task YogaPlanIsHiddenFromTheCatalogWhileNoYogaClassCanBeBooked(
+        YogaClassStatus? status, int deadlineDays, bool instructorTeaches = true)
     {
         if (status is { } classStatus)
-            await SeedYogaClassAsync(ManagerUserId, DateTime.UtcNow.AddDays(deadlineDays), classStatus);
+            await SeedYogaClassAsync(ManagerUserId, DateTime.UtcNow.AddDays(deadlineDays), classStatus, instructorTeaches);
         using var manager = CreateClient();
         var gymId = (await CreatePlanAsync(manager, "Gym Monthly")).GetProperty("id").GetInt32();
         var request = PlanRequest("Yoga Monthly");
@@ -547,12 +549,21 @@ public sealed class MembershipPlanApiTests : IAsyncLifetime
         return client;
     }
 
-    /// <summary>A yoga class members can still book: yoga-only plans are sold only while one exists.</summary>
+    /// <summary>
+    /// A yoga class members can still book: yoga-only plans are sold only while one exists.
+    /// The instructor gets the YogaInstructor role unless <paramref name="instructorTeaches"/> is false.
+    /// </summary>
     private async Task SeedYogaClassAsync(string instructorId, DateTime deadlineUtc,
-        YogaClassStatus status = YogaClassStatus.Open)
+        YogaClassStatus status = YogaClassStatus.Open, bool instructorTeaches = true)
     {
         await using var scope = _app.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+        if (instructorTeaches)
+        {
+            var role = await db.ApplicationRoles.FirstOrDefaultAsync(r => r.RoleName == "YogaInstructor")
+                       ?? db.ApplicationRoles.Add(new ApplicationRole { RoleName = "YogaInstructor" }).Entity;
+            db.ApplicationUserRoles.Add(new ApplicationUserRole { UserId = instructorId, Role = role });
+        }
         db.YogaClasses.Add(new YogaClass
         {
             YogaClassType = new YogaClassType { TypeName = "Hatha" }, ClassName = "Hatha Morning",

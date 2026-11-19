@@ -393,12 +393,21 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
         return yogaPlan;
     }
 
-    /// <summary>A yoga class members can still book: yoga-only plans are sold only while one exists.</summary>
+    /// <summary>
+    /// A yoga class members can still book: yoga-only plans are sold only while one exists.
+    /// The instructor gets the YogaInstructor role unless <paramref name="instructorTeaches"/> is false.
+    /// </summary>
     private async Task SeedYogaClassAsync(string instructorId, DateTime deadlineUtc,
-        YogaClassStatus status = YogaClassStatus.Open)
+        YogaClassStatus status = YogaClassStatus.Open, bool instructorTeaches = true)
     {
         await using var scope = _app.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+        if (instructorTeaches)
+        {
+            var role = await db.ApplicationRoles.FirstOrDefaultAsync(r => r.RoleName == "YogaInstructor")
+                       ?? db.ApplicationRoles.Add(new ApplicationRole { RoleName = "YogaInstructor" }).Entity;
+            db.ApplicationUserRoles.Add(new ApplicationUserRole { UserId = instructorId, Role = role });
+        }
         db.YogaClasses.Add(new YogaClass
         {
             YogaClassType = new YogaClassType { TypeName = "Hatha" }, ClassName = "Hatha Morning",
