@@ -186,6 +186,38 @@ public sealed class EquipmentRepository : AuditedRepositoryBase, IEquipmentRepos
         return (items, total);
     }
 
+    public async Task<EquipmentIssueStats> GetIssueStatsAsync(
+        int equipmentId, DateTime recentSinceUtc, CancellationToken cancellationToken = default)
+    {
+        var issues = Context.EquipmentIssueReports.AsNoTracking().Where(i => i.EquipmentId == equipmentId);
+        var stats = await issues
+            .GroupBy(i => i.EquipmentId)
+            .Select(g => new
+            {
+                Total = g.Count(),
+                Open = g.Count(i => i.IssueStatus == EquipmentIssueStatus.Reported || i.IssueStatus == EquipmentIssueStatus.InProgress ||
+                                    i.IssueStatus == EquipmentIssueStatus.Escalated),
+                Recent = g.Count(i => i.ReportedAt >= recentSinceUtc),
+                Safety = g.Count(i => i.IncidentType == IncidentType.Safety),
+                LastReportedAt = g.Max(i => (DateTime?)i.ReportedAt),
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (stats is null)
+            return new EquipmentIssueStats(0, 0, 0, 0, null, null);
+        var lastClosedAt = await issues
+            .Where(i => i.IssueStatus == EquipmentIssueStatus.Resolved || i.IssueStatus == EquipmentIssueStatus.MarkedSafe)
+            .MaxAsync(i => i.ResolvedAt, cancellationToken);
+        return new EquipmentIssueStats(stats.Total, stats.Open, stats.Recent, stats.Safety, stats.LastReportedAt, lastClosedAt);
+    }
+
+    public async Task<IReadOnlyDictionary<int, int>> CountRecentIssuesAsync(
+        IReadOnlyCollection<int> equipmentIds, DateTime sinceUtc, CancellationToken cancellationToken = default) =>
+        await Context.EquipmentIssueReports.AsNoTracking()
+            .Where(i => equipmentIds.Contains(i.EquipmentId) && i.ReportedAt >= sinceUtc)
+            .GroupBy(i => i.EquipmentId)
+            .Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Key, x => x.Count, cancellationToken);
+
     public Task<EquipmentIssueReport?> GetIssueAsync(int id, CancellationToken cancellationToken = default) =>
         IssuesWithDetails().AsSplitQuery().FirstOrDefaultAsync(i => i.Id == id, cancellationToken);
 

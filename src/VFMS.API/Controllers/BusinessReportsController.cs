@@ -27,6 +27,16 @@ public sealed class BusinessReportsController : ControllerBase
     public async Task<IActionResult> GetReports([FromQuery] BusinessReportListRequest request, CancellationToken cancellationToken) =>
         this.ToActionResult(await _service.GetReportsAsync(request, cancellationToken));
 
+    /// <summary>
+    /// The metrics for several periods in a row (oldest first), ending with the period that contains the date.
+    /// Calculated from the current data; nothing is saved.
+    /// </summary>
+    [HttpGet("trend")]
+    [ProducesResponseType(typeof(BusinessReportTrendResponse), 200)]
+    [ProducesResponseType(400)]
+    public async Task<IActionResult> GetTrend([FromQuery] BusinessReportTrendRequest request, CancellationToken cancellationToken) =>
+        this.ToActionResult(await _service.GetTrendAsync(request, cancellationToken));
+
     [HttpGet("{id:int}")]
     [ProducesResponseType(typeof(BusinessReportResponse), 200)]
     [ProducesResponseType(404)]

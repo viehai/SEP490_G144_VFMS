@@ -55,8 +55,29 @@ public sealed record EquipmentResponse(
     string? DescriptionUrl,
     string? Note,
     DateTime CreatedAt,
-    DateTime UpdatedAt
+    DateTime UpdatedAt,
+    int RecentIssueCount = 0
 );
+
+/// <summary>
+/// Issue history of one piece of equipment. Open issues are Reported, InProgress or Escalated; closed ones are
+/// Resolved or MarkedSafe. <see cref="RepeatedIssues"/> is true when it had at least
+/// <see cref="RepeatedIssueThreshold"/> reports in the last <see cref="RecentDays"/> days.
+/// </summary>
+public sealed record EquipmentIssueSummaryResponse(
+    int EquipmentId,
+    int TotalIssues,
+    int OpenIssues,
+    int RecentIssues,
+    int SafetyIssues,
+    DateTime? LastReportedAt,
+    DateTime? LastClosedAt,
+    bool RepeatedIssues
+)
+{
+    public const int RecentDays = 90;
+    public const int RepeatedIssueThreshold = 3;
+}
 
 // ── Issues (UC-71, UC-72, UC-73) ───────────────────────────────
 

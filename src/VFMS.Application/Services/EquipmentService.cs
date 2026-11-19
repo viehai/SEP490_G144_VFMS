@@ -115,9 +115,27 @@ public sealed class EquipmentService : IEquipmentService
         var query = new EquipmentQuery(Clean(request.Search), request.CategoryId, status, Clean(request.Brand),
             ParseSort(request.Sort), request.Page, request.PageSize);
         var (items, total) = await _repository.SearchEquipmentAsync(query, cancellationToken);
+        IReadOnlyDictionary<int, int> recent = items.Count == 0
+            ? new Dictionary<int, int>()
+            : await _repository.CountRecentIssuesAsync(items.Select(e => e.Id).ToArray(), RecentSince(), cancellationToken);
+        var rows = items
+            .Select(e => _mapper.Map<EquipmentResponse>(e) with { RecentIssueCount = recent.GetValueOrDefault(e.Id) })
+            .ToArray();
         return Result<PagedResponse<EquipmentResponse>>.Success(new PagedResponse<EquipmentResponse>(
-            request.Page, request.PageSize, total, items.Select(_mapper.Map<EquipmentResponse>).ToArray()));
+            request.Page, request.PageSize, total, rows));
     }
+
+    public async Task<Result<EquipmentIssueSummaryResponse>> GetIssueSummaryAsync(int id, CancellationToken cancellationToken = default)
+    {
+        if (await _repository.GetEquipmentAsync(id, cancellationToken) is null)
+            return Result<EquipmentIssueSummaryResponse>.Failure("Equipment was not found.", "EQUIPMENT_NOT_FOUND", 404);
+        var stats = await _repository.GetIssueStatsAsync(id, RecentSince(), cancellationToken);
+        return Result<EquipmentIssueSummaryResponse>.Success(new EquipmentIssueSummaryResponse(
+            id, stats.Total, stats.Open, stats.Recent, stats.Safety, stats.LastReportedAt, stats.LastClosedAt,
+            RepeatedIssues: stats.Recent >= EquipmentIssueSummaryResponse.RepeatedIssueThreshold));
+    }
+
+    private static DateTime RecentSince() => DateTime.UtcNow.AddDays(-EquipmentIssueSummaryResponse.RecentDays);
 
     public async Task<Result<IReadOnlyList<string>>> GetBrandsAsync(CancellationToken cancellationToken = default) =>
         Result<IReadOnlyList<string>>.Success(await _repository.GetBrandsAsync(cancellationToken));

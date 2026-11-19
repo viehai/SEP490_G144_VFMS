@@ -8,7 +8,7 @@ using VFMS.Infrastructure.Repositories;
 
 namespace VFMS.IntegrationTests;
 
-/// <summary>Equipment and issue lists (filters, sorts, search) against a real SQLite database.</summary>
+/// <summary>Equipment and issue lists (filters, sorts, search) and issue counts against a real SQLite database.</summary>
 public sealed class EquipmentRepositoryTests : IAsyncLifetime
 {
     private readonly SqliteConnection _connection = new("Data Source=:memory:");
@@ -126,5 +126,49 @@ public sealed class EquipmentRepositoryTests : IAsyncLifetime
         Assert.Equal(["Loose bolt", "Torn pad"], await Issues(EquipmentIssueSort.Severity, "ST-0001"));
         Assert.Equal(3, (await Issues(EquipmentIssueSort.Newest, "Treadmill")).Length);
         Assert.Empty(await Issues(EquipmentIssueSort.Newest, "Rower"));
+    }
+
+    [Fact]
+    public async Task IssueStatsCountOpenRecentAndSafety()
+    {
+        await using var db = new SqliteTestContext(_options);
+        var treadmill = await db.Equipments.SingleAsync(e => e.EquipmentName == "Treadmill T5");
+        var dusty = await db.EquipmentIssueReports.SingleAsync(i => i.Description == "Dusty");
+        dusty.IssueStatus = EquipmentIssueStatus.Resolved;
+        dusty.ResolvedAt = new DateTime(2025, 6, 7);
+        await db.SaveChangesAsync();
+
+        var stats = await new EquipmentRepository(db).GetIssueStatsAsync(treadmill.Id, new DateTime(2025, 6, 4));
+
+        Assert.Equal(3, stats.Total);
+        Assert.Equal(2, stats.Open);
+        Assert.Equal(2, stats.Recent);      // Belt slips (5/6) and Dusty (6/6)
+        Assert.Equal(1, stats.Safety);
+        Assert.Equal(new DateTime(2025, 6, 6), stats.LastReportedAt);
+        Assert.Equal(new DateTime(2025, 6, 7), stats.LastClosedAt);
+    }
+
+    [Fact]
+    public async Task EquipmentWithoutIssuesHasEmptyStats()
+    {
+        await using var db = new SqliteTestContext(_options);
+        var mat = await db.Equipments.SingleAsync(e => e.EquipmentName == "Yoga Mat");
+
+        var stats = await new EquipmentRepository(db).GetIssueStatsAsync(mat.Id, new DateTime(2025, 1, 1));
+
+        Assert.Equal(new EquipmentIssueStats(0, 0, 0, 0, null, null), stats);
+    }
+
+    [Fact]
+    public async Task RecentIssueCountsArePerEquipmentAndSkipTheRest()
+    {
+        await using var db = new SqliteTestContext(_options);
+        var ids = await db.Equipments.Select(e => e.Id).ToArrayAsync();
+        var names = await db.Equipments.ToDictionaryAsync(e => e.Id, e => e.EquipmentName);
+
+        var counts = await new EquipmentRepository(db).CountRecentIssuesAsync(ids, new DateTime(2025, 6, 2));
+
+        Assert.Equal(new Dictionary<string, int> { ["Treadmill T5"] = 3, ["Bench Press"] = 1 },
+            counts.ToDictionary(c => names[c.Key], c => c.Value));
     }
 }

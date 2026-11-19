@@ -14,6 +14,10 @@ public enum EquipmentIssueSort { Newest, Severity }
 public sealed record EquipmentQuery(
     string? Search, int? CategoryId, EquipmentStatus? Status, string? Brand, EquipmentSort Sort, int Page, int PageSize);
 
+/// <summary>Issue counts of one piece of equipment; Recent counts reports since the given time.</summary>
+public sealed record EquipmentIssueStats(
+    int Total, int Open, int Recent, int Safety, DateTime? LastReportedAt, DateTime? LastClosedAt);
+
 public sealed record EquipmentIssueQuery(
     EquipmentIssueStatus? Status, int? EquipmentId, string? ReportedByUserId, string? Search, EquipmentIssueSort Sort,
     int Page, int PageSize);
@@ -44,6 +48,10 @@ public interface IEquipmentRepository : IAuditedRepository
     Task<(IReadOnlyList<EquipmentIssueReport> Items, int TotalCount)> SearchIssuesAsync(
         EquipmentIssueQuery query, CancellationToken cancellationToken = default);
     Task<EquipmentIssueReport?> GetIssueAsync(int id, CancellationToken cancellationToken = default);
+    Task<EquipmentIssueStats> GetIssueStatsAsync(int equipmentId, DateTime recentSinceUtc, CancellationToken cancellationToken = default);
+    /// <summary>Reports since the given time for each listed equipment; equipment with none is left out.</summary>
+    Task<IReadOnlyDictionary<int, int>> CountRecentIssuesAsync(
+        IReadOnlyCollection<int> equipmentIds, DateTime sinceUtc, CancellationToken cancellationToken = default);
     Task<bool> UserHasRoleAsync(string userId, string roleName, CancellationToken cancellationToken = default);
 }
 
@@ -62,6 +70,7 @@ public interface IEquipmentService
         EquipmentListRequest request, CancellationToken cancellationToken = default);
     Task<Result<IReadOnlyList<string>>> GetBrandsAsync(CancellationToken cancellationToken = default);
     Task<Result<EquipmentResponse>> GetEquipmentAsync(int id, CancellationToken cancellationToken = default);
+    Task<Result<EquipmentIssueSummaryResponse>> GetIssueSummaryAsync(int id, CancellationToken cancellationToken = default);
     Task<Result<EquipmentResponse>> CreateEquipmentAsync(
         EquipmentRequest request, string actorUserId, string? ipAddress, CancellationToken cancellationToken = default);
     Task<Result<EquipmentResponse>> UpdateEquipmentAsync(
