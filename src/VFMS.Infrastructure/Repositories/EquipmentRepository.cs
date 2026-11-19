@@ -186,6 +186,14 @@ public sealed class EquipmentRepository : AuditedRepositoryBase, IEquipmentRepos
         return (items, total);
     }
 
+    public async Task<IReadOnlyDictionary<EquipmentIssueStatus, int>> CountIssuesByStatusAsync(
+        string? reportedByUserId, CancellationToken cancellationToken = default) =>
+        await Context.EquipmentIssueReports.AsNoTracking()
+            .Where(i => reportedByUserId == null || i.ReportedByUserId == reportedByUserId)
+            .GroupBy(i => i.IssueStatus)
+            .Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Key, x => x.Count, cancellationToken);
+
     public async Task<EquipmentIssueStats> GetIssueStatsAsync(
         int equipmentId, DateTime recentSinceUtc, CancellationToken cancellationToken = default)
     {

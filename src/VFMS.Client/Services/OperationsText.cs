@@ -76,6 +76,15 @@ public static class OperationsText
             _ => "border-[#D8D1CD] bg-[#ECE8E4] text-[#6B7280]"
         };
 
+    /// <summary>A status filter option with its count, e.g. "Mới báo (3)"; "Tất cả (12)" when <paramref name="status"/> is empty.</summary>
+    public static string CountLabel(string? status, VFMS.Contracts.Operations.StatusCountsResponse? counts)
+    {
+        var label = string.IsNullOrEmpty(status) ? "Tất cả" : Label(status);
+        if (counts is null) return label;
+        var count = string.IsNullOrEmpty(status) ? counts.Total : counts.Counts.GetValueOrDefault(status);
+        return $"{label} ({count})";
+    }
+
     /// <summary>Vietnamese text for an API error code, or null to keep the server's message.</summary>
     public static string? ErrorMessage(string? code) => code switch
     {

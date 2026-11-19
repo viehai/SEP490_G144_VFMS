@@ -171,4 +171,23 @@ public sealed class EquipmentRepositoryTests : IAsyncLifetime
         Assert.Equal(new Dictionary<string, int> { ["Treadmill T5"] = 3, ["Bench Press"] = 1 },
             counts.ToDictionary(c => names[c.Key], c => c.Value));
     }
+
+    [Fact]
+    public async Task IssuesAreCountedPerStatus()
+    {
+        await using (var setup = new SqliteTestContext(_options))
+        {
+            var dusty = await setup.EquipmentIssueReports.SingleAsync(i => i.Description == "Dusty");
+            dusty.IssueStatus = EquipmentIssueStatus.Resolved;
+            await setup.SaveChangesAsync();
+        }
+        await using var db = new SqliteTestContext(_options);
+
+        var counts = await new EquipmentRepository(db).CountIssuesByStatusAsync(null);
+
+        Assert.Equal(4, counts[EquipmentIssueStatus.Reported]);
+        Assert.Equal(1, counts[EquipmentIssueStatus.Resolved]);
+        Assert.False(counts.ContainsKey(EquipmentIssueStatus.Escalated));
+        Assert.Empty(await new EquipmentRepository(db).CountIssuesByStatusAsync("someone-else"));
+    }
 }

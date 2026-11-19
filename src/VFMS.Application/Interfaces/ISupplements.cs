@@ -1,4 +1,5 @@
 using VFMS.Contracts.Common;
+using VFMS.Contracts.Operations;
 using VFMS.Contracts.Supplements;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
@@ -69,6 +70,7 @@ public interface ISupplementRepository : IAuditedRepository
         DateTime? fromUtc, DateTime? toUtcExclusive, string? search,
         int page, int pageSize, CancellationToken cancellationToken = default);
     Task<SupplementOrder?> GetOrderAsync(int id, CancellationToken cancellationToken = default);
+    Task<IReadOnlyDictionary<SupplementOrderStatus, int>> CountOrdersByStatusAsync(CancellationToken cancellationToken = default);
     Task<bool> OrderNumberExistsAsync(string orderNumber, CancellationToken cancellationToken = default);
 }
 
@@ -119,6 +121,8 @@ public interface ISupplementOrderService
     // Staff / Manager
     Task<Result<PagedResponse<SupplementOrderResponse>>> GetAllAsync(
         SupplementOrderListRequest request, CancellationToken cancellationToken = default);
+    /// <summary>Orders per status for the Staff and Manager boards.</summary>
+    Task<Result<StatusCountsResponse>> GetCountsAsync(CancellationToken cancellationToken = default);
     Task<Result<SupplementOrderResponse>> ProcessAsync(
         int id, string handlerUserId, string? ipAddress, CancellationToken cancellationToken = default);
     Task<Result<SupplementOrderResponse>> ReadyForPickupAsync(

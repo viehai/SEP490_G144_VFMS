@@ -2,6 +2,7 @@ using MapsterMapper;
 using VFMS.Application.Interfaces;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Equipment;
+using VFMS.Contracts.Operations;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
 
@@ -91,6 +92,9 @@ public sealed class EquipmentIssueService : IEquipmentIssueService
         return Result<PagedResponse<EquipmentIssueResponse>>.Success(new PagedResponse<EquipmentIssueResponse>(
             request.Page, request.PageSize, total, items.Select(_mapper.Map<EquipmentIssueResponse>).ToArray()));
     }
+
+    public async Task<Result<StatusCountsResponse>> GetIssueCountsAsync(CancellationToken cancellationToken = default) =>
+        Result<StatusCountsResponse>.Success(StatusCounts.From(await _repository.CountIssuesByStatusAsync(null, cancellationToken)));
 
     public async Task<Result<EquipmentIssueResponse>> GetIssueAsync(
         int id, string? onlyReportedByUserId, CancellationToken cancellationToken = default)

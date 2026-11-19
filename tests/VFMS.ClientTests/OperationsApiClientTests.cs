@@ -7,6 +7,7 @@ using VFMS.Client.Services;
 using VFMS.Contracts.Auth;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Equipment;
+using VFMS.Contracts.Operations;
 using VFMS.Contracts.Supplements;
 using Xunit;
 
@@ -140,6 +141,41 @@ public sealed class OperationsApiClientTests
 
         Assert.Contains("lowStock=true", _requests[0].Query);
         Assert.DoesNotContain("lowStock", _requests[1].Query);
+    }
+
+    [Theory]
+    [InlineData(null, "Tất cả (6)")]
+    [InlineData("Reported", "Mới báo (4)")]
+    [InlineData("Resolved", "Đã xử lý (0)")]
+    public void StatusOptionsShowTheirCount(string? status, string expected)
+    {
+        var counts = new StatusCountsResponse(new Dictionary<string, int> { ["Reported"] = 4, ["Escalated"] = 2, ["Resolved"] = 0 });
+        Assert.Equal(expected, OperationsText.CountLabel(status, counts));
+    }
+
+    [Fact]
+    public void WithoutCountsTheOptionIsJustTheLabel() =>
+        Assert.Equal("Mới báo", OperationsText.CountLabel("Reported", null));
+
+    [Theory]
+    [InlineData("issues", "/api/equipment-issues/counts")]
+    [InlineData("orders", "/api/supplement-orders/counts")]
+    [InlineData("mine", "/api/purchase-proposals/mine/counts")]
+    [InlineData("review", "/api/purchase-proposals/counts")]
+    public async Task CountsComeFromEachBoard(string board, string path)
+    {
+        using var api = Client(new StatusCountsResponse(new Dictionary<string, int> { ["Pending"] = 2 }));
+
+        var counts = board switch
+        {
+            "issues" => await api.GetIssueCountsAsync(),
+            "orders" => await api.GetOrderCountsAsync(),
+            "mine" => await api.GetProposalCountsAsync(mine: true),
+            _ => await api.GetProposalCountsAsync(mine: false),
+        };
+
+        Assert.Equal(path, _requests.Single().AbsolutePath);
+        Assert.Equal(2, counts.Total);
     }
 
     private sealed class Handler(Func<HttpRequestMessage, Task<HttpResponseMessage>> send) : HttpMessageHandler

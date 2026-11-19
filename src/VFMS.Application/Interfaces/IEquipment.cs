@@ -1,5 +1,6 @@
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Equipment;
+using VFMS.Contracts.Operations;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
 
@@ -48,6 +49,9 @@ public interface IEquipmentRepository : IAuditedRepository
     Task<(IReadOnlyList<EquipmentIssueReport> Items, int TotalCount)> SearchIssuesAsync(
         EquipmentIssueQuery query, CancellationToken cancellationToken = default);
     Task<EquipmentIssueReport?> GetIssueAsync(int id, CancellationToken cancellationToken = default);
+    /// <summary>Issues per status; only the given reporter's issues when <paramref name="reportedByUserId"/> is set.</summary>
+    Task<IReadOnlyDictionary<EquipmentIssueStatus, int>> CountIssuesByStatusAsync(
+        string? reportedByUserId, CancellationToken cancellationToken = default);
     Task<EquipmentIssueStats> GetIssueStatsAsync(int equipmentId, DateTime recentSinceUtc, CancellationToken cancellationToken = default);
     /// <summary>Reports since the given time for each listed equipment; equipment with none is left out.</summary>
     Task<IReadOnlyDictionary<int, int>> CountRecentIssuesAsync(
@@ -86,6 +90,8 @@ public interface IEquipmentIssueService
         ReportEquipmentIssueRequest request, string reporterUserId, string? ipAddress, CancellationToken cancellationToken = default);
     Task<Result<PagedResponse<EquipmentIssueResponse>>> GetIssuesAsync(
         EquipmentIssueListRequest request, string? onlyReportedByUserId, CancellationToken cancellationToken = default);
+    /// <summary>Issues per status for the Staff and Manager boards.</summary>
+    Task<Result<StatusCountsResponse>> GetIssueCountsAsync(CancellationToken cancellationToken = default);
     /// <summary>Returns the issue; when <paramref name="onlyReportedByUserId"/> is set, other users' issues are not found.</summary>
     Task<Result<EquipmentIssueResponse>> GetIssueAsync(
         int id, string? onlyReportedByUserId, CancellationToken cancellationToken = default);

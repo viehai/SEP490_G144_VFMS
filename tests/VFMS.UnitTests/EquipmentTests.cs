@@ -429,6 +429,24 @@ public sealed class EquipmentTests
         Assert.Equal(0, rows.Single(r => r.Id == quiet.Id).RecentIssueCount);
     }
 
+    [Fact]
+    public async Task IssueCountsListEveryStatus()
+    {
+        var repo = new Repo();
+        var equipment = repo.SeedEquipment(EquipmentStatus.Operational);
+        repo.SeedIssue(equipment, EquipmentIssueStatus.Reported);
+        repo.SeedIssue(equipment, EquipmentIssueStatus.Reported);
+        repo.SeedIssue(equipment, EquipmentIssueStatus.Escalated);
+
+        var counts = (await Issues(repo).GetIssueCountsAsync()).Data!;
+
+        Assert.Equal(5, counts.Counts.Count);
+        Assert.Equal(2, counts.Counts["Reported"]);
+        Assert.Equal(1, counts.Counts["Escalated"]);
+        Assert.Equal(0, counts.Counts["Resolved"]);
+        Assert.Equal(3, counts.Total);
+    }
+
     private static void Issue(Repo repo, Equipment equipment, IncidentType type, EquipmentIssueStatus status, DateTime reportedAt,
         DateTime? resolvedAt = null)
     {
@@ -581,6 +599,12 @@ public sealed class EquipmentTests
 
         public Task<EquipmentIssueReport?> GetIssueAsync(int id, CancellationToken cancellationToken = default) =>
             Task.FromResult(_issues.FirstOrDefault(i => i.Id == id));
+
+        public Task<IReadOnlyDictionary<EquipmentIssueStatus, int>> CountIssuesByStatusAsync(
+            string? reportedByUserId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyDictionary<EquipmentIssueStatus, int>>(_issues
+                .Where(i => reportedByUserId == null || i.ReportedByUserId == reportedByUserId)
+                .GroupBy(i => i.IssueStatus).ToDictionary(g => g.Key, g => g.Count()));
 
         public DateTime? LastRecentSince { get; private set; }
 

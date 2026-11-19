@@ -181,6 +181,12 @@ public sealed class SupplementRepository : AuditedRepositoryBase, ISupplementRep
 
     // ── Orders ───────────────────────────────────────────────────
 
+    public async Task<IReadOnlyDictionary<SupplementOrderStatus, int>> CountOrdersByStatusAsync(CancellationToken cancellationToken = default) =>
+        await Context.SupplementOrders.AsNoTracking()
+            .GroupBy(o => o.OrderStatus)
+            .Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Key, x => x.Count, cancellationToken);
+
     public async Task<(IReadOnlyList<SupplementOrder> Items, int TotalCount)> SearchOrdersAsync(
         string? customerUserId, IReadOnlyCollection<SupplementOrderStatus>? statuses, SupplementDeliveryType? deliveryType,
         DateTime? fromUtc, DateTime? toUtcExclusive, string? search,

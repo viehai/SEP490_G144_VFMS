@@ -344,6 +344,25 @@ public sealed class SupplementTests
 
     // ── Helpers ──────────────────────────────────────────────────
 
+    [Fact]
+    public async Task OrderCountsListEveryStatus()
+    {
+        var repo = new Repo();
+        var whey = repo.SeedProduct("Whey", 100m);
+        var orders = OrderService(repo);
+        await orders.PlaceOrderAsync(Pickup(L(whey, 1)), Customer, null);
+        var second = (await orders.PlaceOrderAsync(Pickup(L(whey, 1)), Customer, null)).Data!;
+        await orders.CancelAsync(second.Id, Customer, null);
+
+        var counts = (await orders.GetCountsAsync()).Data!;
+
+        Assert.Equal(6, counts.Counts.Count);
+        Assert.Equal(1, counts.Counts["Pending"]);
+        Assert.Equal(1, counts.Counts["Cancelled"]);
+        Assert.Equal(0, counts.Counts["Completed"]);
+        Assert.Equal(2, counts.Total);
+    }
+
     // ── Stock (GBR-69) ───────────────────────────────────────────
 
     [Fact]
@@ -623,6 +642,10 @@ public sealed class SupplementTests
 
         public Task<IReadOnlyList<SupplementProduct>> GetProductsAsync(IReadOnlyCollection<int> ids, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<SupplementProduct>>(Products.Where(p => ids.Contains(p.Id)).ToList());
+
+        public Task<IReadOnlyDictionary<SupplementOrderStatus, int>> CountOrdersByStatusAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyDictionary<SupplementOrderStatus, int>>(Orders
+                .GroupBy(o => o.OrderStatus).ToDictionary(g => g.Key, g => g.Count()));
 
         public Task<SupplementProduct?> GetProductSnapshotAsync(int id, CancellationToken cancellationToken = default) =>
             Task.FromResult(Products.FirstOrDefault(p => p.Id == id));

@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using VFMS.Client.Auth;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Equipment;
+using VFMS.Contracts.Operations;
 using VFMS.Contracts.Procurement;
 using VFMS.Contracts.Supplements;
 
@@ -96,6 +97,17 @@ public sealed class OperationsApiClient(HttpClient http, AuthSession session) : 
             note is null ? null : JsonContent.Create(new EquipmentIssueActionRequest(note)));
 
     // ── Purchase proposals ───────────────────────────────────────
+    // ── Counts per status (work board filters) ───────────────────
+    public Task<StatusCountsResponse> GetIssueCountsAsync(CancellationToken ct = default) =>
+        SendAsync<StatusCountsResponse>(HttpMethod.Get, $"{IssuesPath}/counts", ct);
+
+    public Task<StatusCountsResponse> GetOrderCountsAsync(CancellationToken ct = default) =>
+        SendAsync<StatusCountsResponse>(HttpMethod.Get, $"{OrdersPath}/counts", ct);
+
+    /// <summary>The Staff member's own proposals (<paramref name="mine"/>) or the Manager's sent proposals.</summary>
+    public Task<StatusCountsResponse> GetProposalCountsAsync(bool mine, CancellationToken ct = default) =>
+        SendAsync<StatusCountsResponse>(HttpMethod.Get, mine ? $"{ProposalsPath}/mine/counts" : $"{ProposalsPath}/counts", ct);
+
     public Task<PagedResponse<PurchaseProposalResponse>> GetProposalsAsync(PurchaseProposalListRequest request, bool mine, CancellationToken ct = default) =>
         SendAsync<PagedResponse<PurchaseProposalResponse>>(HttpMethod.Get, WithQuery(mine ? $"{ProposalsPath}/mine" : ProposalsPath,
             ("status", request.Status), ("search", request.Search),

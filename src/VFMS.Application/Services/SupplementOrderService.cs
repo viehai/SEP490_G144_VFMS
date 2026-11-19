@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using MapsterMapper;
 using VFMS.Application.Interfaces;
 using VFMS.Contracts.Common;
+using VFMS.Contracts.Operations;
 using VFMS.Contracts.Supplements;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
@@ -161,6 +162,9 @@ public sealed class SupplementOrderService : ISupplementOrderService
     }
 
     // ── Staff / Manager (UC-82) ──────────────────────────────────
+
+    public async Task<Result<StatusCountsResponse>> GetCountsAsync(CancellationToken cancellationToken = default) =>
+        Result<StatusCountsResponse>.Success(StatusCounts.From(await _repository.CountOrdersByStatusAsync(cancellationToken)));
 
     public Task<Result<PagedResponse<SupplementOrderResponse>>> GetAllAsync(
         SupplementOrderListRequest request, CancellationToken cancellationToken = default) =>

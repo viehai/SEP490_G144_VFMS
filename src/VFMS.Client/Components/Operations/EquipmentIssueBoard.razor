@@ -107,8 +107,8 @@
                 </label>
                 <label class="@Ui.Label" for="issue-status">Trạng thái
                     <select id="issue-status" class="@Ui.Field" @bind="_status" @bind:after="() => LoadAsync(1)">
-                        <option value="">Tất cả</option>
-                        @foreach (var status in OperationsText.IssueStatuses) { <option value="@status">@OperationsText.Label(status)</option> }
+                        <option value="">@OperationsText.CountLabel(null, _counts)</option>
+                        @foreach (var status in OperationsText.IssueStatuses) { <option value="@status">@OperationsText.CountLabel(status, _counts)</option> }
                     </select>
                 </label>
                 <label class="@Ui.Label" for="issue-sort">Sắp xếp
@@ -163,6 +163,7 @@
     private const int PageSize = 20;
     private readonly CancellationTokenSource _lifetime = new();
     private PagedResponse<EquipmentIssueResponse>? _page;
+    private VFMS.Contracts.Operations.StatusCountsResponse? _counts;
     private EquipmentIssueResponse? _selected;
     // Safety issues first by default, so the riskiest equipment is handled first.
     private string _status = "", _search = "", _sort = "severity", _action = "", _note = "";
@@ -232,6 +233,7 @@
         {
             _page = await Api.GetIssuesAsync(new(string.IsNullOrEmpty(_status) ? null : _status, null, page, PageSize,
                 string.IsNullOrWhiteSpace(_search) ? null : _search.Trim(), _sort), ct: token);
+            _counts = await Api.GetIssueCountsAsync(token); // statuses change as issues are handled
         }
         catch (AuthApiException error) { _error = error.Message; }
         finally { if (!token.IsCancellationRequested) _loading = false; }

@@ -64,8 +64,8 @@
                     </label>
                     <label class="@Ui.Label" for="review-status">Trạng thái
                         <select id="review-status" class="@Ui.Field" @bind="_status">
-                            <option value="">Tất cả</option>
-                            @foreach (var status in OperationsText.ProposalStatuses.Where(s => s != "Draft")) { <option value="@status">@OperationsText.Label(status)</option> }
+                            <option value="">@OperationsText.CountLabel(null, _counts)</option>
+                            @foreach (var status in OperationsText.ProposalStatuses.Where(s => s != "Draft")) { <option value="@status">@OperationsText.CountLabel(status, _counts)</option> }
                         </select>
                     </label>
                     <button type="submit" class="@Ui.Button">Áp dụng</button>
@@ -111,6 +111,7 @@
     private const int PageSize = 20;
     private readonly CancellationTokenSource _lifetime = new();
     private PagedResponse<PurchaseProposalResponse>? _page;
+    private VFMS.Contracts.Operations.StatusCountsResponse? _counts;
     private PurchaseProposalResponse? _selected;
     private string _search = "", _status = "Submitted", _note = "";
     private string? _notice, _error;
@@ -126,6 +127,7 @@
         {
             _page = await Api.GetProposalsAsync(new(string.IsNullOrEmpty(_status) ? null : _status,
                 string.IsNullOrWhiteSpace(_search) ? null : _search.Trim(), page, PageSize), mine: false, _lifetime.Token);
+            _counts = await Api.GetProposalCountsAsync(mine: false, _lifetime.Token);
         }
         catch (AuthApiException error) { _error = error.Message; }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
