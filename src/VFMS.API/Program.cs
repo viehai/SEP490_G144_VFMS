@@ -18,7 +18,6 @@ using VFMS.Contracts.Users.Validators;
 using VFMS.Domain.Enums;
 using VFMS.Infrastructure.Data;
 using VFMS.Infrastructure.Identity;
-using VFMS.Infrastructure.MySql;
 using VFMS.Infrastructure.Repositories;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -27,17 +26,8 @@ var builder = WebApplication.CreateBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? throw new InvalidOperationException("ConnectionStrings:DefaultConnection is not configured.");
 
-builder.Services.AddDbContext<VfmsDbContext, VfmsMySqlDbContext>(options =>
-    options.UseMySql(
-        connectionString,
-        new MySqlServerVersion(new Version(8, 0, 39)),
-        mysqlOptions =>
-        {
-            // The MySQL migration chain lives in its own assembly so the original SQL Server
-            // migration files in VFMS.Infrastructure/Migrations are never modified.
-            mysqlOptions.MigrationsAssembly(typeof(VfmsMySqlDbContext).Assembly.FullName);
-            mysqlOptions.MigrationsHistoryTable("__EFMigrationsHistoryMySql");
-        }));
+builder.Services.AddDbContext<VfmsDbContext>(options =>
+    options.UseSqlServer(connectionString));
 
 // ── FluentValidation ─────────────────────────────────────────
 builder.Services.AddFluentValidationAutoValidation();

@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
@@ -25,15 +26,12 @@ using VFMS.Infrastructure.Repositories;
 namespace VFMS.IntegrationTests;
 
 /// <summary>
-/// Module 6 – Competitions (UC-56..UC-62) against a real MySQL-backed database.
+/// Module 6 – Competitions (UC-56..UC-62) against an isolated SQLite database.
 /// The API is hosted in-process with the same controller and validation pipeline.
 /// </summary>
 public sealed class CompetitionApiTests
 {
-    private const string ConnectionString =
-        "Server=localhost;Port=3306;Database=VfmsDb;User Id=vfms;Password=Vfms@2026;TreatTinyAsBoolean=true;AllowUserVariables=true;CharSet=utf8mb4";
-
-    /// <summary>Unique per test run so the shared MySQL database never collides on emails or names.</summary>
+    /// <summary>Unique per test run so seeded emails and names remain distinct.</summary>
     private static readonly string RunId = Guid.NewGuid().ToString("N")[..8];
 
     [Fact]
@@ -323,8 +321,11 @@ public sealed class CompetitionApiTests
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Testing" });
         builder.WebHost.UseTestServer();
-        builder.Services.AddDbContext<VfmsDbContext>(options => options.UseMySql(
-            ConnectionString, new MySqlServerVersion(new Version(8, 0, 39))));
+        var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        builder.Services.AddSingleton(connection);
+        var dbOptions = new DbContextOptionsBuilder<VfmsDbContext>().UseSqlite(connection).Options;
+        builder.Services.AddScoped<VfmsDbContext>(_ => new SqliteTestContext(dbOptions));
         builder.Services.AddControllers().AddApplicationPart(typeof(CompetitionsController).Assembly);
         builder.Services.AddFluentValidationAutoValidation();
         builder.Services.AddValidatorsFromAssemblyContaining<CompetitionRequestValidator>();
@@ -344,6 +345,16 @@ public sealed class CompetitionApiTests
         builder.Services.AddAuthorization();
 
         var app = builder.Build();
+        await using (var scope = app.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+            await db.Database.EnsureCreatedAsync();
+            db.ApplicationRoles.AddRange(
+                new ApplicationRole { RoleName = "Member" },
+                new ApplicationRole { RoleName = "Staff" },
+                new ApplicationRole { RoleName = "Manager" });
+            await db.SaveChangesAsync();
+        }
         app.UseAuthentication();
         app.UseAuthorization();
         app.MapControllers();
