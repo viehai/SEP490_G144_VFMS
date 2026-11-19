@@ -7,6 +7,7 @@
 @using VFMS.Contracts.Equipment.Validators
 @attribute [Authorize(Roles = "Manager")]
 @inject OperationsApiClient Api
+@inject IJSRuntime JS
 @implements IDisposable
 
 <PageTitle>Thiết bị | Victor Fitness</PageTitle>
@@ -110,7 +111,10 @@
 
     <section class="@Ui.ListCard" aria-labelledby="equipment-list-title" aria-busy="@_loading">
         <div class="@Ui.ListHeader">
-            <h2 id="equipment-list-title" class="mb-3 text-sm font-bold text-vfms-text">Danh sách thiết bị</h2>
+            <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h2 id="equipment-list-title" class="text-sm font-bold text-vfms-text">Danh sách thiết bị</h2>
+                <button type="button" class="@Ui.Button" disabled="@_exporting" @onclick="ExportCsvAsync">@(_exporting ? "Đang xuất..." : "Xuất CSV")</button>
+            </div>
             <form @onsubmit="() => LoadAsync(1)" @onsubmit:preventDefault>
                 <fieldset disabled="@_working" class="flex flex-wrap items-end gap-3">
                     <label class="@Ui.Label w-full sm:w-64" for="eq-search">Tìm kiếm
@@ -247,6 +251,28 @@
     private List<EquipmentCategoryResponse> _categories = [];
     private List<string> _brands = [];
     private EquipmentResponse? _history;
+    private bool _exporting;
+
+    /// <summary>Downloads every equipment row that matches the current filters as a CSV file.</summary>
+    private async Task ExportCsvAsync()
+    {
+        if (_exporting) return;
+        _exporting = true;
+        _notice = _error = null;
+        try
+        {
+            int? category = int.TryParse(_filterCategory, out var id) ? id : null;
+            var (rows, truncated) = await CsvFile.CollectAsync((page, size) => Api.GetEquipmentAsync(
+                new(Blank(_search), category, Blank(_filterStatus), page, size, Blank(_filterBrand), _sort), _lifetime.Token));
+            var name = CsvFile.FileName("thiet-bi");
+            await CsvFile.DownloadAsync(JS, name, ListExports.Equipment(rows), _lifetime.Token);
+            _notice = $"Đã xuất {rows.Count} thiết bị ra {name}." + (truncated ? $" Chỉ lấy {CsvFile.MaxRows} dòng đầu, hãy lọc bớt." : "");
+        }
+        catch (AuthApiException error) { _error = error.Message; }
+        catch (JSException) { _error = "Trình duyệt không tải được tệp CSV. Vui lòng thử lại."; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        finally { _exporting = false; }
+    }
     private EquipmentResponse? _statusTarget;
     private int? _editingId, _editingCategoryId;
     private bool _formOpen, _loading, _working;

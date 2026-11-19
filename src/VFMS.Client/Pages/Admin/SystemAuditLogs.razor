@@ -8,6 +8,7 @@
 @using VFMS.Contracts.SystemAdministration.Validators
 @attribute [Authorize(Roles = "Admin")]
 @inject SystemAdministrationApiClient Api
+@inject IJSRuntime JS
 @implements IDisposable
 
 <PageTitle>Nhật ký hệ thống | Victor Fitness</PageTitle>
@@ -19,6 +20,10 @@
         <p class="mt-2 text-sm text-vfms-text-secondary">Theo dõi các thay đổi dữ liệu và thao tác quan trọng. Bộ lọc ngày tính theo giờ UTC.</p>
     </header>
 
+    @if (_notice is not null)
+    {
+        <p role="status" class="rounded-[10px] border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">@_notice</p>
+    }
     @if (_error is not null)
     {
         <p role="alert" class="rounded-[10px] border border-red-300 bg-red-50 p-4 text-sm text-red-900">@_error</p>
@@ -49,7 +54,10 @@
 
     <section class="rounded-[12px] border border-vfms-border bg-vfms-surface shadow-sm overflow-hidden" aria-labelledby="log-list-title" aria-busy="@_loading">
         <div class="border-b border-vfms-border p-5 bg-vfms-surface-alt/40">
-            <h2 id="log-list-title" class="mb-3 text-sm font-bold text-vfms-text">Bản ghi</h2>
+            <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h2 id="log-list-title" class="text-sm font-bold text-vfms-text">Bản ghi</h2>
+                <button type="button" class="@Button" disabled="@_exporting" @onclick="ExportCsvAsync">@(_exporting ? "Đang xuất..." : "Xuất CSV")</button>
+            </div>
             <EditForm Model="_filter" OnValidSubmit="() => LoadAsync(1)" novalidate>
                 <ContractValidation TRequest="AuditLogListRequest" Validator="_validator" CreateRequest="() => CreateRequest(1)" @ref="_validation" />
                 <ValidationSummary />
@@ -144,8 +152,32 @@
     private ContractValidation<AuditLogListRequest>? _validation;
     private PagedResponse<AuditLogResponse>? _page;
     private AuditLogResponse? _selected;
-    private string? _error;
-    private bool _loading;
+    private string? _error, _notice;
+    private bool _loading, _exporting;
+
+    /// <summary>Downloads every log entry that matches the current filters as a CSV file.</summary>
+    private async Task ExportCsvAsync()
+    {
+        if (_exporting) return;
+        _exporting = true;
+        _error = _notice = null;
+        try
+        {
+            var (rows, truncated) = await CsvFile.CollectAsync((page, size) =>
+                Api.GetAuditLogsAsync(CreateRequest(page) with { PageSize = size }, _lifetime.Token));
+            var name = CsvFile.FileName("nhat-ky-he-thong");
+            await CsvFile.DownloadAsync(JS, name, ListExports.AuditLogs(rows, ActionLabel), _lifetime.Token);
+            _notice = $"Đã xuất {rows.Count} bản ghi ra {name}." + (truncated ? $" Chỉ lấy {CsvFile.MaxRows} dòng đầu, hãy lọc bớt." : "");
+        }
+        catch (AuthApiException error)
+        {
+            _error = error.Message;
+            _validation?.ShowErrors(error.Errors);
+        }
+        catch (JSException) { _error = "Trình duyệt không tải được tệp CSV. Vui lòng thử lại."; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        finally { _exporting = false; }
+    }
 
     protected override Task OnInitializedAsync() => LoadAsync(1);
 

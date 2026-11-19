@@ -100,17 +100,5 @@ public static class ReportInsights
 
     private static string Plain(decimal value) => value.ToString("0.##", CultureInfo.InvariantCulture);
 
-    private static void Row(StringBuilder csv, params string[] cells)
-    {
-        csv.Append(string.Join(',', cells.Select(Escape)));
-        csv.Append("\r\n");
-    }
-
-    // Quote every text cell that needs it, and stop Excel from running a cell as a formula.
-    private static string Escape(string cell)
-    {
-        if (cell.Length > 0 && "=+-@".Contains(cell[0]) && !decimal.TryParse(cell, NumberStyles.Number, CultureInfo.InvariantCulture, out _))
-            cell = "'" + cell;
-        return cell.IndexOfAny([',', '"', '\r', '\n']) >= 0 ? $"\"{cell.Replace("\"", "\"\"")}\"" : cell;
-    }
+    private static void Row(StringBuilder csv, params string[] cells) => CsvFile.AppendRow(csv, cells);
 }

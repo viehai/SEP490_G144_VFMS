@@ -1,6 +1,7 @@
 @using VFMS.Contracts.Common
 @using VFMS.Contracts.Supplements
 @inject OperationsApiClient Api
+@inject IJSRuntime JS
 @implements IDisposable
 
 @* UC-81/82 Process Supplement Orders, shared by Staff and Manager. *@
@@ -71,7 +72,10 @@
 
 <section class="@Ui.ListCard" aria-labelledby="order-list-title" aria-busy="@_loading">
     <div class="@Ui.ListHeader">
-        <h2 id="order-list-title" class="mb-3 text-sm font-bold text-vfms-text">Đơn hàng</h2>
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 id="order-list-title" class="text-sm font-bold text-vfms-text">Đơn hàng</h2>
+            <button type="button" class="@Ui.Button" disabled="@_exporting" @onclick="ExportCsvAsync">@(_exporting ? "Đang xuất..." : "Xuất CSV")</button>
+        </div>
         <form @onsubmit="() => LoadAsync(1)" @onsubmit:preventDefault>
             <fieldset disabled="@_working" class="flex flex-wrap items-end gap-3">
                 <label class="@Ui.Label w-full sm:w-56" for="order-search">Tìm kiếm
@@ -137,6 +141,33 @@
     private readonly CancellationTokenSource _lifetime = new();
     private PagedResponse<SupplementOrderResponse>? _page;
     private VFMS.Contracts.Operations.StatusCountsResponse? _counts;
+    private bool _exporting;
+
+    /// <summary>Downloads every order that matches the current filters (status, type, dates, search) as a CSV file.</summary>
+    private async Task ExportCsvAsync()
+    {
+        if (_exporting) return;
+        if (_from > _to)
+        {
+            _error = "Ngày bắt đầu không được sau ngày kết thúc.";
+            return;
+        }
+        _exporting = true;
+        _notice = _error = null;
+        try
+        {
+            var (rows, truncated) = await CsvFile.CollectAsync((page, size) => Api.GetOrdersAsync(
+                new(Blank(_status), _from, _to, Blank(_type), Blank(_search), page, size), mine: false, _lifetime.Token));
+            var period = _from is null && _to is null ? "" : $"{_from:yyyy-MM-dd}_{_to:yyyy-MM-dd}-";
+            var name = CsvFile.FileName($"don-bo-sung-{period}".TrimEnd('-'));
+            await CsvFile.DownloadAsync(JS, name, ListExports.SupplementOrders(rows), _lifetime.Token);
+            _notice = $"Đã xuất {rows.Count} đơn ra {name}." + (truncated ? $" Chỉ lấy {CsvFile.MaxRows} dòng đầu, hãy lọc bớt." : "");
+        }
+        catch (AuthApiException error) { _error = error.Message; }
+        catch (JSException) { _error = "Trình duyệt không tải được tệp CSV. Vui lòng thử lại."; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        finally { _exporting = false; }
+    }
     private SupplementOrderResponse? _selected;
     private string _search = "", _status = "", _type = "", _courier = "", _tracking = "";
     private DateOnly? _from, _to;
