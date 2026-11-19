@@ -5,11 +5,12 @@ using Line = VFMS.Client.Services.SupplementCartStorage.SavedLine;
 
 namespace VFMS.ClientTests;
 
-/// <summary>Local only.</summary>
+/// <summary>The saved cart: reading it back, checking it against the store, and the stock limits.</summary>
 public sealed class SupplementCartStorageTests
 {
-    private static SupplementProductResponse Product(int id, decimal price, bool canOrder = true) =>
-        new(id, $"P{id}", "Whey Protein", null, null, price, canOrder ? "Active" : "OutOfStock", canOrder, DateTime.UtcNow, DateTime.UtcNow);
+    private static SupplementProductResponse Product(int id, decimal price, bool canOrder = true, int? stockLeft = null) =>
+        new(id, $"P{id}", "Whey Protein", null, null, price, canOrder ? "Active" : "OutOfStock", canOrder, DateTime.UtcNow, DateTime.UtcNow,
+            StockQuantity: stockLeft, LowStock: stockLeft is not null);
 
     [Theory]
     [InlineData(null)]
@@ -51,4 +52,24 @@ public sealed class SupplementCartStorageTests
     [Fact]
     public void EachUserHasTheirOwnKey() =>
         Assert.NotEqual(SupplementCartStorage.KeyFor("u1"), SupplementCartStorage.KeyFor("u2"));
+
+    [Fact]
+    public void ACartLineIsLimitedToTheStockShown()
+    {
+        Assert.Equal(3, SupplementCartStorage.MaxFor(Product(1, 10, stockLeft: 3)));
+        Assert.Equal(999, SupplementCartStorage.MaxFor(Product(1, 10)));
+    }
+
+    [Fact]
+    public void ReconcileLowersQuantitiesAboveTheStockLeft()
+    {
+        Line[] saved = [new(1, 5, 100, "Whey"), new(2, 2, 50, "Bar")];
+        var current = new Dictionary<int, SupplementProductResponse?> { [1] = Product(1, 100, stockLeft: 2), [2] = Product(2, 50) };
+
+        var result = SupplementCartStorage.Reconcile(saved, current);
+
+        Assert.Equal([(1, 2), (2, 2)], result.Lines.Select(l => (l.Product.Id, l.Quantity)));
+        Assert.Equal(["P1 (còn 2)"], result.Reduced);
+        Assert.Empty(result.Removed);
+    }
 }
