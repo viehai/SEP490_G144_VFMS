@@ -62,6 +62,17 @@
                     <label class="@Ui.Label" for="product-price">Giá bán (₫)
                         <InputNumber id="product-price" class="@Ui.Field" @bind-Value="_form.UnitPrice" min="1" step="1000" />
                     </label>
+                    @if (_editingId is null)
+                    {
+                        <label class="@Ui.Label" for="product-stock">Tồn kho ban đầu
+                            <InputNumber id="product-stock" class="@Ui.Field" @bind-Value="_form.StockQuantity" min="0" max="@SupplementStock.MaxQuantity" placeholder="Để trống nếu không theo dõi" aria-describedby="product-stock-hint" />
+                            <span id="product-stock-hint" class="mt-1 block text-xs font-normal text-vfms-text-secondary">Có số lượng thì đơn hàng tự trừ kho và tự chuyển "Hết hàng" khi về 0.</span>
+                        </label>
+                    }
+                    else
+                    {
+                        <p class="text-xs text-vfms-text-secondary">Tồn kho: <span class="font-semibold text-vfms-text">@StockText(_form.StockQuantity)</span>. Đổi tồn kho bằng nút "Kho" trong danh sách.</p>
+                    }
                     <label class="@Ui.Label" for="product-status">Trạng thái
                         <InputSelect id="product-status" class="@Ui.Field" @bind-Value="_form.Status">
                             @foreach (var status in OperationsText.ProductStatuses) { <option value="@status">@OperationsText.Label(status)</option> }
@@ -79,6 +90,42 @@
                     </div>
                 </fieldset>
             </EditForm>
+        </section>
+    }
+
+    @if (_stockTarget is { } stockOf)
+    {
+        <section class="@Ui.Card" aria-labelledby="stock-title">
+            <h2 id="stock-title" class="text-base font-bold text-vfms-text">Kho · @stockOf.Name</h2>
+            <p class="mt-1 text-xs text-vfms-text-secondary">Tồn kho hiện tại: <span class="font-semibold text-vfms-text">@StockText(stockOf.StockQuantity)</span></p>
+            <form class="mt-4" @onsubmit="SaveStockAsync" @onsubmit:preventDefault>
+                <fieldset disabled="@_working" class="grid gap-4 sm:grid-cols-[220px_160px_1fr]">
+                    <label class="@Ui.Label" for="stock-action">Thao tác
+                        <select id="stock-action" class="@Ui.Field" @bind="_stockAction">
+                            <option value="@SupplementStock.Add">Nhập thêm hàng</option>
+                            <option value="@SupplementStock.Set">Kiểm kê (đặt số lượng)</option>
+                            @if (stockOf.StockQuantity is not null)
+                            {
+                                <option value="@SupplementStock.StopTracking">Ngừng theo dõi tồn kho</option>
+                            }
+                        </select>
+                    </label>
+                    @if (_stockAction != SupplementStock.StopTracking)
+                    {
+                        <label class="@Ui.Label" for="stock-quantity">@(_stockAction == SupplementStock.Add ? "Số lượng nhập" : "Số lượng thực tế")
+                            <input id="stock-quantity" type="number" class="@Ui.Field" min="@(_stockAction == SupplementStock.Add ? 1 : 0)" max="@SupplementStock.MaxQuantity" @bind="_stockQuantity" required />
+                        </label>
+                    }
+                    <label class="@Ui.Label" for="stock-note">Ghi chú
+                        <input id="stock-note" class="@Ui.Field" @bind="_stockNote" maxlength="500" placeholder="VD: Nhập lô hàng 19/11" />
+                    </label>
+                    <p class="text-xs text-vfms-text-secondary sm:col-span-3">@StockActionHint</p>
+                    <div class="flex gap-2 sm:col-span-3">
+                        <button type="submit" class="@Ui.PrimaryButton">@(_working ? "Đang lưu..." : "Lưu")</button>
+                        <button type="button" class="@Ui.Button" @onclick="() => _stockTarget = null">Hủy</button>
+                    </div>
+                </fieldset>
+            </form>
         </section>
     }
 
@@ -119,6 +166,10 @@
                             @foreach (var (value, label) in Sorts) { <option value="@value">@label</option> }
                         </select>
                     </label>
+                    <label class="flex items-center gap-2 pb-2 text-xs font-semibold text-vfms-text" for="product-low-stock">
+                        <input id="product-low-stock" type="checkbox" class="h-4 w-4 accent-[#B83A3A]" @bind="_lowStock" @bind:after="() => LoadAsync(1)" />
+                        Sắp hết hàng (≤ @SupplementStock.LowStockThreshold)
+                    </label>
                     @if (HasFilters)
                     {
                         <button type="button" class="text-xs font-semibold text-vfms-primary underline-offset-2 hover:underline" @onclick="ClearFiltersAsync">Xóa bộ lọc</button>
@@ -137,9 +188,9 @@
         else if (_page is { Items.Count: > 0 } list)
         {
             <div class="overflow-x-auto">
-                <table class="workspace-table min-w-[960px]">
+                <table class="workspace-table min-w-[1060px]">
                     <thead>
-                        <tr><th scope="col">Sản phẩm</th><th scope="col">Thương hiệu</th><th scope="col">Loại</th><th scope="col" class="text-right">Giá bán</th><th scope="col">Trạng thái</th><th scope="col">Thao tác</th></tr>
+                        <tr><th scope="col">Sản phẩm</th><th scope="col">Thương hiệu</th><th scope="col">Loại</th><th scope="col" class="text-right">Giá bán</th><th scope="col" class="text-right">Tồn kho</th><th scope="col">Trạng thái</th><th scope="col">Thao tác</th></tr>
                     </thead>
                     <tbody>
                         @foreach (var row in list.Items)
@@ -167,10 +218,29 @@
                                 <td>@(row.Brand ?? "—")</td>
                                 <td>@(row.Category ?? "—")</td>
                                 <td class="text-right whitespace-nowrap">@OperationsText.Money(row.UnitPrice)</td>
+                                <td class="text-right whitespace-nowrap">
+                                    @if (row.StockQuantity is { } stock)
+                                    {
+                                        <span class="font-semibold">@stock</span>
+                                        @if (stock == 0)
+                                        {
+                                            <span class="ml-1 inline-block rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-bold text-[#DC2626]">Hết</span>
+                                        }
+                                        else if (row.LowStock)
+                                        {
+                                            <span class="ml-1 inline-block rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-[#D97706]">Sắp hết</span>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <span class="text-xs text-vfms-text-muted">Không theo dõi</span>
+                                    }
+                                </td>
                                 <td><span class="@OperationsText.Badge(row.Status)">@OperationsText.Label(row.Status)</span></td>
                                 <td>
                                     <div class="flex flex-nowrap whitespace-nowrap items-center gap-2">
                                         <button type="button" class="@Ui.Button" disabled="@Busy" aria-label="Sửa @row.Name" @onclick="() => StartEdit(row)">Sửa</button>
+                                        <button type="button" class="@Ui.Button" disabled="@Busy" aria-label="Kho @row.Name" @onclick="() => StartStock(row)">Kho</button>
                                         <select class="rounded-lg border border-vfms-border bg-vfms-surface px-2 py-1.5 text-xs font-semibold text-vfms-text" disabled="@Busy"
                                                 aria-label="Đổi trạng thái @row.Name" value="@row.Status" @onchange="args => ChangeStatusAsync(row, args.Value?.ToString())">
                                             @foreach (var status in OperationsText.ProductStatuses) { <option value="@status">@OperationsText.Label(status)</option> }
@@ -208,10 +278,15 @@
     private List<string> _categories = [];
     private List<string> _brands = [];
     private string _filterBrand = "", _sort = "name";
+    private bool _lowStock;
+    private SupplementProductResponse? _stockTarget;
+    private string _stockAction = SupplementStock.Add;
+    private int? _stockQuantity;
+    private string? _stockNote;
     private decimal? _minPrice, _maxPrice;
     private string? _priceError;
     private bool HasFilters => !string.IsNullOrWhiteSpace(_search) || _filterBrand != "" || _filterCategory != "" || _filterStatus != ""
-        || _minPrice.HasValue || _maxPrice.HasValue || _sort != "name";
+        || _minPrice.HasValue || _maxPrice.HasValue || _sort != "name" || _lowStock;
     private int? _editingId;
     private string? _brokenPreview;
     private readonly HashSet<int> _brokenImages = [];
@@ -228,7 +303,51 @@
 
     private SupplementProductRequest CreateRequest() => new(_form.Name.Trim(), _form.Description.Trim(), _form.ImageUrl.Trim(),
         _form.UnitPrice, Blank(_form.Category), _form.Status,
-        Brand: Blank(_form.Brand), Size: Blank(_form.Size), Flavour: Blank(_form.Flavour));
+        Brand: Blank(_form.Brand), Size: Blank(_form.Size), Flavour: Blank(_form.Flavour),
+        StockQuantity: _editingId is null ? _form.StockQuantity : null);
+
+    private static string StockText(int? stock) => stock is { } units ? $"{units} sản phẩm" : "không theo dõi";
+
+    private string StockActionHint => _stockAction switch
+    {
+        SupplementStock.Add => "Cộng thêm vào tồn kho hiện tại. Sản phẩm đang “Hết hàng” sẽ được mở bán lại.",
+        SupplementStock.Set => "Đặt tồn kho đúng bằng số đếm được. Về 0 thì sản phẩm chuyển “Hết hàng”.",
+        _ => "Đơn hàng sẽ không trừ kho nữa; trạng thái sản phẩm do quản lý tự đặt.",
+    };
+
+    private void StartStock(SupplementProductResponse product)
+    {
+        _formOpen = false;
+        _stockTarget = product;
+        _stockAction = SupplementStock.Add;
+        _stockQuantity = null;
+        _stockNote = null;
+        _notice = _error = null;
+    }
+
+    private async Task SaveStockAsync()
+    {
+        if (Busy || _stockTarget is not { } product) return;
+        var quantity = _stockAction == SupplementStock.StopTracking ? 0 : _stockQuantity;
+        var min = _stockAction == SupplementStock.Add ? 1 : 0;
+        if (quantity is null || quantity < min || quantity > SupplementStock.MaxQuantity)
+        {
+            _error = $"Số lượng phải từ {min} đến {SupplementStock.MaxQuantity}.";
+            return;
+        }
+        _working = true;
+        _notice = _error = null;
+        try
+        {
+            var saved = await Api.AdjustProductStockAsync(product.Id, new(_stockAction, quantity.Value, Blank(_stockNote)), _lifetime.Token);
+            _notice = $"“{saved.Name}”: tồn kho {StockText(saved.StockQuantity)}, {OperationsText.Label(saved.Status).ToLowerInvariant()}.";
+            _stockTarget = null;
+        }
+        catch (AuthApiException error) { _error = error.Message; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        finally { _working = false; }
+        await LoadAsync(_page?.Page ?? 1);
+    }
 
     private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
@@ -256,7 +375,7 @@
         try
         {
             _page = await Api.GetProductsAsync(new(Blank(_search), Blank(_filterCategory), Blank(_filterStatus), page, PageSize,
-                Brand: Blank(_filterBrand), MinPrice: _minPrice, MaxPrice: _maxPrice, Sort: _sort), manage: true, token);
+                Brand: Blank(_filterBrand), MinPrice: _minPrice, MaxPrice: _maxPrice, Sort: _sort, LowStock: _lowStock), manage: true, token);
         }
         catch (AuthApiException error) { _error = error.Message; }
         finally { if (!token.IsCancellationRequested) _loading = false; }
@@ -267,6 +386,7 @@
         _search = _filterBrand = _filterCategory = _filterStatus = "";
         _minPrice = _maxPrice = null;
         _sort = "name";
+        _lowStock = false;
         await LoadAsync(1);
     }
 
@@ -288,6 +408,8 @@
         _form.Category = _form.Brand = _form.Size = _form.Flavour = null;
         _form.UnitPrice = 0;
         _form.Status = "Active";
+        _form.StockQuantity = null;
+        _stockTarget = null;
         _formOpen = true;
     }
 
@@ -303,6 +425,8 @@
         _form.Flavour = product.Flavour;
         _form.UnitPrice = product.UnitPrice;
         _form.Status = product.Status;
+        _form.StockQuantity = product.StockQuantity;
+        _stockTarget = null;
         _formOpen = true;
     }
 
@@ -364,5 +488,6 @@
         public string? Flavour { get; set; }
         public decimal UnitPrice { get; set; }
         public string Status { get; set; } = "Active";
+        public int? StockQuantity { get; set; }
     }
 }

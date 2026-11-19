@@ -117,8 +117,12 @@ public sealed class OperationsApiClient(HttpClient http, AuthSession session) : 
         SendAsync<PagedResponse<SupplementProductResponse>>(HttpMethod.Get, WithQuery(manage ? $"{ProductsPath}/manage" : ProductsPath,
             ("search", request.Search), ("category", request.Category), ("status", request.Status),
             ("brand", request.Brand), ("minPrice", Number(request.MinPrice)), ("maxPrice", Number(request.MaxPrice)),
-            ("sort", request.Sort),
+            ("sort", request.Sort), ("lowStock", request.LowStock ? "true" : null),
             ("page", Number(request.Page)), ("pageSize", Number(request.PageSize))), ct);
+
+    /// <summary>Restock (Add), stock count (Set) or StopTracking (Manager).</summary>
+    public Task<SupplementProductResponse> AdjustProductStockAsync(int id, SupplementStockRequest request, CancellationToken ct = default) =>
+        SendAsync<SupplementProductResponse>(HttpMethod.Post, $"{ProductsPath}/{id}/stock", ct, JsonContent.Create(request));
 
     /// <summary>One product as the store sees it; throws with 404 when it is Inactive or gone.</summary>
     public Task<SupplementProductResponse> GetProductAsync(int id, CancellationToken ct = default) =>

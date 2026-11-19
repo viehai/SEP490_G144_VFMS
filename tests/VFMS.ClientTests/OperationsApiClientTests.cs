@@ -7,6 +7,7 @@ using VFMS.Client.Services;
 using VFMS.Contracts.Auth;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Equipment;
+using VFMS.Contracts.Supplements;
 using Xunit;
 
 namespace VFMS.ClientTests;
@@ -100,6 +101,45 @@ public sealed class OperationsApiClientTests
         Assert.Contains("equipmentId=7", query);
         Assert.Contains("sort=newest", query);
         Assert.Contains("pageSize=5", query);
+    }
+
+    [Fact]
+    public async Task StockChangeIsPostedToTheProduct()
+    {
+        HttpRequestMessage? sent = null;
+        string? body = null;
+        var http = new HttpClient(new Handler(async request =>
+        {
+            sent = request;
+            body = await request.Content!.ReadAsStringAsync();
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(new SupplementProductResponse(4, "Whey", null, null, null, 1m, "Active", true, DateTime.UtcNow, DateTime.UtcNow, StockQuantity: 12))
+            };
+        })) { BaseAddress = new Uri("https://api.example.test/") };
+        var login = new LoginResponse("access", "refresh", "Bearer", 1800, "manager", "Manager", "manager@example.test", ["Manager"]);
+        var stored = JsonSerializer.Serialize(new StoredAuthSession(login, DateTimeOffset.UtcNow.AddMinutes(10), false));
+        using var api = new OperationsApiClient(http, new AuthSession(new Storage(stored), new AuthApiClient(http)));
+
+        var saved = await api.AdjustProductStockAsync(4, new SupplementStockRequest(SupplementStock.Add, 12, "Lô 19/11"));
+
+        Assert.Equal(HttpMethod.Post, sent!.Method);
+        Assert.Equal("/api/supplement-products/4/stock", sent.RequestUri!.AbsolutePath);
+        Assert.Contains("\"action\":\"Add\"", body);
+        Assert.Contains("\"quantity\":12", body);
+        Assert.Equal(12, saved.StockQuantity);
+    }
+
+    [Fact]
+    public async Task LowStockFilterIsSentOnlyWhenOn()
+    {
+        using var api = Client(new PagedResponse<SupplementProductResponse>(1, 20, 0, []));
+
+        await api.GetProductsAsync(new SupplementProductListRequest(LowStock: true), manage: true);
+        await api.GetProductsAsync(new SupplementProductListRequest(), manage: true);
+
+        Assert.Contains("lowStock=true", _requests[0].Query);
+        Assert.DoesNotContain("lowStock", _requests[1].Query);
     }
 
     private sealed class Handler(Func<HttpRequestMessage, Task<HttpResponseMessage>> send) : HttpMessageHandler
