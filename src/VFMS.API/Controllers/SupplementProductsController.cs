@@ -92,6 +92,18 @@ public sealed class SupplementProductsController : ControllerBase
     public Task<IActionResult> ChangeStatus(int id, [FromBody] SupplementProductStatusRequest request, CancellationToken cancellationToken) =>
         Run(userId => _service.ChangeStatusAsync(id, request.Status, userId, ClientIp, cancellationToken));
 
+    /// <summary>
+    /// Restock (Add), stock count (Set) or StopTracking. A tracked product becomes OutOfStock at 0 and Active again
+    /// once it has stock; an Inactive product stays Inactive.
+    /// </summary>
+    [HttpPost("{id:int}/stock")]
+    [Authorize(Roles = "Manager")]
+    [ProducesResponseType(typeof(SupplementProductResponse), 200)]
+    [ProducesResponseType(400)]
+    [ProducesResponseType(404)]
+    public Task<IActionResult> AdjustStock(int id, [FromBody] SupplementStockRequest request, CancellationToken cancellationToken) =>
+        Run(userId => _service.AdjustStockAsync(id, request, userId, ClientIp, cancellationToken));
+
     private bool IsManager => User.IsInRole("Manager");
 
     private async Task<IActionResult> Run<T>(Func<string, Task<Result<T>>> action)

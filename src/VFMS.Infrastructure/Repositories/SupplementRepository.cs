@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using VFMS.Application.Interfaces;
+using VFMS.Contracts.Supplements;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
 using VFMS.Infrastructure.Data;
@@ -25,6 +26,8 @@ public sealed class SupplementRepository : AuditedRepositoryBase, ISupplementRep
             query = query.Where(p => p.UnitPrice >= min);
         if (filter.MaxPrice is { } max)
             query = query.Where(p => p.UnitPrice <= max);
+        if (filter.LowStockOnly)
+            query = query.Where(p => p.StockQuantity != null && p.StockQuantity <= SupplementStock.LowStockThreshold);
         if (filter.Search is { } search)
             query = query.Where(p => p.ProductName.Contains(search) ||
                                      (p.Brand != null && p.Brand.Contains(search)) ||
@@ -85,6 +88,96 @@ public sealed class SupplementRepository : AuditedRepositoryBase, ISupplementRep
     public async Task<IReadOnlyList<SupplementProduct>> GetProductsAsync(
         IReadOnlyCollection<int> ids, CancellationToken cancellationToken = default) =>
         await Context.SupplementProducts.AsNoTracking().Where(p => ids.Contains(p.Id)).ToListAsync(cancellationToken);
+
+    public Task<SupplementProduct?> GetProductSnapshotAsync(int id, CancellationToken cancellationToken = default) =>
+        Context.SupplementProducts.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
+
+    // ── Stock ────────────────────────────────────────────────────
+
+    public async Task<IReadOnlyList<StockShortage>> ReserveStockAsync(
+        IReadOnlyCollection<(int ProductId, int Quantity)> lines, CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+        var shortages = new List<StockShortage>();
+        foreach (var (productId, quantity) in lines)
+        {
+            // Only succeeds while enough units are left, so concurrent orders cannot take the same units twice.
+            var taken = await Context.SupplementProducts
+                .Where(p => p.Id == productId && p.StockQuantity != null && p.StockQuantity >= quantity)
+                .ExecuteUpdateAsync(set => set
+                    .SetProperty(p => p.StockQuantity, p => p.StockQuantity - quantity)
+                    .SetProperty(p => p.UpdatedAt, now), cancellationToken);
+            if (taken > 0) continue;
+            var product = await Context.SupplementProducts.AsNoTracking()
+                .Where(p => p.Id == productId)
+                .Select(p => new { p.ProductName, p.StockQuantity })
+                .FirstOrDefaultAsync(cancellationToken);
+            if (product?.StockQuantity is { } available) // tracked and short; untracked products need no stock
+                shortages.Add(new StockShortage(productId, product.ProductName, available));
+        }
+        if (shortages.Count == 0)
+            await SyncStatusAsync(lines.Select(l => l.ProductId).ToArray(), now, cancellationToken);
+        return shortages;
+    }
+
+    public async Task ReleaseStockAsync(
+        IReadOnlyCollection<(int ProductId, int Quantity)> lines, CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+        foreach (var (productId, quantity) in lines)
+            await Context.SupplementProducts
+                .Where(p => p.Id == productId && p.StockQuantity != null)
+                .ExecuteUpdateAsync(set => set
+                    .SetProperty(p => p.StockQuantity, p => p.StockQuantity + quantity)
+                    .SetProperty(p => p.UpdatedAt, now), cancellationToken);
+        await SyncStatusAsync(lines.Select(l => l.ProductId).ToArray(), now, cancellationToken);
+    }
+
+    public async Task<(int? Before, int? After)> AdjustStockAsync(
+        int productId, SupplementStockAction action, int quantity, CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+        var before = await Context.SupplementProducts.AsNoTracking()
+            .Where(p => p.Id == productId).Select(p => p.StockQuantity).FirstOrDefaultAsync(cancellationToken);
+        var products = Context.SupplementProducts.Where(p => p.Id == productId);
+        switch (action)
+        {
+            case SupplementStockAction.Add:
+                await products.ExecuteUpdateAsync(set => set
+                    .SetProperty(p => p.StockQuantity, p => (p.StockQuantity ?? 0) + quantity)
+                    .SetProperty(p => p.UpdatedAt, now), cancellationToken);
+                break;
+            case SupplementStockAction.Set:
+                await products.ExecuteUpdateAsync(set => set
+                    .SetProperty(p => p.StockQuantity, quantity)
+                    .SetProperty(p => p.UpdatedAt, now), cancellationToken);
+                break;
+            default:
+                await products.ExecuteUpdateAsync(set => set
+                    .SetProperty(p => p.StockQuantity, (int?)null)
+                    .SetProperty(p => p.UpdatedAt, now), cancellationToken);
+                break;
+        }
+        await SyncStatusAsync([productId], now, cancellationToken);
+        var after = await Context.SupplementProducts.AsNoTracking()
+            .Where(p => p.Id == productId).Select(p => p.StockQuantity).FirstOrDefaultAsync(cancellationToken);
+        return (before, after);
+    }
+
+    /// <summary>A tracked product is OutOfStock at 0 and Active again once it has stock; Inactive is never changed.</summary>
+    private async Task SyncStatusAsync(IReadOnlyCollection<int> productIds, DateTime now, CancellationToken cancellationToken)
+    {
+        await Context.SupplementProducts
+            .Where(p => productIds.Contains(p.Id) && p.StockQuantity == 0 && p.ProductStatus == SupplementProductStatus.Active)
+            .ExecuteUpdateAsync(set => set
+                .SetProperty(p => p.ProductStatus, SupplementProductStatus.OutOfStock)
+                .SetProperty(p => p.UpdatedAt, now), cancellationToken);
+        await Context.SupplementProducts
+            .Where(p => productIds.Contains(p.Id) && p.StockQuantity > 0 && p.ProductStatus == SupplementProductStatus.OutOfStock)
+            .ExecuteUpdateAsync(set => set
+                .SetProperty(p => p.ProductStatus, SupplementProductStatus.Active)
+                .SetProperty(p => p.UpdatedAt, now), cancellationToken);
+    }
 
     // ── Orders ───────────────────────────────────────────────────
 

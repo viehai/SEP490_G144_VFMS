@@ -1098,6 +1098,8 @@ public class VfmsDbContext : DbContext
             entity.Property(e => e.Size).HasMaxLength(50);
             entity.Property(e => e.Flavour).HasMaxLength(100);
             entity.HasIndex(e => e.Brand);
+            entity.ToTable(t => t.HasCheckConstraint(
+                "CK_SupplementProducts_StockQuantity", "[StockQuantity] IS NULL OR [StockQuantity] >= 0"));
         });
 
         // ── SupplementOrder ───────────────────────────────────────

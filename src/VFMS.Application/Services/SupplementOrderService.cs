@@ -12,7 +12,8 @@ namespace VFMS.Application.Services;
 /// UC-78 Purchase, UC-79 Cancel, UC-80 Track, UC-81 History (Customer, Member) and UC-82 Manage Supplement Orders (Staff, Manager).
 /// GBR-57 flow: Pending → Processing → ReadyForPickup (Gym Pickup) / OutForDelivery (Home Delivery) → Completed;
 /// Cancelled only while Pending (GBR-60). GBR-58/59: no online payment, payment is confirmed when completing.
-/// GBR-61/70: only Active products can be ordered.
+/// GBR-61/70: only Active products can be ordered. GBR-69: placing an order takes tracked products out of stock
+/// and cancelling puts them back; an order larger than the stock left is refused.
 /// </summary>
 public sealed class SupplementOrderService : ISupplementOrderService
 {
@@ -95,9 +96,29 @@ public sealed class SupplementOrderService : ISupplementOrderService
                 $"{order.OrderNumber} ({Describe(deliveryType)}): {order.TotalAmount:N0} VND", Entity, NotificationType.SystemAlert))
             .ToArray();
 
-        await AuditedWriter.SaveNewAsync(_repository, order, audit, notifications, cancellationToken);
+        // The stock is taken in the same transaction as the order: if any line is short, nothing is saved.
+        IReadOnlyList<StockShortage> shortages = [];
+        try
+        {
+            await _repository.ExecuteInTransactionAsync(async () =>
+            {
+                shortages = await _repository.ReserveStockAsync(lines, cancellationToken);
+                if (shortages.Count > 0)
+                    throw new StockShortageException();
+                await AuditedWriter.SaveNewAsync(_repository, order, audit, notifications, cancellationToken);
+            }, cancellationToken);
+        }
+        catch (StockShortageException)
+        {
+            return Result<SupplementOrderResponse>.Failure(
+                "Not enough stock for: " + string.Join(", ", shortages.Select(s => $"{s.ProductName} ({s.Available} left)")) + ".",
+                "SUPPLEMENT_PRODUCT_INSUFFICIENT_STOCK", 409);
+        }
         return await Reload(order.Id, 201, cancellationToken);
     }
+
+    /// <summary>Rolls the order transaction back when the stock is short.</summary>
+    private sealed class StockShortageException : Exception;
 
     public Task<Result<PagedResponse<SupplementOrderResponse>>> GetHistoryAsync(
         SupplementOrderListRequest request, string customerUserId, CancellationToken cancellationToken = default) =>
@@ -121,7 +142,12 @@ public sealed class SupplementOrderService : ISupplementOrderService
         order.CancelledAt = DateTime.UtcNow;
         var audit = AuditedWriter.Audit(customerUserId, AuditActionType.Update, Entity, ipAddress,
             $"Status={SupplementOrderStatus.Pending}", $"Status={order.OrderStatus}");
-        await AuditedWriter.SaveChangedAsync(_repository, order, audit, null, cancellationToken);
+        var returned = order.Items.Select(i => (i.SupplementProductId, i.Quantity)).ToArray();
+        await _repository.ExecuteInTransactionAsync(async () =>
+        {
+            await AuditedWriter.SaveChangedAsync(_repository, order, audit, null, cancellationToken);
+            await _repository.ReleaseStockAsync(returned, cancellationToken); // the cancelled items are back on the shelf
+        }, cancellationToken);
         return await Reload(order.Id, 200, cancellationToken);
     }
 

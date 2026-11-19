@@ -25,7 +25,14 @@ public sealed record SupplementProductQuery(
     SupplementProductSort Sort,
     bool AvailableFirst,
     int Page,
-    int PageSize);
+    int PageSize,
+    bool LowStockOnly = false);
+
+/// <summary>An ordered product that does not have enough stock left.</summary>
+public sealed record StockShortage(int ProductId, string ProductName, int Available);
+
+/// <summary>How a Manager changes a product's stock.</summary>
+public enum SupplementStockAction { Add, Set, StopTracking }
 
 public interface ISupplementRepository : IAuditedRepository
 {
@@ -39,6 +46,22 @@ public interface ISupplementRepository : IAuditedRepository
     Task<IReadOnlyList<string>> GetBrandsAsync(
         IReadOnlyCollection<SupplementProductStatus> statuses, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<SupplementProduct>> GetProductsAsync(IReadOnlyCollection<int> ids, CancellationToken cancellationToken = default);
+
+    // Stock. Each change is a single conditional update, so two orders for the last units cannot both succeed.
+    /// <summary>
+    /// Takes the ordered quantities out of stock for tracked products; untracked products are left alone.
+    /// Returns the lines that did not have enough stock. Earlier lines may already be taken, so the caller must
+    /// roll the transaction back when anything is returned. A tracked product that reaches 0 becomes OutOfStock.
+    /// </summary>
+    Task<IReadOnlyList<StockShortage>> ReserveStockAsync(
+        IReadOnlyCollection<(int ProductId, int Quantity)> lines, CancellationToken cancellationToken = default);
+    /// <summary>Puts quantities back for tracked products; an OutOfStock product with stock again becomes Active.</summary>
+    Task ReleaseStockAsync(IReadOnlyCollection<(int ProductId, int Quantity)> lines, CancellationToken cancellationToken = default);
+    /// <summary>Changes the stock and keeps Active/OutOfStock in step with it. Returns the stock before and after.</summary>
+    Task<(int? Before, int? After)> AdjustStockAsync(
+        int productId, SupplementStockAction action, int quantity, CancellationToken cancellationToken = default);
+    /// <summary>The product as stored now, not tracked by the context (for reading after a stock change).</summary>
+    Task<SupplementProduct?> GetProductSnapshotAsync(int id, CancellationToken cancellationToken = default);
 
     // Orders
     Task<(IReadOnlyList<SupplementOrder> Items, int TotalCount)> SearchOrdersAsync(
@@ -70,6 +93,8 @@ public interface ISupplementProductService
         int id, SupplementProductRequest request, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default);
     Task<Result<SupplementProductResponse>> ChangeStatusAsync(
         int id, string status, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default);
+    Task<Result<SupplementProductResponse>> AdjustStockAsync(
+        int id, SupplementStockRequest request, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
