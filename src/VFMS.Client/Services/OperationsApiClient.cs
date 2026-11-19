@@ -108,10 +108,20 @@ public sealed class OperationsApiClient(HttpClient http, AuthSession session) : 
     public Task<PagedResponse<SupplementProductResponse>> GetProductsAsync(SupplementProductListRequest request, bool manage, CancellationToken ct = default) =>
         SendAsync<PagedResponse<SupplementProductResponse>>(HttpMethod.Get, WithQuery(manage ? $"{ProductsPath}/manage" : ProductsPath,
             ("search", request.Search), ("category", request.Category), ("status", request.Status),
+            ("brand", request.Brand), ("minPrice", Number(request.MinPrice)), ("maxPrice", Number(request.MaxPrice)),
+            ("sort", request.Sort),
             ("page", Number(request.Page)), ("pageSize", Number(request.PageSize))), ct);
+
+    /// <summary>One product as the store sees it; throws with 404 when it is Inactive or gone.</summary>
+    public Task<SupplementProductResponse> GetProductAsync(int id, CancellationToken ct = default) =>
+        SendAsync<SupplementProductResponse>(HttpMethod.Get, $"{ProductsPath}/{id}", ct);
 
     public Task<List<string>> GetProductCategoriesAsync(CancellationToken ct = default) =>
         SendAsync<List<string>>(HttpMethod.Get, $"{ProductsPath}/categories", ct);
+
+    /// <summary>Brands in use: all of them for the Manager, only brands on sale for the store.</summary>
+    public Task<List<string>> GetProductBrandsAsync(CancellationToken ct = default) =>
+        SendAsync<List<string>>(HttpMethod.Get, $"{ProductsPath}/brands", ct);
 
     public Task<SupplementProductResponse> CreateProductAsync(SupplementProductRequest request, CancellationToken ct = default) =>
         SendAsync<SupplementProductResponse>(HttpMethod.Post, ProductsPath, ct, JsonContent.Create(request));
@@ -145,6 +155,8 @@ public sealed class OperationsApiClient(HttpClient http, AuthSession session) : 
     // ── Plumbing ─────────────────────────────────────────────────
     private static string? Date(DateOnly? value) => value?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
     private static string? Number(int? value) => value?.ToString(CultureInfo.InvariantCulture);
+
+    private static string? Number(decimal? value) => value?.ToString(CultureInfo.InvariantCulture);
 
     private static string WithQuery(string path, params (string Name, string? Value)[] parameters)
     {

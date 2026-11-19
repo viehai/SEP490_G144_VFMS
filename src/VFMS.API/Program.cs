@@ -19,6 +19,9 @@ using VFMS.Domain.Enums;
 using VFMS.Infrastructure.Data;
 using VFMS.Infrastructure.Identity;
 using VFMS.Infrastructure.Repositories;
+using VFMS.Infrastructure.Workers;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -46,11 +49,28 @@ builder.Services.AddSystemAdministrationModule();
 builder.Services.AddEquipmentModule();
 builder.Services.AddSupplementModule();
 builder.Services.AddCompetitionModule();
+builder.Services.AddDataProtection();
+builder.Services.AddScoped<ITrainerStore, TrainerStore>();
+builder.Services.AddScoped<TrainerService>();
+builder.Services.AddHostedService<TrainerEmailWorker>();
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("trainer-public", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 10,
+            Window = TimeSpan.FromMinutes(10),
+            QueueLimit = 0
+        }));
+});
 builder.Services.AddYogaModule();
 builder.Services.AddWorkoutModule(builder.Configuration);
 builder.Services.AddCheckInModule(builder.Configuration, builder.Environment);
 builder.Services.AddMembershipPlanModule();
 builder.Services.AddMembershipPurchaseModule(builder.Configuration);
+builder.Services.AddPersonalTrainingModule();
+builder.Services.AddLockerModule();
 builder.Services.AddMembershipFreezePolicyModule();
 builder.Services.AddMembershipFreezeRequestModule();
 builder.Services.AddMembershipFreezeReviewModule();
@@ -181,6 +201,7 @@ app.UseRateLimiter();
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 app.MapControllers();
 

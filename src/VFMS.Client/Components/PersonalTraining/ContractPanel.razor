@@ -1,0 +1,366 @@
+@inject PersonalTrainingApiClient Api
+@using VFMS.Contracts.Trainers
+
+<section class="trainer-panel trainer-stack">
+    <header class="trainer-row trainer-between">
+        <div><h2>@(Contract.PackageName ?? $"Hợp đồng #{Contract.Id}")</h2><p class="trainer-muted">@TrainerName · @Date(Contract.StartDate) đến @Date(Contract.EndDate)</p></div>
+        <TrainerStatus Status="@Contract.Status" />
+    </header>
+    <div class="pt-metrics">
+        <div><span>Tổng số buổi</span><strong>@Contract.TotalCredits</strong></div>
+        <div><span>Đã dùng</span><strong>@Contract.UsedCredits</strong></div>
+        @if (Contract.Status == "Expired")
+        {
+            <div><span>Buổi hết hiệu lực</span><strong>@Contract.RemainingCredits</strong></div>
+        }
+        else
+        {
+            <div><span>Đã phân bổ</span><strong>@Contract.ReservedCredits</strong></div>
+            <div><span>Chưa phân bổ</span><strong>@Contract.AvailableCredits</strong></div>
+            <div><span>Còn lại</span><strong>@Contract.RemainingCredits</strong></div>
+        }
+    </div>
+    @if (Contract.MakeUpUnits > 0 && Contract.MakeUpDeadline is { } makeUpDeadline)
+    {
+        <p class="trainer-muted">Có @Contract.MakeUpUnits lượt tập bù, dùng được đến @Date(makeUpDeadline). Chọn buổi có nhãn "Lượt bù" để đặt lịch.</p>
+    }
+    <p class="trainer-muted">
+        Bảo lưu: @(Contract.FreezeUsed ? "đã dùng lượt bảo lưu" : Contract.HasPendingOrApprovedFreeze ? "đang chờ duyệt" : $"còn dùng được (tối đa {Contract.FreezeMaxTotalDays} ngày)")
+    </p>
+    @if (!IsTrainer && Contract.TrainerChangeDeadline is { } changeDeadline)
+    {
+        <div class="trainer-feedback trainer-row trainer-between" role="status">
+            <span>Huấn luyện viên đã ngừng nhận học viên mới. Bạn có thể chọn huấn luyện viên khác đến @LocalTime(changeDeadline).</span>
+            <a class="trainer-button trainer-primary" href="@($"/my-pt-packages/{Contract.Id}/change-trainer")">Đổi huấn luyện viên</a>
+        </div>
+    }
+    @if (Contract.Status == "PendingPayment" && !IsTrainer && Contract.OrderNumber is { } orderNumber)
+    {
+        var canPay = Contract.PaymentExpiresAt > DateTime.UtcNow;
+        <div class="trainer-row">
+            <p class="trainer-muted">@(canPay ? "Lịch đang được giữ trong khi chờ thanh toán." : "Đã hết thời gian chuyển khoản. Kiểm tra trạng thái của đơn tại trang thanh toán.")</p>
+            <a class="trainer-button trainer-primary" href="@($"/pt-checkout/{Uri.EscapeDataString(orderNumber)}")">
+                @(canPay ? "Tiếp tục thanh toán" : "Xem trạng thái thanh toán")
+            </a>
+        </div>
+    }
+
+    @if (!IsTrainer && CanOfferReview)
+    {
+        <form class="trainer-stack pt-session" @onsubmit="ReviewAsync" @onsubmit:preventDefault>
+            <h3>Đánh giá huấn luyện viên</h3>
+            <p class="trainer-muted">Bạn đã hoàn thành gói @Contract.PackageName. Đánh giá được công khai kèm tên của bạn và không thể sửa.</p>
+            <label>Điểm<select class="trainer-input" @bind="_rating" disabled="@_busy">
+                @for (var i = 5; i >= 1; i--) { <option value="@i">@i sao</option> }
+            </select></label>
+            <label>Nhận xét (10–500 ký tự)<textarea class="trainer-input" rows="3" maxlength="500"
+                @bind="_comment" disabled="@_busy"></textarea></label>
+            <BannedWordPreview Text="@_comment" Words="_bannedWords" />
+            <button class="trainer-button trainer-primary" disabled="@_busy">Gửi đánh giá</button>
+        </form>
+    }
+
+    <TrainerFeedback Error="@_error" Message="@_message" />
+    <button type="button" class="trainer-button" aria-pressed="@_history" disabled="@_busy"
+            @onclick="() => SelectHistory(!_history)">@(_history ? "Quay lại lịch tuần" : "Lịch sử buổi tập")</button>
+    @if (!IsTrainer && !_history)
+    {
+        <PTPreviewCalendar Slots="CalendarSlots" StartDate="Contract.StartDate" StartCurrentWeek="true">
+            <SlotContent Context="slot">
+                @{ var session = Contract.Sessions.First(s => s.Id == slot.TemplateId); }
+                <button type="button" class="pt-calendar-slot pt-teaching-slot pt-slot-choice pt-contract-calendar-slot"
+                        aria-pressed="@(_selectedCalendarSession == session.Id)"
+                        @onclick="() => SelectCalendarSession(slot)">
+                    <strong>@(TrainerName ?? "Huấn luyện viên")</strong>
+                    <span>@Time(slot.StartTime) – @Time(slot.EndTime)</span>
+                    <span>@(session.IsMakeUpUnit ? "Lượt bù" : Status(session.Status))</span>
+                    <span>Chi tiết ca</span>
+                </button>
+            </SlotContent>
+        </PTPreviewCalendar>
+        @if (_selectedCalendarSession is null)
+        {
+            <p class="trainer-muted">Chọn một ca để xem chi tiết và thao tác.</p>
+        }
+    }
+    else if (!Visible.Any()) { <p class="trainer-muted">Chưa có buổi tập trong danh sách này.</p> }
+    <div class="trainer-stack">
+        @foreach (var item in Visible.Where(item => IsTrainer || _history || item.Id == _selectedCalendarSession))
+        {
+            <article class="pt-session trainer-stack" @key="item.Id">
+                <div class="trainer-row trainer-between">
+                    <strong>@Day(item.Date.DayOfWeek), @Date(item.Date) · @Time(item.StartTime) – @Time(item.EndTime)</strong>
+                    @if (item.IsMakeUpUnit) { <span class="trainer-status trainer-status--success">Lượt bù</span> }
+                    else { <TrainerStatus Status="@item.Status" /> }
+                </div>
+                <p class="trainer-muted">Tính @item.CreditUnits buổi</p>
+                @if (IsTrainer)
+                {
+                    <a class="trainer-link" href="@($"/pt/contracts/{Contract.Id}/sessions/{item.Id}")">Mở chi tiết ca học</a>
+                }
+                @if (!string.IsNullOrWhiteSpace(item.Note)) { <p class="trainer-copy">@item.Note</p> }
+                @if (item.NoteUpdatedAt is { } noteTime) { <p class="trainer-muted">Ghi chú cập nhật @LocalTime(noteTime)</p> }
+
+                @if (item.Proposal is { } proposal && proposal.ExpiresAt > DateTime.UtcNow)
+                {
+                    <p>@ProposalText(proposal) · Hạn phản hồi @LocalTime(proposal.ExpiresAt)</p>
+                    @if (IDecide(item))
+                    {
+                        <div class="trainer-row">
+                            <button class="trainer-button trainer-primary" disabled="@_busy" @onclick="() => DecideAsync(item, proposal, true)">Chấp nhận</button>
+                            <button class="trainer-button" disabled="@_busy" @onclick="() => DecideAsync(item, proposal, false)">Từ chối</button>
+                        </div>
+                    }
+                    else { <p class="trainer-muted">Đang chờ bên kia phản hồi. Lịch hiện tại vẫn được giữ.</p> }
+                }
+
+                <div class="trainer-row">
+                    @if (Contract.Status == "Active" && item.Status == "Scheduled" && IsFuture(item.Date, item.StartTime))
+                    {
+                        @if (!CanRequestChange(item))
+                        {
+                            <span class="trainer-muted">Đổi hoặc hủy buổi cần gửi trước giờ tập ít nhất 12 giờ.</span>
+                        }
+                        else if (IsTrainer)
+                        {
+                            <button class="trainer-button" disabled="@_busy" @onclick="() => OpenOptionsAsync(item)">Đề xuất đổi lịch</button>
+                            @if (item.CreditUnits == 1 && Contract.AvailableCredits > 0)
+                            {
+                                <button class="trainer-button" disabled="@_busy" @onclick="() => DoubleAsync(item)">Đề xuất ca đôi</button>
+                            }
+                            <button class="trainer-button" disabled="@_busy" @onclick="() => CancelAsync(item)">Xin hủy buổi</button>
+                        }
+                        else
+                        {
+                            @if (IsReschedulePage)
+                            { <button class="trainer-button" disabled="@_busy" @onclick="() => OpenOptionsAsync(item)">Chọn ca mới</button> }
+                            else
+                            { <a class="trainer-button" href="@($"/my-pt-packages/{Contract.Id}/reschedule?session={item.Id}")">Xin đổi lịch</a> }
+                            <button class="trainer-button" disabled="@_busy" @onclick="() => CancelAsync(item)">Xin hủy buổi</button>
+                        }
+                    }
+                    @if (item.IsMakeUpUnit && Contract.Status == "Active")
+                    {
+                        <button class="trainer-button trainer-primary" disabled="@_busy" @onclick="() => OpenMakeUp(item)">Đặt buổi bù</button>
+                    }
+                    @if (CanReportAbsence(item))
+                    {
+                        <button class="trainer-button" disabled="@_busy" @onclick="() => OpenEditor(item, Absence)">Báo PT vắng mặt</button>
+                    }
+                </div>
+
+                @if (_sessionId == item.Id && _editor == Reschedule)
+                {
+                    <div class="trainer-stack">
+                        <p class="trainer-muted">Lịch cũ vẫn được giữ cho đến khi @(IsTrainer ? "hội viên" : "PT") chấp nhận. Các ca bận chỉ hiển thị thời gian.</p>
+                        <label>Xem lịch từ ngày<input class="trainer-input" type="date" min="@Today.ToString("yyyy-MM-dd")"
+                               @bind="_from" @bind:after="LoadOptionsAsync" disabled="@_busy" /></label>
+                        @if (_options is { Length: 0 }) { <p>Không có ca trong khoảng đã chọn.</p> }
+                        <div class="pt-options">
+                            @foreach (var slot in _options)
+                            {
+                                <button type="button" class="trainer-button" disabled="@(_busy || slot.Status != "Available")"
+                                    aria-pressed="@Equals(_requested, slot)" @onclick="() => _requested = slot">
+                                    @Date(slot.Date) · @Time(slot.StartTime) · @Status(slot.Status)
+                                </button>
+                            }
+                        </div>
+                        <div class="trainer-row">
+                            <button class="trainer-button trainer-primary" disabled="@(_busy || _requested is null)" @onclick="SendRescheduleAsync">Gửi yêu cầu</button>
+                            <button class="trainer-button" disabled="@_busy" @onclick="CloseEditor">Đóng</button>
+                        </div>
+                    </div>
+                }
+                @if (_sessionId == item.Id && _editor == MakeUp)
+                {
+                    <form class="trainer-stack" @onsubmit="SendMakeUpAsync" @onsubmit:preventDefault>
+                        <p class="trainer-muted">Buổi bù dài 60 phút, bắt đầu vào giờ tròn và trước @(Contract.MakeUpDeadline is { } deadline ? Date(deadline) : "hạn tập bù"). @(IsTrainer ? "Hội viên" : "PT") sẽ xác nhận.</p>
+                        <fieldset class="trainer-grid" disabled="@_busy">
+                            <label>Ngày tập bù<input class="trainer-input" type="date" min="@Today.ToString("yyyy-MM-dd")" @bind="_makeUpDate" /></label>
+                            <label>Giờ bắt đầu
+                                <select class="trainer-input" @bind="_makeUpHour">
+                                    @for (var hour = 5; hour <= 22; hour++) { <option value="@hour">@($"{hour:00}:00")</option> }
+                                </select>
+                            </label>
+                        </fieldset>
+                        <div class="trainer-row">
+                            <button class="trainer-button trainer-primary" disabled="@_busy">Gửi đề xuất buổi bù</button>
+                            <button type="button" class="trainer-button" @onclick="CloseEditor">Đóng</button>
+                        </div>
+                    </form>
+                }
+                @if (_sessionId == item.Id && _editor == Absence)
+                {
+                    <form class="trainer-stack" @onsubmit="SendAbsenceAsync" @onsubmit:preventDefault>
+                        <p class="trainer-muted">Nếu PT chưa điểm danh hoặc ghi vắng mặt, buổi được trả lại thành buổi bù. Nếu PT đã ghi có mặt, Manager sẽ xem xét.</p>
+                        <label>Ghi chú (không bắt buộc)<textarea class="trainer-input" rows="3" maxlength="1000" @bind="_absenceReason" disabled="@_busy"></textarea></label>
+                        <div class="trainer-row"><button class="trainer-button trainer-primary" disabled="@_busy">Gửi báo cáo</button>
+                            <button type="button" class="trainer-button" @onclick="CloseEditor">Đóng</button></div>
+                    </form>
+                }
+                @if (item.TrainerAbsenceReportedAt is not null)
+                {
+                    <p class="trainer-muted">Báo PT vắng mặt: @AbsenceOutcome(item)</p>
+                    @if (!string.IsNullOrWhiteSpace(item.TrainerAbsenceReviewNote)) { <p class="trainer-copy">Manager: @item.TrainerAbsenceReviewNote</p> }
+                }
+            </article>
+        }
+    </div>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public PTContractResponse Contract { get; set; } = default!;
+    [Parameter] public bool IsTrainer { get; set; }
+    [Parameter] public string? TrainerName { get; set; }
+    [Parameter] public EventCallback Changed { get; set; }
+    [Parameter] public bool IsReschedulePage { get; set; }
+    private const string Reschedule = "reschedule", MakeUp = "makeup", Absence = "absence";
+    private PTRescheduleSlot[] _options = [];
+    private PTRescheduleSlot? _requested;
+    private DateOnly _from = Today, _makeUpDate = Today.AddDays(1);
+    private int _makeUpHour = 9;
+    private int? _sessionId, _selectedCalendarSession;
+    private string? _editor, _error, _message;
+    private string _comment = "", _absenceReason = "";
+    private IReadOnlyList<string> _bannedWords = [];
+    private int _rating = 5;
+    private bool _busy, _history, _reviewed;
+
+    private static readonly string[] Taught = ["Completed", "AutoCompleted", "NoShow", "Disputed"];
+    private IEnumerable<PTSessionResponse> Visible => Contract.Sessions.Where(s => _history
+        ? !IsFuture(s.Date, s.EndTime) && (Taught.Contains(s.Status) || s.Status == "Cancelled" && s.TrainerAbsenceReportedAt is not null)
+        : s.Status != "Cancelled" || s.IsMakeUpUnit || s.TrainerAbsenceReportedAt is not null)
+        .Where(s => _history || !IsTrainer || IsFuture(s.Date, s.EndTime) || s.IsMakeUpUnit);
+    private PTCalendarSlot[] CalendarSlots => Visible.Select(s => new PTCalendarSlot(s.Id, s.Date, s.StartTime, s.EndTime, s.Status)).ToArray();
+    private bool CanOfferReview => !_reviewed && Contract.Status == "Completed" &&
+        Contract.Sessions.LastOrDefault(s => s.Status is not ("Cancelled" or "MakeUpPending" or "MakeUpRequested"))?.Status
+            is "Completed" or "AutoCompleted";
+    private static DateTime LocalNow => DateTime.UtcNow.AddHours(7);
+    private static bool IsFuture(DateOnly date, TimeOnly time) => date.ToDateTime(time) > LocalNow;
+    // GBR-14: changes are requested at least 12 hours before the start.
+    private static bool CanRequestChange(PTSessionResponse s) => s.Date.ToDateTime(s.StartTime) - LocalNow >= TimeSpan.FromHours(12);
+    // GBR-97: the Member reports 'PT Absent' on the session day, after it started.
+    private bool CanReportAbsence(PTSessionResponse s) => !IsTrainer && s.TrainerAbsenceReportedAt is null && s.Date == Today &&
+        !IsFuture(s.Date, s.StartTime) && s.Status is "Scheduled" or "Completed" or "NoShow" or "ReschedulePending" or "RescheduleRequested";
+    private bool IDecide(PTSessionResponse s) => IsTrainer
+        ? s.Status is "RescheduleRequested" or "MakeUpRequested"
+        : s.Status is "ReschedulePending" or "MakeUpPending";
+
+    private static string ProposalText(PTProposalResponse p) => p.Type switch
+    {
+        "Cancellation" => "Đề nghị hủy buổi này (sẽ thành lượt bù)",
+        "DoubleSession" => $"Đề xuất ca đôi {Time(p.StartTime)} – {Time(p.EndTime)}",
+        "MakeUp" => $"Buổi bù {Date(p.Date)} · {Time(p.StartTime)} – {Time(p.EndTime)}",
+        _ => $"Đề xuất đổi sang {Date(p.Date)} · {Time(p.StartTime)} – {Time(p.EndTime)}"
+    };
+
+    private static string AbsenceOutcome(PTSessionResponse s) => s.Status switch
+    {
+        "Disputed" => "PT đã ghi có mặt, đang chờ Manager xem xét.",
+        "Cancelled" => "đã trả lại thành buổi bù.",
+        "Completed" => "Manager xác nhận buổi tập đã diễn ra.",
+        "NoShow" => "Manager xác nhận hội viên vắng mặt.",
+        _ => "đã ghi nhận."
+    };
+
+    private void SelectHistory(bool history)
+    {
+        _history = history;
+        _selectedCalendarSession = null;
+        CloseEditor();
+    }
+
+    private void SelectCalendarSession(PTWeeklySlot slot)
+    {
+        _selectedCalendarSession = _selectedCalendarSession == slot.TemplateId ? null : slot.TemplateId;
+        CloseEditor();
+    }
+
+    private void CloseEditor() { _editor = null; _sessionId = null; }
+    private void OpenEditor(PTSessionResponse item, string editor) { _sessionId = item.Id; _editor = editor; _absenceReason = ""; }
+    private void OpenMakeUp(PTSessionResponse item) { OpenEditor(item, MakeUp); _makeUpDate = Today.AddDays(1); }
+
+    private Task SendAbsenceAsync() => _sessionId is { } id
+        ? RunAsync(async () =>
+        {
+            var note = _absenceReason.Trim();
+            await Api.ReportTrainerAbsenceAsync(id, new(note.Length == 0 ? null : note));
+            CloseEditor();
+        }, "Đã gửi báo PT vắng mặt.", refresh: true)
+        : Task.CompletedTask;
+
+    private Task SendMakeUpAsync() => _sessionId is { } id
+        ? RunAsync(async () => { await Api.ProposeMakeUpAsync(id, new(_makeUpDate, new TimeOnly(_makeUpHour, 0))); CloseEditor(); },
+            "Đã gửi đề xuất buổi bù.", refresh: true)
+        : Task.CompletedTask;
+
+    private async Task OpenOptionsAsync(PTSessionResponse item)
+    {
+        OpenEditor(item, Reschedule);
+        _from = Today;
+        await LoadOptionsAsync();
+    }
+
+    private async Task LoadOptionsAsync()
+    {
+        _requested = null;
+        _options = [];
+        if (_sessionId is { } id)
+            await RunAsync(async () => _options = await Api.RescheduleOptionsAsync(id, _from));
+    }
+
+    private Task SendRescheduleAsync() => _sessionId is { } id && _requested is { } slot
+        ? RunAsync(async () =>
+        {
+            if (IsTrainer) await Api.ProposeAsync(id, new(slot.Date, slot.StartTime, "Reschedule"));
+            else await Api.RequestRescheduleAsync(id, new(slot.Date, slot.StartTime));
+            CloseEditor();
+        }, "Đã gửi yêu cầu đổi lịch.", refresh: true)
+        : Task.CompletedTask;
+
+    private Task CancelAsync(PTSessionResponse item) => RunAsync(async () => await Api.RequestCancellationAsync(item.Id),
+        "Đã gửi yêu cầu hủy buổi. Buổi chỉ bị hủy khi bên kia đồng ý.", refresh: true);
+
+    private Task DecideAsync(PTSessionResponse item, PTProposalResponse proposal, bool accept) => RunAsync(async () =>
+    {
+        if (IsTrainer && item.Status == "MakeUpRequested") await Api.DecideMakeUpRequestAsync(item.Id, new(accept, proposal.ExpiresAt));
+        else if (IsTrainer) await Api.DecideRescheduleAsync(item.Id, new(accept, proposal.Date, proposal.StartTime, proposal.ExpiresAt));
+        else await Api.DecideProposalAsync(item.Id, new(accept, proposal.ExpiresAt));
+    }, accept ? "Đã chấp nhận đề xuất." : "Đã từ chối đề xuất.", refresh: true);
+
+    private Task DoubleAsync(PTSessionResponse item) => RunAsync(async () =>
+        await Api.ProposeAsync(item.Id, new(item.Date, item.StartTime, "DoubleSession")), "Đã gửi đề xuất ca đôi.", refresh: true);
+
+    private Task ReviewAsync()
+    {
+        if (_comment.Trim().Length is < 10 or > 500)
+        {
+            _error = "Nhập nhận xét từ 10 đến 500 ký tự.";
+            return Task.CompletedTask;
+        }
+        _bannedWords = [];
+        return RunAsync(async () =>
+        {
+            try { await Api.ReviewAsync(Contract.Id, new(_rating, _comment.Trim())); _reviewed = true; }
+            catch (AuthApiException ex) when (TrainerContentRules.ProhibitedWords(ex.ErrorCode, ex.Message) is { Count: > 0 } words)
+            {
+                _bannedWords = words;
+                throw new AuthApiException("Nhận xét có từ ngữ không được phép. Sửa các từ được tô đỏ rồi gửi lại.");
+            }
+        }, "Đã gửi đánh giá. Cảm ơn bạn!");
+    }
+
+    private async Task RunAsync(Func<Task> action, string? message = null, bool refresh = false)
+    {
+        if (_busy) return;
+        _busy = true;
+        _error = _message = null;
+        try { await action(); _message = message; }
+        catch (AuthApiException ex) { _error = ex.Message; }
+        finally
+        {
+            if (refresh) await Changed.InvokeAsync();
+            _busy = false;
+        }
+    }
+}

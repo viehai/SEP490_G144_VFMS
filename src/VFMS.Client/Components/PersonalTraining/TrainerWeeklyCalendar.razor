@@ -1,0 +1,36 @@
+@inject PersonalTrainingApiClient Api
+
+<section class="trainer-panel trainer-stack">
+    <h2>Lịch tuần của PT</h2>
+    <TrainerFeedback Error="@_error" />
+    @if (_loading)
+    {
+        <p role="status">Đang tải lịch tuần…</p>
+    }
+    else if (_error is not null)
+    {
+        <button type="button" class="trainer-button" @onclick="LoadAsync">Tải lại lịch</button>
+    }
+    else
+    {
+        <PTWeeklyGrid Slots="_slots" />
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public string TrainerId { get; set; } = "";
+    private PTWeeklySlot[] _slots = [];
+    private bool _loading;
+    private string? _error;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try { _slots = await Api.WeeklyTemplateAsync(TrainerId); }
+        catch (AuthApiException ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+}

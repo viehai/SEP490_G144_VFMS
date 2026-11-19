@@ -1,126 +1,204 @@
 @page "/supplements"
 @layout PublicLayout
+@using System.Security.Claims
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using VFMS.Client.Services
 @using VFMS.Client.Components.Operations
 @using VFMS.Contracts.Common
 @using VFMS.Contracts.Supplements
 @using VFMS.Contracts.Supplements.Validators
 @attribute [Authorize(Roles = "Customer,Member")]
 @inject OperationsApiClient Api
+@inject IJSRuntime JS
+@inject AuthenticationStateProvider AuthState
 @implements IDisposable
 
 <PageTitle>Thực phẩm bổ sung | Victor Fitness</PageTitle>
 
-<section class="mx-auto max-w-6xl space-y-6 px-5 pb-16 pt-28" aria-labelledby="store-title">
-    <header class="flex flex-wrap items-end justify-between gap-4 border-b border-[#D8D1CD] pb-5">
+<section class="mx-auto min-w-0 max-w-6xl space-y-8 px-[20px] pb-16 pt-28 font-body" aria-labelledby="store-title">
+    <header class="flex flex-wrap items-end justify-between gap-4 border-b border-vfms-border pb-6">
         <div class="space-y-2">
-            <h1 id="store-title" class="font-['Montserrat',sans-serif] text-3xl font-black text-[#242424]">Thực phẩm bổ sung</h1>
-            <p class="text-sm text-[#6F6966]">Đặt trước, nhận tại quầy hoặc giao tận nơi và thanh toán khi nhận hàng.</p>
+            <p class="flex items-center gap-3 text-[11px] font-bold uppercase tracking-[0.18em] text-vfms-primary"><span class="h-px w-8 bg-vfms-primary" aria-hidden="true"></span>Victor Fitness / Cửa hàng</p>
+            <h1 id="store-title" class="font-heading text-3xl font-extrabold text-vfms-text sm:text-4xl">Thực phẩm bổ sung</h1>
+            <p class="max-w-xl text-sm text-vfms-text-secondary">Đặt trước, nhận tại quầy hoặc giao tận nơi và thanh toán khi nhận hàng. Không thanh toán trực tuyến.</p>
         </div>
-        <a href="/my-supplement-orders" class="text-sm font-semibold text-[#B83A3A] underline underline-offset-4">Đơn hàng của tôi →</a>
+        <a href="/my-supplement-orders" class="inline-flex items-center gap-1 rounded-lg border border-vfms-border-strong px-4 py-2 text-xs font-bold uppercase tracking-wide text-vfms-text hover:border-vfms-primary hover:text-vfms-primary">Đơn hàng của tôi <span aria-hidden="true">↗</span></a>
     </header>
 
     <Alerts Notice="@_notice" Error="@_error" />
 
     @if (_placed is { } placed)
     {
-        <div class="rounded-xl border border-emerald-300 bg-emerald-50 p-5 text-sm text-emerald-900" role="status">
-            <p class="text-base font-bold">Đặt hàng thành công · @placed.OrderNumber</p>
-            <p class="mt-1">@(placed.FulfillmentType == "GymPickup" ? "Nhân viên sẽ chuẩn bị đơn; bạn thanh toán khi nhận tại quầy." : "Đơn sẽ được giao tận nơi; bạn thanh toán khi nhận hàng (COD).") Tổng: <strong>@OperationsText.Money(placed.TotalAmount)</strong></p>
-            <a href="/my-supplement-orders" class="mt-2 inline-block font-semibold underline underline-offset-4">Theo dõi đơn hàng</a>
+        <div class="flex flex-wrap items-start justify-between gap-4 rounded-[12px] border border-emerald-200 bg-emerald-50 p-5 text-sm text-emerald-900" role="status">
+            <div>
+                <p class="font-heading text-base font-bold">Đặt hàng thành công · @placed.OrderNumber</p>
+                <p class="mt-1">@(placed.FulfillmentType == "GymPickup" ? "Nhân viên sẽ chuẩn bị đơn; bạn thanh toán khi nhận tại quầy." : "Đơn sẽ được giao tận nơi; bạn thanh toán khi nhận hàng (COD).") Tổng: <strong>@OperationsText.Money(placed.TotalAmount)</strong></p>
+            </div>
+            <a href="/my-supplement-orders" class="font-semibold underline underline-offset-4">Theo dõi đơn hàng</a>
         </div>
     }
 
-    <div class="grid gap-6 lg:grid-cols-[1fr_340px]">
-        <div class="space-y-4">
-            <form class="flex flex-wrap items-end gap-3" @onsubmit="() => LoadAsync(1)" @onsubmit:preventDefault>
-                <label class="@Ui.Label w-full sm:w-64" for="store-search">Tìm sản phẩm
-                    <input id="store-search" type="search" class="@Ui.Field" @bind="_search" maxlength="100" placeholder="Whey, creatine..." />
-                </label>
-                <label class="@Ui.Label" for="store-category">Danh mục
-                    <select id="store-category" class="@Ui.Field" @bind="_category">
-                        <option value="">Tất cả</option>
+    <div class="grid gap-8 lg:grid-cols-[1fr_340px]">
+        <div class="min-w-0 space-y-5">
+            <form class="flex flex-wrap items-center gap-3" @onsubmit="() => LoadAsync(1)" @onsubmit:preventDefault>
+                <label class="sr-only" for="store-search">Tìm sản phẩm</label>
+                <input id="store-search" type="search" class="w-full rounded-lg border border-vfms-border bg-vfms-surface px-3 py-2 text-sm text-vfms-text outline-none focus:border-vfms-primary focus:ring-2 focus:ring-vfms-primary/20 sm:w-72"
+                       @bind="_search" maxlength="100" placeholder="Tìm whey, creatine..." />
+                <button type="submit" class="@Ui.Button py-2" disabled="@_loading">Tìm</button>
+                @if (_categories.Count > MaxCategoryChips)
+                {
+                    <label class="sr-only" for="store-category">Danh mục</label>
+                    <select id="store-category" class="rounded-lg border border-vfms-border bg-vfms-surface px-3 py-2 text-sm text-vfms-text outline-none focus:border-vfms-primary" disabled="@_loading"
+                            value="@_category" @onchange="args => FilterCategoryAsync(args.Value?.ToString() ?? string.Empty)">
+                        <option value="">Tất cả danh mục</option>
                         @foreach (var category in _categories) { <option value="@category">@category</option> }
                     </select>
-                </label>
-                <button type="submit" class="@Ui.Button" disabled="@_loading">Lọc</button>
+                }
             </form>
+            <div class="flex flex-wrap items-center gap-3" role="group" aria-label="Bộ lọc sản phẩm">
+                @if (_brands.Count > 0)
+                {
+                    <label class="sr-only" for="store-brand">Thương hiệu</label>
+                    <select id="store-brand" class="rounded-lg border border-vfms-border bg-vfms-surface px-3 py-2 text-sm text-vfms-text outline-none focus:border-vfms-primary" disabled="@_loading"
+                            value="@_brand" @onchange="args => FilterAsync(() => _brand = args.Value?.ToString() ?? string.Empty)">
+                        <option value="">Mọi thương hiệu</option>
+                        @foreach (var brand in _brands) { <option value="@brand">@brand</option> }
+                    </select>
+                }
+                <label class="sr-only" for="store-price">Khoảng giá</label>
+                <select id="store-price" class="rounded-lg border border-vfms-border bg-vfms-surface px-3 py-2 text-sm text-vfms-text outline-none focus:border-vfms-primary" disabled="@_loading"
+                        value="@_price" @onchange="args => FilterAsync(() => _price = args.Value?.ToString() ?? string.Empty)">
+                    @foreach (var range in PriceRanges) { <option value="@range.Key">@range.Label</option> }
+                </select>
+                <label class="sr-only" for="store-sort">Sắp xếp</label>
+                <select id="store-sort" class="rounded-lg border border-vfms-border bg-vfms-surface px-3 py-2 text-sm text-vfms-text outline-none focus:border-vfms-primary" disabled="@_loading"
+                        value="@_sort" @onchange="args => FilterAsync(() => _sort = args.Value?.ToString() ?? DefaultSort)">
+                    @foreach (var (value, label) in Sorts) { <option value="@value">@label</option> }
+                </select>
+                @if (_page is { } found)
+                {
+                    <span class="text-xs text-vfms-text-secondary" role="status">@found.TotalCount sản phẩm</span>
+                }
+                @if (HasFilters)
+                {
+                    <button type="button" class="text-xs font-semibold text-vfms-primary underline-offset-2 hover:underline" disabled="@_loading" @onclick="ClearFiltersAsync">Xóa bộ lọc</button>
+                }
+            </div>
+            @if (_categories.Count is > 0 and <= MaxCategoryChips)
+            {
+                <div class="flex flex-wrap gap-2" role="group" aria-label="Lọc theo danh mục">
+                    @foreach (var category in new[] { "" }.Concat(_categories))
+                    {
+                        var active = _category == category;
+                        <button type="button" aria-pressed="@active.ToString().ToLowerInvariant()" disabled="@_loading" @onclick="() => FilterCategoryAsync(category)"
+                                class="@(active ? "border-vfms-primary bg-vfms-primary-soft text-vfms-primary" : "border-vfms-border bg-vfms-surface text-vfms-text-secondary hover:border-vfms-border-strong hover:text-vfms-text") rounded-full border px-3 py-1 text-xs font-semibold transition">
+                            @(category == "" ? "Tất cả" : category)
+                        </button>
+                    }
+                </div>
+            }
 
             @if (_loading)
             {
-                <p role="status" class="py-8 text-sm text-[#6F6966]">Đang tải sản phẩm...</p>
+                <p role="status" class="py-8 text-sm text-vfms-text-secondary">Đang tải sản phẩm...</p>
             }
             else if (_page is { Items.Count: > 0 } list)
             {
-                <ul class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                <ul class="grid list-none gap-4 p-0 sm:grid-cols-2 xl:grid-cols-3">
                     @foreach (var product in list.Items)
                     {
-                        <li @key="product.Id" class="flex flex-col overflow-hidden rounded-xl border border-[#D8D1CD] bg-[#F8F5F2] shadow-sm">
-                            <div class="aspect-square bg-[#ECE8E4]">
-                                @if (product.ImageUrl is { } image) { <img src="@image" alt="@product.Name" class="h-full w-full object-cover" loading="lazy" /> }
-                            </div>
-                            <div class="flex flex-1 flex-col gap-2 p-4">
-                                <p class="text-[11px] font-bold tracking-wider text-[#8C8581]">@((product.Category ?? "Khác").ToUpperInvariant())</p>
-                                <h2 class="font-['Montserrat',sans-serif] text-sm font-bold text-[#242424]">@product.Name</h2>
-                                @if (!string.IsNullOrWhiteSpace(product.Description)) { <p class="line-clamp-3 text-xs text-[#6F6966]">@product.Description</p> }
-                                <div class="mt-auto flex items-center justify-between gap-2 pt-2">
-                                    <span class="text-base font-extrabold text-[#B83A3A]">@OperationsText.Money(product.UnitPrice)</span>
+                        <li @key="product.Id" class="flex min-w-0 flex-col overflow-hidden rounded-[10px] border border-vfms-border bg-vfms-surface transition hover:border-vfms-border-strong">
+                            <button type="button" class="relative block aspect-[4/3] w-full bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-vfms-primary" aria-label="Xem chi tiết @product.Name" @onclick="() => _detail = product">
+                                @if (product.ImageUrl is { } image && !_brokenImages.Contains(product.Id))
+                                {
+                                    <img src="@image" alt="@product.Name" class="h-full w-full object-contain p-3" loading="lazy" @onerror="() => _brokenImages.Add(product.Id)" />
+                                }
+                                else
+                                {
+                                    <div class="flex h-full w-full flex-col items-center justify-center gap-1 bg-vfms-surface-alt text-vfms-text-muted" aria-hidden="true">
+                                        <span class="font-heading text-3xl font-extrabold text-vfms-border-strong">@Initials(product.Name)</span>
+                                        <span class="text-[10px] font-bold uppercase tracking-[0.18em]">@(product.Category ?? "Victor Fitness")</span>
+                                    </div>
+                                }
+                                @if (!product.CanOrder)
+                                {
+                                    <span class="absolute left-3 top-3 @OperationsText.Badge(product.Status)">@OperationsText.Label(product.Status)</span>
+                                }
+                            </button>
+                            <div class="flex flex-1 flex-col gap-1.5 p-4">
+                                <p class="text-[10px] font-bold uppercase tracking-[0.16em] text-vfms-text-muted">@Overline(product)</p>
+                                <h2 class="font-heading text-sm font-bold leading-snug text-vfms-text"><button type="button" class="text-left hover:text-vfms-primary hover:underline underline-offset-2" @onclick="() => _detail = product">@product.Name</button></h2>
+                                @if (Variant(product) is { Length: > 0 } variant)
+                                {
+                                    <p class="text-xs font-semibold text-vfms-text">@variant</p>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(product.Description)) { <p class="line-clamp-2 text-xs text-vfms-text-secondary">@product.Description</p> }
+                                <div class="mt-auto flex items-center justify-between gap-3 pt-3">
+                                    <span class="whitespace-nowrap font-heading text-base font-extrabold text-vfms-text">@OperationsText.Money(product.UnitPrice)</span>
                                     @if (product.CanOrder)
                                     {
-                                        <button type="button" class="@Ui.PrimaryButton px-3 py-1.5 text-xs" aria-label="Thêm @product.Name vào giỏ" @onclick="() => Add(product)">Thêm vào giỏ</button>
-                                    }
-                                    else
-                                    {
-                                        <span class="@OperationsText.Badge(product.Status)">@OperationsText.Label(product.Status)</span>
+                                        <button type="button" class="whitespace-nowrap rounded-lg bg-vfms-primary px-3 py-1.5 text-xs font-bold text-white transition hover:bg-vfms-primary-hover" aria-label="Thêm @product.Name vào giỏ" @onclick="() => AddAsync(product, 1)">+ Thêm</button>
                                     }
                                 </div>
                             </div>
                         </li>
                     }
                 </ul>
-                <div class="overflow-hidden rounded-xl border border-[#D8D1CD] bg-[#F8F5F2]">
+                <div class="overflow-hidden rounded-[10px] border border-vfms-border bg-vfms-surface">
                     <Pager Page="list.Page" PageSize="list.PageSize" TotalCount="list.TotalCount" Noun="sản phẩm" AriaLabel="Phân trang sản phẩm" Disabled="_loading" OnPage="LoadAsync" />
                 </div>
             }
             else
             {
-                <p role="status" class="py-8 text-sm text-[#6F6966]">Không có sản phẩm phù hợp.</p>
+                <div class="space-y-3 rounded-[12px] border border-vfms-border bg-vfms-surface p-8 text-center">
+                    <p role="status" class="text-sm text-vfms-text-secondary">Không có sản phẩm phù hợp.</p>
+                    @if (HasFilters)
+                    {
+                        <button type="button" class="@Ui.Button" @onclick="ClearFiltersAsync">Xem tất cả sản phẩm</button>
+                    }
+                </div>
             }
         </div>
 
-        <aside class="@Ui.Card h-fit space-y-4 lg:sticky lg:top-28" aria-labelledby="cart-title">
-            <h2 id="cart-title" class="text-base font-bold text-[#242424]">Giỏ hàng (@_cart.Sum(line => line.Quantity))</h2>
+        <aside class="h-fit space-y-4 rounded-[12px] border border-vfms-border bg-vfms-surface p-5 lg:sticky lg:top-28" aria-labelledby="cart-title">
+            <div class="flex items-baseline justify-between border-b border-vfms-border pb-3">
+                <h2 id="cart-title" class="font-heading text-base font-bold uppercase tracking-wide text-vfms-text">Giỏ hàng</h2>
+                <span class="text-xs font-semibold text-vfms-text-secondary">@_cart.Sum(line => line.Quantity) sản phẩm</span>
+            </div>
             @if (_cart.Count == 0)
             {
-                <p class="text-sm text-[#6F6966]">Chưa có sản phẩm nào.</p>
+                <p class="text-sm text-vfms-text-secondary">Chưa có sản phẩm nào. Chọn "+ Thêm" trên sản phẩm để bắt đầu.</p>
             }
             else
             {
-                <ul class="divide-y divide-[#ECE8E4]">
+                <ul class="m-0 list-none divide-y divide-vfms-border p-0">
                     @foreach (var line in _cart)
                     {
-                        <li @key="line.Product.Id" class="flex items-center gap-2 py-2">
+                        <li @key="line.Product.Id" class="flex items-center gap-2 py-2.5">
                             <div class="min-w-0 flex-1">
-                                <p class="truncate text-sm font-semibold">@line.Product.Name</p>
-                                <p class="text-xs text-[#6F6966]">@OperationsText.Money(line.Product.UnitPrice * line.Quantity)</p>
+                                <p class="truncate text-sm font-semibold text-vfms-text">@line.Product.Name</p>
+                                <p class="text-xs text-vfms-text-secondary">@OperationsText.Money(line.Product.UnitPrice * line.Quantity)</p>
                             </div>
-                            <input type="number" class="w-16 rounded-lg border border-[#D8D1CD] bg-[#F8F5F2] px-2 py-1 text-sm text-[#242424]" min="1" max="999" aria-label="Số lượng @line.Product.Name"
-                                   value="@line.Quantity" @onchange="args => SetQuantity(line, args.Value?.ToString())" />
-                            <button type="button" class="text-xs font-semibold text-red-700 hover:underline" aria-label="Bỏ @line.Product.Name" @onclick="() => _cart.Remove(line)">Bỏ</button>
+                            <input type="number" class="w-16 rounded-lg border border-vfms-border bg-vfms-bg px-2 py-1 text-sm text-vfms-text outline-none focus:border-vfms-primary" min="1" max="999" aria-label="Số lượng @line.Product.Name"
+                                   value="@line.Quantity" @onchange="args => SetQuantityAsync(line, args.Value?.ToString())" />
+                            <button type="button" class="rounded-lg px-2 py-1 text-xs font-semibold text-vfms-text-secondary hover:bg-vfms-surface-alt hover:text-[#DC2626]" aria-label="Bỏ @line.Product.Name" @onclick="() => RemoveAsync(line)">Bỏ</button>
                         </li>
                     }
                 </ul>
-                <p class="flex justify-between text-sm"><span>Tạm tính</span><strong class="text-[#B83A3A]">@OperationsText.Money(_cart.Sum(line => line.Product.UnitPrice * line.Quantity))</strong></p>
+                <p class="flex items-baseline justify-between border-t border-vfms-border pt-3 text-sm text-vfms-text-secondary"><span>Tạm tính</span><strong class="font-heading text-lg font-extrabold text-vfms-text">@OperationsText.Money(_cart.Sum(line => line.Product.UnitPrice * line.Quantity))</strong></p>
 
                 <EditForm Model="_checkout" OnValidSubmit="PlaceAsync" novalidate>
                     <OperationsValidation TRequest="PlaceSupplementOrderRequest" Validator="_validator" CreateRequest="CreateRequest" @ref="_validation" />
                     <ValidationSummary />
                     <fieldset disabled="@_working" class="space-y-3">
-                        <legend class="text-xs font-semibold text-[#242424]">Hình thức nhận hàng</legend>
+                        <legend class="mb-2 text-xs font-bold uppercase tracking-wide text-vfms-text">Hình thức nhận hàng</legend>
                         <InputRadioGroup @bind-Value="_checkout.FulfillmentType">
                             @foreach (var type in OperationsText.FulfillmentTypes)
                             {
-                                <label class="flex items-center gap-2 text-sm"><InputRadio Value="@type" /> @OperationsText.Label(type)</label>
+                                <label class="@(_checkout.FulfillmentType == type ? "border-vfms-primary bg-vfms-primary-soft" : "border-vfms-border bg-vfms-bg") flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm text-vfms-text">
+                                    <InputRadio Value="@type" class="accent-[#B83A3A]" /> @OperationsText.Label(type)
+                                </label>
                             }
                         </InputRadioGroup>
                         @if (_checkout.FulfillmentType == "HomeDelivery")
@@ -135,13 +213,19 @@
                                 <InputText id="delivery-note" class="@Ui.Field" @bind-Value="_checkout.DeliveryNote" maxlength="500" />
                             </label>
                         }
-                        <button type="submit" class="@Ui.PrimaryButton w-full">@(_working ? "Đang đặt hàng..." : "Đặt hàng")</button>
+                        <button type="submit" class="@Ui.PrimaryButton flex w-full items-center justify-between font-heading uppercase tracking-wide"><span>@(_working ? "Đang đặt hàng..." : "Đặt hàng")</span><span aria-hidden="true">↗</span></button>
+                        <p class="text-[11px] text-vfms-text-muted">@(_checkout.FulfillmentType == "GymPickup" ? "Thanh toán tại quầy khi nhận hàng." : "Thanh toán khi nhận hàng (COD).")</p>
                     </fieldset>
                 </EditForm>
             }
         </aside>
     </div>
 </section>
+
+@if (_detail is { } detail)
+{
+    <SupplementProductDetail Product="detail" OnClose="() => _detail = null" OnAdd="args => AddFromDetailAsync(args.Product, args.Quantity)" />
+}
 
 @code {
     private sealed class CartLine(SupplementProductResponse product)
@@ -151,6 +235,8 @@
     }
 
     private const int PageSize = 12;
+    private const int MaxCategoryChips = 8;
+    private const string DefaultSort = "name";
     private readonly CancellationTokenSource _lifetime = new();
     private readonly CheckoutModel _checkout = new();
     private readonly PlaceSupplementOrderRequestValidator _validator = new();
@@ -158,18 +244,117 @@
     private readonly List<CartLine> _cart = [];
     private PagedResponse<SupplementProductResponse>? _page;
     private SupplementOrderResponse? _placed;
+    private SupplementProductResponse? _detail;
+    /// <summary>A price filter option; null bounds are open.</summary>
+    private sealed record PriceRange(string Key, string Label, decimal? Min, decimal? Max);
+
+    private static readonly PriceRange[] PriceRanges =
+    [
+        new("", "Mọi mức giá", null, null),
+        new("u500", "Dưới 500.000 ₫", null, 499_999),
+        new("500-1000", "500.000 – 1.000.000 ₫", 500_000, 1_000_000),
+        new("1000-1500", "1.000.000 – 1.500.000 ₫", 1_000_001, 1_500_000),
+        new("o1500", "Trên 1.500.000 ₫", 1_500_001, null),
+    ];
+
+    private static readonly (string Value, string Label)[] Sorts =
+    [
+        ("name", "Tên A → Z"),
+        ("price_asc", "Giá thấp → cao"),
+        ("price_desc", "Giá cao → thấp"),
+        ("newest", "Mới nhất"),
+    ];
+
     private List<string> _categories = [];
-    private string _search = "", _category = "";
+    private List<string> _brands = [];
+    private string _search = "", _category = "", _brand = "", _price = "", _sort = DefaultSort;
+    private bool HasFilters => !string.IsNullOrWhiteSpace(_search) || _category != "" || _brand != "" || _price != "" || _sort != DefaultSort;
     private string? _notice, _error;
     private bool _loading, _working;
+    private readonly HashSet<int> _brokenImages = [];
+    private SupplementCartStorage? _storage;
+    private string? _userId;
+
+    /// <summary>Card overline: brand and product type, e.g. "Rule 1 · Whey Protein".</summary>
+    private static string Overline(SupplementProductResponse product) =>
+        string.Join(" · ", new[] { product.Brand, product.Category ?? "Khác" }.Where(v => !string.IsNullOrWhiteSpace(v)));
+
+    /// <summary>Pack size and flavour, e.g. "2 lbs (907 g) · Chocolate Fudge"; empty when neither is set.</summary>
+    private static string Variant(SupplementProductResponse product) =>
+        string.Join(" · ", new[] { product.Size, product.Flavour }.Where(v => !string.IsNullOrWhiteSpace(v)));
+
+    /// <summary>Two-letter monogram shown when a product has no usable image.</summary>
+    private static string Initials(string name) =>
+        string.Concat(name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(2).Select(word => char.ToUpperInvariant(word[0])));
+
+    private Task FilterCategoryAsync(string category)
+    {
+        _category = category;
+        return LoadAsync(1);
+    }
+
+    /// <summary>Applies one filter change and goes back to the first page.</summary>
+    private Task FilterAsync(Action change)
+    {
+        change();
+        return LoadAsync(1);
+    }
+
+    private Task ClearFiltersAsync()
+    {
+        _category = _search = _brand = _price = "";
+        _sort = DefaultSort;
+        return LoadAsync(1);
+    }
 
     protected override async Task OnInitializedAsync()
     {
-        try { _categories = await Api.GetProductCategoriesAsync(_lifetime.Token); }
+        try
+        {
+            _categories = await Api.GetProductCategoriesAsync(_lifetime.Token);
+            _brands = await Api.GetProductBrandsAsync(_lifetime.Token);
+        }
         catch (AuthApiException error) { _error = error.Message; }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
         await LoadAsync(1);
+        await RestoreCartAsync();
     }
+
+    /// <summary>
+    /// Brings back the cart saved for this user and checks each line against the store as it is now: products that
+    /// were withdrawn or ran out are dropped, and price changes are pointed out before checkout.
+    /// </summary>
+    private async Task RestoreCartAsync()
+    {
+        var user = (await AuthState.GetAuthenticationStateAsync()).User;
+        _userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (_userId is null) return;
+        _storage = new SupplementCartStorage(JS);
+        var saved = await _storage.LoadAsync(_userId);
+        if (saved.Count == 0) return;
+
+        var lookups = await Task.WhenAll(saved.Select(async line =>
+        {
+            try { return (line.ProductId, Product: (SupplementProductResponse?)await Api.GetProductAsync(line.ProductId, _lifetime.Token)); }
+            catch (AuthApiException error) when (error.StatusCode == System.Net.HttpStatusCode.NotFound) { return (line.ProductId, Product: null); }
+        }));
+        var result = SupplementCartStorage.Reconcile(saved, lookups.ToDictionary(x => x.ProductId, x => x.Product));
+        _cart.Clear();
+        _cart.AddRange(result.Lines.Select(line => new CartLine(line.Product) { Quantity = line.Quantity }));
+
+        var messages = new List<string>();
+        if (result.Removed.Count > 0)
+            messages.Add($"Đã bỏ khỏi giỏ vì không còn bán hoặc hết hàng: {string.Join(", ", result.Removed)}.");
+        if (result.PriceChanged.Count > 0)
+            messages.Add($"Giá đã thay đổi: {string.Join(", ", result.PriceChanged)}. Giỏ hàng đang dùng giá mới.");
+        if (messages.Count > 0) _notice = string.Join(" ", messages);
+        await SaveCartAsync();
+    }
+
+    private Task SaveCartAsync() => _storage is null || _userId is null
+        ? Task.CompletedTask
+        : _storage.SaveAsync(_userId, _cart.Select(line =>
+            new SupplementCartStorage.SavedLine(line.Product.Id, line.Quantity, line.Product.UnitPrice, line.Product.Name)));
 
     private PlaceSupplementOrderRequest CreateRequest()
     {
@@ -184,27 +369,44 @@
         _loading = true;
         try
         {
+            var range = PriceRanges.FirstOrDefault(r => r.Key == _price) ?? PriceRanges[0];
             _page = await Api.GetProductsAsync(new(string.IsNullOrWhiteSpace(_search) ? null : _search.Trim(),
-                string.IsNullOrEmpty(_category) ? null : _category, null, page, PageSize), manage: false, _lifetime.Token);
+                string.IsNullOrEmpty(_category) ? null : _category, null, page, PageSize,
+                Brand: string.IsNullOrEmpty(_brand) ? null : _brand, MinPrice: range.Min, MaxPrice: range.Max, Sort: _sort),
+                manage: false, _lifetime.Token);
         }
         catch (AuthApiException error) { _error = error.Message; }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
         finally { _loading = false; }
     }
 
-    private void Add(SupplementProductResponse product)
+    private async Task AddAsync(SupplementProductResponse product, int quantity)
     {
         _placed = null;
         if (_cart.FirstOrDefault(line => line.Product.Id == product.Id) is { } line)
-            line.Quantity = Math.Min(999, line.Quantity + 1);
+            line.Quantity = Math.Min(999, line.Quantity + quantity);
         else
-            _cart.Add(new(product));
-        _notice = $"Đã thêm \"{product.Name}\" vào giỏ.";
+            _cart.Add(new(product) { Quantity = Math.Clamp(quantity, 1, 999) });
+        _notice = quantity == 1 ? $"Đã thêm \"{product.Name}\" vào giỏ." : $"Đã thêm {quantity} × \"{product.Name}\" vào giỏ.";
+        await SaveCartAsync();
     }
 
-    private static void SetQuantity(CartLine line, string? value)
+    private async Task AddFromDetailAsync(SupplementProductResponse product, int quantity)
+    {
+        _detail = null;
+        await AddAsync(product, quantity);
+    }
+
+    private Task RemoveAsync(CartLine line)
+    {
+        _cart.Remove(line);
+        return SaveCartAsync();
+    }
+
+    private Task SetQuantityAsync(CartLine line, string? value)
     {
         if (int.TryParse(value, out var quantity)) line.Quantity = Math.Clamp(quantity, 1, 999);
+        return SaveCartAsync();
     }
 
     private async Task PlaceAsync()
@@ -216,6 +418,7 @@
         {
             _placed = await Api.PlaceOrderAsync(CreateRequest(), _lifetime.Token);
             _cart.Clear();
+            await SaveCartAsync();
             _checkout.DeliveryNote = null;
         }
         catch (AuthApiException error)

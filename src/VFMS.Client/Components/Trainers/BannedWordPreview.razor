@@ -1,0 +1,28 @@
+@* Highlights banned words returned by the API (GBR-66, FE guideline 5.5). *@
+@if (Words.Count > 0 && !string.IsNullOrEmpty(Text))
+{
+    <p class="trainer-feedback trainer-error trainer-copy" role="alert">
+        @foreach (var (part, banned) in Split())
+        {
+            if (banned) { <mark class="trainer-banned">@part</mark> } else { @part }
+        }
+    </p>
+}
+@code {
+    [Parameter] public string? Text { get; set; }
+    [Parameter] public IReadOnlyList<string> Words { get; set; } = [];
+
+    private IEnumerable<(string Part, bool Banned)> Split()
+    {
+        var pattern = string.Join("|", Words.Where(w => w.Length > 0).Select(System.Text.RegularExpressions.Regex.Escape));
+        var last = 0;
+        foreach (System.Text.RegularExpressions.Match match in System.Text.RegularExpressions.Regex.Matches(Text!, pattern,
+                     System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+        {
+            if (match.Index > last) yield return (Text![last..match.Index], false);
+            yield return (match.Value, true);
+            last = match.Index + match.Length;
+        }
+        if (last < Text!.Length) yield return (Text[last..], false);
+    }
+}

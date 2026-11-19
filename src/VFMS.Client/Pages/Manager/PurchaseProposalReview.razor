@@ -21,8 +21,8 @@
         <section class="@Ui.Card" aria-labelledby="review-title">
             <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
                 <div>
-                    <h2 id="review-title" class="text-base font-bold text-[#242424]">@selected.ProposalNumber</h2>
-                    <p class="mt-1 text-xs text-[#6F6966]">@(selected.ProposedByName ?? "Nhân viên") · @(selected.SubmittedAt is { } sent ? $"Gửi {OperationsText.Local(sent)}" : $"Tạo {OperationsText.Local(selected.CreatedAt)}")</p>
+                    <h2 id="review-title" class="text-base font-bold text-vfms-text">@selected.ProposalNumber</h2>
+                    <p class="mt-1 text-xs text-vfms-text-secondary">@(selected.ProposedByName ?? "Nhân viên") · @(selected.SubmittedAt is { } sent ? $"Gửi {OperationsText.Local(sent)}" : $"Tạo {OperationsText.Local(selected.CreatedAt)}")</p>
                 </div>
                 <div class="flex items-center gap-2">
                     <span class="@OperationsText.Badge(selected.Status)">@OperationsText.Label(selected.Status)</span>
@@ -32,7 +32,7 @@
             <ProposalDetail Proposal="selected" />
             @if (selected.Status == "Submitted")
             {
-                <form class="mt-5 space-y-3 border-t border-[#D8D1CD] pt-5" @onsubmit:preventDefault>
+                <form class="mt-5 space-y-3 border-t border-vfms-border pt-5" @onsubmit:preventDefault>
                     <fieldset disabled="@_working" class="space-y-3">
                         <label class="@Ui.Label block" for="review-note">Ghi chú duyệt (bắt buộc khi từ chối hoặc yêu cầu sửa)
                             <textarea id="review-note" class="@Ui.Field" rows="2" @bind="_note" maxlength="1000"></textarea>
@@ -47,7 +47,7 @@
             }
             else if (selected.Status == "Approved")
             {
-                <div class="mt-5 border-t border-[#D8D1CD] pt-5">
+                <div class="mt-5 border-t border-vfms-border pt-5">
                     <button type="button" class="@Ui.PrimaryButton" disabled="@_working" @onclick='() => ActAsync(selected, "complete")'>Đánh dấu đã mua xong</button>
                 </div>
             }
@@ -56,7 +56,7 @@
 
     <section class="@Ui.ListCard" aria-labelledby="review-list-title" aria-busy="@_loading">
         <div class="@Ui.ListHeader">
-            <h2 id="review-list-title" class="mb-3 text-sm font-bold text-[#242424]">Đề xuất</h2>
+            <h2 id="review-list-title" class="mb-3 text-sm font-bold text-vfms-text">Đề xuất</h2>
             <form @onsubmit="() => LoadAsync(1)" @onsubmit:preventDefault>
                 <fieldset disabled="@Busy" class="flex flex-wrap items-end gap-3">
                     <label class="@Ui.Label w-full sm:w-64" for="review-search">Tìm kiếm
@@ -87,7 +87,7 @@
                         @foreach (var row in list.Items)
                         {
                             <tr @key="row.Id">
-                                <th scope="row" class="whitespace-nowrap font-semibold">@row.ProposalNumber<span class="block text-xs font-normal text-[#8C8581]">@(row.SubmittedAt is { } sent ? OperationsText.Local(sent) : "—")</span></th>
+                                <th scope="row" class="whitespace-nowrap font-semibold">@row.ProposalNumber<span class="block text-xs font-normal text-vfms-text-muted">@(row.SubmittedAt is { } sent ? OperationsText.Local(sent) : "—")</span></th>
                                 <td>@(row.ProposedByName ?? "—")</td>
                                 <td class="max-w-72 truncate">@(row.Description ?? "—")</td>
                                 <td class="text-right whitespace-nowrap">@OperationsText.Money(row.TotalBudget)</td>
@@ -102,7 +102,7 @@
         }
         else
         {
-            <p role="status" class="p-5 text-sm text-[#6F6966]">Không có đề xuất phù hợp.</p>
+            <p role="status" class="p-5 text-sm text-vfms-text-secondary">Không có đề xuất phù hợp.</p>
         }
     </section>
 </div>

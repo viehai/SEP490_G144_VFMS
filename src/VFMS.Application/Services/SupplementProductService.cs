@@ -50,6 +50,10 @@ public sealed class SupplementProductService : ISupplementProductService
         Result<IReadOnlyList<string>>.Success(
             await _repository.GetCategoriesAsync(storeView ? StoreStatuses : AllStatuses, cancellationToken));
 
+    public async Task<Result<IReadOnlyList<string>>> GetBrandsAsync(bool storeView, CancellationToken cancellationToken = default) =>
+        Result<IReadOnlyList<string>>.Success(
+            await _repository.GetBrandsAsync(storeView ? StoreStatuses : AllStatuses, cancellationToken));
+
     public async Task<Result<SupplementProductResponse>> CreateAsync(
         SupplementProductRequest request, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default)
     {
@@ -121,9 +125,18 @@ public sealed class SupplementProductService : ISupplementProductService
             statuses = statuses.Contains(parsed) ? [parsed] : [];
         }
 
-        var (items, total) = await _repository.SearchProductsAsync(
-            statuses, EquipmentService.Clean(request.Category), EquipmentService.Clean(request.Search),
-            request.Page, request.PageSize, cancellationToken);
+        var query = new SupplementProductQuery(
+            statuses,
+            EquipmentService.Clean(request.Category),
+            EquipmentService.Clean(request.Search),
+            EquipmentService.Clean(request.Brand),
+            request.MinPrice,
+            request.MaxPrice,
+            ParseSort(request.Sort),
+            AvailableFirst: storeView,
+            request.Page,
+            request.PageSize);
+        var (items, total) = await _repository.SearchProductsAsync(query, cancellationToken);
         return Result<PagedResponse<SupplementProductResponse>>.Success(new PagedResponse<SupplementProductResponse>(
             request.Page, request.PageSize, total, items.Select(_mapper.Map<SupplementProductResponse>).ToArray()));
     }
@@ -133,15 +146,27 @@ public sealed class SupplementProductService : ISupplementProductService
         product.ProductName = name;
         product.Description = request.Description.Trim();
         product.CatalogCategory = EquipmentService.Clean(request.Category);
+        product.Brand = EquipmentService.Clean(request.Brand);
+        product.Size = EquipmentService.Clean(request.Size);
+        product.Flavour = EquipmentService.Clean(request.Flavour);
         product.ImageUrl = request.ImageUrl.Trim();
         product.UnitPrice = request.UnitPrice;
         product.ProductStatus = status;
     }
 
+    /// <summary>Maps the API sort value; anything blank or unknown sorts by name.</summary>
+    private static SupplementProductSort ParseSort(string? sort) => sort?.Trim().ToLowerInvariant() switch
+    {
+        "price_asc" => SupplementProductSort.PriceAscending,
+        "price_desc" => SupplementProductSort.PriceDescending,
+        "newest" => SupplementProductSort.Newest,
+        _ => SupplementProductSort.Name,
+    };
+
     private static string CleanName(string name) => string.Join(' ', name.Split(' ', StringSplitOptions.RemoveEmptyEntries));
 
     private static string Describe(SupplementProduct p) =>
-        $"Name={p.ProductName}; Category={p.CatalogCategory}; Price={p.UnitPrice}; Status={p.ProductStatus}";
+        $"Name={p.ProductName}; Brand={p.Brand}; Category={p.CatalogCategory}; Size={p.Size}; Flavour={p.Flavour}; Price={p.UnitPrice}; Status={p.ProductStatus}";
 
     private static Result<SupplementProductResponse> NotFound() =>
         Result<SupplementProductResponse>.Failure("Supplement product was not found.", "SUPPLEMENT_PRODUCT_NOT_FOUND", 404);

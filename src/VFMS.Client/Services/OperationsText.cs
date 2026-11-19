@@ -62,16 +62,18 @@ public static class OperationsText
         _ => value
     };
 
+    /// <summary>Semantic status badge (frontend guidelines 6.E): pill, tinted background, always paired with text.</summary>
     public static string Badge(string? status) =>
-        "inline-block whitespace-nowrap rounded-md border px-2.5 py-1 text-[11px] font-semibold " + status switch
+        "inline-block whitespace-nowrap rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide " + status switch
         {
             "Operational" or "Resolved" or "MarkedSafe" or "Approved" or "Completed" or "Active"
-                => "border-emerald-200 bg-emerald-50 text-emerald-800",
-            "UnderMaintenance" or "InProgress" or "Submitted" or "Processing" or "ReadyForPickup" or "OutForDelivery"
-                => "border-amber-200 bg-amber-50 text-amber-800",
-            "Damaged" or "Escalated" or "Rejected" or "Reported" or "Pending" or "OutOfStock" or "Safety"
-                => "border-red-200 bg-red-50 text-red-800",
-            _ => "border-[#D8D1CD] bg-[#ECE8E4] text-[#6F6966]"
+                => "border-emerald-200 bg-emerald-50 text-[#16A34A]",
+            "Reported" or "Pending" or "InProgress" or "Submitted" or "Processing" or "ReadyForPickup" or "OutForDelivery"
+                or "UnderMaintenance" or "Draft"
+                => "border-amber-200 bg-amber-50 text-[#D97706]",
+            "Damaged" or "Escalated" or "Rejected" or "OutOfStock" or "Safety"
+                => "border-red-200 bg-red-50 text-[#DC2626]",
+            _ => "border-[#D8D1CD] bg-[#ECE8E4] text-[#6B7280]"
         };
 
     /// <summary>Vietnamese text for an API error code, or null to keep the server's message.</summary>
@@ -79,6 +81,9 @@ public static class OperationsText
     {
         "EQUIPMENT_NOT_FOUND" => "Không tìm thấy thiết bị.",
         "EQUIPMENT_CODE_EXISTS" => "Mã thiết bị đã tồn tại.",
+        "EQUIPMENT_CODE_INVALID_FORMAT" => "Mã thiết bị phải theo dạng TIỀN TỐ-0001 của danh mục đã chọn, hoặc để trống để tự tạo.",
+        "EQUIPMENT_CATEGORY_PREFIX_MISSING" => "Danh mục này chưa có tiền tố mã. Hãy cập nhật danh mục trước.",
+        "EQUIPMENT_CATEGORY_PREFIX_EXISTS" => "Tiền tố mã đã được danh mục khác sử dụng.",
         "EQUIPMENT_CATEGORY_NOT_FOUND" => "Không tìm thấy danh mục thiết bị.",
         "EQUIPMENT_CATEGORY_EXISTS" => "Tên danh mục đã tồn tại.",
         "EQUIPMENT_CATEGORY_IN_USE" => "Danh mục đang có thiết bị nên không thể xóa.",
@@ -122,6 +127,9 @@ public static class OperationsText
         "Description URL must be a valid HTTP or HTTPS URL." => "Đường dẫn mô tả phải là liên kết http(s) hợp lệ.",
         "A reason is required to retire equipment." => "Cần nhập lý do khi thanh lý thiết bị.",
         "The Equipment field is required." => "Vui lòng chọn thiết bị.",
+        "The Category field is required." => "Vui lòng chọn danh mục.",
+        "The Code Prefix field is required." => "Vui lòng nhập tiền tố mã.",
+        "Code prefix must be 2 to 5 letters." => "Tiền tố mã gồm 2 đến 5 chữ cái, VD: TM.",
         "The Description field is required." => "Vui lòng nhập mô tả.",
         "Image URL must be a valid HTTP or HTTPS URL." => "Ảnh phải là liên kết http(s) hợp lệ.",
         "The Note field is required." => "Vui lòng nhập ghi chú.",

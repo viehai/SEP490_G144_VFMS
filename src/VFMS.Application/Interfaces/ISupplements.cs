@@ -5,15 +5,38 @@ using VFMS.Domain.Enums;
 
 namespace VFMS.Application.Interfaces;
 
+/// <summary>Product list order. The store also puts Active before OutOfStock (see <see cref="SupplementProductQuery.AvailableFirst"/>).</summary>
+public enum SupplementProductSort
+{
+    Name,
+    PriceAscending,
+    PriceDescending,
+    Newest
+}
+
+/// <summary>Filters for a product search. Text filters are already trimmed; null means "any".</summary>
+public sealed record SupplementProductQuery(
+    IReadOnlyCollection<SupplementProductStatus> Statuses,
+    string? Category,
+    string? Search,
+    string? Brand,
+    decimal? MinPrice,
+    decimal? MaxPrice,
+    SupplementProductSort Sort,
+    bool AvailableFirst,
+    int Page,
+    int PageSize);
+
 public interface ISupplementRepository : IAuditedRepository
 {
     // Products
     Task<(IReadOnlyList<SupplementProduct> Items, int TotalCount)> SearchProductsAsync(
-        IReadOnlyCollection<SupplementProductStatus> statuses, string? category, string? search,
-        int page, int pageSize, CancellationToken cancellationToken = default);
+        SupplementProductQuery query, CancellationToken cancellationToken = default);
     Task<SupplementProduct?> GetProductAsync(int id, CancellationToken cancellationToken = default);
     Task<bool> ProductNameExistsAsync(string name, int? excludeId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<string>> GetCategoriesAsync(
+        IReadOnlyCollection<SupplementProductStatus> statuses, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<string>> GetBrandsAsync(
         IReadOnlyCollection<SupplementProductStatus> statuses, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<SupplementProduct>> GetProductsAsync(IReadOnlyCollection<int> ids, CancellationToken cancellationToken = default);
 
@@ -38,6 +61,8 @@ public interface ISupplementProductService
     /// <summary>When <paramref name="storeView"/> is true, Inactive products are not found.</summary>
     Task<Result<SupplementProductResponse>> GetProductAsync(int id, bool storeView, CancellationToken cancellationToken = default);
     Task<Result<IReadOnlyList<string>>> GetCategoriesAsync(bool storeView, CancellationToken cancellationToken = default);
+    /// <summary>Brands that have at least one product in the view, A to Z, for the brand filter.</summary>
+    Task<Result<IReadOnlyList<string>>> GetBrandsAsync(bool storeView, CancellationToken cancellationToken = default);
 
     Task<Result<SupplementProductResponse>> CreateAsync(
         SupplementProductRequest request, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default);

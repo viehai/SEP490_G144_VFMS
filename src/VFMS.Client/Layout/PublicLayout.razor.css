@@ -10,12 +10,11 @@
     align-items: center;
     width: 100%;
     max-width: 100%;
-    height: 60px;
+    height: 64px;
     padding: 0 24px;
-    color: #242424;
-    background: #F2EFEC;
-    border: 1px solid transparent;
-    border-bottom-color: #D8D1CD;
+    color: #252323;
+    background: rgba(242, 239, 236, 0.96);
+    border: 1px solid rgba(37, 35, 35, 0.08);
     border-radius: 0;
     box-shadow: none;
     transition: top 300ms ease, width 300ms ease, max-width 300ms ease,
@@ -35,6 +34,13 @@
     box-shadow: 0 8px 24px rgba(37, 35, 35, 0.08);
 }
 
+.public-navbar ::deep a:focus-visible,
+.public-navbar ::deep button:focus-visible {
+    outline: 2px solid #B83A3A;
+    outline-offset: 3px;
+    border-radius: 6px;
+}
+
 .public-navbar__logo {
     justify-self: start;
     min-width: 0;
@@ -47,7 +53,7 @@
 
 .public-navbar__actions {
     justify-self: end;
-    gap: 1rem;
+    gap: 0.875rem;
     min-width: 0;
 }
 
@@ -58,8 +64,8 @@
 
     .public-navbar:has(a[href="/my-transactions"]) {
         grid-template-columns: minmax(0, 1fr) auto;
-        grid-template-rows: 44px 32px;
-        height: 80px;
+        grid-template-rows: 46px 36px;
+        height: 84px;
     }
 
     .public-navbar:has(a[href="/my-transactions"]) .public-navbar__logo {
@@ -86,26 +92,28 @@
 
 @media (max-width: 639px) {
     .public-navbar {
-        padding: 0 12px;
+        padding: 0 14px;
     }
 
     .public-navbar.is-scrolled {
         top: 10px;
         width: calc(100% - 20px);
+        border-radius: 14px;
     }
 
     .public-navbar__logo img {
-        width: 72px;
+        height: 32px;
+        width: auto;
     }
 
     .public-navbar__actions {
-        gap: 4px;
+        gap: 6px;
     }
 
     .public-navbar:has(a[href="/my-transactions"]) {
-        grid-template-columns: 72px minmax(0, 1fr);
+        grid-template-columns: auto minmax(0, 1fr);
         height: auto;
-        min-height: 60px;
+        min-height: 64px;
         padding-top: 6px;
         padding-bottom: 6px;
     }
@@ -114,7 +122,7 @@
         flex-wrap: wrap;
         justify-content: flex-end;
         max-width: 100%;
-        row-gap: 8px;
+        row-gap: 6px;
     }
 }
 

@@ -1,0 +1,96 @@
+@page "/manager/pt-attendance-disputes"
+@layout ManagerAdminLayout
+@attribute [Authorize(Roles = "Manager")]
+@inject PersonalTrainingApiClient Api
+@using VFMS.Contracts.Common
+@using VFMS.Client.Components.Operations
+
+<PageTitle>Tranh chấp điểm danh PT | Victor Fitness</PageTitle>
+<section class="workspace-page trainer-page trainer-stack">
+    <PageHeader Overline="VFMS / PERSONAL TRAINING" Title="Tranh chấp điểm danh"
+                Description="PT ghi có mặt nhưng hội viên báo PT vắng mặt. Xem hai bên rồi chọn kết quả cuối cùng." />
+    <div class="trainer-row">
+        <button class="trainer-button" aria-pressed="@(!_processed)" disabled="@_busy" @onclick="() => SwitchAsync(false)">Đang chờ</button>
+        <button class="trainer-button" aria-pressed="@_processed" disabled="@_busy" @onclick="() => SwitchAsync(true)">Đã xử lý</button>
+    </div>
+    <TrainerFeedback Error="@_error" Message="@_message" />
+    @if (_loading) { <p role="status">Đang tải tranh chấp…</p> }
+    else if (!Visible.Any()) { <p class="trainer-panel">Không có tranh chấp trong mục này.</p> }
+    @foreach (var item in Visible)
+    {
+        <article class="trainer-panel trainer-stack" @key="item.SessionId">
+            <div class="trainer-row trainer-between">
+                <h2>@item.MemberName · @item.TrainerName</h2>
+                <TrainerStatus Status="@(item.Decision is null ? "Pending" : item.Decision == PTDisputeDecisions.PTAbsent ? "Approved" : "Completed")" />
+            </div>
+            <p>Hợp đồng #@item.ContractId · @item.Date.ToString("dd/MM/yyyy") · @item.StartTime.ToString("HH:mm")–@item.EndTime.ToString("HH:mm")</p>
+            <dl class="pt-facts">
+                <dt>PT ghi nhận</dt><dd>Có mặt</dd>
+                <dt>Hội viên báo</dt><dd>PT vắng mặt @(item.MemberNote is { } note ? $"· {note}" : "")</dd>
+            </dl>
+            @if (item.Decision is null)
+            {
+                <label>Ghi chú quyết định<textarea class="trainer-input" rows="3" maxlength="1000" @bind="_notes[item.SessionId]" disabled="@_busy"></textarea></label>
+                <div class="trainer-row">
+                    <button class="trainer-button" disabled="@_busy" @onclick="() => DecideAsync(item.SessionId, PTDisputeDecisions.SessionHeld)">Buổi đã diễn ra</button>
+                    <button class="trainer-button trainer-primary" disabled="@_busy" @onclick="() => DecideAsync(item.SessionId, PTDisputeDecisions.PTAbsent)">PT vắng mặt</button>
+                    <button class="trainer-button" disabled="@_busy" @onclick="() => DecideAsync(item.SessionId, PTDisputeDecisions.MemberAbsent)">Hội viên vắng mặt</button>
+                </div>
+            }
+            else
+            {
+                <p>Kết quả: <strong>@DecisionName(item.Decision)</strong>@(item.ReviewNote is { } review ? $" · {review}" : "")</p>
+            }
+        </article>
+    }
+    @if (_page is { } page)
+    { <Pager Page="page.Page" PageSize="page.PageSize" TotalCount="page.TotalCount" Noun="tranh chấp" Disabled="_busy" OnPage="LoadAsync" /> }
+</section>
+
+@code {
+    private PagedResponse<PTAttendanceDispute>? _page;
+    private readonly Dictionary<int, string> _notes = [];
+    private bool _loading, _busy, _processed;
+    private string? _error, _message;
+    private IEnumerable<PTAttendanceDispute> Visible => _page?.Items ?? [];
+
+    protected override Task OnInitializedAsync() => LoadAsync(1);
+    private Task SwitchAsync(bool processed) { _processed = processed; return LoadAsync(1); }
+
+    private async Task LoadAsync(int page)
+    {
+        _loading = true;
+        try
+        {
+            _page = await Api.AttendanceDisputesAsync(_processed, page);
+            foreach (var item in _page.Items) _notes.TryAdd(item.SessionId, "");
+        }
+        catch (AuthApiException ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task DecideAsync(int id, string decision)
+    {
+        if (_busy) return;
+        if (!_notes.TryGetValue(id, out var note) || string.IsNullOrWhiteSpace(note))
+        { _error = "Nhập ghi chú quyết định."; return; }
+        _busy = true;
+        _error = _message = null;
+        try
+        {
+            await Api.DecideDisputeAsync(id, new(decision, note.Trim()));
+            _message = "Đã lưu quyết định và thông báo cho hội viên, PT.";
+            await LoadAsync(_page?.Page ?? 1);
+        }
+        catch (AuthApiException ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private static string DecisionName(string? decision) => decision switch
+    {
+        PTDisputeDecisions.SessionHeld => "Buổi đã diễn ra",
+        PTDisputeDecisions.PTAbsent => "PT vắng mặt (trả buổi bù)",
+        PTDisputeDecisions.MemberAbsent => "Hội viên vắng mặt",
+        _ => "—"
+    };
+}

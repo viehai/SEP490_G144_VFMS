@@ -4,19 +4,9 @@
 <WorkspaceShell Variant="@Variant" IsPreview="@IsPreview">@Body</WorkspaceShell>
 
 @code {
-    /// <summary>
-    /// Trang dùng chung cho mọi vai trò (ví dụ /competitions) dùng variant "member" để
-    /// sidebar hiển thị đúng vai trò của tài khoản đang đăng nhập.
-    /// </summary>
-    private string Variant => Navigation.ToBaseRelativePath(Navigation.Uri) switch
-    {
-        var path when path.StartsWith("admin/", StringComparison.OrdinalIgnoreCase) => "admin",
-        var path when path.StartsWith("manager/", StringComparison.OrdinalIgnoreCase) => "manager",
-        var path when path.StartsWith("pt/", StringComparison.OrdinalIgnoreCase) => "pt",
-        var path when path.StartsWith("staff/", StringComparison.OrdinalIgnoreCase) => "staff",
-        _ => "member"
-    };
-    private static readonly string[] LivePages = ["staff/equipment-issues", "staff/purchase-proposals", "staff/supplement-orders"];
+    private string Variant => Navigation.ToBaseRelativePath(Navigation.Uri).StartsWith("pt/", StringComparison.OrdinalIgnoreCase) ? "pt" : "staff";
+    private static readonly string[] LivePages = ["staff/equipment-issues", "staff/purchase-proposals", "staff/supplement-orders",
+        "pt/trainer-profile", "pt/availability", "pt/assigned-members", "pt/teaching-schedule"];
 
     private bool IsPreview => !LivePages.Contains(Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].TrimEnd('/'),
         StringComparer.OrdinalIgnoreCase);

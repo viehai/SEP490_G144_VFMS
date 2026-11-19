@@ -28,6 +28,7 @@ public interface IUserAdministrationRepository
         int roleId,
         AuditLog? auditLog = null,
         CancellationToken cancellationToken = default);
+    Task<bool> HasActiveYogaAssignmentsAsync(string userId, CancellationToken cancellationToken);
     Task ReplaceUserRolesAsync(
         ApplicationUser user,
         IReadOnlyCollection<int> roleIds,

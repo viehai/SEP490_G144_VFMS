@@ -48,6 +48,7 @@ public sealed class UserAdministrationRepository : IUserAdministrationRepository
         _context.ApplicationUsers
             .Include(user => user.UserRoles)
             .ThenInclude(userRole => userRole.Role)
+            .Include(user => user.PhysicalProfile)
             .FirstOrDefaultAsync(user => user.UserId == userId, cancellationToken);
 
     public async Task<(IReadOnlyList<ApplicationUser> Users, int TotalCount)> GetUsersAsync(
@@ -105,6 +106,10 @@ public sealed class UserAdministrationRepository : IUserAdministrationRepository
 
         await _context.SaveChangesAsync(cancellationToken);
     }
+
+    public Task<bool> HasActiveYogaAssignmentsAsync(string userId, CancellationToken cancellationToken) =>
+        _context.YogaClasses.AnyAsync(c => !c.IsDeleted && c.InstructorUserId == userId &&
+            (c.ClassStatus == YogaClassStatus.Draft || c.ClassStatus == YogaClassStatus.Published), cancellationToken);
 
     public async Task ReplaceUserRolesAsync(
         ApplicationUser user,

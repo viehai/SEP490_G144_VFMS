@@ -1,0 +1,101 @@
+@using VFMS.Contracts.Supplements
+
+@* UC-77: full product details in a side panel, opened from a store card. Esc, × or the backdrop closes it. *@
+<div class="fixed inset-0 z-50 flex justify-end" @onkeydown="OnKeyDown">
+    <button type="button" class="absolute inset-0 h-full w-full cursor-default bg-black/40" aria-label="Đóng chi tiết sản phẩm" tabindex="-1" @onclick="OnClose"></button>
+    <div role="dialog" aria-modal="true" aria-labelledby="product-detail-title"
+         class="relative flex h-full w-full max-w-md flex-col overflow-y-auto bg-vfms-surface shadow-2xl">
+        <div class="flex items-center justify-between border-b border-vfms-border px-5 py-4">
+            <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-vfms-primary">Chi tiết sản phẩm</p>
+            <button type="button" @ref="_close" class="rounded-lg px-2 py-1 text-lg leading-none text-vfms-text-secondary hover:bg-vfms-surface-alt hover:text-vfms-text" aria-label="Đóng" @onclick="OnClose">×</button>
+        </div>
+
+        <div class="aspect-square bg-white">
+            @if (Product.ImageUrl is { } image && !_imageBroken)
+            {
+                <img src="@image" alt="@Product.Name" class="h-full w-full object-contain p-6" @onerror="() => _imageBroken = true" />
+            }
+            else
+            {
+                <div class="flex h-full w-full items-center justify-center bg-vfms-surface-alt font-heading text-5xl font-extrabold text-vfms-border-strong" aria-hidden="true">@Initials</div>
+            }
+        </div>
+
+        <div class="flex flex-1 flex-col gap-4 p-5">
+            <div class="space-y-1">
+                @if (!string.IsNullOrWhiteSpace(Product.Brand))
+                {
+                    <p class="text-xs font-bold uppercase tracking-[0.16em] text-vfms-text-muted">@Product.Brand</p>
+                }
+                <h2 id="product-detail-title" class="font-heading text-xl font-extrabold leading-snug text-vfms-text">@Product.Name</h2>
+                <p class="font-heading text-2xl font-extrabold text-vfms-primary">@OperationsText.Money(Product.UnitPrice)</p>
+            </div>
+
+            <dl class="grid grid-cols-[110px_1fr] gap-x-3 gap-y-2 rounded-lg border border-vfms-border p-4 text-sm">
+                <dt class="text-vfms-text-secondary">Loại</dt><dd class="font-semibold text-vfms-text">@(Product.Category ?? "Khác")</dd>
+                <dt class="text-vfms-text-secondary">Quy cách</dt><dd class="font-semibold text-vfms-text">@(Product.Size ?? "—")</dd>
+                <dt class="text-vfms-text-secondary">Hương vị</dt><dd class="font-semibold text-vfms-text">@(Product.Flavour ?? "—")</dd>
+                <dt class="text-vfms-text-secondary">Tình trạng</dt><dd><span class="@OperationsText.Badge(Product.Status)">@OperationsText.Label(Product.Status)</span></dd>
+            </dl>
+
+            @if (!string.IsNullOrWhiteSpace(Product.Description))
+            {
+                <div class="space-y-1">
+                    <h3 class="text-xs font-bold uppercase tracking-wide text-vfms-text">Mô tả</h3>
+                    <p class="whitespace-pre-line text-sm leading-relaxed text-vfms-text-secondary">@Product.Description</p>
+                </div>
+            }
+
+            <div class="mt-auto space-y-2 border-t border-vfms-border pt-4">
+                @if (Product.CanOrder)
+                {
+                    <div class="flex items-center gap-3">
+                        <div class="flex items-center rounded-lg border border-vfms-border" role="group" aria-label="Số lượng">
+                            <button type="button" class="px-3 py-2 text-sm font-bold text-vfms-text disabled:opacity-40" aria-label="Giảm số lượng" disabled="@(_quantity <= 1)" @onclick="() => _quantity--">−</button>
+                            <span class="w-10 text-center text-sm font-semibold text-vfms-text" aria-live="polite">@_quantity</span>
+                            <button type="button" class="px-3 py-2 text-sm font-bold text-vfms-text disabled:opacity-40" aria-label="Tăng số lượng" disabled="@(_quantity >= MaxQuantity)" @onclick="() => _quantity++">+</button>
+                        </div>
+                        <button type="button" class="@Ui.PrimaryButton flex-1" @onclick="AddAsync">Thêm vào giỏ · @OperationsText.Money(Product.UnitPrice * _quantity)</button>
+                    </div>
+                }
+                else
+                {
+                    <p class="rounded-lg bg-vfms-surface-alt px-3 py-2 text-sm text-vfms-text-secondary">Sản phẩm đang tạm hết hàng. Bạn có thể quay lại sau.</p>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private const int MaxQuantity = 999;
+
+    [Parameter, EditorRequired] public SupplementProductResponse Product { get; set; } = default!;
+    [Parameter] public EventCallback OnClose { get; set; }
+    /// <summary>Called with the product and the chosen quantity.</summary>
+    [Parameter] public EventCallback<(SupplementProductResponse Product, int Quantity)> OnAdd { get; set; }
+
+    private ElementReference _close;
+    private int _quantity = 1;
+    private bool _imageBroken;
+    private int _shownId;
+
+    private string Initials => string.Concat(Product.Name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(2).Select(w => char.ToUpperInvariant(w[0])));
+
+    protected override void OnParametersSet()
+    {
+        if (_shownId == Product.Id) return;
+        _shownId = Product.Id;
+        _quantity = 1;
+        _imageBroken = false;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) await _close.FocusAsync();
+    }
+
+    private Task OnKeyDown(KeyboardEventArgs args) => args.Key == "Escape" ? OnClose.InvokeAsync() : Task.CompletedTask;
+
+    private Task AddAsync() => OnAdd.InvokeAsync((Product, _quantity));
+}
