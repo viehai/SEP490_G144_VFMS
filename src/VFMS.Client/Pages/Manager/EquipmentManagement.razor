@@ -103,6 +103,11 @@
         </section>
     }
 
+    @if (_history is { } historyOf)
+    {
+        <EquipmentHistoryPanel Equipment="historyOf" OnClose="() => _history = null" />
+    }
+
     <section class="@Ui.ListCard" aria-labelledby="equipment-list-title" aria-busy="@_loading">
         <div class="@Ui.ListHeader">
             <h2 id="equipment-list-title" class="mb-3 text-sm font-bold text-vfms-text">Danh sách thiết bị</h2>
@@ -152,7 +157,7 @@
                         @foreach (var row in list.Items)
                         {
                             <tr @key="row.Id">
-                                <th scope="row" class="font-semibold">@row.Name<span class="block text-xs font-normal text-vfms-text-muted">@(row.Code ?? "Chưa có mã")</span></th>
+                                <th scope="row" class="font-semibold">@row.Name<span class="block text-xs font-normal text-vfms-text-muted">@(row.Code ?? "Chưa có mã")</span>@if (row.RecentIssueCount > 0) { <span class="@RecentIssuesBadge(row.RecentIssueCount)" title="Số lần báo sự cố trong @EquipmentIssueSummaryResponse.RecentDays ngày qua">@row.RecentIssueCount sự cố / @EquipmentIssueSummaryResponse.RecentDays ngày</span> }</th>
                                 <td>@(row.CategoryName ?? "—")</td>
                                 <td>@(string.Join(" · ", new[] { row.Brand, row.Model }.Where(v => !string.IsNullOrWhiteSpace(v))) is { Length: > 0 } brand ? brand : "—")</td>
                                 <td class="whitespace-nowrap">@(row.PurchaseDate?.ToString("dd/MM/yyyy") ?? "—")</td>
@@ -161,6 +166,7 @@
                                     <div class="flex flex-nowrap whitespace-nowrap gap-2">
                                         <button type="button" class="@Ui.Button" disabled="@(Busy || row.Status == "Retired")" aria-label="Sửa @row.Name" @onclick="() => StartEdit(row)">Sửa</button>
                                         <button type="button" class="@Ui.Button" disabled="@(Busy || row.Status == "Retired")" @onclick="() => StartStatus(row)">Đổi trạng thái</button>
+                                        <button type="button" class="@Ui.Button" aria-label="Lịch sử sự cố của @row.Name" aria-pressed="@(_history?.Id == row.Id)" @onclick="() => ShowHistory(row)">Lịch sử</button>
                                     </div>
                                 </td>
                             </tr>
@@ -240,6 +246,7 @@
     private PagedResponse<EquipmentResponse>? _page;
     private List<EquipmentCategoryResponse> _categories = [];
     private List<string> _brands = [];
+    private EquipmentResponse? _history;
     private EquipmentResponse? _statusTarget;
     private int? _editingId, _editingCategoryId;
     private bool _formOpen, _loading, _working;
@@ -289,6 +296,20 @@
     private LiveQuery? _live;
 
     private Task LoadAsync(int page) => Live.NowAsync(token => FetchAsync(page, token));
+
+    private void ShowHistory(EquipmentResponse row)
+    {
+        CloseForm();
+        _statusTarget = null;
+        _history = row;
+    }
+
+    /// <summary>Small badge under the name; red once the machine reaches the repeated-issue threshold.</summary>
+    private static string RecentIssuesBadge(int count) =>
+        "mt-1 inline-block rounded-full border px-2 py-0.5 text-[10px] font-bold " +
+        (count >= EquipmentIssueSummaryResponse.RepeatedIssueThreshold
+            ? "border-red-200 bg-red-50 text-[#DC2626]"
+            : "border-amber-200 bg-amber-50 text-[#D97706]");
 
     private Task SearchTypedAsync() => Live.AfterTypingAsync(token => FetchAsync(1, token));
 

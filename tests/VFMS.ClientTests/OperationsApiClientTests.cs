@@ -77,6 +77,31 @@ public sealed class OperationsApiClientTests
         Assert.Contains("status=Reported", query);
     }
 
+    [Fact]
+    public async Task IssueSummaryComesFromTheEquipmentItself()
+    {
+        using var api = Client(new EquipmentIssueSummaryResponse(7, 4, 1, 3, 1, DateTime.UtcNow, null, true));
+
+        var summary = await api.GetEquipmentIssueSummaryAsync(7);
+
+        Assert.Equal("/api/equipment/7/issue-summary", _requests.Single().AbsolutePath);
+        Assert.True(summary.RepeatedIssues);
+        Assert.Equal(3, summary.RecentIssues);
+    }
+
+    [Fact]
+    public async Task HistoryListAsksForOneMachineNewestFirst()
+    {
+        using var api = Client(new PagedResponse<EquipmentIssueResponse>(1, 5, 0, []));
+
+        await api.GetIssuesAsync(new EquipmentIssueListRequest(null, 7, 1, 5, Sort: "newest"));
+
+        var query = Uri.UnescapeDataString(_requests.Single().Query);
+        Assert.Contains("equipmentId=7", query);
+        Assert.Contains("sort=newest", query);
+        Assert.Contains("pageSize=5", query);
+    }
+
     private sealed class Handler(Func<HttpRequestMessage, Task<HttpResponseMessage>> send) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) => send(request);

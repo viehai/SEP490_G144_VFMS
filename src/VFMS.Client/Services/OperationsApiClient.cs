@@ -29,6 +29,9 @@ public sealed class OperationsApiClient(HttpClient http, AuthSession session) : 
             ("brand", request.Brand), ("sort", request.Sort),
             ("page", Number(request.Page)), ("pageSize", Number(request.PageSize))), ct);
 
+    public Task<EquipmentIssueSummaryResponse> GetEquipmentIssueSummaryAsync(int id, CancellationToken ct = default) =>
+        SendAsync<EquipmentIssueSummaryResponse>(HttpMethod.Get, $"{EquipmentPath}/{id}/issue-summary", ct);
+
     public Task<List<string>> GetEquipmentBrandsAsync(CancellationToken ct = default) =>
         SendAsync<List<string>>(HttpMethod.Get, $"{EquipmentPath}/brands", ct);
 
