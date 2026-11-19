@@ -59,6 +59,27 @@ public sealed class EquipmentTests
         Assert.False(v.Validate(new ReportEquipmentIssueRequest(0, "Damage", "x")).IsValid);
     }
 
+    [Fact]
+    public void EquipmentListValidatorChecksBrandAndSort()
+    {
+        var v = new EquipmentListRequestValidator();
+        Assert.True(v.Validate(new EquipmentListRequest(Brand: "Life Fitness", Sort: "purchase_date")).IsValid);
+        Assert.True(v.Validate(new EquipmentListRequest(Sort: "CODE")).IsValid);
+        Assert.True(v.Validate(new EquipmentListRequest()).IsValid);
+        Assert.False(v.Validate(new EquipmentListRequest(Sort: "price")).IsValid);
+        Assert.False(v.Validate(new EquipmentListRequest(Brand: new string('b', 101))).IsValid);
+    }
+
+    [Fact]
+    public void IssueListValidatorChecksSearchAndSort()
+    {
+        var v = new EquipmentIssueListRequestValidator();
+        Assert.True(v.Validate(new EquipmentIssueListRequest(Search: "TM-0001", Sort: "severity")).IsValid);
+        Assert.True(v.Validate(new EquipmentIssueListRequest(Sort: "Newest")).IsValid);
+        Assert.False(v.Validate(new EquipmentIssueListRequest(Sort: "oldest")).IsValid);
+        Assert.False(v.Validate(new EquipmentIssueListRequest(Search: new string('s', 101))).IsValid);
+    }
+
     // ── Equipment service ────────────────────────────────────────
 
     [Fact]
@@ -321,7 +342,42 @@ public sealed class EquipmentTests
 
     // ── Helpers ──────────────────────────────────────────────────
 
-    private static EquipmentIssueService Issues(Repo repo) => new(repo, Mapper());
+    [Theory]
+    [InlineData(null, EquipmentSort.Name)]
+    [InlineData("code", EquipmentSort.Code)]
+    [InlineData(" Newest ", EquipmentSort.Newest)]
+    [InlineData("purchase_date", EquipmentSort.PurchaseDate)]
+    public async Task EquipmentListPassesBrandAndSortToTheRepository(string? sort, EquipmentSort expected)
+    {
+        var repo = new Repo();
+        await new EquipmentService(repo, Mapper()).GetEquipmentListAsync(new EquipmentListRequest(Brand: "  Life Fitness ", Sort: sort));
+
+        Assert.Equal(expected, repo.LastEquipmentQuery!.Sort);
+        Assert.Equal("Life Fitness", repo.LastEquipmentQuery.Brand);
+    }
+
+    [Fact]
+    public async Task BlankBrandMeansNoBrandFilter()
+    {
+        var repo = new Repo();
+        await new EquipmentService(repo, Mapper()).GetEquipmentListAsync(new EquipmentListRequest(Brand: "   "));
+        Assert.Null(repo.LastEquipmentQuery!.Brand);
+    }
+
+    [Theory]
+    [InlineData(null, EquipmentIssueSort.Newest)]
+    [InlineData("severity", EquipmentIssueSort.Severity)]
+    [InlineData("SEVERITY", EquipmentIssueSort.Severity)]
+    public async Task IssueListPassesSearchAndSortToTheRepository(string? sort, EquipmentIssueSort expected)
+    {
+        var repo = new Repo();
+        await Issues(repo).GetIssuesAsync(new EquipmentIssueListRequest(Search: " TM-0001 ", Sort: sort), null);
+
+        Assert.Equal(expected, repo.LastIssueQuery!.Sort);
+        Assert.Equal("TM-0001", repo.LastIssueQuery.Search);
+    }
+
+        private static EquipmentIssueService Issues(Repo repo) => new(repo, Mapper());
 
     private static IMapper Mapper()
     {
@@ -425,9 +481,18 @@ public sealed class EquipmentTests
         public Task<bool> CategoryInUseAsync(int id, CancellationToken cancellationToken = default) =>
             Task.FromResult(_equipment.Any(e => e.CatalogCategoryId == id));
 
+        public EquipmentQuery? LastEquipmentQuery { get; private set; }
+        public EquipmentIssueQuery? LastIssueQuery { get; private set; }
+
         public Task<(IReadOnlyList<Equipment> Items, int TotalCount)> SearchEquipmentAsync(
-            string? search, int? categoryId, EquipmentStatus? status, int page, int pageSize, CancellationToken cancellationToken = default) =>
-            Task.FromResult<(IReadOnlyList<Equipment>, int)>((_equipment, _equipment.Count));
+            EquipmentQuery query, CancellationToken cancellationToken = default)
+        {
+            LastEquipmentQuery = query;
+            return Task.FromResult<(IReadOnlyList<Equipment>, int)>((_equipment, _equipment.Count));
+        }
+
+        public Task<IReadOnlyList<string>> GetBrandsAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<string>>(_equipment.Select(e => e.EquipmentBrand).OfType<string>().Distinct().Order().ToList());
 
         public Task<Equipment?> GetEquipmentAsync(int id, CancellationToken cancellationToken = default)
         {
@@ -447,9 +512,11 @@ public sealed class EquipmentTests
                 i.IssueStatus is EquipmentIssueStatus.Reported or EquipmentIssueStatus.InProgress or EquipmentIssueStatus.Escalated));
 
         public Task<(IReadOnlyList<EquipmentIssueReport> Items, int TotalCount)> SearchIssuesAsync(
-            EquipmentIssueStatus? status, int? equipmentId, string? reportedByUserId, int page, int pageSize,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<(IReadOnlyList<EquipmentIssueReport>, int)>((_issues, _issues.Count));
+            EquipmentIssueQuery query, CancellationToken cancellationToken = default)
+        {
+            LastIssueQuery = query;
+            return Task.FromResult<(IReadOnlyList<EquipmentIssueReport>, int)>((_issues, _issues.Count));
+        }
 
         public Task<EquipmentIssueReport?> GetIssueAsync(int id, CancellationToken cancellationToken = default) =>
             Task.FromResult(_issues.FirstOrDefault(i => i.Id == id));

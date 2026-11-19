@@ -112,11 +112,23 @@ public sealed class EquipmentService : IEquipmentService
             status = parsed;
         }
 
-        var (items, total) = await _repository.SearchEquipmentAsync(
-            Clean(request.Search), request.CategoryId, status, request.Page, request.PageSize, cancellationToken);
+        var query = new EquipmentQuery(Clean(request.Search), request.CategoryId, status, Clean(request.Brand),
+            ParseSort(request.Sort), request.Page, request.PageSize);
+        var (items, total) = await _repository.SearchEquipmentAsync(query, cancellationToken);
         return Result<PagedResponse<EquipmentResponse>>.Success(new PagedResponse<EquipmentResponse>(
             request.Page, request.PageSize, total, items.Select(_mapper.Map<EquipmentResponse>).ToArray()));
     }
+
+    public async Task<Result<IReadOnlyList<string>>> GetBrandsAsync(CancellationToken cancellationToken = default) =>
+        Result<IReadOnlyList<string>>.Success(await _repository.GetBrandsAsync(cancellationToken));
+
+    internal static EquipmentSort ParseSort(string? sort) => sort?.Trim().ToLowerInvariant() switch
+    {
+        "code" => EquipmentSort.Code,
+        "newest" => EquipmentSort.Newest,
+        "purchase_date" => EquipmentSort.PurchaseDate,
+        _ => EquipmentSort.Name,
+    };
 
     public async Task<Result<EquipmentResponse>> GetEquipmentAsync(int id, CancellationToken cancellationToken = default)
     {

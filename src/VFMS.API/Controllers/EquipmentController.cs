@@ -26,6 +26,12 @@ public sealed class EquipmentController : ControllerBase
     public async Task<IActionResult> GetList([FromQuery] EquipmentListRequest request, CancellationToken cancellationToken) =>
         this.ToActionResult(await _service.GetEquipmentListAsync(request, cancellationToken));
 
+    /// <summary>Brands used by the equipment, for the brand filter.</summary>
+    [HttpGet("brands")]
+    [ProducesResponseType(typeof(IReadOnlyList<string>), 200)]
+    public async Task<IActionResult> GetBrands(CancellationToken cancellationToken) =>
+        this.ToActionResult(await _service.GetBrandsAsync(cancellationToken));
+
     [HttpGet("{id:int}")]
     [ProducesResponseType(typeof(EquipmentResponse), 200)]
     [ProducesResponseType(404)]

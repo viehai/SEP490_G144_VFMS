@@ -93,24 +93,39 @@ public sealed class EquipmentRepository : AuditedRepositoryBase, IEquipmentRepos
     // ── Equipment ────────────────────────────────────────────────
 
     public async Task<(IReadOnlyList<Equipment> Items, int TotalCount)> SearchEquipmentAsync(
-        string? search, int? categoryId, EquipmentStatus? status, int page, int pageSize,
-        CancellationToken cancellationToken = default)
+        EquipmentQuery filter, CancellationToken cancellationToken = default)
     {
         var query = Context.Equipments.AsNoTracking().Include(e => e.CatalogCategory).AsQueryable();
-        if (search is not null)
+        if (filter.Search is { } search)
             query = query.Where(e => e.EquipmentName.Contains(search) || (e.EquipmentCode != null && e.EquipmentCode.Contains(search)));
-        if (categoryId.HasValue)
-            query = query.Where(e => e.CatalogCategoryId == categoryId);
-        if (status.HasValue)
-            query = query.Where(e => e.EquipmentStatus == status);
+        if (filter.CategoryId.HasValue)
+            query = query.Where(e => e.CatalogCategoryId == filter.CategoryId);
+        if (filter.Status.HasValue)
+            query = query.Where(e => e.EquipmentStatus == filter.Status);
+        if (filter.Brand is { } brand)
+            query = query.Where(e => e.EquipmentBrand == brand);
 
         var total = await query.CountAsync(cancellationToken);
-        var items = await query
-            .OrderBy(e => e.EquipmentName).ThenBy(e => e.Id)
-            .Skip((page - 1) * pageSize).Take(pageSize)
+        IOrderedQueryable<Equipment> ordered = filter.Sort switch
+        {
+            EquipmentSort.Code => query.OrderBy(e => e.EquipmentCode == null).ThenBy(e => e.EquipmentCode).ThenBy(e => e.EquipmentName),
+            EquipmentSort.Newest => query.OrderByDescending(e => e.CreatedAt),
+            EquipmentSort.PurchaseDate => query.OrderBy(e => e.PurchaseDate == null).ThenByDescending(e => e.PurchaseDate).ThenBy(e => e.EquipmentName),
+            _ => query.OrderBy(e => e.EquipmentName),
+        };
+        var items = await ordered.ThenBy(e => e.Id)
+            .Skip((filter.Page - 1) * filter.PageSize).Take(filter.PageSize)
             .ToListAsync(cancellationToken);
         return (items, total);
     }
+
+    public async Task<IReadOnlyList<string>> GetBrandsAsync(CancellationToken cancellationToken = default) =>
+        await Context.Equipments
+            .Where(e => e.EquipmentBrand != null && e.EquipmentBrand != "")
+            .Select(e => e.EquipmentBrand!)
+            .Distinct()
+            .OrderBy(b => b)
+            .ToListAsync(cancellationToken);
 
     public Task<Equipment?> GetEquipmentAsync(int id, CancellationToken cancellationToken = default) =>
         Context.Equipments.Include(e => e.CatalogCategory).FirstOrDefaultAsync(e => e.Id == id, cancellationToken);
@@ -144,21 +159,28 @@ public sealed class EquipmentRepository : AuditedRepositoryBase, IEquipmentRepos
                  (excludingIssueId == null || i.Id != excludingIssueId), cancellationToken);
 
     public async Task<(IReadOnlyList<EquipmentIssueReport> Items, int TotalCount)> SearchIssuesAsync(
-        EquipmentIssueStatus? status, int? equipmentId, string? reportedByUserId, int page, int pageSize,
-        CancellationToken cancellationToken = default)
+        EquipmentIssueQuery filter, CancellationToken cancellationToken = default)
     {
         var query = IssuesWithDetails().AsNoTracking();
-        if (status.HasValue)
-            query = query.Where(i => i.IssueStatus == status);
-        if (equipmentId.HasValue)
-            query = query.Where(i => i.EquipmentId == equipmentId);
-        if (reportedByUserId is not null)
-            query = query.Where(i => i.ReportedByUserId == reportedByUserId);
+        if (filter.Status.HasValue)
+            query = query.Where(i => i.IssueStatus == filter.Status);
+        if (filter.EquipmentId.HasValue)
+            query = query.Where(i => i.EquipmentId == filter.EquipmentId);
+        if (filter.ReportedByUserId is { } reporter)
+            query = query.Where(i => i.ReportedByUserId == reporter);
+        if (filter.Search is { } search)
+            query = query.Where(i => i.Equipment.EquipmentName.Contains(search) ||
+                                     (i.Equipment.EquipmentCode != null && i.Equipment.EquipmentCode.Contains(search)));
 
         var total = await query.CountAsync(cancellationToken);
-        var items = await query
-            .OrderByDescending(i => i.ReportedAt).ThenByDescending(i => i.Id)
-            .Skip((page - 1) * pageSize).Take(pageSize)
+        var ordered = filter.Sort == EquipmentIssueSort.Severity
+            ? query.OrderBy(i => i.IncidentType == IncidentType.Safety ? 0
+                               : i.IncidentType == IncidentType.Damage ? 1
+                               : i.IncidentType == IncidentType.Malfunction ? 2 : 3)
+                   .ThenByDescending(i => i.ReportedAt)
+            : query.OrderByDescending(i => i.ReportedAt);
+        var items = await ordered.ThenByDescending(i => i.Id)
+            .Skip((filter.Page - 1) * filter.PageSize).Take(filter.PageSize)
             .AsSplitQuery()
             .ToListAsync(cancellationToken);
         return (items, total);

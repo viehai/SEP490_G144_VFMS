@@ -82,8 +82,12 @@ public sealed class EquipmentIssueService : IEquipmentIssueService
             status = parsed;
         }
 
+        var sort = string.Equals(request.Sort?.Trim(), "severity", StringComparison.OrdinalIgnoreCase)
+            ? EquipmentIssueSort.Severity : EquipmentIssueSort.Newest;
+        var search = string.IsNullOrWhiteSpace(request.Search) ? null : request.Search.Trim();
         var (items, total) = await _repository.SearchIssuesAsync(
-            status, request.EquipmentId, onlyReportedByUserId, request.Page, request.PageSize, cancellationToken);
+            new EquipmentIssueQuery(status, request.EquipmentId, onlyReportedByUserId, search, sort, request.Page, request.PageSize),
+            cancellationToken);
         return Result<PagedResponse<EquipmentIssueResponse>>.Success(new PagedResponse<EquipmentIssueResponse>(
             request.Page, request.PageSize, total, items.Select(_mapper.Map<EquipmentIssueResponse>).ToArray()));
     }
