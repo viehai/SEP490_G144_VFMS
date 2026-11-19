@@ -86,40 +86,39 @@
         <div class="@Ui.ListHeader">
             <h2 id="product-list-title" class="mb-3 text-sm font-bold text-vfms-text">Sản phẩm</h2>
             <form @onsubmit="() => LoadAsync(1)" @onsubmit:preventDefault>
-                <fieldset disabled="@Busy" class="flex flex-wrap items-end gap-3">
+                <fieldset disabled="@_working" class="flex flex-wrap items-end gap-3">
                     <label class="@Ui.Label w-full sm:w-64" for="product-search">Tìm kiếm
-                        <input id="product-search" type="search" class="@Ui.Field" @bind="_search" maxlength="100" />
+                        <input id="product-search" type="search" class="@Ui.Field" @bind="_search" @bind:event="oninput" @bind:after="SearchTypedAsync" maxlength="100" />
                     </label>
                     <label class="@Ui.Label" for="product-filter-brand">Thương hiệu
-                        <select id="product-filter-brand" class="@Ui.Field" @bind="_filterBrand">
+                        <select id="product-filter-brand" class="@Ui.Field" @bind="_filterBrand" @bind:after="() => LoadAsync(1)">
                             <option value="">Tất cả</option>
                             @foreach (var brand in _brands) { <option value="@brand">@brand</option> }
                         </select>
                     </label>
                     <label class="@Ui.Label" for="product-filter-category">Loại
-                        <select id="product-filter-category" class="@Ui.Field" @bind="_filterCategory">
+                        <select id="product-filter-category" class="@Ui.Field" @bind="_filterCategory" @bind:after="() => LoadAsync(1)">
                             <option value="">Tất cả</option>
                             @foreach (var category in _categories) { <option value="@category">@category</option> }
                         </select>
                     </label>
                     <label class="@Ui.Label w-32" for="product-filter-min">Giá từ (₫)
-                        <input id="product-filter-min" type="number" class="@Ui.Field" min="0" step="10000" @bind="_minPrice" placeholder="0" />
+                        <input id="product-filter-min" type="number" class="@Ui.Field" min="0" step="10000" @bind="_minPrice" @bind:event="oninput" @bind:after="SearchTypedAsync" placeholder="0" />
                     </label>
                     <label class="@Ui.Label w-32" for="product-filter-max">Đến (₫)
-                        <input id="product-filter-max" type="number" class="@Ui.Field" min="0" step="10000" @bind="_maxPrice" placeholder="Tối đa" />
+                        <input id="product-filter-max" type="number" class="@Ui.Field" min="0" step="10000" @bind="_maxPrice" @bind:event="oninput" @bind:after="SearchTypedAsync" placeholder="Tối đa" />
                     </label>
                     <label class="@Ui.Label" for="product-filter-status">Trạng thái
-                        <select id="product-filter-status" class="@Ui.Field" @bind="_filterStatus">
+                        <select id="product-filter-status" class="@Ui.Field" @bind="_filterStatus" @bind:after="() => LoadAsync(1)">
                             <option value="">Tất cả</option>
                             @foreach (var status in OperationsText.ProductStatuses) { <option value="@status">@OperationsText.Label(status)</option> }
                         </select>
                     </label>
                     <label class="@Ui.Label" for="product-sort">Sắp xếp
-                        <select id="product-sort" class="@Ui.Field" @bind="_sort">
+                        <select id="product-sort" class="@Ui.Field" @bind="_sort" @bind:after="() => LoadAsync(1)">
                             @foreach (var (value, label) in Sorts) { <option value="@value">@label</option> }
                         </select>
                     </label>
-                    <button type="submit" class="@Ui.Button">Áp dụng</button>
                     @if (HasFilters)
                     {
                         <button type="button" class="text-xs font-semibold text-vfms-primary underline-offset-2 hover:underline" @onclick="ClearFiltersAsync">Xóa bộ lọc</button>
@@ -131,7 +130,7 @@
                 }
             </form>
         </div>
-        @if (_loading)
+        @if (_loading && _page is null)
         {
             <p role="status" class="p-5 text-sm">Đang tải sản phẩm...</p>
         }
@@ -237,7 +236,15 @@
     private static string Details(SupplementProductResponse row) =>
         string.Join(" · ", new[] { row.Size, row.Flavour }.Where(v => !string.IsNullOrWhiteSpace(v)));
 
-    private async Task LoadAsync(int page)
+    // Filters apply as they change: dropdowns at once, the search box after a short pause in typing.
+    private LiveQuery Live => _live ??= new(_lifetime.Token);
+    private LiveQuery? _live;
+
+    private Task LoadAsync(int page) => Live.NowAsync(token => FetchAsync(page, token));
+
+    private Task SearchTypedAsync() => Live.AfterTypingAsync(token => FetchAsync(1, token));
+
+    private async Task FetchAsync(int page, CancellationToken token)
     {
         _priceError = _minPrice > _maxPrice ? "Giá \"từ\" phải nhỏ hơn hoặc bằng giá \"đến\"." : null;
         if (_priceError is not null || _minPrice < 0 || _maxPrice < 0)
@@ -249,11 +256,10 @@
         try
         {
             _page = await Api.GetProductsAsync(new(Blank(_search), Blank(_filterCategory), Blank(_filterStatus), page, PageSize,
-                Brand: Blank(_filterBrand), MinPrice: _minPrice, MaxPrice: _maxPrice, Sort: _sort), manage: true, _lifetime.Token);
+                Brand: Blank(_filterBrand), MinPrice: _minPrice, MaxPrice: _maxPrice, Sort: _sort), manage: true, token);
         }
         catch (AuthApiException error) { _error = error.Message; }
-        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
-        finally { _loading = false; }
+        finally { if (!token.IsCancellationRequested) _loading = false; }
     }
 
     private async Task ClearFiltersAsync()
@@ -343,6 +349,7 @@
     public void Dispose()
     {
         _lifetime.Cancel();
+        _live?.Dispose();
         _lifetime.Dispose();
     }
 

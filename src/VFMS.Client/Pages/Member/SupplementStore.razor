@@ -44,12 +44,11 @@
             <form class="flex flex-wrap items-center gap-3" @onsubmit="() => LoadAsync(1)" @onsubmit:preventDefault>
                 <label class="sr-only" for="store-search">Tìm sản phẩm</label>
                 <input id="store-search" type="search" class="w-full rounded-lg border border-vfms-border bg-vfms-surface px-3 py-2 text-sm text-vfms-text outline-none focus:border-vfms-primary focus:ring-2 focus:ring-vfms-primary/20 sm:w-72"
-                       @bind="_search" maxlength="100" placeholder="Tìm whey, creatine..." />
-                <button type="submit" class="@Ui.Button py-2" disabled="@_loading">Tìm</button>
+                       @bind="_search" @bind:event="oninput" @bind:after="SearchTypedAsync" maxlength="100" placeholder="Tìm whey, creatine..." />
                 @if (_categories.Count > MaxCategoryChips)
                 {
                     <label class="sr-only" for="store-category">Danh mục</label>
-                    <select id="store-category" class="rounded-lg border border-vfms-border bg-vfms-surface px-3 py-2 text-sm text-vfms-text outline-none focus:border-vfms-primary" disabled="@_loading"
+                    <select id="store-category" class="rounded-lg border border-vfms-border bg-vfms-surface px-3 py-2 text-sm text-vfms-text outline-none focus:border-vfms-primary"
                             value="@_category" @onchange="args => FilterCategoryAsync(args.Value?.ToString() ?? string.Empty)">
                         <option value="">Tất cả danh mục</option>
                         @foreach (var category in _categories) { <option value="@category">@category</option> }
@@ -60,19 +59,19 @@
                 @if (_brands.Count > 0)
                 {
                     <label class="sr-only" for="store-brand">Thương hiệu</label>
-                    <select id="store-brand" class="rounded-lg border border-vfms-border bg-vfms-surface px-3 py-2 text-sm text-vfms-text outline-none focus:border-vfms-primary" disabled="@_loading"
+                    <select id="store-brand" class="rounded-lg border border-vfms-border bg-vfms-surface px-3 py-2 text-sm text-vfms-text outline-none focus:border-vfms-primary"
                             value="@_brand" @onchange="args => FilterAsync(() => _brand = args.Value?.ToString() ?? string.Empty)">
                         <option value="">Mọi thương hiệu</option>
                         @foreach (var brand in _brands) { <option value="@brand">@brand</option> }
                     </select>
                 }
                 <label class="sr-only" for="store-price">Khoảng giá</label>
-                <select id="store-price" class="rounded-lg border border-vfms-border bg-vfms-surface px-3 py-2 text-sm text-vfms-text outline-none focus:border-vfms-primary" disabled="@_loading"
+                <select id="store-price" class="rounded-lg border border-vfms-border bg-vfms-surface px-3 py-2 text-sm text-vfms-text outline-none focus:border-vfms-primary"
                         value="@_price" @onchange="args => FilterAsync(() => _price = args.Value?.ToString() ?? string.Empty)">
                     @foreach (var range in PriceRanges) { <option value="@range.Key">@range.Label</option> }
                 </select>
                 <label class="sr-only" for="store-sort">Sắp xếp</label>
-                <select id="store-sort" class="rounded-lg border border-vfms-border bg-vfms-surface px-3 py-2 text-sm text-vfms-text outline-none focus:border-vfms-primary" disabled="@_loading"
+                <select id="store-sort" class="rounded-lg border border-vfms-border bg-vfms-surface px-3 py-2 text-sm text-vfms-text outline-none focus:border-vfms-primary"
                         value="@_sort" @onchange="args => FilterAsync(() => _sort = args.Value?.ToString() ?? DefaultSort)">
                     @foreach (var (value, label) in Sorts) { <option value="@value">@label</option> }
                 </select>
@@ -99,7 +98,7 @@
                 </div>
             }
 
-            @if (_loading)
+            @if (_loading && _page is null)
             {
                 <p role="status" class="py-8 text-sm text-vfms-text-secondary">Đang tải sản phẩm...</p>
             }
@@ -364,7 +363,15 @@
             delivery && !string.IsNullOrWhiteSpace(_checkout.DeliveryNote) ? _checkout.DeliveryNote.Trim() : null);
     }
 
-    private async Task LoadAsync(int page)
+    // Filters apply as they change: dropdowns at once, the search box after a short pause in typing.
+    private LiveQuery Live => _live ??= new(_lifetime.Token);
+    private LiveQuery? _live;
+
+    private Task LoadAsync(int page) => Live.NowAsync(token => FetchAsync(page, token));
+
+    private Task SearchTypedAsync() => Live.AfterTypingAsync(token => FetchAsync(1, token));
+
+    private async Task FetchAsync(int page, CancellationToken token)
     {
         _loading = true;
         try
@@ -373,11 +380,10 @@
             _page = await Api.GetProductsAsync(new(string.IsNullOrWhiteSpace(_search) ? null : _search.Trim(),
                 string.IsNullOrEmpty(_category) ? null : _category, null, page, PageSize,
                 Brand: string.IsNullOrEmpty(_brand) ? null : _brand, MinPrice: range.Min, MaxPrice: range.Max, Sort: _sort),
-                manage: false, _lifetime.Token);
+                manage: false, token);
         }
         catch (AuthApiException error) { _error = error.Message; }
-        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
-        finally { _loading = false; }
+        finally { if (!token.IsCancellationRequested) _loading = false; }
     }
 
     private async Task AddAsync(SupplementProductResponse product, int quantity)
@@ -434,6 +440,7 @@
     public void Dispose()
     {
         _lifetime.Cancel();
+        _live?.Dispose();
         _lifetime.Dispose();
     }
 
