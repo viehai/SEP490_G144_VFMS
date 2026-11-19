@@ -11,7 +11,7 @@ using Xunit;
 
 namespace VFMS.ClientTests;
 
-/// <summary>The equipment list requests send the filters the screens choose.</summary>
+/// <summary>The equipment and issue list requests send the filters the screens choose.</summary>
 public sealed class OperationsApiClientTests
 {
     private readonly List<Uri> _requests = [];
@@ -61,6 +61,20 @@ public sealed class OperationsApiClientTests
 
         Assert.Equal(["Hammer Strength", "Life Fitness"], await api.GetEquipmentBrandsAsync());
         Assert.Equal("/api/equipment/brands", _requests.Single().AbsolutePath);
+    }
+
+    [Fact]
+    public async Task IssueListSendsSearchAndSeveritySort()
+    {
+        using var api = Client(new PagedResponse<EquipmentIssueResponse>(1, 20, 0, []));
+
+        await api.GetIssuesAsync(new EquipmentIssueListRequest(Status: "Reported", Search: "TM-0001", Sort: "severity"));
+
+        var query = Uri.UnescapeDataString(_requests.Single().Query);
+        Assert.Equal("/api/equipment-issues", _requests.Single().AbsolutePath);
+        Assert.Contains("search=TM-0001", query);
+        Assert.Contains("sort=severity", query);
+        Assert.Contains("status=Reported", query);
     }
 
     private sealed class Handler(Func<HttpRequestMessage, Task<HttpResponseMessage>> send) : HttpMessageHandler

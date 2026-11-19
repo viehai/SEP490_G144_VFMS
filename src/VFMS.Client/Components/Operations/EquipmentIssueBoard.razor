@@ -102,10 +102,19 @@
         <h2 id="issue-list-title" class="mb-3 text-sm font-bold text-vfms-text">Báo cáo sự cố</h2>
         <form @onsubmit="() => LoadAsync(1)" @onsubmit:preventDefault>
             <fieldset disabled="@Busy" class="flex flex-wrap items-end gap-3">
+                <label class="@Ui.Label w-full sm:w-64" for="issue-search">Tìm thiết bị
+                    <input id="issue-search" type="search" class="@Ui.Field" @bind="_search" maxlength="100" placeholder="Tên hoặc mã thiết bị..." />
+                </label>
                 <label class="@Ui.Label" for="issue-status">Trạng thái
                     <select id="issue-status" class="@Ui.Field" @bind="_status">
                         <option value="">Tất cả</option>
                         @foreach (var status in OperationsText.IssueStatuses) { <option value="@status">@OperationsText.Label(status)</option> }
+                    </select>
+                </label>
+                <label class="@Ui.Label" for="issue-sort">Sắp xếp
+                    <select id="issue-sort" class="@Ui.Field" @bind="_sort">
+                        <option value="severity">Nghiêm trọng trước</option>
+                        <option value="newest">Mới nhất</option>
                     </select>
                 </label>
                 <button type="submit" class="@Ui.Button">Áp dụng</button>
@@ -128,7 +137,7 @@
                     {
                         <tr @key="row.Id">
                             <th scope="row" class="whitespace-nowrap font-normal">@OperationsText.Local(row.ReportedAt)</th>
-                            <td class="font-semibold">@row.EquipmentName<span class="block text-xs font-normal text-vfms-text-muted">@OperationsText.Label(row.EquipmentStatus)</span></td>
+                            <td class="font-semibold">@row.EquipmentName<span class="block text-xs font-normal text-vfms-text-muted">@(row.EquipmentCode is { } rowCode ? $"{rowCode} · " : "")@OperationsText.Label(row.EquipmentStatus)</span></td>
                             <td><span class="@OperationsText.Badge(row.IncidentType)">@OperationsText.Label(row.IncidentType)</span></td>
                             <td>@(row.ReportedByName ?? "—")</td>
                             <td><span class="@OperationsText.Badge(row.Status)">@OperationsText.Label(row.Status)</span>@if (IsRepair(row)) { <span class="ml-1 text-[11px] text-vfms-text-secondary">sửa chữa</span> }</td>
@@ -156,7 +165,8 @@
     private readonly CancellationTokenSource _lifetime = new();
     private PagedResponse<EquipmentIssueResponse>? _page;
     private EquipmentIssueResponse? _selected;
-    private string _status = "", _action = "", _note = "";
+    // Safety issues first by default, so the riskiest equipment is handled first.
+    private string _status = "", _search = "", _sort = "severity", _action = "", _note = "";
     private string? _notice, _error;
     private bool _loading, _working, _reporting;
     private bool Busy => _loading || _working;
@@ -211,7 +221,11 @@
     private async Task LoadAsync(int page)
     {
         _loading = true;
-        try { _page = await Api.GetIssuesAsync(new(string.IsNullOrEmpty(_status) ? null : _status, null, page, PageSize), ct: _lifetime.Token); }
+        try
+        {
+            _page = await Api.GetIssuesAsync(new(string.IsNullOrEmpty(_status) ? null : _status, null, page, PageSize,
+                string.IsNullOrWhiteSpace(_search) ? null : _search.Trim(), _sort), ct: _lifetime.Token);
+        }
         catch (AuthApiException error) { _error = error.Message; }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
         finally { _loading = false; }

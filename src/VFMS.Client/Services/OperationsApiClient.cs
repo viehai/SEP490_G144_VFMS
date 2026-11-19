@@ -81,6 +81,7 @@ public sealed class OperationsApiClient(HttpClient http, AuthSession session) : 
     public Task<PagedResponse<EquipmentIssueResponse>> GetIssuesAsync(EquipmentIssueListRequest request, bool mine = false, CancellationToken ct = default) =>
         SendAsync<PagedResponse<EquipmentIssueResponse>>(HttpMethod.Get, WithQuery(mine ? $"{IssuesPath}/mine" : IssuesPath,
             ("status", request.Status), ("equipmentId", Number(request.EquipmentId)),
+            ("search", request.Search), ("sort", request.Sort),
             ("page", Number(request.Page)), ("pageSize", Number(request.PageSize))), ct);
 
     /// <summary>
