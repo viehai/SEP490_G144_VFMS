@@ -109,7 +109,7 @@
             <form @onsubmit="() => LoadAsync(1)" @onsubmit:preventDefault>
                 <fieldset disabled="@Busy" class="flex flex-wrap items-end gap-3">
                     <label class="@Ui.Label w-full sm:w-64" for="eq-search">Tìm kiếm
-                        <input id="eq-search" type="search" class="@Ui.Field" @bind="_search" maxlength="100" placeholder="Tên, mã, hãng..." />
+                        <input id="eq-search" type="search" class="@Ui.Field" @bind="_search" maxlength="100" placeholder="Tên hoặc mã thiết bị..." />
                     </label>
                     <label class="@Ui.Label" for="eq-filter-category">Danh mục
                         <select id="eq-filter-category" class="@Ui.Field" @bind="_filterCategory">
@@ -121,6 +121,17 @@
                         <select id="eq-filter-status" class="@Ui.Field" @bind="_filterStatus">
                             <option value="">Tất cả</option>
                             @foreach (var status in OperationsText.EquipmentStatuses) { <option value="@status">@OperationsText.Label(status)</option> }
+                        </select>
+                    </label>
+                    <label class="@Ui.Label" for="eq-filter-brand">Hãng
+                        <select id="eq-filter-brand" class="@Ui.Field" @bind="_filterBrand">
+                            <option value="">Tất cả</option>
+                            @foreach (var brand in _brands) { <option value="@brand">@brand</option> }
+                        </select>
+                    </label>
+                    <label class="@Ui.Label" for="eq-sort">Sắp xếp
+                        <select id="eq-sort" class="@Ui.Field" @bind="_sort">
+                            @foreach (var (value, label) in Sorts) { <option value="@value">@label</option> }
                         </select>
                     </label>
                     <button type="submit" class="@Ui.Button">Áp dụng</button>
@@ -229,16 +240,21 @@
     private OperationsValidation<EquipmentCategoryRequest>? _categoryValidation;
     private PagedResponse<EquipmentResponse>? _page;
     private List<EquipmentCategoryResponse> _categories = [];
+    private List<string> _brands = [];
     private EquipmentResponse? _statusTarget;
     private int? _editingId, _editingCategoryId;
     private bool _formOpen, _loading, _working;
-    private string _search = "", _filterCategory = "", _filterStatus = "", _newStatus = "", _statusNote = "";
+    private string _search = "", _filterCategory = "", _filterStatus = "", _filterBrand = "", _sort = "name", _newStatus = "", _statusNote = "";
+
+    private static readonly (string Value, string Label)[] Sorts =
+        [("name", "Tên A → Z"), ("code", "Mã thiết bị"), ("newest", "Mới thêm"), ("purchase_date", "Ngày mua mới nhất")];
     private string? _notice, _error;
     private bool Busy => _loading || _working;
 
     protected override async Task OnInitializedAsync()
     {
         await LoadCategoriesAsync();
+        await LoadBrandsAsync();
         await LoadAsync(1);
     }
 
@@ -275,11 +291,19 @@
         try
         {
             int? category = int.TryParse(_filterCategory, out var id) ? id : null;
-            _page = await Api.GetEquipmentAsync(new(Blank(_search), category, Blank(_filterStatus), page, PageSize), _lifetime.Token);
+            _page = await Api.GetEquipmentAsync(
+                new(Blank(_search), category, Blank(_filterStatus), page, PageSize, Blank(_filterBrand), _sort), _lifetime.Token);
         }
         catch (AuthApiException error) { _error = error.Message; }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
         finally { _loading = false; }
+    }
+
+    private async Task LoadBrandsAsync()
+    {
+        try { _brands = await Api.GetEquipmentBrandsAsync(_lifetime.Token); }
+        catch (AuthApiException error) { _error = error.Message; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
     }
 
     private async Task LoadCategoriesAsync()
@@ -337,6 +361,7 @@
             : $"Đã cập nhật thiết bị \"{saved.Name}\" ({saved.Code}).";
         CloseForm();
         await LoadCategoriesAsync();
+        await LoadBrandsAsync();
         await LoadAsync(_page?.Page ?? 1);
     }, errors => _validation?.ShowErrors(errors));
 

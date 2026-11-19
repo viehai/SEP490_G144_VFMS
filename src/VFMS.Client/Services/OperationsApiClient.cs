@@ -26,7 +26,11 @@ public sealed class OperationsApiClient(HttpClient http, AuthSession session) : 
     public Task<PagedResponse<EquipmentResponse>> GetEquipmentAsync(EquipmentListRequest request, CancellationToken ct = default) =>
         SendAsync<PagedResponse<EquipmentResponse>>(HttpMethod.Get, WithQuery(EquipmentPath,
             ("search", request.Search), ("categoryId", Number(request.CategoryId)), ("status", request.Status),
+            ("brand", request.Brand), ("sort", request.Sort),
             ("page", Number(request.Page)), ("pageSize", Number(request.PageSize))), ct);
+
+    public Task<List<string>> GetEquipmentBrandsAsync(CancellationToken ct = default) =>
+        SendAsync<List<string>>(HttpMethod.Get, $"{EquipmentPath}/brands", ct);
 
     public Task<EquipmentResponse> CreateEquipmentAsync(EquipmentRequest request, CancellationToken ct = default) =>
         SendAsync<EquipmentResponse>(HttpMethod.Post, EquipmentPath, ct, JsonContent.Create(request));
