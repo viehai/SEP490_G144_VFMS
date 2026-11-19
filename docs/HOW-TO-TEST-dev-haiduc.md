@@ -61,7 +61,17 @@ Demo Yoga (`yoga1@example.com`, phone `0900000021`) has only a yoga plan. It was
 Data that already exists:
 - The member has "Gym 1 Month" (order ORD-20261112-367A858627B3, paid in cash), valid 12/11 to 11/12/2026. The member also has a YOGA membership, added by SQL (see section 6).
 - The member's face is registered.
-- Yoga: Studio A and Studio B, and class "Hatha Morning" (Open) with sessions from 19/11 at 08:00.
+- Yoga: Studio A (floor 2, 20 mats) and Studio B (floor 1, 20 mats); class types Hatha, Vinyasa, Ashtanga and Yin; one instructor, Test Yoga Instructor. Classes (all published, sessions to 31/12/2026). The "registration closes" time is gym time:
+
+  | Class | Type, level | When | Studio | Mats | First session | Registration closes |
+  |---|---|---|---|---|---|---|
+  | Hatha Morning | Hatha, Beginner | Thu 08:00–09:00 | A | 10 | 19/11 | 18/11 17:00 (closed) |
+  | Zen Weekend | Yin, Beginner | Sat, Sun 08:00–09:30 | A | 20 | 28/11 | 27/11 22:00 |
+  | Ashtanga Flow | Ashtanga, Advanced | Mon, Wed, Fri 06:30–07:45 | B | 12 | 30/11 | 29/11 22:00 |
+  | Vinyasa Dynamic | Vinyasa, Intermediate | Tue, Thu 18:30–19:45 | A | 15 | 01/12 | 30/11 22:00 |
+  | Yin Restore | Yin, Beginner | Mon, Wed 20:00–21:00 | B | 10 | 07/12 | 06/12 22:00 |
+
+  The last four were added on 19/11/2026 through the Manager API (not SQL, not DbInitializer), so they exist only in this local database. A class must be published at least 7 days before its first session (GBR-77), and its registration deadline must be on or before its start date. That is why they start from 28/11. The yoga plan keeps selling until the last deadline, 06/12 22:00.
   - The member's active booking is on **mat 5** (booking 1, mat 3, was cancelled during testing).
   - Session 3 was added for 16/11 at 19:07 for an attendance test; its roster is submitted (member Có mặt), so it's locked. Add a new "now" session (section 5) to test attendance again.
 
@@ -155,9 +165,9 @@ How to tell which plan you got:
   - **Đăng ký lớp**: signed in it goes to `/yoga/schedule` to pick a mat; signed out it goes to `/auth/register`. After the deadline there is no button, only "Đã hết hạn đăng ký".
   - There is no price on a class card: classes have no price of their own, you pay for the yoga plan. The old sample price lines ("1.450.000 ₫ / tháng (12 buổi)") were invented.
   - To support the deadline pill, the schedule response (`YogaSessionResponse`) now also carries `registrationDeadline` (UTC).
-  - In the local database the only class is Hatha Morning (Thursday 08:00–09:00, Studio A floor 2). Its registration closes on 18/11/2026 at 17:00; after that it shows **HẾT HẠN**, and the yoga plan stops selling.
+  - In the local database there are five classes (see section 2): Hatha Morning shows **HẾT HẠN** (its registration closed on 18/11), the other four show **CÒN CHỖ** until their registration closes between 27/11 and 06/12.
 - **Gym plans in the local database (17/11/2026).** Three gym plans copied from the old sample cards were created through the Manager API: **3 Tháng** (2.400.000 ₫, 90 days), **6 Tháng** (4.200.000 ₫, 180 days) and **1 Năm (12 Tháng)** (7.200.000 ₫, 365 days). "Gym 1 Month" (500.000 ₫) was set to **INACTIVE**, so it is no longer sold; members who bought it keep their memberships. The old freeze-day lines ("Bảo lưu thẻ (Freeze): tối đa 15/30/60 ngày") were left out, because no freeze policy is set up in this database (FreezePolicies and FreezePolicyTierQuotas are empty). These plans are only in this local database, not in DbInitializer.
-- Yoga plans are sold only while at least one yoga class can be booked: a published class (Open, or Full with a waitlist) whose registration deadline hasn't passed (`YogaClassRules.Bookable`, the same rule as booking). Otherwise the yoga tab says "Hiện chưa có gói Yoga mở bán.", the plan's catalog page is not found, and buying it is refused with `PLAN_NOT_PURCHASABLE`. The Manager still sees and edits the plan. Gym plans are not affected. To test: cancel every yoga class on `/manager/yoga`, or let their registration deadlines pass. In the local database the only bookable class, Hatha Morning, closes registration on **18/11/2026 17:00** (gym time), so "Yoga 1 Tháng" stops selling then: create and publish another class on `/manager/yoga` to keep selling yoga plans.
+- Yoga plans are sold only while at least one yoga class can be booked: a published class (Open, or Full with a waitlist) whose registration deadline hasn't passed (`YogaClassRules.Bookable`, the same rule as booking). Otherwise the yoga tab says "Hiện chưa có gói Yoga mở bán.", the plan's catalog page is not found, and buying it is refused with `PLAN_NOT_PURCHASABLE`. The Manager still sees and edits the plan. Gym plans are not affected. To test: cancel every yoga class on `/manager/yoga`, or let their registration deadlines pass. In the local database the last registration deadline is Yin Restore's, **06/12/2026 22:00** (gym time), so "Yoga 1 Tháng" stops selling then: create and publish another class on `/manager/yoga` to keep selling yoga plans.
 - Payment is the same as for gym plans. With cash, staff enter the order number and amount on `/staff/membership-cash-receipt`; VietQR is confirmed by the bank webhook. After payment a Customer becomes a Member, and `/my-memberships` shows the plan with **Dịch vụ: Yoga**.
 - A yoga plan lets the member book every yoga class but gives no gym access. The kiosk and the front desk only count gym plans (`MembershipRules.Gym` in `GymAccessServices.cs`): a yoga-only member is refused with "Membership status: No gym plan.", and the front-desk search shows **Chưa có gói Gym**. A member with gym and yoga checks in on the gym plan. Check-out is never blocked.
   - Try it: front desk `/staff/check-ins`, search `0900000021` (Demo Yoga) → Chưa có gói Gym, check-in refused; `0900000011` (Demo Một) → Active.
