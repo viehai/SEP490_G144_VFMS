@@ -40,12 +40,12 @@
                     <label class="block text-xs font-semibold" for="chat-subject">
                         Chủ đề
                         <input id="chat-subject" class="mt-1 block w-full rounded-lg border border-[#D8D1CD] px-3 py-2 text-sm"
-                               maxlength="200" @bind="_subject" placeholder="Ví dụ: Hỏi về gói hội viên" />
+                               maxlength="200" @bind="_subject" @bind:event="oninput" placeholder="Ví dụ: Hỏi về gói hội viên" />
                     </label>
                     <label class="block text-xs font-semibold" for="chat-message">
                         Tin nhắn đầu tiên
                         <textarea id="chat-message" class="mt-1 block w-full resize-y rounded-lg border border-[#D8D1CD] px-3 py-2 text-sm"
-                                  rows="3" maxlength="2000" @bind="_message" placeholder="Bạn cần phòng gym hỗ trợ điều gì?"></textarea>
+                                  rows="3" maxlength="2000" @bind="_message" @bind:event="oninput" placeholder="Bạn cần phòng gym hỗ trợ điều gì?"></textarea>
                     </label>
                     <div class="flex gap-2">
                         <button type="button" class="flex-1 rounded-lg bg-[#B83A3A] px-3 py-2 text-xs font-bold text-white"
@@ -99,7 +99,7 @@
                 <header class="flex items-center justify-between gap-3 border-b border-[#E8E2DE] px-4 py-3 sm:px-6">
                     <div class="min-w-0">
                         <h2 class="truncate font-bold">@_selected.Subject</h2>
-                        <p class="mt-1 text-xs text-[#6F6966]">Phòng gym · @StatusLabel(_selected.Status)</p>
+                        <p class="mt-1 text-xs text-[#6F6966]">@(_selected.ManagerName ?? "Phòng gym") · @StatusLabel(_selected.Status)</p>
                     </div>
                     <button type="button" class="shrink-0 rounded-lg border border-[#D8D1CD] px-3 py-2 text-xs font-semibold hover:bg-[#F8F5F2]"
                             disabled="@Busy" @onclick="RefreshSelectedAsync">Làm mới</button>
@@ -115,7 +115,7 @@
                         var isCustomer = chat.SenderUserId == _selected.CustomerUserId;
                         <div class="flex @(isCustomer ? "justify-end" : "justify-start")">
                             <div class="max-w-[85%] rounded-2xl @(isCustomer ? "rounded-br-md bg-[#B83A3A] text-white" : "rounded-bl-md border border-[#E8E2DE] bg-white text-[#242424]") px-4 py-3 shadow-sm sm:max-w-[75%]">
-                                <p class="text-[11px] font-bold @(isCustomer ? "text-white/80" : "text-[#8C4545]")">@(isCustomer ? "Bạn" : "Phòng gym")</p>
+                                <p class="text-[11px] font-bold @(isCustomer ? "text-white/80" : "text-[#8C4545]")">@(isCustomer ? "Bạn" : chat.SenderName)</p>
                                 <p class="mt-1 whitespace-pre-wrap break-words text-sm">@chat.Content</p>
                                 <p class="mt-2 text-right text-[10px] @(isCustomer ? "text-white/70" : "text-[#8C8581]")">@chat.CreatedAt.ToLocalTime().ToString("dd/MM HH:mm")</p>
                             </div>
@@ -127,9 +127,9 @@
                 {
                     <form @onsubmit="SendAsync" @onsubmit:preventDefault class="flex items-end gap-2 border-t border-[#E8E2DE] bg-white p-3 sm:p-4">
                         <textarea aria-label="Tin nhắn" class="max-h-28 min-h-11 min-w-0 flex-1 resize-y rounded-xl border border-[#D8D1CD] px-4 py-3 text-sm focus:border-[#B83A3A] focus:outline-none"
-                                  rows="1" maxlength="2000" @bind="_reply" placeholder="Nhập tin nhắn của bạn..."></textarea>
+                                  rows="1" maxlength="2000" @bind="_reply" @bind:event="oninput" placeholder="Nhập tin nhắn của bạn..."></textarea>
                         <button type="submit" class="rounded-xl bg-[#B83A3A] px-5 py-3 text-sm font-bold text-white hover:bg-[#9F3030]"
-                                disabled="@Busy || string.IsNullOrWhiteSpace(_reply)">Gửi</button>
+                                disabled="@Busy">Gửi</button>
                     </form>
                 }
                 else

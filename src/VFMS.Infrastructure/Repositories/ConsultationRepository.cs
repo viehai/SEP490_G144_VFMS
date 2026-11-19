@@ -20,9 +20,8 @@ public sealed class ConsultationRepository : IConsultationRepository
     {
         var query = _context.ConsultationConversations
             .AsNoTracking()
-            .Include(conversation => conversation.CustomerUser)
             .Include(conversation => conversation.ManagerUser)
-            .Include(conversation => conversation.Messages).ThenInclude(message => message.SenderUser)
+            .Include(conversation => conversation.Messages)
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(customerUserId))
@@ -32,7 +31,8 @@ public sealed class ConsultationRepository : IConsultationRepository
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(conversation =>
                 conversation.Subject.Contains(search) ||
-                conversation.CustomerUser.FullName.Contains(search));
+                _context.ApplicationUsers.IgnoreQueryFilters().Any(user =>
+                    user.UserId == conversation.CustomerUserId && user.FullName.Contains(search)));
 
         var total = await query.CountAsync(cancellationToken);
         var items = await query
@@ -40,15 +40,81 @@ public sealed class ConsultationRepository : IConsultationRepository
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(cancellationToken);
+        await LoadMissingCustomerUsersAsync(items, asNoTracking: true, cancellationToken);
+        await LoadMissingMessageSendersAsync(items, asNoTracking: true, cancellationToken);
         return (items, total);
     }
 
-    public Task<ConsultationConversation?> GetAsync(int id, CancellationToken cancellationToken = default) =>
-        _context.ConsultationConversations
-            .Include(conversation => conversation.CustomerUser)
+    public async Task<ConsultationConversation?> GetAsync(int id, CancellationToken cancellationToken = default)
+    {
+        var conversation = await _context.ConsultationConversations
             .Include(conversation => conversation.ManagerUser)
-            .Include(conversation => conversation.Messages).ThenInclude(message => message.SenderUser)
+            .Include(conversation => conversation.Messages)
             .FirstOrDefaultAsync(conversation => conversation.Id == id, cancellationToken);
+        if (conversation is not null)
+        {
+            await LoadMissingCustomerUsersAsync([conversation], asNoTracking: false, cancellationToken);
+            await LoadMissingMessageSendersAsync([conversation], asNoTracking: false, cancellationToken);
+        }
+        return conversation;
+    }
+
+    private async Task LoadMissingCustomerUsersAsync(
+        IReadOnlyCollection<ConsultationConversation> conversations,
+        bool asNoTracking,
+        CancellationToken cancellationToken)
+    {
+        var missingCustomers = conversations
+            .Where(conversation => conversation.CustomerUser is null ||
+                string.IsNullOrWhiteSpace(conversation.CustomerUser.FullName))
+            .ToArray();
+        if (missingCustomers.Length == 0)
+            return;
+
+        var customerIds = missingCustomers
+            .Select(conversation => conversation.CustomerUserId)
+            .Distinct()
+            .ToArray();
+        IQueryable<ApplicationUser> users = _context.ApplicationUsers
+            .IgnoreQueryFilters()
+            .Where(user => customerIds.Contains(user.UserId));
+        if (asNoTracking)
+            users = users.AsNoTracking();
+
+        var customers = await users.ToDictionaryAsync(user => user.UserId, cancellationToken);
+        foreach (var conversation in missingCustomers)
+            if (customers.TryGetValue(conversation.CustomerUserId, out var customer))
+                conversation.CustomerUser = customer;
+    }
+
+    private async Task LoadMissingMessageSendersAsync(
+        IReadOnlyCollection<ConsultationConversation> conversations,
+        bool asNoTracking,
+        CancellationToken cancellationToken)
+    {
+        var missingSenders = conversations
+            .SelectMany(conversation => conversation.Messages)
+            .Where(message => message.SenderUser is null ||
+                string.IsNullOrWhiteSpace(message.SenderUser.FullName))
+            .ToArray();
+        if (missingSenders.Length == 0)
+            return;
+
+        var senderIds = missingSenders
+            .Select(message => message.SenderUserId)
+            .Distinct()
+            .ToArray();
+        IQueryable<ApplicationUser> users = _context.ApplicationUsers
+            .IgnoreQueryFilters()
+            .Where(user => senderIds.Contains(user.UserId));
+        if (asNoTracking)
+            users = users.AsNoTracking();
+
+        var senders = await users.ToDictionaryAsync(user => user.UserId, cancellationToken);
+        foreach (var message in missingSenders)
+            if (senders.TryGetValue(message.SenderUserId, out var sender))
+                message.SenderUser = sender;
+    }
 
     public Task<ApplicationUser?> GetUserAsync(string userId, CancellationToken cancellationToken = default) =>
         _context.ApplicationUsers.FirstOrDefaultAsync(user => user.UserId == userId, cancellationToken);

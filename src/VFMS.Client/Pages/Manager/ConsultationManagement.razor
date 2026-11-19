@@ -1,9 +1,10 @@
 @page "/manager/consultations"
+@page "/staff/consultations"
 @layout ManagerAdminLayout
 @using Microsoft.AspNetCore.Authorization
 @using VFMS.Contracts.Common
 @using VFMS.Contracts.Consultations
-@attribute [Authorize(Roles = "Manager")]
+@attribute [Authorize(Roles = "Manager,Staff")]
 @inject SystemAdministrationApiClient Api
 @implements IDisposable
 
@@ -47,7 +48,7 @@
                     <header class="flex items-center justify-between gap-3 border-b border-[#E8E2DE] px-4 py-3 sm:px-6">
                         <div class="min-w-0">
                             <h2 class="truncate font-bold">@_selected.Subject</h2>
-                            <p class="mt-1 text-xs text-[#6F6966]">@_selected.CustomerName · @StatusLabel(_selected.Status)</p>
+                            <p class="mt-1 truncate text-xs text-[#6F6966]">Khách hàng: @_selected.CustomerName · @StatusLabel(_selected.Status)</p>
                         </div>
                         <button type="button" class="shrink-0 rounded-lg border border-[#D8D1CD] px-3 py-2 text-xs font-semibold hover:bg-[#F8F5F2]"
                                 disabled="@Busy" @onclick="RefreshSelectedAsync">Làm mới</button>
@@ -67,11 +68,14 @@
                     </div>
                     @if (_selected.Status != "Closed")
                     {
-                        <form @onsubmit="SendAsync" @onsubmit:preventDefault class="flex items-end gap-2 border-t border-[#E8E2DE] bg-white p-3 sm:p-4">
+                        <form @onsubmit="SendAsync" @onsubmit:preventDefault aria-busy="@_working"
+                              class="flex items-end gap-2 border-t border-[#E8E2DE] bg-white p-3 sm:p-4">
                             <textarea aria-label="Tin nhắn" class="max-h-28 min-h-11 min-w-0 flex-1 resize-y rounded-xl border border-[#D8D1CD] px-4 py-3 text-sm focus:border-[#B83A3A] focus:outline-none"
-                                      rows="1" @bind="_message" maxlength="2000" placeholder="Nhập tin nhắn trả lời..."></textarea>
+                                      rows="1" @bind="_message" @bind:event="oninput" maxlength="2000" placeholder="Nhập tin nhắn trả lời..."></textarea>
                             <button type="submit" class="rounded-xl bg-[#B83A3A] px-5 py-3 text-sm font-bold text-white hover:bg-[#9F3030]"
-                                    disabled="@Busy || string.IsNullOrWhiteSpace(_message)">Gửi</button>
+                                    disabled="@Busy">
+                                @(_working ? "Đang gửi..." : "Gửi")
+                            </button>
                             <button type="button" class="rounded-xl border border-[#D8D1CD] px-3 py-3 text-sm font-semibold hover:bg-[#F8F5F2]"
                                     disabled="@Busy" @onclick="CloseAsync">Đóng</button>
                         </form>
@@ -127,7 +131,7 @@
 
     private async Task SendAsync()
     {
-        if (_selected is null || string.IsNullOrWhiteSpace(_message)) return;
+        if (Busy || _selected is null || string.IsNullOrWhiteSpace(_message)) return;
         _working = true;
         _error = null;
         try

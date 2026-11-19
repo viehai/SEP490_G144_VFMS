@@ -38,27 +38,27 @@ public sealed class FeedbackController : ControllerBase
     }
 
     [HttpGet("manager")]
-    [Authorize(Roles = "Manager")]
+    [Authorize(Roles = "Manager,Staff")]
     public async Task<IActionResult> List([FromQuery] FeedbackListRequest request, CancellationToken cancellationToken) =>
         this.ToActionResult(await _service.ListAsync(request, memberUserId: null, cancellationToken));
 
     [HttpPost("manager/{id:int}/approve")]
-    [Authorize(Roles = "Manager")]
+    [Authorize(Roles = "Manager,Staff")]
     public async Task<IActionResult> Approve(int id, CancellationToken cancellationToken) =>
         await ManagerAction(id, (userId, ip) => _service.ApproveAsync(id, userId, ip, cancellationToken));
 
     [HttpPost("manager/{id:int}/reject")]
-    [Authorize(Roles = "Manager")]
+    [Authorize(Roles = "Manager,Staff")]
     public async Task<IActionResult> Reject(int id, [FromBody] FeedbackReplyRequest request, CancellationToken cancellationToken) =>
         await ManagerAction(id, (userId, ip) => _service.RejectAsync(id, request, userId, ip, cancellationToken));
 
     [HttpPost("manager/{id:int}/reply")]
-    [Authorize(Roles = "Manager")]
+    [Authorize(Roles = "Manager,Staff")]
     public async Task<IActionResult> Reply(int id, [FromBody] FeedbackReplyRequest request, CancellationToken cancellationToken) =>
         await ManagerAction(id, (userId, ip) => _service.ReplyAsync(id, request, userId, ip, cancellationToken));
 
     [HttpPatch("manager/{id:int}/visibility")]
-    [Authorize(Roles = "Manager")]
+    [Authorize(Roles = "Manager,Staff")]
     public async Task<IActionResult> Visibility(int id, [FromQuery] bool visible, CancellationToken cancellationToken) =>
         await ManagerAction(id, (userId, ip) => _service.SetVisibilityAsync(id, visible, userId, ip, cancellationToken));
 

@@ -135,7 +135,9 @@ public sealed class ConsultationService : IConsultationService
     private static ConsultationConversationResponse Map(ConsultationConversation conversation) =>
         new(conversation.Id,
             conversation.CustomerUserId,
-            conversation.CustomerUser?.FullName ?? "Hội viên",
+            string.IsNullOrWhiteSpace(conversation.CustomerUser?.FullName)
+                ? "Khách hàng"
+                : conversation.CustomerUser.FullName,
             conversation.ManagerUserId,
             conversation.ManagerUser?.FullName,
             conversation.Subject,

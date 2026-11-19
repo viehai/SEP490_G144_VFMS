@@ -1,9 +1,10 @@
 @page "/manager/feedback"
+@page "/staff/feedback"
 @layout ManagerAdminLayout
 @using Microsoft.AspNetCore.Authorization
 @using VFMS.Contracts.Common
 @using VFMS.Contracts.Feedback
-@attribute [Authorize(Roles = "Manager")]
+@attribute [Authorize(Roles = "Manager,Staff")]
 @inject SystemAdministrationApiClient Api
 @implements IDisposable
 
