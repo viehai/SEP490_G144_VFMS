@@ -245,21 +245,12 @@ else
                 "TRAINER_CHANGE_PENDING" => "Bạn đang có yêu cầu cập nhật chờ Manager duyệt.",
                 "TRAINER_NOT_ELIGIBLE" => "Bạn không đủ điều kiện ứng tuyển: email hoặc CCCD thuộc tài khoản nhân viên hoặc huấn luyện viên đang hoạt động.",
                 "TRAINER_IDENTITY_MISSING" => "Hồ sơ PT chưa có CCCD đã xác minh. Liên hệ Manager để cập nhật.",
-                "RECRUITMENT_COOLDOWN" or "TRAINER_PROFILE_UPDATE_COOLDOWN" => CooldownMessage(ex.Message),
+                // TrainerApiClient already turns the cooldown into Vietnamese text with the next eligible time (GBR-03).
                 TrainerContentRules.RejectedCode => "Giới thiệu có từ ngữ không được phép. Sửa các từ được tô đỏ rồi gửi lại.",
                 _ => ex.Message
             };
         }
         finally { _busy = false; }
-    }
-
-    // The API message ends with the next eligible time in ISO-8601 UTC (GBR-03).
-    private static string CooldownMessage(string message)
-    {
-        var iso = message.Split(' ').LastOrDefault()?.TrimEnd('.');
-        return DateTime.TryParse(iso, null, System.Globalization.DateTimeStyles.RoundtripKind, out var next)
-            ? $"Bạn vừa nộp hồ sơ. Có thể nộp lại sau {next.ToUniversalTime().AddHours(7):HH:mm dd/MM/yyyy}."
-            : "Bạn vừa nộp hồ sơ. Vui lòng chờ 10 phút rồi nộp lại.";
     }
 
     private static readonly HashSet<string> SimpleFields =

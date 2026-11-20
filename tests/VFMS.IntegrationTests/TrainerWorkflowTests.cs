@@ -298,12 +298,40 @@ public class TrainerWorkflowTests
         var application = await fixture.Db.TrainerApplications.SingleAsync(x => x.ApplicationType == "ProfileUpdate");
         Assert.DoesNotContain(TrainerTestDatabase.Success(await service.Public(before.Profile.Id, default)).Certificates,
             certificate => certificate.IsExternalLink);
+        // The Manager sees which published certificate each link replaces.
+        var pending = TrainerTestDatabase.Success(await service.Application(application.Id, "manager", default)).Certificates;
+        Assert.Equal(before.Certificates[0].FileName,
+            pending.Single(c => c.DownloadUrl.EndsWith("/revised")).Replaces);
+        Assert.Null(pending.Single(c => c.DownloadUrl.EndsWith("/additional")).Replaces);
         TrainerTestDatabase.Success(await service.Review(application.Id, new("Approve", "Verified links"), "manager", default));
         var certificates = TrainerTestDatabase.Success(await service.Public(before.Profile.Id, default)).Certificates;
         Assert.Equal(2, certificates.Count);
         Assert.DoesNotContain(certificates, certificate => certificate.Id == oldId);
         Assert.Contains(certificates, certificate => certificate.DownloadUrl == "https://certificates.example.test/revised");
         Assert.Contains(certificates, certificate => certificate.DownloadUrl == "https://certificates.example.test/additional");
+    }
+
+    [SqlTrainerFact]
+    public async Task Signed_in_member_without_customer_role_can_apply()
+    {
+        await using var fixture = new TrainerTestDatabase();
+        await fixture.Initialize();
+        var db = fixture.Db;
+        var memberRole = await db.ApplicationRoles.SingleOrDefaultAsync(r => r.RoleName == "Member") ?? new ApplicationRole { RoleName = "Member" };
+        var member = new ApplicationUser
+        {
+            UserId = "member-only", GymId = await db.Gyms.Select(x => x.Id).SingleAsync(), FullName = "Member Only",
+            Email = "member.only@example.test", PhoneNumber = "0900000099",
+            PasswordHash = new PasswordHasher().Hash("OriginalPassword1!"), AccountStatus = AccountStatus.Active
+        };
+        db.AddRange(memberRole, member); await db.SaveChangesAsync();
+        db.Add(new ApplicationUserRole { UserId = member.UserId, RoleId = memberRole.Id }); await db.SaveChangesAsync();
+
+        var receipt = TrainerTestDatabase.Success(await fixture.Service.Submit(TrainerTestDatabase.Request with
+        {
+            Email = member.Email, PhoneNumber = member.PhoneNumber, CitizenId = "000000000099"
+        }, member.UserId, default));
+        Assert.Equal("Pending", receipt.Status);
     }
 
     [SqlTrainerFact]

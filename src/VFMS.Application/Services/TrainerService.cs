@@ -133,8 +133,9 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
         var pt = await HasRole(actor, "PT", ct);
         if (update && !pt)
             return Error<TrainerApplicationReceipt>("TRAINER_FORBIDDEN", "PT role required.", 403);
-        if (!update && actor != null && !pt && !await HasRole(actor, "Customer", ct))
-            return Error<TrainerApplicationReceipt>("TRAINER_FORBIDDEN", "Customer role required.", 403);
+        // UC 3.1: a signed-in Customer or Member may apply; members who only hold the Member role are included.
+        if (!update && actor != null && !pt && !await HasRole(actor, "Customer", ct) && !await HasRole(actor, "Member", ct))
+            return Error<TrainerApplicationReceipt>("TRAINER_FORBIDDEN", "Customer or Member role required.", 403);
 
         var email = r.Email.Trim().ToLowerInvariant();
         var citizen = r.CitizenId.Trim();
@@ -271,7 +272,20 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
                     MemberServicesUntil = await MemberServicesUntil(matchedId, ct)
                 };
         }
-        return Result<TrainerApplicationResponse>.Success(ApplicationResponse(a) with
+        var response = ApplicationResponse(a);
+        if (a.ApplicationType == "ProfileUpdate")
+        {
+            // UC 3.3: show the Manager which published certificate each new one replaces.
+            var profile = await store.First(store.Query<TrainerProfile>().Where(x => x.PTUserId == a.ApplicantUserId), ct);
+            var published = Records<TrainerStoredFile>(profile?.CertificatesJson).ToDictionary(f => f.Id, f => f.ExternalUrl ?? f.FileName);
+            var targets = Records<TrainerStoredFile>(a.CertificatesJson).ToDictionary(f => f.Id, f => f.ReplacesCertificateId);
+            response = response with
+            {
+                Certificates = response.Certificates.Select(d => targets.GetValueOrDefault(d.Id) is { } target &&
+                    published.TryGetValue(target, out var name) ? d with { Replaces = name } : d).ToList()
+            };
+        }
+        return Result<TrainerApplicationResponse>.Success(response with
         {
             SubmissionHistory = history,
             InterviewNote = a.InterviewNote,
@@ -499,7 +513,7 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
             if (previous == null)
                 store.Add(profile);
             await store.Save(ct);
-            a.HiredUserId = user.UserId;
+            a.HiredUserId = user!.UserId;
             a.ApplicationStatus = TrainerApplicationStatus.Hired;
             // GBR-101: hiring closes the person's other open recruitment applications.
             var others = await store.List(RecruitmentHistory(store.Query<TrainerApplication>().Where(x => x.ApplicationType == "Recruitment"),

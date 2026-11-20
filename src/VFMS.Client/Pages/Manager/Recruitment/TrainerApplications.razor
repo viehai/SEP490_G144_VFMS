@@ -2,6 +2,7 @@
 @layout ManagerAdminLayout
 @attribute [Authorize(Roles = "Manager")]
 @using VFMS.Client.Components.Operations
+@using VFMS.Client.Services
 @inject TrainerApiClient Api
 @inject IJSRuntime Js
 <PageTitle>Xét tuyển PT | Victor Fitness</PageTitle>
@@ -40,7 +41,7 @@
                             @foreach (var item in list.Items)
                             {
                                 <tr @key="item.Id">
-                                    <td><button type="button" class="trainer-link text-left" disabled="@Busy" aria-pressed="@(_selected?.Id == item.Id)" @onclick="() => OpenAsync(item.Id)">@item.FullName</button><br /><small>@item.SubmittedAt.ToString("dd/MM/yyyy")</small></td>
+                                    <td><button type="button" class="trainer-link text-left" disabled="@Busy" aria-pressed="@(_selected?.Id == item.Id)" @onclick="() => OpenAsync(item.Id)">@item.FullName</button><br /><small>@PTDisplay.LocalDate(item.SubmittedAt)</small></td>
                                     <td>@TypeName(item.ApplicationType)</td>
                                     <td><TrainerStatus Status="@item.Status" /></td>
                                 </tr>
@@ -84,6 +85,7 @@
                                 {
                                     <button type="button" class="trainer-link text-left" disabled="@Busy" @onclick="() => DownloadAsync(app.Id, file)">@file.FileName</button>
                                 }
+                                <br /><small class="trainer-muted">@(file.Replaces is { } target ? $"Thay cho chứng chỉ đang công bố: {target}" : app is { ApplicationType: "ProfileUpdate", Status: "Pending" } ? "Chứng chỉ mới bổ sung" : null)</small>
                             </li>
                         }
                     </ul>
@@ -93,7 +95,7 @@
                     <ul class="trainer-list">
                         @foreach (var attempt in (app.SubmissionHistory ?? []).Skip((_attemptPage - 1) * 20).Take(20))
                         {
-                            <li class="trainer-row trainer-between"><button type="button" class="trainer-link" disabled="@Busy" @onclick="() => OpenAsync(attempt.Id)">Lần @attempt.SubmissionAttempt · @attempt.SubmittedAt.ToString("dd/MM/yyyy HH:mm")</button><TrainerStatus Status="@attempt.Status" /></li>
+                            <li class="trainer-row trainer-between"><button type="button" class="trainer-link" disabled="@Busy" @onclick="() => OpenAsync(attempt.Id)">Lần @attempt.SubmissionAttempt · @PTDisplay.LocalTime(attempt.SubmittedAt)</button><TrainerStatus Status="@attempt.Status" /></li>
                         }
                     </ul>
                     @if (app.SubmissionHistory is { Count: > 20 } attempts)

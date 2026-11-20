@@ -11,6 +11,8 @@ internal static class PTDisplay
     internal static string Time(TimeOnly value) => value.ToString("HH:mm", Vietnamese);
     internal static string LocalTime(DateTime utc) =>
         DateTime.SpecifyKind(utc, DateTimeKind.Utc).AddHours(7).ToString("HH:mm dd/MM/yyyy", Vietnamese);
+    internal static string LocalDate(DateTime utc) =>
+        DateTime.SpecifyKind(utc, DateTimeKind.Utc).AddHours(7).ToString("dd/MM/yyyy", Vietnamese);
     internal static string Day(DayOfWeek day) => day == DayOfWeek.Sunday ? "Chủ nhật" : $"Thứ {(int)day + 1}";
     internal static int DayIndex(DayOfWeek day) => ((int)day + 6) % 7;
 

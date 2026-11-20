@@ -18,7 +18,9 @@ public sealed record UpdateTrainerProfileRequest(string? Bio = null, TrainerFile
 public sealed record TrainerSetupRequest(string Token, string Password);
 public sealed record TrainerSearch(string? Search = null, string? Specialty = null, string? Gender = null,
     decimal? MinimumRating = null, int Page = 1, int PageSize = 20);
-public sealed record TrainerDocumentResponse(string Id, string FileName, string ContentType, string DownloadUrl, bool IsExternalLink = false);
+/// <summary>Replaces: the published certificate (link or file name) a pending ProfileUpdate certificate would replace (UC 3.3).</summary>
+public sealed record TrainerDocumentResponse(string Id, string FileName, string ContentType, string DownloadUrl, bool IsExternalLink = false,
+    string? Replaces = null);
 /// <summary>
 /// HasUnfinishedPTContract blocks hiring the matched account; MemberServicesUntil warns that its Gym Membership or
 /// locker rental can no longer be used once the account holds only the PT role (UC 3.2 step 7).
