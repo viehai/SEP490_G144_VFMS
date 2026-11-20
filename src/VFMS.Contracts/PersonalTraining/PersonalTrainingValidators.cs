@@ -17,11 +17,14 @@ public sealed class PTPublishRequestValidator : AbstractValidator<PTPublishReque
 
 public sealed class PTPackageRequestValidator : AbstractValidator<PTPackageRequest>
 {
+    /// <summary>UC 4.3: a package has 1 to 50 sessions.</summary>
+    public const int MaxSessions = 50;
+
     public PTPackageRequestValidator()
     {
         RuleFor(x => x.Name).NotEmpty().WithMessage("Nhập tên gói.").MaximumLength(256);
         RuleFor(x => x.Description).MaximumLength(500);
-        RuleFor(x => x.Credits).GreaterThan(0).WithMessage("Số buổi phải lớn hơn 0.");
+        RuleFor(x => x.Credits).InclusiveBetween(1, MaxSessions).WithMessage($"Số buổi phải từ 1 đến {MaxSessions}.");
         RuleFor(x => x.Price).GreaterThan(0).Must(price => decimal.Truncate(price) == price)
             .WithMessage("Giá phải là số nguyên dương (VND).");
         RuleFor(x => x.TrainerLevel).Must(level => level is "Junior" or "Senior" or "Master")

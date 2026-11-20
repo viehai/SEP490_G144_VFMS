@@ -70,6 +70,8 @@ public sealed partial class PersonalTrainingService
     public Task<Result<PTContractResponse>> ChangeTrainer(string actor, int contractId, PTTrainerChangeRequest request,
         CancellationToken ct) => Write(async () =>
     {
+        // GBR-09: serialize with other holds on the new trainer's slots, as checkout does.
+        await payments.LockUsersAsync([actor, request.TrainerId], ct);
         var result = await PlanTrainerChange(actor, contractId, request, ct);
         if (!result.IsSuccess)
             return Result<PTContractResponse>.Failure(result.ErrorMessage!, result.ErrorCode!, result.StatusCode);

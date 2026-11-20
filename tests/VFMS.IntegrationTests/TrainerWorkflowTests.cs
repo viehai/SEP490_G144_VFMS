@@ -192,7 +192,9 @@ public class TrainerWorkflowTests
         TrainerTestDatabase.Success(await service.Review(original.Id,
             new("Hire", "Verified matching phone", "Senior", detail.AccountMatch!.UserId, true), "manager", default));
         Assert.Equal(2, await db.ApplicationUsers.CountAsync());
-        Assert.Equal(2, await db.ApplicationUserRoles.CountAsync(x => x.UserId == customer.UserId));
+        // UC 3.2 step 7: the linked account keeps only the PT role.
+        Assert.Equal(["PT"], await db.ApplicationUserRoles.Where(x => x.UserId == customer.UserId)
+            .Select(x => x.Role.RoleName).ToListAsync());
         var update = request with { ApplicationType = "ProfileUpdate", Email = customer.Email, Specialty = "Yoga" };
         TrainerTestDatabase.Success(await service.Submit(update, customer.UserId, default));
         var firstUpdate = await db.TrainerApplications.SingleAsync(x => x.ApplicationType == "ProfileUpdate");
@@ -206,7 +208,7 @@ public class TrainerWorkflowTests
         var unchangedAccount = await db.ApplicationUsers.SingleAsync(x => x.UserId == customer.UserId);
         Assert.Equal(passwordBefore, unchangedAccount.PasswordHash); Assert.Equal(customer.Email, unchangedAccount.Email);
         Assert.Null(unchangedAccount.PasswordSetupTokenHash); Assert.Equal(AccountStatus.Active, unchangedAccount.AccountStatus);
-        Assert.Equal(2, await db.ApplicationUserRoles.CountAsync(x => x.UserId == customer.UserId));
+        Assert.Equal(1, await db.ApplicationUserRoles.CountAsync(x => x.UserId == customer.UserId));
     }
 
     [SqlTrainerFact]
@@ -230,6 +232,23 @@ public class TrainerWorkflowTests
         Assert.DoesNotContain(await db.ApplicationUserRoles.Where(x => x.UserId == profile.PTUserId)
             .Select(x => x.Role.RoleName).ToListAsync(), role => role == "PT");
         Assert.Equal(AccountStatus.Active, (await db.ApplicationUsers.SingleAsync(x => x.UserId == profile.PTUserId)).AccountStatus);
+
+        // The removed trainer can apply again and be rehired: the old profile is reactivated with the PT role.
+        foreach (var previous in await db.TrainerApplications.ToListAsync())
+            previous.SubmittedAt = DateTime.UtcNow.AddMinutes(-11);
+        await db.SaveChangesAsync();
+        TrainerTestDatabase.Success(await fixture.Service.Submit(TrainerTestDatabase.Request, null, default));
+        var again = await db.TrainerApplications.OrderByDescending(x => x.Id).FirstAsync();
+        TrainerTestDatabase.Success(await fixture.Service.Review(again.Id, new("Interview", "Returning trainer"), "manager", default));
+        var match = TrainerTestDatabase.Success(await fixture.Service.Application(again.Id, "manager", default)).AccountMatch;
+        Assert.Equal(("Matched", profile.PTUserId), (match!.Status, match.UserId));
+        TrainerTestDatabase.Success(await fixture.Service.Review(again.Id,
+            new("Hire", "Rehired", "Master", profile.PTUserId, true), "manager", default));
+        var rehired = await db.TrainerProfiles.AsNoTracking().SingleAsync();
+        Assert.Equal((profile.Id, true, true, TrainerLevel.Master), (rehired.Id, rehired.IsActive, rehired.AcceptingNewMembers, rehired.Level));
+        Assert.Null(rehired.NotAcceptingSince);
+        Assert.Equal(["PT"], await db.ApplicationUserRoles.Where(x => x.UserId == profile.PTUserId)
+            .Select(x => x.Role.RoleName).ToListAsync());
     }
 
     [SqlTrainerFact]
@@ -241,20 +260,21 @@ public class TrainerWorkflowTests
         var service = fixture.Service;
         TrainerTestDatabase.Success(await service.Setup(new(await fixture.SetupToken(hired.Id), "TestPassword1!"), default));
         var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7));
+        // New trainers start 'Accepting New Members', so the GBR-98 60-day count does not run.
         var stored = await fixture.Db.TrainerProfiles.AsNoTracking().SingleAsync();
-        Assert.False(stored.AcceptingNewMembers);
-        Assert.Equal(today, stored.NotAcceptingSince);
+        Assert.True(stored.AcceptingNewMembers);
+        Assert.Null(stored.NotAcceptingSince);
+
+        var stopped = TrainerTestDatabase.Success(await service.SetReadiness(false, stored.PTUserId, default));
+        Assert.False(stopped.IsAcceptingNewMembers);
+        Assert.Equal(0, stopped.ContractsNotified);
+        Assert.Equal(today, (await fixture.Db.TrainerProfiles.AsNoTracking().SingleAsync()).NotAcceptingSince);
 
         var accepting = TrainerTestDatabase.Success(await service.SetReadiness(true, stored.PTUserId, default));
         Assert.True(accepting.IsAcceptingNewMembers);
         var profile = TrainerTestDatabase.Success(await service.Mine(stored.PTUserId, default)).Profile;
         Assert.True(profile.IsAcceptingNewMembers);
         Assert.Null(profile.NotAcceptingSince);
-
-        var stopped = TrainerTestDatabase.Success(await service.SetReadiness(false, stored.PTUserId, default));
-        Assert.False(stopped.IsAcceptingNewMembers);
-        Assert.Equal(0, stopped.ContractsNotified);
-        Assert.Equal(today, (await fixture.Db.TrainerProfiles.AsNoTracking().SingleAsync()).NotAcceptingSince);
     }
 
     [SqlTrainerFact]

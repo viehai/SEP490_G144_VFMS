@@ -38,6 +38,8 @@ public class PTSession : BaseEntity
     public bool? TrainerAbsenceApproved { get; set; }
     /// <summary>When the 20:00 attendance reminder was sent to the PT (GBR-97).</summary>
     public DateTime? AttendanceReminderSentAt { get; set; }
+    /// <summary>The freeze whose post-freeze schedule created this session, so withdrawing it restores only its own moves (UC 4.8).</summary>
+    public int? PTFreezeId { get; set; }
 
     // ── Navigation Properties ──────────────────────────────────
     public PTPurchase PTPurchase { get; set; } = null!;

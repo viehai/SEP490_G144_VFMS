@@ -33,7 +33,6 @@ public sealed partial class PersonalTrainingService
             .Where(s => s.EndTime > s.StartTime).ToArray();
         var conflicts = await ConflictingSlots(contract.PTUserId, contract.MemberUserId, candidates, now, ct,
             ignoreSession: id, allowSecondMemberSession: true);
-        var memberships = await RescheduleCoverage(contract.MemberUserId, start, ct);
         var bookings = await Occupied(now).Where(s => s.PTUserId == contract.PTUserId &&
                 s.SessionDate >= start && s.SessionDate <= through)
             .Select(s => new PTRescheduleSlot(s.SessionDate, s.StartTime, s.EndTime, "Busy")).ToListAsync(store, ct);
@@ -44,7 +43,7 @@ public sealed partial class PersonalTrainingService
         {
             var busy = conflicts.Contains(slot) || IsOriginalTime(session, slot.Date, slot.StartTime);
             var status = busy ? "Busy" :
-                RescheduleTimeEligible(contract, slot.Date, slot.StartTime, slot.EndTime, now, memberships)
+                RescheduleTimeEligible(contract, slot.Date, slot.StartTime, slot.EndTime, now)
                     ? "Available"
                     : "Unavailable";
             return new PTRescheduleSlot(slot.Date, slot.StartTime, slot.EndTime, status);
@@ -158,30 +157,19 @@ public sealed partial class PersonalTrainingService
     private static bool IsOriginalTime(PTSession session, DateOnly date, TimeOnly start) =>
         date == session.SessionDate && start == session.StartTime;
 
-    private Task<List<MemberMembership>> RescheduleCoverage(string member, DateOnly from, CancellationToken ct) =>
-        Coverage(member).AsNoTracking(store).Including(store, "MembershipFreezes")
-            .Where(m => m.StartDate <= Today && m.EndDate >= from).ToListAsync(store, ct);
-
-    private bool RescheduleTimeEligible(PTPurchase contract, DateOnly date, TimeOnly start, TimeOnly end,
-        DateTime now, List<MemberMembership> memberships) =>
+    // GBR-10: Gym access is checked when attendance is recorded, not when a session moves.
+    private bool RescheduleTimeEligible(PTPurchase contract, DateOnly date, TimeOnly start, TimeOnly end, DateTime now) =>
         date >= Today && date >= contract.StartDate && date <= contract.EndDate &&
         Utc(date, start) > now && InHours(contract.PTUser.Gym, start, end) &&
         !contract.PTFreezes.Any(f => (Approved(f) || f.RequestStatus == PTFreezeRequestStatus.Pending) &&
-            f.RequestedStartDate <= date && date < (f.ActualEndDate ?? f.RequestedEndDate)) &&
-        HasGymCoverageOn(memberships, date);
-
-    private static bool HasGymCoverageOn(IEnumerable<MemberMembership> memberships, DateOnly date) =>
-        memberships.Any(m => m.StartDate <= date && m.EndDate >= date && !m.MembershipFreezes.Any(f =>
-            f.RequestStatus is FreezeRequestStatus.Approved or FreezeRequestStatus.Active or FreezeRequestStatus.Completed &&
-            (f.ActualStartDate ?? f.RequestedStartDate) <= date && date < (f.ActualEndDate ?? f.RequestedEndDate)));
+            f.RequestedStartDate <= date && date < (f.ActualEndDate ?? f.RequestedEndDate));
 
     private async Task<int?> FindRescheduleTemplate(PTPurchase contract, PTSession session, DateOnly date,
         TimeOnly start, TimeOnly end, DateTime now, CancellationToken ct)
     {
         if (EffectiveStatus(contract) != PTPurchaseStatus.Active || date < Today || date > contract.EndDate)
             return null;
-        var memberships = await RescheduleCoverage(contract.MemberUserId, date, ct);
-        if (!RescheduleTimeEligible(contract, date, start, end, now, memberships))
+        if (!RescheduleTimeEligible(contract, date, start, end, now))
             return null;
         var template = await Templates(contract.PTUserId).Where(t => t.DayOfWeek == date.DayOfWeek && t.StartTime == start)
             .Select(t => (int?)t.Id).FirstOrDefaultAsync(store, ct);

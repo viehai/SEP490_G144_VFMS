@@ -220,6 +220,12 @@ public sealed partial class PersonalTrainingService
         {
             if (await User(actor, UserRole.Member, ct) is null)
                 return Forbidden<PTFreezeResponse>();
+            // GBR-09: serialize with other holds on the trainer whose slots are held after the freeze, as checkout does.
+            var trainerId = input.ReplacementTrainerId ?? await store.Query<PTPurchase>()
+                .Where(x => x.Id == id && x.MemberUserId == actor).Select(x => x.PTUserId).FirstOrDefaultAsync(store, ct);
+            if (trainerId is null)
+                return Missing<PTFreezeResponse>();
+            await payments.LockUsersAsync([actor, trainerId], ct);
             var p = await ContractsWithSessions.SingleOrDefaultAsync(store, x => x.Id == id && x.MemberUserId == actor, ct);
             if (p is null)
                 return Missing<PTFreezeResponse>();
@@ -243,6 +249,7 @@ public sealed partial class PersonalTrainingService
                 ReplacementTrainerId = input.ReplacementTrainerId
             };
             store.Add(freeze);
+            await store.Save(ct);
             // Schedule protection: sessions in the window are never penalised while the request is pending.
             foreach (var session in p.Sessions.Where(s => InFreezeWindow(s, input.StartDate, input.ResumeDate)))
             {
@@ -260,7 +267,8 @@ public sealed partial class PersonalTrainingService
                     EndTime = slot.EndTime,
                     CreditUnits = original.CreditUnits,
                     SessionStatus = PTSessionStatus.FreezeHold,
-                    ReplacementForSessionId = original.Id
+                    ReplacementForSessionId = original.Id,
+                    PTFreezeId = freeze.Id
                 });
             await store.Save(ct);
             Notify(actor, "Đã gửi yêu cầu bảo lưu PT",
@@ -338,11 +346,24 @@ public sealed partial class PersonalTrainingService
                         {
                             PTUserId = purchase.PTUserId, MemberUserId = purchase.MemberUserId, SessionDate = r.Slot.Date,
                             StartTime = r.Slot.StartTime, EndTime = r.Slot.EndTime, CreditUnits = r.Original.CreditUnits,
-                            SessionStatus = PTSessionStatus.FreezeHold, ReplacementForSessionId = r.Original.Id
+                            SessionStatus = PTSessionStatus.FreezeHold, ReplacementForSessionId = r.Original.Id,
+                            PTFreezeId = f.Id
                         };
                         purchase.Sessions.Add(hold);
                         return hold;
                     }).ToArray();
+                }
+                else if (await UnavailableHolds(purchase, f, holds, now, ct) is { Count: > 0 } unavailable)
+                {
+                    // UC 4.9 'Proposed Slot No Longer Available': the request stays Pending and its sessions stay protected.
+                    var dates = string.Join(", ", unavailable.Select(h => $"{h.SessionDate:dd/MM/yyyy} {h.StartTime:HH:mm}"));
+                    Notify(purchase.MemberUserId, "Lịch sau bảo lưu không còn khả dụng",
+                        $"Các ca {dates} không còn dùng được. Hãy rút yêu cầu bảo lưu và gửi lại với ca khác.", nameof(PTFreeze), id);
+                    Audit(actor, nameof(PTFreeze), id, "ApprovalBlocked:SlotUnavailable");
+                    await store.Save(ct);
+                    return Result<PTFreezeResponse>.Failure(
+                        $"Không thể duyệt: các ca {dates} không còn khả dụng. Hội viên đã được thông báo để chọn lại.",
+                        "PT_FREEZE_SLOT_UNAVAILABLE", 409);
                 }
                 foreach (var hold in holds)
                 {
@@ -396,6 +417,34 @@ public sealed partial class PersonalTrainingService
             return Result<PTFreezeResponse>.Success(FreezeResponse(f, purchase));
         }, ct);
 
+    /// <summary>
+    /// UC 4.9 step 7: rechecks the held post-freeze slots before approval. A slot fails when its time has passed, it falls
+    /// outside opening hours, its trainer is no longer an active PT, a replacement trainer no longer meets GBR-99, or another
+    /// booking now overlaps it (the same check used when the slots were planned).
+    /// </summary>
+    private async Task<List<PTSession>> UnavailableHolds(PTPurchase purchase, PTFreeze freeze, PTSession[] holds,
+        DateTime now, CancellationToken ct)
+    {
+        var replacementInvalid = freeze.ReplacementTrainerId is { } trainerId &&
+            !await store.Query<TrainerProfile>().AnyAsync(store, p => p.PTUserId == trainerId && p.IsActive &&
+                p.AcceptingNewMembers && p.Specialty != "Yoga" && p.Level == purchase.TrainerLevelSnapshot, ct);
+        var unavailable = new List<PTSession>();
+        foreach (var hold in holds)
+        {
+            var original = purchase.Sessions.FirstOrDefault(s => s.Id == hold.ReplacementForSessionId);
+            if (original is not null && (PersonalTrainingRules.Used(original.SessionStatus) ||
+                    original.SessionStatus == PTSessionStatus.Disputed))
+                continue; // attended while pending: the hold is dropped on approval
+            var trainer = await User(hold.PTUserId, UserRole.PT, ct);
+            var slot = new PTCalendarSlot(0, hold.SessionDate, hold.StartTime, hold.EndTime, "Held");
+            if (replacementInvalid || trainer is null || Utc(hold.SessionDate, hold.StartTime) <= now ||
+                !InHours(trainer.Gym, hold.StartTime, hold.EndTime) ||
+                await HasConflict(hold.PTUserId, purchase.MemberUserId, [slot], now, ct, ignorePurchase: purchase.Id))
+                unavailable.Add(hold);
+        }
+        return unavailable;
+    }
+
     /// <summary>Releases held slots; protected sessions return to normal, or become make-up units if their time passed.</summary>
     private void ReleaseFreeze(PTPurchase purchase, PTFreeze f, DateTime now)
     {
@@ -431,8 +480,9 @@ public sealed partial class PersonalTrainingService
             if (f.ReplacementTrainerId is not null)
                 return Conflict<PTFreezeResponse>("Bảo lưu đã kèm đổi huấn luyện viên nên không thể rút. Vui lòng liên hệ quầy lễ tân.");
             // Restore each original slot where it is still free; otherwise keep the rescheduled session.
+            // Only sessions this freeze created move back: make-up and trainer-change sessions stay.
             foreach (var replacement in p.Sessions.Where(s => s.SessionStatus == PTSessionStatus.Scheduled &&
-                s.ReplacementForSessionId != null).ToArray())
+                s.PTFreezeId == f.Id && s.ReplacementForSessionId != null).ToArray())
             {
                 var original = p.Sessions.FirstOrDefault(s => s.Id == replacement.ReplacementForSessionId);
                 if (original is null || original.SessionStatus != PTSessionStatus.Cancelled ||

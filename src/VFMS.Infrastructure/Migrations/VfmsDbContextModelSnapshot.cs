@@ -2091,6 +2091,9 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<int?>("PTAvailabilityId")
                         .HasColumnType("int");
 
+                    b.Property<int?>("PTFreezeId")
+                        .HasColumnType("int");
+
                     b.Property<int>("PTPurchaseId")
                         .HasColumnType("int");
 

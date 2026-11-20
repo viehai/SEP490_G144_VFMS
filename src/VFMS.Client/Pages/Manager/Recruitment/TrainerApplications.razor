@@ -148,6 +148,15 @@
                                         <input class="trainer-input" value="@match.FullName" readonly />
                                     </label>
                                     <p class="trainer-muted trainer-copy">ID tài khoản: @match.UserId</p>
+                                    <p class="trainer-muted trainer-copy">Khi tuyển, tài khoản này chỉ còn vai trò PT (gỡ vai trò Customer/Member).</p>
+                                    @if (AccountMatchError(app) is { } blocked)
+                                    {
+                                        <p class="trainer-feedback trainer-error" role="alert">@blocked</p>
+                                    }
+                                    @if (match.MemberServicesUntil is { } until)
+                                    {
+                                        <p class="trainer-feedback" role="status">Tài khoản còn gói Gym hoặc tủ đồ đến @until.ToString("dd/MM/yyyy"); sau khi tuyển sẽ không dùng được với tư cách hội viên.</p>
+                                    }
                                 }
                                 else if (app.AccountMatch?.Status == "None")
                                 {
@@ -319,6 +328,8 @@
 
     private string? AccountMatchError(TrainerApplicationResponse app) => app.AccountMatch?.Status switch
     {
+        "Matched" when app.AccountMatch.HasUnfinishedPTContract =>
+            "Ứng viên còn hợp đồng PT với tư cách hội viên. Chỉ tuyển được sau khi hợp đồng đó kết thúc.",
         "Matched" or "None" => null,
         "Ambiguous" when _chosenAccount is not null => null,
         "Ambiguous" => "Hồ sơ khớp nhiều tài khoản. Xác minh danh tính rồi chọn một tài khoản đủ điều kiện ở danh sách trên.",

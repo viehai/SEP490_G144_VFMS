@@ -13,6 +13,7 @@ public interface ITrainerStore
     Task<T?> First<T>(IQueryable<T> query, CancellationToken ct);
     Task<int> Count<T>(IQueryable<T> query, CancellationToken ct);
     void Add<T>(T entity) where T : BaseEntity;
+    void Remove<T>(T entity) where T : BaseEntity;
     Task Save(CancellationToken ct);
     Task<Result<T>> Write<T>(Func<Task<Result<T>>> action, CancellationToken ct);
     TrainerQueuedEmail Email(string recipient, string subject, string body);

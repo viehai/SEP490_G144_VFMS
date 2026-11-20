@@ -19,8 +19,13 @@ public sealed record TrainerSetupRequest(string Token, string Password);
 public sealed record TrainerSearch(string? Search = null, string? Specialty = null, string? Gender = null,
     decimal? MinimumRating = null, int Page = 1, int PageSize = 20);
 public sealed record TrainerDocumentResponse(string Id, string FileName, string ContentType, string DownloadUrl, bool IsExternalLink = false);
+/// <summary>
+/// HasUnfinishedPTContract blocks hiring the matched account; MemberServicesUntil warns that its Gym Membership or
+/// locker rental can no longer be used once the account holds only the PT role (UC 3.2 step 7).
+/// </summary>
 public sealed record TrainerAccountMatch(string Status, string? UserId = null, string? FullName = null,
-    IReadOnlyList<TrainerAccountCandidate>? Matches = null);
+    IReadOnlyList<TrainerAccountCandidate>? Matches = null, bool HasUnfinishedPTContract = false,
+    DateOnly? MemberServicesUntil = null);
 public sealed record TrainerAccountCandidate(string UserId, string FullName, string Email, string PhoneNumber,
     bool EmailMatches, bool PhoneMatches, bool Eligible = true);
 public sealed record TrainerApplicationResponse(int Id, string TrackingCode, string Status, string FullName,

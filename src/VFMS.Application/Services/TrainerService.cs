@@ -29,7 +29,7 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
 
     private async Task<List<string>> BannedWords(string text, CancellationToken ct) =>
         (await store.List(store.Query<BannedWordList>().Where(x => x.IsActive).Select(x => x.Word), ct))
-        .Where(w => !string.IsNullOrWhiteSpace(w) && text.Contains(w, StringComparison.OrdinalIgnoreCase))
+        .Where(w => !string.IsNullOrWhiteSpace(w) && BannedWordService.ContainsWholeWord(text, w))
         .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
     private static Result<T> ContentRejected<T>(List<string> words) =>
@@ -264,6 +264,12 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
         {
             var matches = await FindMatchingAccounts(a, ct);
             accountMatch = DescribeAccountMatch(matches, await IneligibleAccounts(matches, ct), a);
+            if (accountMatch is { Status: "Matched", UserId: { } matchedId })
+                accountMatch = accountMatch with
+                {
+                    HasUnfinishedPTContract = await HasUnfinishedPTContract(matchedId, ct),
+                    MemberServicesUntil = await MemberServicesUntil(matchedId, ct)
+                };
         }
         return Result<TrainerApplicationResponse>.Success(ApplicationResponse(a) with
         {
@@ -327,6 +333,34 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
                                           select ur.UserId).Distinct(), ct);
         return users.Where(u => u.AccountStatus != AccountStatus.Active || u.IsBanned).Select(u => u.UserId)
             .Concat(employees).ToHashSet();
+    }
+
+    private static readonly string[] MemberRoles = ["Customer", "Member"];
+
+    // UC 3.2 step 7: a member who still trains under a PT contract cannot become a PT until that contract ends.
+    // shortcut: the 14-day make-up period counts even without make-up units left; check MakeUpUnits if that blocks too often.
+    private async Task<bool> HasUnfinishedPTContract(string userId, CancellationToken ct)
+    {
+        var now = DateTime.UtcNow;
+        var makeUpFrom = DateOnly.FromDateTime(now.AddHours(7)).AddDays(-PersonalTrainingRules.MakeUpGraceDays);
+        return await store.Count(store.Query<PTPurchase>().Where(p => p.MemberUserId == userId && !p.IsCompleted &&
+            (p.Status == PTPurchaseStatus.PendingPayment && p.HoldExpiresAt > now ||
+             (p.Status == PTPurchaseStatus.Active || p.Status == PTPurchaseStatus.Frozen) && p.EndDate >= makeUpFrom)), ct) > 0;
+    }
+
+    // UC 3.2 step 7: the latest date until which the account still has a Gym Membership or locker rental.
+    private async Task<DateOnly?> MemberServicesUntil(string userId, CancellationToken ct)
+    {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7));
+        var gym = await store.First(store.Query<MemberMembership>().Where(m => m.MemberUserId == userId &&
+                m.MembershipStatus == MembershipStatus.Active && m.EndDate >= today &&
+                m.PackageComponent.ComponentType == ComponentType.GYM)
+            .OrderByDescending(m => m.EndDate).Select(m => (DateOnly?)m.EndDate), ct);
+        var locker = await store.First(store.Query<LockerRentalContract>().Where(c => c.CustomerUserId == userId &&
+                (c.ContractStatus == LockerContractStatus.Active || c.ContractStatus == LockerContractStatus.Overdue ||
+                 c.ContractStatus == LockerContractStatus.PendingHandover))
+            .OrderByDescending(c => c.EndDate).Select(c => (DateOnly?)c.EndDate), ct);
+        return gym > locker || locker is null ? gym : locker;
     }
 
     private static TrainerAccountMatch DescribeAccountMatch(IReadOnlyList<ApplicationUser> matches,
@@ -412,12 +446,21 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
                     return Error<TrainerApplicationResponse>("TRAINER_IDENTITY_CONFLICT", "The account match has changed. Reload the application and verify it again.");
                 user = matches.SingleOrDefault();
             }
-            if (await store.Count(store.Query<TrainerProfile>().Where(x => x.CitizenId == a.CitizenId), ct) > 0)
-                return Error<TrainerApplicationResponse>("TRAINER_IDENTITY_CONFLICT", "Another trainer profile already uses this Citizen ID.");
+            var userId = user?.UserId;
+            var previous = await store.First(store.Query<TrainerProfile>().Where(x => x.CitizenId == a.CitizenId ||
+                (userId != null && x.PTUserId == userId)), ct);
+            // A trainer removed under GBR-98 keeps an inactive profile; hiring the same person again reactivates it.
+            var rehire = previous is { IsActive: false } && previous.PTUserId == userId && previous.CitizenId == a.CitizenId;
+            if (previous != null && !rehire)
+                return previous.CitizenId == a.CitizenId
+                    ? Error<TrainerApplicationResponse>("TRAINER_IDENTITY_CONFLICT", "Another trainer profile already uses this Citizen ID.")
+                    : Error<TrainerApplicationResponse>("TRAINER_PROFILE_EXISTS", "Account already has a trainer profile.");
             if (user != null && await store.Count(ActiveYogaAssignments.Where(c => c.InstructorUserId == user.UserId), ct) > 0)
                 return Error<TrainerApplicationResponse>("TRAINER_TEACHING_ROLE_CONFLICT",
                     "A Yoga instructor cannot be hired as a PT while assigned to Yoga classes.");
-            if (user != null && await store.Count(store.Query<TrainerProfile>().Where(x => x.PTUserId == user.UserId), ct) > 0) return Error<TrainerApplicationResponse>("TRAINER_PROFILE_EXISTS", "Account already has a trainer profile.");
+            if (user != null && await HasUnfinishedPTContract(user.UserId, ct))
+                return Error<TrainerApplicationResponse>("TRAINER_MEMBER_PT_CONTRACT",
+                    "The applicant still has a PT contract as a member. Hire them after that contract ends.");
             if (await BannedWords(a.Bio, ct) is { Count: > 0 } bannedBio) return ContentRejected<TrainerApplicationResponse>(bannedBio);
             var role = await store.First(store.Query<ApplicationRole>().Where(x => x.RoleName == "PT"), ct);
             var gym = await store.First(store.Query<Gym>().OrderBy(x => x.Id), ct);
@@ -438,20 +481,23 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
                 store.Add(user);
             }
             if (await store.Count(store.Query<ApplicationUserRole>().Where(x => x.UserId == user!.UserId && x.RoleId == role.Id), ct) == 0) store.Add(new ApplicationUserRole { UserId = user!.UserId, RoleId = role.Id });
-            var profile = new TrainerProfile
-            {
-                PTUserId = user!.UserId,
-                CitizenId = a.CitizenId,
-                Bio = a.Bio,
-                Specialty = a.Specialty,
-                CertificatesJson = PublishCertificates(a.CertificatesJson),
-                Gender = a.Gender,
-                ExperienceYears = a.ExperienceYears,
-                Level = Enum.Parse<TrainerLevel>(r.Level!),
-                // New trainers start 'Not Accepting'; the 60-day limit counts from hire (GBR-98).
-                NotAcceptingSince = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7))
-            };
-            store.Add(profile);
+            // UC 3.2 step 7: a hired account holds only the PT role; its member history stays.
+            foreach (var memberRole in await store.List(store.Query<ApplicationUserRole>().Where(x => x.UserId == user!.UserId &&
+                         MemberRoles.Contains(x.Role.RoleName)), ct))
+                store.Remove(memberRole);
+            var profile = previous ?? new TrainerProfile { PTUserId = user!.UserId, CitizenId = a.CitizenId };
+            profile.Bio = a.Bio;
+            profile.Specialty = a.Specialty;
+            profile.CertificatesJson = PublishCertificates(a.CertificatesJson);
+            profile.Gender = a.Gender;
+            profile.ExperienceYears = a.ExperienceYears;
+            profile.Level = Enum.Parse<TrainerLevel>(r.Level!);
+            profile.IsActive = true;
+            // New and rehired trainers start 'Accepting New Members', so the GBR-98 60-day count does not run.
+            profile.AcceptingNewMembers = true;
+            profile.NotAcceptingSince = null;
+            if (previous == null)
+                store.Add(profile);
             await store.Save(ct);
             a.HiredUserId = user.UserId;
             a.ApplicationStatus = TrainerApplicationStatus.Hired;

@@ -203,7 +203,7 @@ public sealed partial class PersonalTrainingService
         {
             if (await User(actor, UserRole.Manager, ct) is null)
                 return Forbidden<PTPackageResponse>();
-            if (string.IsNullOrWhiteSpace(request.Name) || request.Credits <= 0 ||
+            if (string.IsNullOrWhiteSpace(request.Name) || request.Credits is <= 0 or > PTPackageRequestValidator.MaxSessions ||
                 request.Price <= 0 ||
                 request.Price > 9_999_999_999_999_999m || decimal.Truncate(request.Price) != request.Price ||
                 !Enum.TryParse<TrainerLevel>(request.TrainerLevel, true, out var level) ||

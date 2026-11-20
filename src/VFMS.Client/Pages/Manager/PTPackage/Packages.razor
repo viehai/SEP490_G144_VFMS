@@ -26,7 +26,7 @@
                     <label>Cấp PT
                         <select class="@Field" @bind="draft.Level"><option>Junior</option><option>Senior</option><option>Master</option></select>
                     </label>
-                    <label>Số buổi<input class="@Field" type="number" min="1" @bind="draft.Credits" required /></label>
+                    <label>Số buổi<input class="@Field" type="number" min="1" max="@PTPackageRequestValidator.MaxSessions" @bind="draft.Credits" required /></label>
                     <label>Giá (₫)<input class="@Field" type="number" min="1" step="1" max="9999999999999999" @bind="draft.Price" required /></label>
                     <label>Số ngày bảo lưu tối thiểu<input class="@Field" type="number" min="1" @bind="draft.Minimum" required /></label>
                     <label>Tổng hạn mức bảo lưu (ngày)<input class="@Field" type="number" min="1" @bind="draft.Cap" required /></label>

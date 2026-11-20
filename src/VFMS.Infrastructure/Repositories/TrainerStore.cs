@@ -21,6 +21,7 @@ public sealed class TrainerStore(VfmsDbContext db, IDataProtectionProvider prote
     public Task<T?> First<T>(IQueryable<T> q, CancellationToken ct) => q.FirstOrDefaultAsync(ct);
     public Task<int> Count<T>(IQueryable<T> q, CancellationToken ct) => q.CountAsync(ct);
     public void Add<T>(T entity) where T : BaseEntity => db.Set<T>().Add(entity);
+    public void Remove<T>(T entity) where T : BaseEntity => db.Set<T>().Remove(entity);
     public Task Save(CancellationToken ct) => db.SaveChangesAsync(ct);
     public TrainerQueuedEmail Email(string recipient, string subject, string body) => new()
     {

@@ -194,9 +194,9 @@ public sealed partial class PersonalTrainingService
             Utc(date, start) <= now || !InHours(p.PTUser.Gym, start, end) ||
             p.TotalSessions - used - reserved < (isMakeUp ? units : units - s.CreditUnits) ||
             p.PTFreezes.Any(f => (Approved(f) || f.RequestStatus == PTFreezeRequestStatus.Pending) &&
-                f.RequestedStartDate <= date && date < (f.ActualEndDate ?? f.RequestedEndDate)) ||
-            !await Coverage(p.MemberUserId).AnyAsync(store, m => m.StartDate <= Today && m.EndDate >= date, ct))
+                f.RequestedStartDate <= date && date < (f.ActualEndDate ?? f.RequestedEndDate)))
             return false;
+        // GBR-10: Gym access matters only when attendance is recorded, so a new date may fall after the membership ends.
         return !await HasConflict(p.PTUserId, p.MemberUserId, [new(0, date, start, end, "Available")],
             now, ct, ignoreSession: s.Id, allowSecondMemberSession: true);
     }
