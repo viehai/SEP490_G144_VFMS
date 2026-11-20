@@ -46,6 +46,25 @@ public sealed class AuthSession(IJSRuntime js, AuthApiClient api) : Authenticati
         NotifyAuthenticationStateChanged(GetAuthenticationStateAsync());
     }
 
+    public async Task UpdateFullNameAsync(string fullName)
+    {
+        var trimmed = fullName?.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed)) return;
+        var changed = false;
+        await _gate.WaitAsync();
+        try
+        {
+            if (_session is not null && !string.Equals(_session.User.FullName, trimmed, StringComparison.Ordinal))
+            {
+                await SaveAsync(_session with { User = _session.User with { FullName = trimmed } });
+                changed = true;
+            }
+        }
+        finally { _gate.Release(); }
+        if (changed)
+            NotifyAuthenticationStateChanged(GetAuthenticationStateAsync());
+    }
+
     public async Task<string?> GetAccessTokenAsync()
     {
         await _gate.WaitAsync();

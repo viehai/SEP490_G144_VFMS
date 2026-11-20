@@ -573,6 +573,92 @@ namespace VFMS.Infrastructure.Migrations
                     b.ToTable("CompetitionPrizes");
                 });
 
+            modelBuilder.Entity("VFMS.Domain.Entities.ConsultationConversation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CustomerUserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("LastMessageAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ManagerUserId")
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CustomerUserId");
+
+                    b.HasIndex("ManagerUserId");
+
+                    b.ToTable("ConsultationConversations");
+                });
+
+            modelBuilder.Entity("VFMS.Domain.Entities.ConsultationMessage", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("ConversationId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsRead")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("SenderUserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConversationId");
+
+                    b.HasIndex("SenderUserId");
+
+                    b.ToTable("ConsultationMessages");
+                });
+
             modelBuilder.Entity("VFMS.Domain.Entities.Equipment", b =>
                 {
                     b.Property<int>("Id")
@@ -2877,6 +2963,10 @@ namespace VFMS.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("Brand")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<string>("CatalogCategory")
                         .HasColumnType("nvarchar(max)");
 
@@ -2885,6 +2975,10 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.Property<string>("Description")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Flavour")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("ImageUrl")
                         .HasColumnType("nvarchar(max)");
@@ -2902,6 +2996,10 @@ namespace VFMS.Infrastructure.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<string>("Size")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
                     b.Property<decimal>("UnitPrice")
                         .HasColumnType("decimal(18,2)");
 
@@ -2909,6 +3007,8 @@ namespace VFMS.Infrastructure.Migrations
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Brand");
 
                     b.ToTable("SupplementProducts");
                 });
@@ -3970,6 +4070,43 @@ namespace VFMS.Infrastructure.Migrations
                     b.Navigation("Voucher");
                 });
 
+            modelBuilder.Entity("VFMS.Domain.Entities.ConsultationConversation", b =>
+                {
+                    b.HasOne("VFMS.Domain.Entities.ApplicationUser", "CustomerUser")
+                        .WithMany("StartedConversations")
+                        .HasForeignKey("CustomerUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("VFMS.Domain.Entities.ApplicationUser", "ManagerUser")
+                        .WithMany("ManagedConversations")
+                        .HasForeignKey("ManagerUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("CustomerUser");
+
+                    b.Navigation("ManagerUser");
+                });
+
+            modelBuilder.Entity("VFMS.Domain.Entities.ConsultationMessage", b =>
+                {
+                    b.HasOne("VFMS.Domain.Entities.ConsultationConversation", "Conversation")
+                        .WithMany("Messages")
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("VFMS.Domain.Entities.ApplicationUser", "SenderUser")
+                        .WithMany("SentConsultationMessages")
+                        .HasForeignKey("SenderUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Conversation");
+
+                    b.Navigation("SenderUser");
+                });
+
             modelBuilder.Entity("VFMS.Domain.Entities.Equipment", b =>
                 {
                     b.HasOne("VFMS.Domain.Entities.CatalogCategory", "CatalogCategory")
@@ -4966,6 +5103,8 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.Navigation("LockerContracts");
 
+                    b.Navigation("ManagedConversations");
+
                     b.Navigation("MembershipFreezeRequests");
 
                     b.Navigation("Memberships");
@@ -4993,6 +5132,10 @@ namespace VFMS.Infrastructure.Migrations
                     b.Navigation("PurchasedOrders");
 
                     b.Navigation("QRCodes");
+
+                    b.Navigation("SentConsultationMessages");
+
+                    b.Navigation("StartedConversations");
 
                     b.Navigation("SupplementOrders");
 
@@ -5028,6 +5171,11 @@ namespace VFMS.Infrastructure.Migrations
                     b.Navigation("Participants");
 
                     b.Navigation("Prizes");
+                });
+
+            modelBuilder.Entity("VFMS.Domain.Entities.ConsultationConversation", b =>
+                {
+                    b.Navigation("Messages");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.Equipment", b =>

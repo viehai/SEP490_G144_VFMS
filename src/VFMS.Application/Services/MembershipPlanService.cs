@@ -2,6 +2,7 @@ using System.Text.Json;
 using VFMS.Application.Interfaces;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Memberships;
+using VFMS.Contracts.Packages;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
 
@@ -209,4 +210,51 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
 
     private static Result<T> NotFound<T>() =>
         Result<T>.Failure("Membership plan was not found.", "MEMBERSHIP_PLAN_NOT_FOUND", 404);
+
+    // ══════════════════════════════════════════════════════════
+    // Public catalog: GET /api/packages?type=gym|yoga|pt
+    // ══════════════════════════════════════════════════════════
+
+    public async Task<Result<PagedResponse<PackageCatalogItemResponse>>> ListPackageCatalogAsync(
+        PackageCatalogQuery request, CancellationToken cancellationToken)
+    {
+        if (!TryParseComponentType(request.Type, out var componentType))
+            return Result<PagedResponse<PackageCatalogItemResponse>>.Failure(
+                "Type must be one of: gym, yoga, pt.", "INVALID_COMPONENT_TYPE", 400);
+
+        var (items, total) = await repository.SearchByComponentTypeAsync(
+            componentType, request.Page, request.PageSize, cancellationToken);
+
+        return Result<PagedResponse<PackageCatalogItemResponse>>.Success(
+            new(request.Page, request.PageSize, total,
+                items.Select(ToCatalogItemResponse).ToArray()));
+    }
+
+    private static bool TryParseComponentType(string? type, out ComponentType result)
+    {
+        result = default;
+        return type is not null && Enum.TryParse(type.Trim(), ignoreCase: true, out result);
+    }
+
+    private static PackageCatalogItemResponse ToCatalogItemResponse(PackageCatalogReadModel m) =>
+        new(
+            m.Id,
+            m.Name,
+            m.Description,
+            m.Price,
+            m.Status == PackageStatus.Active ? MembershipPlanStatuses.Active : MembershipPlanStatuses.Inactive,
+            m.ComponentType.ToString().ToUpperInvariant(),
+            m.DurationDays,
+            m.DurationMonths,
+            m.SessionCount,
+            m.YogaClassTypeId,
+            m.YogaClassTypeName,
+            m.ApplicableTrainerLevel,
+            m.PTFreezeMinimumDays,
+            m.PTFreezeMaxTotalDays,
+            m.AllowFreeze,
+            m.MaxFreezeDaysPerRequest,
+            m.MaxFreezeCount,
+            m.AccessStartTime,
+            m.AccessEndTime);
 }

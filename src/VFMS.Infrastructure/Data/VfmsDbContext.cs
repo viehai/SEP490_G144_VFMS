@@ -10,7 +10,7 @@ namespace VFMS.Infrastructure.Data;
 /// </summary>
 public class VfmsDbContext : DbContext
 {
-    public VfmsDbContext(DbContextOptions<VfmsDbContext> options) : base(options) { }
+    public VfmsDbContext(DbContextOptions options) : base(options) { }
 
     // ─────────────────────────────────────────────────────────────
     //  Identity & Role
@@ -121,6 +121,8 @@ public class VfmsDbContext : DbContext
     //  Reviews & Trainer Feedback
     // ─────────────────────────────────────────────────────────────
     public DbSet<TrainerReview> TrainerReviews { get; set; }
+    public DbSet<ConsultationConversation> ConsultationConversations { get; set; }
+    public DbSet<ConsultationMessage> ConsultationMessages { get; set; }
 
     // ─────────────────────────────────────────────────────────────
     //  Communication & System (Modules 12, 13)
@@ -1094,6 +1096,10 @@ public class VfmsDbContext : DbContext
             entity.Property(e => e.ProductName).HasMaxLength(256).IsRequired();
             entity.Property(e => e.UnitPrice).HasColumnType("decimal(18,2)");
             entity.Property(e => e.ProductStatus).HasConversion<string>().HasMaxLength(20);
+            entity.Property(e => e.Brand).HasMaxLength(100);
+            entity.Property(e => e.Size).HasMaxLength(50);
+            entity.Property(e => e.Flavour).HasMaxLength(100);
+            entity.HasIndex(e => e.Brand);
         });
 
         // ── SupplementOrder ───────────────────────────────────────
@@ -1251,6 +1257,35 @@ public class VfmsDbContext : DbContext
             entity.HasOne(e => e.ReviewedByUser)
                 .WithMany()
                 .HasForeignKey(e => e.ReviewedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ConsultationConversation>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Subject).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.Status).HasMaxLength(30).IsRequired();
+            entity.HasOne(e => e.CustomerUser)
+                .WithMany(u => u.StartedConversations)
+                .HasForeignKey(e => e.CustomerUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.ManagerUser)
+                .WithMany(u => u.ManagedConversations)
+                .HasForeignKey(e => e.ManagerUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ConsultationMessage>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Content).IsRequired();
+            entity.HasOne(e => e.Conversation)
+                .WithMany(c => c.Messages)
+                .HasForeignKey(e => e.ConversationId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.SenderUser)
+                .WithMany(u => u.SentConsultationMessages)
+                .HasForeignKey(e => e.SenderUserId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 

@@ -4,3 +4,13 @@ GET {{VFMS.API_HostAddress}}/weatherforecast/
 Accept: application/json
 
 ###
+
+@managerToken = replace-with-manager-access-token
+@competitionId = 1
+
+### End a started competition early (Manager only)
+POST {{VFMS.API_HostAddress}}/api/competitions/{{competitionId}}/complete
+Authorization: Bearer {{managerToken}}
+Accept: application/json
+
+###

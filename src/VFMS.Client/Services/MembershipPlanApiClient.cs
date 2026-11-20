@@ -5,6 +5,7 @@ using System.Text.Json;
 using VFMS.Client.Auth;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Memberships;
+using VFMS.Contracts.Packages;
 
 namespace VFMS.Client.Services;
 
@@ -60,6 +61,22 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
             FormattableString.Invariant($"api/membership-plans?page={page}&pageSize=9") +
             (string.IsNullOrWhiteSpace(serviceType) ? "" : $"&serviceType={Uri.EscapeDataString(serviceType)}"), cancellationToken,
             allowAnonymous: true);   // the public price list on the home page
+
+    /// <summary>
+    /// Gọi public catalog endpoint GET /api/packages?type={type}&page={page}&pageSize={pageSize}.
+    /// Hỗ trợ cả người dùng nặc danh (anonymous) và người dùng đã đăng nhập.
+    /// </summary>
+    public async Task<PagedResponse<PackageCatalogItemResponse>> GetPackagesAsync(
+        string type, int page = 1, int pageSize = 9, CancellationToken cancellationToken = default)
+    {
+        var path = FormattableString.Invariant($"api/packages?type={Uri.EscapeDataString(type.Trim())}&page={page}&pageSize={pageSize}");
+        using var request = new HttpRequestMessage(HttpMethod.Get, path);
+        if (await session.GetAccessTokenAsync() is { } token)
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        }
+        return await AuthApiClient.SendAsync<PagedResponse<PackageCatalogItemResponse>>(http, request, cancellationToken);
+    }
 
     public Task<MembershipPurchaseResponse> PurchaseAsync(MembershipPurchaseRequest request, CancellationToken cancellationToken = default) =>
         SendAsync<MembershipPurchaseResponse>(HttpMethod.Post, PurchasesPath, cancellationToken, JsonContent.Create(request), ReadPurchaseAsync);

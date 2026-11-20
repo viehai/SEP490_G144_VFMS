@@ -71,6 +71,62 @@ public sealed class MembershipPlanRepository(VfmsDbContext context)
         await transaction.CommitAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Public catalog query: Package Active có ít nhất 1 component không bị xóa mềm
+    /// có ComponentType khớp với <paramref name="componentType"/>.
+    /// Component được project theo type đã yêu cầu (first match, ordered by Id).
+    /// </summary>
+    public async Task<(IReadOnlyList<PackageCatalogReadModel> Items, int TotalCount)> SearchByComponentTypeAsync(
+        ComponentType componentType, int page, int pageSize, CancellationToken cancellationToken = default)
+    {
+        // Load packages + tất cả components (không có global filter IsDeleted cho component
+        // vì cần lọc theo soft-delete thủ công trong projection).
+        var packages = await Context.Packages
+            .AsNoTracking()
+            .Where(p => p.PackageStatus == PackageStatus.Active
+                     && p.Components.Any(c => c.ComponentType == componentType))
+            .Include(p => p.Components.Where(c => c.ComponentType == componentType))
+                .ThenInclude(c => c.YogaClassType)
+            .OrderBy(p => p.Name).ThenBy(p => p.Id)
+            .ToListAsync(cancellationToken);
+
+        var total = packages.Count;
+        var page_items = packages
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(p =>
+            {
+                // Lấy component đầu tiên (theo Id) khớp type — hỗ trợ combo package
+                var comp = p.Components
+                    .OrderBy(c => c.Id)
+                    .First();
+
+                return new PackageCatalogReadModel(
+                    p.Id,
+                    p.Name,
+                    p.Description,
+                    p.Price,
+                    p.PackageStatus,
+                    comp.ComponentType,
+                    comp.DurationDays,
+                    comp.DurationMonths,
+                    comp.SessionCount,
+                    comp.YogaClassTypeId,
+                    comp.YogaClassType?.TypeName,
+                    comp.ApplicableTrainerLevel?.ToString(),
+                    comp.PTFreezeMinimumDays,
+                    comp.PTFreezeMaxTotalDays,
+                    comp.AllowFreeze,
+                    comp.MaxFreezeDaysPerRequest,
+                    comp.MaxFreezeCount,
+                    comp.AccessStartTime,
+                    comp.AccessEndTime);
+            })
+            .ToList();
+
+        return (page_items, total);
+    }
+
     private IQueryable<Package> Plans(PackageStatus? status, DateTime? sellableAtUtc = null)
     {
         // Membership plans sell GYM or YOGA (PT packages are managed elsewhere).
