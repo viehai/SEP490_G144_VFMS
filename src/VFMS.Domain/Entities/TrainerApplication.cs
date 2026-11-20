@@ -23,6 +23,8 @@ public class TrainerApplication : BaseEntity
     public DateTime? ConsentAt { get; set; }
     public string? HiredUserId { get; set; }
     public string? ApplicantUserId { get; set; }   // null if submitted as Guest
+    /// <summary>The trainer role applied for (PT or Yoga).</summary>
+    public int? TrainerRoleId { get; set; }
     public string FullName { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public string PhoneNumber { get; set; } = string.Empty;
@@ -39,6 +41,7 @@ public class TrainerApplication : BaseEntity
 
     // ── Navigation Properties ──────────────────────────────────
     public ApplicationUser? Applicant { get; set; }
+    public TrainerRole? TrainerRole { get; set; }
     public ApplicationUser? ReviewedByUser { get; set; }
 }
 
