@@ -1,0 +1,19 @@
+@* A dashboard figure that links to the page where the work is done. Value null = still loading or failed. *@
+<a href="@Href" class="group flex min-h-[180px] flex-col justify-between border border-[#D8D1CD] bg-[#F8F5F2] p-6 transition-all hover:border-[#B83A3A] rounded-xl">
+    <div class="flex items-start justify-between gap-4">
+        <p class="workspace-heading max-w-[190px] text-xs font-bold leading-relaxed text-[#242424]">@Label</p>
+        <span class="workspace-heading text-xs font-bold text-[#8C8581]">@Index</span>
+    </div>
+    <div class="mt-6 flex items-end justify-between gap-4">
+        <p class="workspace-heading text-5xl font-extrabold leading-none tracking-tight text-[#B83A3A]">@(Value is { } value ? value.ToString("00") : "—")</p>
+        <span class="text-right text-xs text-[#6F6966]">@Note</span>
+    </div>
+</a>
+
+@code {
+    [Parameter, EditorRequired] public string Index { get; set; } = "";
+    [Parameter, EditorRequired] public string Label { get; set; } = "";
+    [Parameter, EditorRequired] public string Href { get; set; } = "";
+    [Parameter] public int? Value { get; set; }
+    [Parameter] public string? Note { get; set; }
+}

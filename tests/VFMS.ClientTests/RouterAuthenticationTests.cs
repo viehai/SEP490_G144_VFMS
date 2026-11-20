@@ -14,6 +14,7 @@ using VFMS.Client.Auth;
 using VFMS.Client.Components.Auth;
 using VFMS.Client.Services;
 using VFMS.Contracts.Auth;
+using VFMS.Contracts.CheckIn;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Memberships;
 using Xunit;
@@ -44,6 +45,16 @@ public sealed class RouterAuthenticationTests
                 };
             if (request.RequestUri!.AbsolutePath == "/api/yoga/schedule")   // the home page's yoga classes
                 return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(Array.Empty<object>()) };
+            if (request.RequestUri!.AbsolutePath == "/api/check-ins/active")   // the staff dashboard's figures
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(new ActiveCheckInsResponse(0, 0, []))
+                };
+            if (request.RequestUri!.AbsolutePath is "/api/equipment-issues" or "/api/consultations")
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(new PagedResponse<object>(1, 1, 0, []))
+                };
             Assert.Equal("/api/auth/logout", request.RequestUri!.AbsolutePath);
             logoutCalls++;
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new { Message = "Logged out." }) };
