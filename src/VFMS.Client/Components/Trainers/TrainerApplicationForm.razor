@@ -22,10 +22,8 @@ else
         <fieldset disabled="@_busy" class="trainer-stack">
             @if (IsUpdate)
             {
-                <label>Chuyên môn đề xuất
-                    <select class="trainer-input" required @bind="_specialty">
-                        <option value="PT">PT</option><option value="Yoga">Yoga</option>
-                    </select>
+                <label>Chuyên môn đề xuất (để trống nếu giữ chuyên môn hiện tại)
+                    <input class="trainer-input" maxlength="200" placeholder="Ví dụ: tăng cơ, giảm mỡ" @bind="_specialty" />
                     @FieldError("Specialty")
                 </label>
                 @if (Replacement is { } replacement)
@@ -48,11 +46,12 @@ else
                         @FieldError("Gender")
                     </label>
                     <label>Ứng tuyển vị trí
-                        <select class="trainer-input" required @bind="_specialty">
+                        <select class="trainer-input" required @bind="_trainerRole">
                             <option value="">Chọn vị trí</option><option value="PT">PT</option><option value="Yoga">Yoga</option>
                         </select>
-                        @FieldError("Specialty")
+                        @FieldError("TrainerRole")
                     </label>
+                    <label>Chuyên môn<input class="trainer-input" maxlength="200" required placeholder="Ví dụ: tăng cơ, Hatha yoga" @bind="_specialty" />@FieldError("Specialty")</label>
                     <label>Số năm kinh nghiệm<input class="trainer-input" type="number" min="0" max="80" required @bind="_experience" />@FieldError("ExperienceYears")</label>
                 </div>
                 <label>Giới thiệu chuyên môn<textarea class="trainer-input" rows="4" maxlength="4000" required @bind="_bio"></textarea>@FieldError("Bio")</label>
@@ -138,7 +137,7 @@ else
     private const long MaxFileBytes = 5 * 1024 * 1024;
     private readonly List<SelectedCertificate> _files = [];
     private readonly List<CertificateLink> _links = [new()];
-    private string _name = "", _email = "", _phone = "", _citizenId = "", _gender = "", _specialty = "", _bio = "";
+    private string _name = "", _email = "", _phone = "", _citizenId = "", _gender = "", _specialty = "", _trainerRole = "", _bio = "";
     private DateOnly? _birthDate;
     private int _experience, _fileVersion;
     private bool _consent, _busy;
@@ -216,7 +215,8 @@ else
             IsUpdate ? "ProfileUpdate" : "Recruitment",
             IsUpdate ? null : _links.Select(link => link.Url.Trim()).Where(url => url.Length > 0).ToList(),
             IsUpdate ? _links.Where(link => !string.IsNullOrWhiteSpace(link.Url)).Select(link =>
-                new TrainerCertificateLinkInput(link.Url.Trim(), string.IsNullOrEmpty(link.Replaces) ? null : link.Replaces)).ToList() : null);
+                new TrainerCertificateLinkInput(link.Url.Trim(), string.IsNullOrEmpty(link.Replaces) ? null : link.Replaces)).ToList() : null,
+            IsUpdate ? null : _trainerRole);
         _fieldErrors = new SubmitTrainerApplicationValidator().Validate(request).Errors
             .Select(issue => FieldKey(issue.PropertyName))
             .Distinct().ToDictionary(key => key, FieldMessage);
@@ -246,7 +246,7 @@ else
                 "TRAINER_NOT_ELIGIBLE" => "Bạn không đủ điều kiện ứng tuyển: email hoặc CCCD thuộc tài khoản nhân viên hoặc huấn luyện viên đang hoạt động.",
                 "TRAINER_IDENTITY_MISSING" => "Hồ sơ PT chưa có CCCD đã xác minh. Liên hệ Manager để cập nhật.",
                 // TrainerApiClient already turns the cooldown into Vietnamese text with the next eligible time (GBR-03).
-                TrainerContentRules.RejectedCode => "Giới thiệu có từ ngữ không được phép. Sửa các từ được tô đỏ rồi gửi lại.",
+                TrainerContentRules.RejectedCode => "Giới thiệu hoặc chuyên môn có từ ngữ không được phép. Sửa các từ được tô đỏ rồi gửi lại.",
                 _ => ex.Message
             };
         }
@@ -254,7 +254,7 @@ else
     }
 
     private static readonly HashSet<string> SimpleFields =
-        ["FullName", "Email", "PhoneNumber", "CitizenId", "DateOfBirth", "Gender", "Specialty", "ExperienceYears", "Bio", "Consent"];
+        ["FullName", "Email", "PhoneNumber", "CitizenId", "DateOfBirth", "Gender", "TrainerRole", "Specialty", "ExperienceYears", "Bio", "Consent"];
 
     private static string FieldKey(string property) => SimpleFields.Contains(property) ? property : "Certificates";
 
@@ -272,7 +272,8 @@ else
         "CitizenId" => "CCCD phải có đúng 12 chữ số.",
         "DateOfBirth" => "Ngày sinh phải từ năm 1900 và trước hôm nay.",
         "Gender" => "Chọn giới tính.",
-        "Specialty" => "Chọn chuyên môn PT hoặc Yoga.",
+        "TrainerRole" => "Chọn vị trí ứng tuyển PT hoặc Yoga.",
+        "Specialty" => "Nhập chuyên môn, tối đa 200 ký tự.",
         "ExperienceYears" => "Nhập số năm kinh nghiệm từ 0 đến 80.",
         "Bio" => "Nhập giới thiệu chuyên môn, tối đa 4.000 ký tự.",
         "Consent" => "Xác nhận đồng ý trước khi gửi.",

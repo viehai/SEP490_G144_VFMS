@@ -1,15 +1,15 @@
 @page "/pt/trainer-profile"
 @layout StaffPTLayout
-@attribute [Authorize(Roles = "PT")]
+@attribute [Authorize(Roles = "PT,YogaInstructor")]
 @using VFMS.Contracts.Users
 @using VFMS.Contracts.Common
 @using VFMS.Client.Components.Operations
 @inject TrainerApiClient Api
-<PageTitle>Hồ sơ PT của tôi | Victor Fitness</PageTitle>
+<PageTitle>Hồ sơ của tôi | Victor Fitness</PageTitle>
 
 <section class="workspace-page trainer-page trainer-stack">
-    <PageHeader Overline="VFMS / PT" Title="Hồ sơ PT của tôi"
-                Description="Cập nhật giới thiệu, ảnh đại diện, trạng thái nhận học viên và chứng chỉ." />
+    <PageHeader Overline="VFMS / HUẤN LUYỆN VIÊN" Title="Hồ sơ của tôi"
+                Description="Cập nhật giới thiệu, ảnh đại diện và chứng chỉ; PT quản lý thêm trạng thái nhận học viên." />
     <TrainerFeedback Error="@_error" Message="@_message" />
     @if (_loading) { <p role="status">Đang tải hồ sơ…</p> }
     else if (_profile is { } detail)
@@ -18,9 +18,12 @@
             <section id="pt-basic-profile" class="trainer-panel trainer-stack trainer-anchor">
                 <div class="trainer-row">
                     <TrainerAvatar Trainer="detail.Profile" />
-                    <div><h2>@detail.Profile.FullName</h2><p class="trainer-muted">@detail.Profile.Specialty · @detail.Profile.Level · @detail.Profile.ExperienceYears năm kinh nghiệm</p>
+                    <div><h2>@detail.Profile.FullName</h2><p class="trainer-muted">@detail.Profile.TrainerRole · @detail.Profile.Specialty · @detail.Profile.Level · @detail.Profile.ExperienceYears năm kinh nghiệm</p>
                     <p class="trainer-muted">@(detail.Profile.AverageRating > 0 ? $"{detail.Profile.AverageRating:0.0} / 5 sao" : "Chưa có đánh giá")</p></div>
                 </div>
+                @* UC 4.12: accepting status belongs to Trainer Role PT only. *@
+                @if (detail.Profile.TrainerRole == "PT")
+                {
                 <div class="trainer-row trainer-between">
                     <div>
                         <strong>@(detail.Profile.IsAcceptingNewMembers ? "Đang nhận học viên mới" : "Không nhận học viên mới")</strong>
@@ -33,6 +36,7 @@
                         @(detail.Profile.IsAcceptingNewMembers ? "Ngừng nhận học viên" : "Sẵn sàng nhận học viên")
                     </button>
                 </div>
+                }
                 <form class="trainer-stack" @onsubmit="SaveAsync" @onsubmit:preventDefault>
                     <fieldset class="trainer-stack" disabled="@_saving">
                         <label>Giới thiệu<textarea class="trainer-input" rows="5" maxlength="4000" @bind="_bio"></textarea></label>

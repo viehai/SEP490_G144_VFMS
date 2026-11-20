@@ -54,9 +54,14 @@
             }
             @if (Variant == "pt")
             {
+                @* UC 3.3: PT and Yoga trainers share the profile page; the rest is Trainer Role PT only (feature 4). *@
+                <AuthorizeView Roles="PT,YogaInstructor">
+                    <NavLink href="/pt/trainer-profile" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active">Hồ sơ huấn luyện viên</NavLink>
+                </AuthorizeView>
+                <AuthorizeView Roles="YogaInstructor">
+                    <NavLink href="/pt/yoga" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active">Lớp Yoga của tôi</NavLink>
+                </AuthorizeView>
                 <AuthorizeView Roles="PT">
-                    <NavLink href="/pt/trainer-profile" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active">Hồ sơ PT của tôi</NavLink>
-                    <a href="/pt/trainer-profile#pt-basic-profile" class="workspace-nav-link">Trạng thái nhận học viên</a>
                     <NavLink href="/pt/availability" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active">Lịch tuần PT</NavLink>
                     <NavLink href="/pt/assigned-members" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active">Hội viên được phân công</NavLink>
                     <NavLink href="/pt/teaching-schedule" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active">Lịch dạy PT</NavLink>
@@ -113,7 +118,7 @@
     [Parameter] public string Variant { get; set; } = "staff";
     [Parameter] public bool IsPreview { get; set; } = true;
     [Parameter] public RenderFragment? ChildContent { get; set; }
-    private string RoleName => Variant switch { "admin" => "ADMIN", "manager" => "MANAGER", "pt" => "PERSONAL TRAINER", "member" => "HỘI VIÊN", _ => "STAFF" };
+    private string RoleName => Variant switch { "admin" => "ADMIN", "manager" => "MANAGER", "pt" => "HUẤN LUYỆN VIÊN", "member" => "HỘI VIÊN", _ => "STAFF" };
     private string RoleMark => Variant switch { "admin" => "AD", "manager" => "MG", "pt" => "PT", "member" => "HV", _ => "ST" };
     private string DashboardRoute => Variant switch { "admin" => "/admin/dashboard", "manager" => "/manager/dashboard", "pt" => "/pt/dashboard", _ => "/staff/dashboard" };
     private (string Href, string Label)[] FeatureLinks => Variant switch

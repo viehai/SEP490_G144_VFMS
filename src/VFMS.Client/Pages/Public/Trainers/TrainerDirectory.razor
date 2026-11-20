@@ -6,17 +6,17 @@
 <section class="trainer-page trainer-public trainer-stack">
     <header class="trainer-row trainer-between">
         <div>
-            <h1>Huấn luyện viên cá nhân</h1>
-            <p class="trainer-muted mt-2">Tìm PT theo chuyên môn, xem chứng chỉ và lịch tập.</p>
+            <h1>Huấn luyện viên</h1>
+            <p class="trainer-muted mt-2">Tìm PT hoặc huấn luyện viên Yoga theo vị trí và chuyên môn, xem chứng chỉ và đánh giá.</p>
         </div>
-        <a href="/careers/trainer" class="trainer-button">Ứng tuyển PT</a>
+        <a href="/careers/trainer" class="trainer-button">Ứng tuyển huấn luyện viên</a>
     </header>
 
     <form class="trainer-panel trainer-stack" @onsubmit="SearchAsync" @onsubmit:preventDefault>
         <div class="trainer-grid">
-            <label>Tên huấn luyện viên<input class="trainer-input" maxlength="200" @bind="_search" /></label>
-            <label>Chuyên môn
-                <select class="trainer-input" @bind="_specialty">
+            <label>Tên hoặc chuyên môn<input class="trainer-input" maxlength="200" @bind="_search" /></label>
+            <label>Vị trí
+                <select class="trainer-input" @bind="_trainerRole">
                     <option value="">Tất cả</option><option value="PT">PT</option><option value="Yoga">Yoga</option>
                 </select>
             </label>
@@ -56,8 +56,11 @@
                         <TrainerAvatar Trainer="trainer" />
                         <div>
                             <h2><a class="trainer-link" href="@($"/trainers/{trainer.Id}")">@trainer.FullName</a></h2>
-                            <p class="trainer-muted">@trainer.Specialty</p>
-                            <p class="trainer-muted">@(trainer.IsAcceptingNewMembers ? "Sẵn sàng nhận học viên" : "Không nhận học viên mới")</p>
+                            <p class="trainer-muted">@trainer.TrainerRole · @trainer.Specialty</p>
+                            @if (trainer.TrainerRole == "PT")
+                            {
+                                <p class="trainer-muted">@(trainer.IsAcceptingNewMembers ? "Sẵn sàng nhận học viên" : "Không nhận học viên mới")</p>
+                            }
                         </div>
                     </div>
                     <div class="trainer-row trainer-between">
@@ -72,7 +75,7 @@
 </section>
 
 @code {
-    private string _search = "", _specialty = "", _gender = "";
+    private string _search = "", _trainerRole = "", _gender = "";
     private int _rating;
     private TrainerSearch _filter = new();
     private PagedResponse<TrainerProfileResponse>? _results;
@@ -83,13 +86,13 @@
 
     private Task SearchAsync()
     {
-        _filter = new(_search.Trim(), _specialty.Trim(), _gender, _rating == 0 ? null : _rating);
+        _filter = new(_search.Trim(), _trainerRole, _gender, _rating == 0 ? null : _rating);
         return LoadAsync(1);
     }
 
     private Task ResetAsync()
     {
-        _search = _specialty = _gender = "";
+        _search = _trainerRole = _gender = "";
         _rating = 0;
         return SearchAsync();
     }
