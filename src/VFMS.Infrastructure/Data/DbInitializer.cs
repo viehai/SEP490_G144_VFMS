@@ -9,7 +9,7 @@ namespace VFMS.Infrastructure.Data;
 
 public static class DbInitializer
 {
-    public static async Task SeedAsync(IServiceProvider serviceProvider)
+    public static async Task SeedAsync(IServiceProvider serviceProvider, bool isDevelopment = false)
     {
         using var scope = serviceProvider.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
@@ -78,6 +78,64 @@ public static class DbInitializer
                 });
                 await context.SaveChangesAsync();
                 logger.LogInformation("Default Admin account seeded.");
+            }
+
+            if (isDevelopment)
+            {
+                var testAccounts = new[]
+                {
+                    ("Manager", "manager@test.vn", "Manager Test", "0900000001"),
+                    ("Staff", "staff@test.vn", "Staff Test", "0900000002"),
+                    ("YogaInstructor", "yoga@test.vn", "Yoga Instructor Test", "0900000003"),
+                    ("Member", "member@test.vn", "Member Test", "0900000004")
+                };
+
+                foreach (var (roleName, email, fullName, phoneNumber) in testAccounts)
+                {
+                    var role = await context.ApplicationRoles.FirstAsync(r => r.RoleName == roleName);
+                    var user = await context.ApplicationUsers
+                        .Include(u => u.UserRoles)
+                        .FirstOrDefaultAsync(u => u.Email == email);
+
+                    if (user is null)
+                    {
+                        user = new ApplicationUser
+                        {
+                            UserId = email == "member@test.vn"
+                                ? "b7a2e8b5-23e2-4415-8679-357bb5c33ad3"
+                                : Guid.NewGuid().ToString(),
+                            GymId = defaultGym.Id,
+                            FullName = fullName,
+                            Email = email,
+                            PhoneNumber = phoneNumber,
+                            PasswordHash = BCrypt.Net.BCrypt.HashPassword("Test@1234"),
+                            AccountStatus = AccountStatus.Active
+                        };
+                        context.ApplicationUsers.Add(user);
+                    }
+                    else
+                    {
+                        user.AccountStatus = AccountStatus.Active;
+                        user.IsBanned = false;
+                        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword("Test@1234");
+                        user.PasswordSetupTokenHash = null;
+                        user.PasswordSetupExpiresAt = null;
+                    }
+
+                    await context.SaveChangesAsync();
+
+                    if (!user.UserRoles.Any(ur => ur.RoleId == role.Id))
+                    {
+                        context.ApplicationUserRoles.Add(new ApplicationUserRole
+                        {
+                            UserId = user.UserId,
+                            RoleId = role.Id
+                        });
+                        await context.SaveChangesAsync();
+                    }
+                }
+
+                logger.LogInformation("Development test accounts seeded.");
             }
 
             // 4. Exercise catalog and standard workout plans (GBR-95 fallback)

@@ -3283,7 +3283,6 @@ namespace VFMS.Infrastructure.Migrations
                         .HasColumnType("int");
 
                     b.Property<string>("TrainerUserId")
-                        .IsRequired()
                         .HasColumnType("nvarchar(128)");
 
                     b.Property<DateTime>("UpdatedAt")
@@ -4861,8 +4860,7 @@ namespace VFMS.Infrastructure.Migrations
                     b.HasOne("VFMS.Domain.Entities.ApplicationUser", "TrainerUser")
                         .WithMany()
                         .HasForeignKey("TrainerUserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("MemberUser");
 

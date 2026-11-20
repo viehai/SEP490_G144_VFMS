@@ -70,7 +70,7 @@
                     @foreach (var review in page.Items)
                     {
                         <article @key="review.Id" class="p-5">
-                            <p class="text-sm font-bold text-[#242424]">Đánh giá phòng gym</p>
+                            <p class="text-sm font-bold text-[#242424]">@(review.TrainerUserId is null ? "Đánh giá phòng gym" : $"Đánh giá HLV {review.TrainerName}")</p>
                             <p class="mt-1 text-sm text-[#B83A3A]">@Stars(review.Rating)</p>
                             <p class="mt-2 text-sm text-[#6F6966]">@(review.Comment ?? "Không có nhận xét.")</p>
                             <p class="mt-2 text-xs text-[#8C8581]">@StatusLabel(review.Status) · @review.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</p>

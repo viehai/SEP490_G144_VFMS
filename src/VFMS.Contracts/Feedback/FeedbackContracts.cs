@@ -14,8 +14,8 @@ public sealed record FeedbackSubmitRequest(string? TrainerUserId, int Rating, st
 
 public sealed record FeedbackResponse(
     int Id,
-    string TrainerUserId,
-    string TrainerName,
+    string? TrainerUserId,
+    string? TrainerName,
     string MemberUserId,
     string MemberName,
     int Rating,

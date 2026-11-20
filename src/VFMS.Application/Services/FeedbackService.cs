@@ -51,16 +51,20 @@ public sealed class FeedbackService : IFeedbackService
         if (member is null)
             return Failure<FeedbackResponse>("Không tìm thấy hội viên.", "FEEDBACK_USER_NOT_FOUND", 404);
 
-        var trainers = await _repository.GetTrainersAsync(cancellationToken);
-        if (trainers.Count == 0)
-            return Failure<FeedbackResponse>("Hệ thống chưa có huấn luyện viên để lưu đánh giá.", "FEEDBACK_TRAINER_NOT_FOUND", 404);
-        var trainer = await _repository.GetUserAsync(trainers[0].UserId, cancellationToken);
-        if (trainer is null)
-            return Failure<FeedbackResponse>("Hệ thống chưa có huấn luyện viên để lưu đánh giá.", "FEEDBACK_TRAINER_NOT_FOUND", 404);
+        ApplicationUser? trainer = null;
+        if (!string.IsNullOrWhiteSpace(request.TrainerUserId))
+        {
+            var trainers = await _repository.GetTrainersAsync(cancellationToken);
+            if (trainers.Count == 0)
+                return Failure<FeedbackResponse>("Hệ thống chưa có huấn luyện viên để lưu đánh giá.", "FEEDBACK_TRAINER_NOT_FOUND", 404);
+            trainer = await _repository.GetUserAsync(trainers[0].UserId, cancellationToken);
+            if (trainer is null)
+                return Failure<FeedbackResponse>("Hệ thống chưa có huấn luyện viên để lưu đánh giá.", "FEEDBACK_TRAINER_NOT_FOUND", 404);
+        }
 
         var review = new TrainerReview
         {
-            TrainerUserId = trainer.UserId,
+            TrainerUserId = trainer?.UserId,
             MemberUserId = member.UserId,
             TrainerUser = trainer,
             MemberUser = member,
@@ -153,7 +157,7 @@ public sealed class FeedbackService : IFeedbackService
     };
 
     private static FeedbackResponse Map(TrainerReview review) => new(
-        review.Id, review.TrainerUserId, review.TrainerUser?.FullName ?? "HLV",
+        review.Id, review.TrainerUserId, review.TrainerUser?.FullName,
         review.MemberUserId, review.MemberUser?.FullName ?? "Hội viên",
         review.Rating, review.Comment, review.ReviewStatus.ToString(),
         review.ManagerReply, review.IsVisible, review.CreatedAt, review.ReviewedAt,

@@ -12,7 +12,7 @@ public class TrainerReview : BaseEntity
 {
     public int? PTPurchaseId { get; set; }
     public PTPurchase? PTPurchase { get; set; }
-    public string TrainerUserId { get; set; } = string.Empty;
+    public string? TrainerUserId { get; set; }
     public string MemberUserId { get; set; } = string.Empty;
     public int Rating { get; set; }   // 1-5
     public string? Comment { get; set; }
@@ -23,7 +23,7 @@ public class TrainerReview : BaseEntity
     public bool IsVisible { get; set; } = false;
 
     // ── Navigation Properties ──────────────────────────────────
-    public ApplicationUser TrainerUser { get; set; } = null!;
+    public ApplicationUser? TrainerUser { get; set; }
     public ApplicationUser MemberUser { get; set; } = null!;
     public ApplicationUser? ReviewedByUser { get; set; }
 }

@@ -47,7 +47,7 @@
                 <article @key="row.Id" class="p-5">
                     <div class="flex flex-wrap items-start justify-between gap-3">
                         <div>
-                            <p class="text-sm font-bold">@row.MemberName · Đánh giá phòng gym</p>
+                            <p class="text-sm font-bold">@row.MemberName · @(row.TrainerUserId is null ? "Đánh giá phòng gym" : $"Đánh giá HLV {row.TrainerName}")</p>
                             <p class="mt-1 text-xs text-[#6F6966]">@row.Status · @(row.IsVisible ? "Đang hiển thị" : "Đang ẩn")</p>
                             <p class="mt-2 text-sm text-[#B83A3A]">@Stars(row.Rating)</p>
                             <p class="mt-3 text-sm">@(row.Comment ?? "Không có nội dung")</p>

@@ -37,19 +37,19 @@
                     <textarea id="c-desc" rows="2" class="w-full border border-[#CFCFCF] px-3 py-2 text-sm" @bind="_formDescription"></textarea>
                 </div>
                 <div>
-                    <label for="c-reg-start" class="workspace-heading mb-2 block text-[10px] font-bold uppercase tracking-wider">BẮT ĐẦU ĐĂNG KÝ (UTC) *</label>
+                    <label for="c-reg-start" class="workspace-heading mb-2 block text-[10px] font-bold uppercase tracking-wider">BẮT ĐẦU ĐĂNG KÝ (GIỜ VIỆT NAM) *</label>
                     <input id="c-reg-start" type="datetime-local" class="w-full border border-[#CFCFCF] px-3 py-2 text-sm" @bind="_formRegistrationStart" />
                 </div>
                 <div>
-                    <label for="c-reg-end" class="workspace-heading mb-2 block text-[10px] font-bold uppercase tracking-wider">KẾT THÚC ĐĂNG KÝ (UTC) *</label>
+                    <label for="c-reg-end" class="workspace-heading mb-2 block text-[10px] font-bold uppercase tracking-wider">KẾT THÚC ĐĂNG KÝ (GIỜ VIỆT NAM) *</label>
                     <input id="c-reg-end" type="datetime-local" class="w-full border border-[#CFCFCF] px-3 py-2 text-sm" @bind="_formRegistrationEnd" />
                 </div>
                 <div>
-                    <label for="c-start" class="workspace-heading mb-2 block text-[10px] font-bold uppercase tracking-wider">BẮT ĐẦU THI (UTC) *</label>
+                    <label for="c-start" class="workspace-heading mb-2 block text-[10px] font-bold uppercase tracking-wider">BẮT ĐẦU THI (GIỜ VIỆT NAM) *</label>
                     <input id="c-start" type="datetime-local" class="w-full border border-[#CFCFCF] px-3 py-2 text-sm" @bind="_formStart" />
                 </div>
                 <div>
-                    <label for="c-end" class="workspace-heading mb-2 block text-[10px] font-bold uppercase tracking-wider">KẾT THÚC THI (UTC) *</label>
+                    <label for="c-end" class="workspace-heading mb-2 block text-[10px] font-bold uppercase tracking-wider">KẾT THÚC THI (GIỜ VIỆT NAM) *</label>
                     <input id="c-end" type="datetime-local" class="w-full border border-[#CFCFCF] px-3 py-2 text-sm" @bind="_formEnd" />
                 </div>
                 <div>
@@ -119,7 +119,7 @@
                         {
                             <tr class="hover:bg-[#FAFAF7]">
                                 <th scope="row" class="break-words px-4 py-4 font-semibold">@item.Name</th>
-                                <td class="whitespace-nowrap px-4 py-4 text-xs text-[#69706A]">@item.StartDate.ToLocalTime().ToString("dd/MM/yyyy") - @item.EndDate.ToLocalTime().ToString("dd/MM/yyyy")</td>
+                                <td class="whitespace-nowrap px-4 py-4 text-xs text-[#69706A]">@FormatVietnamDate(item.StartDate) - @FormatVietnamDate(item.EndDate)</td>
                                 <td class="workspace-heading whitespace-nowrap px-4 py-4 text-xs font-bold">@item.ParticipantCount@(item.MaxParticipants is { } max ? $" / {max}" : "")</td>
                                 <td class="px-4 py-4"><span class="@StatusClass(item.Status)">@CompetitionStatusLabel(item.Status)</span></td>
                                 <td class="px-4 py-4">
@@ -182,7 +182,7 @@
                                         <span class="block font-medium">@row.MemberName</span>
                                         <span class="mt-1 block text-xs text-[#71717A]">@row.MemberEmail</span>
                                     </th>
-                                    <td class="px-6 py-5 text-xs text-[#545454]">@row.RegisteredAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                                    <td class="px-6 py-5 text-xs text-[#545454]">@FormatVietnamDateTime(row.RegisteredAt)</td>
                                     <td class="workspace-heading px-6 py-5 text-xs font-bold">@(row.Score?.ToString("0.##") ?? "-")</td>
                                     <td class="workspace-heading px-6 py-5 text-xs font-bold">@(row.Rank?.ToString() ?? "-")</td>
                                     <td class="px-6 py-5"><span class="@StatusClass(row.Status)">@ParticipantStatusLabel(row.Status)</span></td>
@@ -347,10 +347,10 @@
 
     private string _formName = string.Empty;
     private string _formDescription = string.Empty;
-    private DateTime _formRegistrationStart = DateTime.UtcNow;
-    private DateTime _formRegistrationEnd = DateTime.UtcNow.AddDays(7);
-    private DateTime _formStart = DateTime.UtcNow.AddDays(8);
-    private DateTime _formEnd = DateTime.UtcNow.AddDays(9);
+    private DateTime _formRegistrationStart = DateTime.UtcNow.AddHours(7);
+    private DateTime _formRegistrationEnd = DateTime.UtcNow.AddHours(7).AddDays(7);
+    private DateTime _formStart = DateTime.UtcNow.AddHours(7).AddDays(8);
+    private DateTime _formEnd = DateTime.UtcNow.AddHours(7).AddDays(9);
     private int? _formMaxParticipants;
     private int? _resultParticipantId;
     private string _resultMemberName = string.Empty;
@@ -429,10 +429,10 @@
         try
         {
             var request = new CompetitionRequest(_formName.Trim(),
-                DateTime.SpecifyKind(_formRegistrationStart, DateTimeKind.Utc),
-                DateTime.SpecifyKind(_formRegistrationEnd, DateTimeKind.Utc),
-                DateTime.SpecifyKind(_formStart, DateTimeKind.Utc),
-                DateTime.SpecifyKind(_formEnd, DateTimeKind.Utc),
+                ToVietnamUtc(_formRegistrationStart),
+                ToVietnamUtc(_formRegistrationEnd),
+                ToVietnamUtc(_formStart),
+                ToVietnamUtc(_formEnd),
                 Description: string.IsNullOrWhiteSpace(_formDescription) ? null : _formDescription.Trim(),
                 MaxParticipants: _formMaxParticipants);
             await Api.CreateAsync(request);
@@ -584,7 +584,7 @@
                 string.IsNullOrWhiteSpace(_resultNote) ? null : _resultNote.Trim()));
             _panel = Panel.Participants;
             await RefreshSelectedAsync();
-            _notice = "Đã lưu điểm và hạng. Kết quả đang chờ quản lý duyệt.";
+            _notice = "Đã lưu điểm và hạng.";
         }
         catch (Exception error) { _error = error.Message; }
         finally { _busy = false; }
@@ -674,6 +674,18 @@
     private static bool CanCompleteManually(CompetitionResponse competition) =>
         competition.Status is "Published" or "Ongoing" &&
         DateTime.UtcNow >= DateTime.SpecifyKind(competition.StartDate, DateTimeKind.Utc);
+
+    private static DateTime ToVietnamUtc(DateTime vietnamTime) =>
+        DateTime.SpecifyKind(vietnamTime, DateTimeKind.Unspecified).AddHours(-7).ToUniversalTime();
+
+    private static DateTime ToVietnamTime(DateTime utcTime) =>
+        DateTime.SpecifyKind(utcTime, DateTimeKind.Utc).AddHours(7);
+
+    private static string FormatVietnamDate(DateTime utcTime) =>
+        ToVietnamTime(utcTime).ToString("dd/MM/yyyy");
+
+    private static string FormatVietnamDateTime(DateTime utcTime) =>
+        ToVietnamTime(utcTime).ToString("dd/MM/yyyy HH:mm");
 
     private static string? Blank(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();

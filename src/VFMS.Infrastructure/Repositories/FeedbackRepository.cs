@@ -28,7 +28,7 @@ public sealed class FeedbackRepository : IFeedbackRepository
             query = query.Where(review =>
                 (review.Comment != null && review.Comment.Contains(search)) ||
                 review.MemberUser.FullName.Contains(search) ||
-                review.TrainerUser.FullName.Contains(search));
+                (review.TrainerUser != null && review.TrainerUser.FullName.Contains(search)));
         if (!string.IsNullOrWhiteSpace(status)
             && Enum.TryParse<TrainerReviewStatus>(status, true, out var parsed))
             query = query.Where(review => review.ReviewStatus == parsed);

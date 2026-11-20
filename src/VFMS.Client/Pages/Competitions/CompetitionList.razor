@@ -133,7 +133,7 @@
                             {
                                 <tr class="hover:bg-[#F7F7F7]">
                                     <th scope="row" class="px-6 py-5 font-medium">@row.CompetitionName</th>
-                                    <td class="px-6 py-5 text-xs text-[#545454]">@row.RegisteredAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                                    <td class="px-6 py-5 text-xs text-[#545454]">@FormatVietnamDateTime(row.RegisteredAt)</td>
                                     <td class="workspace-heading px-6 py-5 text-xs font-bold">@(row.Score?.ToString("0.##") ?? "-")</td>
                                     <td class="workspace-heading px-6 py-5 text-xs font-bold">@(row.Rank?.ToString() ?? "-")</td>
                                     <td class="max-w-sm whitespace-pre-line px-6 py-5 text-xs text-[#545454]">@(string.IsNullOrWhiteSpace(row.Note) ? "-" : row.Note)</td>
@@ -334,8 +334,14 @@
         && DateTime.UtcNow >= item.RegistrationStart
         && DateTime.UtcNow <= item.RegistrationEnd;
 
+    private static DateTime ToVietnamTime(DateTime utcTime) =>
+        DateTime.SpecifyKind(utcTime, DateTimeKind.Utc).AddHours(7);
+
+    private static string FormatVietnamDateTime(DateTime utcTime) =>
+        ToVietnamTime(utcTime).ToString("dd/MM/yyyy HH:mm");
+
     private static string FormatRange(DateTime start, DateTime end) =>
-        $"{start.ToLocalTime():dd/MM/yyyy} - {end.ToLocalTime():dd/MM/yyyy}";
+        $"{ToVietnamTime(start):dd/MM/yyyy} - {ToVietnamTime(end):dd/MM/yyyy}";
 
     private static int PageCount(int totalCount, int pageSize) =>
         Math.Max(1, (int)Math.Ceiling((double)totalCount / Math.Max(1, pageSize)));
