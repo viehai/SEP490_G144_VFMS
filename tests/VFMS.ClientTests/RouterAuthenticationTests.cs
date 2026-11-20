@@ -50,7 +50,9 @@ public sealed class RouterAuthenticationTests
                 {
                     Content = JsonContent.Create(new ActiveCheckInsResponse(0, 0, []))
                 };
-            if (request.RequestUri!.AbsolutePath is "/api/equipment-issues" or "/api/consultations")
+            if (request.RequestUri!.AbsolutePath is "/api/equipment-issues" or "/api/consultations"   // dashboard counts and lists
+                or "/api/business-reports" or "/api/manager/membership-freeze-requests" or "/api/purchase-proposals"
+                or "/api/feedback/manager" or "/api/admin/users" or "/api/admin/audit-logs")
                 return new HttpResponseMessage(HttpStatusCode.OK)
                 {
                     Content = JsonContent.Create(new PagedResponse<object>(1, 1, 0, []))

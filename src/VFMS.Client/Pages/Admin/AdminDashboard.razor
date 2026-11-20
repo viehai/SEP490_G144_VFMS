@@ -1,7 +1,11 @@
 @page "/admin/dashboard"
 @layout ManagerAdminLayout
 @using Microsoft.AspNetCore.Authorization
+@using VFMS.Contracts.SystemAdministration
+@using VFMS.Contracts.Users
 @attribute [Authorize(Roles = "Admin")]
+@inject VfmsApiClient Api
+@implements IDisposable
 
 <PageTitle>Admin Dashboard | Victor Fitness</PageTitle>
 
@@ -12,133 +16,121 @@
             <h1 class="workspace-heading text-3xl font-extrabold uppercase tracking-tight text-[#242424] sm:text-4xl">Admin Dashboard<span class="text-[#B83A3A]">.</span></h1>
             <p class="mt-2 max-w-2xl text-sm leading-6 text-[#6F6966]">Theo dõi tài khoản nhân sự, phân quyền và các hoạt động quan trọng của hệ thống.</p>
         </div>
-        <span class="workspace-heading inline-flex w-fit items-center gap-2 border border-[#D8D1CD] bg-[#F8F5F2] px-3.5 py-2 text-[10px] font-bold uppercase tracking-wider rounded-lg text-[#6F6966]"><span class="h-2 w-2 rounded-full bg-[#B83A3A]" aria-hidden="true"></span>Dữ liệu minh họa</span>
     </header>
 
+    @* There is no admin user-management page yet (the API exists), so the account figures do not link anywhere. *@
     <section class="grid gap-4 lg:grid-cols-3" aria-label="Thống kê quản trị hệ thống">
-        <button type="button" @onclick='() => _activeAction = "staff"' class="group border border-[#D8D1CD] bg-[#F8F5F2] p-6 text-left transition-all hover:border-[#B83A3A] rounded-xl cursor-pointer">
-            <div class="flex items-start justify-between"><span class="workspace-heading text-[11px] font-bold uppercase tracking-wider text-[#6F6966]">Tổng số Staff</span><span class="text-xl text-[#B83A3A]" aria-hidden="true">↗</span></div>
-            <p class="workspace-heading mt-6 text-4xl font-extrabold tracking-tight text-[#B83A3A]">@_staffCount.ToString("00")</p>
-            <p class="mt-2 text-xs text-[#6F6966]">Nhân sự đang được quản lý trong hệ thống</p>
-        </button>
-        <button type="button" @onclick='() => _activeAction = "locked"' class="group border border-[#D8D1CD] bg-[#F8F5F2] p-6 text-left transition-all hover:border-[#B83A3A] rounded-xl cursor-pointer">
-            <div class="flex items-start justify-between"><span class="workspace-heading text-[11px] font-bold uppercase tracking-wider text-[#6F6966]">Locked Accounts</span><span class="text-xl text-[#DC2626]" aria-hidden="true">↗</span></div>
-            <p class="workspace-heading mt-6 text-4xl font-extrabold tracking-tight text-[#DC2626]">@_lockedAccountCount.ToString("00")</p>
-            <p class="mt-2 text-xs text-[#6F6966]">Tài khoản đang tạm khóa cần kiểm tra</p>
-        </button>
-        <button type="button" @onclick='() => _activeAction = "alerts"' class="group border border-[#D8D1CD] bg-[#F8F5F2] p-6 text-left transition-all hover:border-[#B83A3A] rounded-xl cursor-pointer">
-            <div class="flex items-start justify-between"><span class="workspace-heading text-[11px] font-bold uppercase tracking-wider text-[#6F6966]">Cảnh báo hệ thống</span><span class="text-xl text-[#D97706]" aria-hidden="true">↗</span></div>
-            <p class="workspace-heading mt-6 text-4xl font-extrabold tracking-tight text-[#D97706]">@_alerts.Count.ToString("00")</p>
-            <p class="mt-2 text-xs text-[#6F6966]">Sự kiện cần quản trị viên theo dõi</p>
-        </button>
+        <StatCard Index="01" Label="TỔNG SỐ STAFF" Value="@_staff?.ToString("00")" Note="Tài khoản có vai trò Staff" />
+        <StatCard Index="02" Label="TÀI KHOẢN ĐANG KHÓA" Value="@_locked?.ToString("00")" Note="Mọi vai trò" />
+        <StatCard Index="03" Label="NHẬT KÝ HÔM NAY" Href="/admin/audit-logs" Value="@_auditToday?.ToString("00")" Note="Thao tác được ghi nhận" />
     </section>
 
+    @if (_errors.Count > 0)
+    {
+        <p role="alert" class="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">Không tải được: @string.Join("; ", _errors)</p>
+    }
+
     <section id="quick-actions" aria-labelledby="admin-actions-title">
-        <div class="mb-4 flex flex-wrap items-center justify-between gap-2"><h2 id="admin-actions-title" class="workspace-heading text-sm font-extrabold uppercase tracking-wider text-[#242424]">Truy cập nhanh</h2><span class="text-xs text-[#6F6966]">Chọn tác vụ để xem dữ liệu mẫu</span></div>
+        <h2 id="admin-actions-title" class="workspace-heading mb-4 text-sm font-extrabold uppercase tracking-wider text-[#242424]">Truy cập nhanh</h2>
         <div class="grid gap-3 lg:grid-cols-3">
-            @foreach (var action in _actions)
+            @foreach (var action in Actions)
             {
-                var active = IsActive(action.Id);
-                <button type="button" @onclick="() => _activeAction = action.Id" aria-pressed="@(active ? "true" : "false")"
-                        class="flex min-h-24 items-center justify-between gap-5 border p-5 text-left transition-all rounded-xl cursor-pointer @(active ? "border-[#B83A3A] bg-[#F3E4E2] text-[#B83A3A]" : "border-[#D8D1CD] bg-[#F8F5F2] text-[#242424] hover:border-[#B83A3A] hover:bg-[#F3EDEA]")">
-                    <span><span class="workspace-heading block text-xs font-extrabold uppercase tracking-wider">@action.Name</span><span class="mt-1.5 block text-xs text-[#6F6966]">@action.Description</span></span>
-                    <span class="text-xl" aria-hidden="true">↗</span>
-                </button>
+                <a href="@action.Href" class="flex min-h-24 items-center justify-between gap-5 border border-[#D8D1CD] bg-[#F8F5F2] p-5 text-left text-[#242424] transition-all hover:border-[#B83A3A] hover:bg-[#F3EDEA] rounded-xl">
+                    <span><span class="workspace-heading block text-xs font-extrabold uppercase tracking-wider">@action.Title</span><span class="mt-1.5 block text-xs text-[#6F6966]">@action.Description</span></span>
+                    <span class="text-xl text-[#B83A3A]" aria-hidden="true">↗</span>
+                </a>
             }
         </div>
     </section>
 
-    <section class="overflow-hidden border border-[#D8D1CD] bg-[#F8F5F2] rounded-xl shadow-sm" aria-labelledby="admin-table-title" aria-live="polite">
-        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[#D8D1CD] px-6 py-4"><h2 id="admin-table-title" class="workspace-heading text-sm font-extrabold uppercase tracking-wider text-[#242424]">@ActiveTitle</h2><span class="text-xs text-[#6F6966]">Bản xem trước · Không thay đổi dữ liệu thật</span></div>
-        @if (_activeAction is "staff" or "locked")
+    <section class="overflow-hidden border border-[#D8D1CD] bg-[#F8F5F2] rounded-xl shadow-sm" aria-labelledby="admin-audit-title">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[#D8D1CD] px-6 py-4">
+            <h2 id="admin-audit-title" class="workspace-heading text-sm font-extrabold uppercase tracking-wider text-[#242424]">Nhật ký hoạt động gần đây</h2>
+            <a href="/admin/audit-logs" class="text-xs font-bold text-[#B83A3A] underline">Xem tất cả</a>
+        </div>
+        @if (_audit is null)
+        {
+            <p role="status" class="px-6 py-8 text-sm text-[#6F6966]">@(_loading ? "Đang tải..." : "Không có dữ liệu nhật ký.")</p>
+        }
+        else if (_audit.Count == 0)
+        {
+            <p role="status" class="px-6 py-8 text-sm text-[#6F6966]">Chưa có hoạt động nào được ghi nhận.</p>
+        }
+        else
         {
             <div class="overflow-x-auto">
-                <table class="workspace-table w-full min-w-[650px] text-left text-sm">
-                    <thead class="workspace-heading bg-[#ECE8E4] text-[10px] uppercase tracking-wider"><tr><th class="px-6 py-4">Nhân sự</th><th class="px-6 py-4">Vai trò</th><th class="px-6 py-4">Trạng thái</th><th class="px-6 py-4">Hoạt động gần nhất</th></tr></thead>
+                <table class="workspace-table w-full min-w-[680px] text-left text-sm">
+                    <caption class="sr-only">Nhật ký hoạt động gần đây</caption>
+                    <thead class="workspace-heading bg-[#ECE8E4] text-[10px] uppercase tracking-wider"><tr><th scope="col" class="px-6 py-4">Thời điểm</th><th scope="col" class="px-6 py-4">Người thực hiện</th><th scope="col" class="px-6 py-4">Thao tác</th><th scope="col" class="px-6 py-4">Đối tượng</th></tr></thead>
                     <tbody>
-                        @foreach (var staff in VisibleStaff)
+                        @foreach (var entry in _audit)
                         {
-                            <tr class="border-t border-[#ECE8E4]"><td class="px-6 py-4"><strong class="block font-semibold text-[#242424]">@staff.Name</strong><span class="mt-0.5 block text-xs text-[#6F6966]">@staff.Email</span></td><td class="px-6 py-4 text-xs font-medium">@staff.Role</td><td class="px-6 py-4"><span class="inline-block px-2.5 py-1 text-[10px] font-bold uppercase rounded-full @(staff.Locked ? "bg-red-50 text-[#DC2626] border border-red-200" : "bg-emerald-50 text-[#16A34A] border border-emerald-200")">@(staff.Locked ? "Đang khóa" : "Hoạt động")</span></td><td class="px-6 py-4 text-xs text-[#6F6966]">@staff.LastActive</td></tr>
+                            <tr @key="entry.Id" class="border-t border-[#ECE8E4]"><td class="px-6 py-4 text-xs text-[#6F6966]">@GymTime(entry.OccurredAt).ToString("dd/MM HH:mm")</td><td class="px-6 py-4 font-medium text-[#242424]">@(entry.ActorName ?? "Hệ thống")</td><td class="px-6 py-4 text-xs text-[#6F6966]">@entry.ActionType</td><td class="px-6 py-4 text-xs text-[#6F6966]">@entry.AuditEntity@(entry.EntityId is { } id ? $" #{id}" : "")</td></tr>
                         }
                     </tbody>
                 </table>
             </div>
         }
-        else if (_activeAction == "roles")
-        {
-            <div class="overflow-x-auto"><table class="workspace-table w-full min-w-[600px] text-left text-sm"><thead class="workspace-heading bg-[#ECE8E4] text-[10px] uppercase tracking-wider"><tr><th class="px-6 py-4">Vai trò</th><th class="px-6 py-4">Phạm vi công việc</th><th class="px-6 py-4">Số tài khoản mẫu</th></tr></thead><tbody>
-                @foreach (var role in _roles)
-                {
-                    <tr class="border-t border-[#ECE8E4]"><td class="workspace-heading px-6 py-4 text-xs font-extrabold uppercase text-[#242424]">@role.Name</td><td class="px-6 py-4 text-xs text-[#6F6966]">@role.Scope</td><td class="workspace-heading px-6 py-4 font-bold text-[#B83A3A]">@role.Count.ToString("00")</td></tr>
-                }
-            </tbody></table></div>
-        }
-        else if (_activeAction == "alerts")
-        {
-            <div class="divide-y divide-[#ECE8E4]">
-                @foreach (var alert in _alerts)
-                {
-                    <div class="flex flex-col justify-between gap-2 px-6 py-4 sm:flex-row hover:bg-[#F3EDEA]"><div><p class="text-sm font-semibold text-[#242424]">@alert.Title</p><p class="mt-1 text-xs leading-5 text-[#6F6966]">@alert.Description</p></div><span class="workspace-heading whitespace-nowrap text-[10px] font-bold uppercase text-[#DC2626] bg-red-50 border border-red-200 px-2 py-1 rounded">Cần kiểm tra</span></div>
-                }
-            </div>
-        }
-        else
-        {
-            <div class="overflow-x-auto"><table class="workspace-table w-full min-w-[680px] text-left text-sm"><thead class="workspace-heading bg-[#ECE8E4] text-[10px] uppercase tracking-wider"><tr><th class="px-6 py-4">Thời điểm</th><th class="px-6 py-4">Người thực hiện</th><th class="px-6 py-4">Hoạt động</th><th class="px-6 py-4">Kết quả</th></tr></thead><tbody>
-                @foreach (var entry in _auditEntries)
-                {
-                    <tr class="border-t border-[#ECE8E4]"><td class="px-6 py-4 text-xs text-[#6F6966]">@entry.Time</td><td class="px-6 py-4 font-medium text-[#242424]">@entry.Actor</td><td class="px-6 py-4 text-xs text-[#6F6966]">@entry.Action</td><td class="px-6 py-4 text-xs font-semibold @(entry.Success ? "text-[#16A34A]" : "text-[#DC2626]")">@(entry.Success ? "Thành công" : "Bị từ chối")</td></tr>
-                }
-            </tbody></table></div>
-        }
     </section>
 </div>
 
 @code {
-    private string _activeAction = "staff";
-    private readonly int _staffCount = 24;
-    private readonly int _lockedAccountCount = 2;
-    private readonly List<QuickAction> _actions =
+    private static readonly TimeSpan GymOffset = TimeSpan.FromHours(7);
+    private static readonly ActionItem[] Actions =
     [
-        new("staff", "Manage Staff Accounts", "Quản lý tài khoản nhân sự"),
-        new("roles", "Assign Roles", "Kiểm tra vai trò và quyền truy cập"),
-        new("audit", "Audit Logs", "Theo dõi nhật ký hoạt động")
-    ];
-    private readonly List<StaffRow> _staff =
-    [
-        new("Nguyễn Minh Anh", "minhanh@example.com", "Staff", false, "Hôm nay · 08:45"),
-        new("Trần Hoàng Nam", "hoangnam@example.com", "Manager", false, "Hôm nay · 08:32"),
-        new("Lê Bảo Ngọc", "baongoc@example.com", "PT", false, "Hôm nay · 07:50"),
-        new("Phạm Quốc Huy", "quochuy@example.com", "Staff", true, "Hôm qua · 19:20"),
-        new("Vũ Thanh Hà", "thanhha@example.com", "PT", true, "Hôm qua · 17:15")
-    ];
-    private readonly List<RoleRow> _roles =
-    [
-        new("Staff", "Lễ tân, check-in và dịch vụ tại quầy", 24),
-        new("PT", "Huấn luyện cá nhân và giảng dạy Yoga", 12),
-        new("Manager", "Quản lý hoạt động và báo cáo kinh doanh", 2),
-        new("Admin", "Quản trị tài khoản và nhật ký hệ thống", 1)
-    ];
-    private readonly List<SystemAlert> _alerts =
-    [
-        new("Đăng nhập bị từ chối", "Có tài khoản đăng nhập không thành công nhiều lần trong dữ liệu mẫu."),
-        new("Tài khoản đang khóa", "Kiểm tra lý do khóa trước khi xử lý yêu cầu hỗ trợ của nhân sự."),
-        new("Yêu cầu rà soát phân quyền", "Xác nhận phạm vi quyền phù hợp với vai trò công việc.")
-    ];
-    private readonly List<AuditRow> _auditEntries =
-    [
-        new("08:45", "Nguyễn Minh Anh", "Đăng nhập hệ thống", true),
-        new("08:32", "Admin Demo", "Cập nhật vai trò nhân sự", true),
-        new("08:18", "Phạm Quốc Huy", "Truy cập bằng tài khoản đang khóa", false),
-        new("08:05", "Admin Demo", "Cập nhật danh sách từ cấm", true)
+        new("/admin/audit-logs", "Audit Logs", "Theo dõi nhật ký hoạt động"),
+        new("/admin/banned-words", "Từ cấm", "Quản lý danh sách từ cấm"),
+        new("/admin/business-reports", "Báo cáo kinh doanh", "Xem báo cáo doanh thu")
     ];
 
-    private IEnumerable<StaffRow> VisibleStaff => _activeAction == "locked" ? _staff.Where(staff => staff.Locked) : _staff;
-    private bool IsActive(string action) => _activeAction == action || action == "staff" && _activeAction == "locked";
-    private string ActiveTitle => _activeAction switch { "locked" => "Tài khoản đang khóa", "roles" => "Vai trò & phạm vi truy cập", "audit" => "Nhật ký hoạt động gần đây", "alerts" => "Cảnh báo hệ thống", _ => "Danh sách nhân sự mẫu" };
-    private sealed record QuickAction(string Id, string Name, string Description);
-    private sealed record StaffRow(string Name, string Email, string Role, bool Locked, string LastActive);
-    private sealed record RoleRow(string Name, string Scope, int Count);
-    private sealed record SystemAlert(string Title, string Description);
-    private sealed record AuditRow(string Time, string Actor, string Action, bool Success);
+    private readonly CancellationTokenSource _lifetime = new();
+    private readonly List<string> _errors = [];
+    private int? _staff;
+    private int? _locked;
+    private int? _auditToday;
+    private IReadOnlyCollection<AuditLogResponse>? _audit;
+    private bool _loading = true;
+
+    private static DateTime GymTime(DateTime utc) => DateTime.SpecifyKind(utc, DateTimeKind.Utc).Add(GymOffset);
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Midnight today in gym time, as UTC.
+        var todayStartUtc = DateTime.UtcNow.Add(GymOffset).Date.Subtract(GymOffset);
+        await Task.WhenAll(
+            Load("tài khoản", async ct => _staff = (await Api.GetAsync<PagedUsersResponse>("api/admin/users?role=Staff&page=1&pageSize=1", ct)).TotalCount),
+            Load("tài khoản khóa", async ct => _locked = (await Api.GetAsync<PagedUsersResponse>("api/admin/users?accountStatus=Locked&page=1&pageSize=1", ct)).TotalCount),
+            Load("nhật ký", async ct =>
+            {
+                var today = await Api.GetAsync<PagedResponse<AuditLogResponse>>(
+                    $"api/admin/audit-logs?from={Uri.EscapeDataString(todayStartUtc.ToString("O"))}&page=1&pageSize=1", ct);
+                _auditToday = today.TotalCount;
+                _audit = (await Api.GetAsync<PagedResponse<AuditLogResponse>>("api/admin/audit-logs?page=1&pageSize=8", ct)).Items;
+            }));
+        _loading = false;
+    }
+
+    private async Task Load(string what, Func<CancellationToken, Task> load)
+    {
+        try
+        {
+            await load(_lifetime.Token);
+        }
+        catch (ApiException ex)
+        {
+            _errors.Add($"{what} ({ex.Message})");
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+            // The user left the page.
+        }
+    }
+
+    public void Dispose()
+    {
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+    }
+
+    private sealed record ActionItem(string Href, string Title, string Description);
 }

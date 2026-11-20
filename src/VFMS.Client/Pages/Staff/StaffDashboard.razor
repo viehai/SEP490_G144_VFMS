@@ -21,10 +21,10 @@
     </header>
 
     <section class="grid gap-4 lg:grid-cols-3" aria-label="Thống kê vận hành">
-        <StatCard Index="01" Label="KHÁCH ĐANG CHECK-IN" Value="@_checkIns?.CurrentOccupancy" Href="/staff/check-ins"
+        <StatCard Index="01" Label="KHÁCH ĐANG CHECK-IN" Value="@_checkIns?.CurrentOccupancy.ToString("00")" Href="/staff/check-ins"
                   Note="@(_checkIns is null ? null : $"{_checkIns.CheckInsToday} lượt vào hôm nay")" />
-        <StatCard Index="02" Label="THIẾT BỊ BÁO HỎNG" Value="@_newIssues" Href="/staff/equipment-issues" Note="Chờ tiếp nhận xử lý" />
-        <StatCard Index="03" Label="TƯ VẤN ĐANG MỞ" Value="@_openConsultations" Href="/staff/consultations" Note="Khách hàng chờ phản hồi" />
+        <StatCard Index="02" Label="THIẾT BỊ BÁO HỎNG" Value="@_newIssues?.ToString("00")" Href="/staff/equipment-issues" Note="Chờ tiếp nhận xử lý" />
+        <StatCard Index="03" Label="TƯ VẤN ĐANG MỞ" Value="@_openConsultations?.ToString("00")" Href="/staff/consultations" Note="Khách hàng chờ phản hồi" />
     </section>
 
     @if (_errors.Count > 0)
