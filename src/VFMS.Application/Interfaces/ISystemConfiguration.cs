@@ -50,6 +50,8 @@ public interface IBusinessReportService
     Task<Result<PagedResponse<BusinessReportSummaryResponse>>> GetReportsAsync(
         BusinessReportListRequest request, CancellationToken cancellationToken = default);
     Task<Result<BusinessReportResponse>> GetReportAsync(int id, CancellationToken cancellationToken = default);
+    Task<Result<BusinessReportTrendResponse>> GetTrendAsync(
+        BusinessReportTrendRequest request, CancellationToken cancellationToken = default);
     Task<Result<BusinessReportResponse>> GenerateAsync(
         GenerateBusinessReportRequest request, string userId, string? ipAddress, CancellationToken cancellationToken = default);
 }

@@ -16,7 +16,8 @@ public sealed class EquipmentMapping : IRegister
             .Map(d => d.Brand, s => s.EquipmentBrand)
             .Map(d => d.Model, s => s.EquipmentModel)
             .Map(d => d.Status, s => s.EquipmentStatus.ToString())
-            .Map(d => d.DescriptionUrl, s => s.EquipmentDescriptionUrl);
+            .Map(d => d.DescriptionUrl, s => s.EquipmentDescriptionUrl)
+            .Map(d => d.RecentIssueCount, s => 0); // filled in by the list from the issue counts
 
         config.NewConfig<EquipmentSafetyConfirmation, SafetyConfirmationResponse>()
             .Map(d => d.ConfirmedByName, s => s.ConfirmedByUser == null ? null : s.ConfirmedByUser.FullName);

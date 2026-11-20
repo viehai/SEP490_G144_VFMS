@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using VFMS.API.Extensions;
 using VFMS.Application.Interfaces;
 using VFMS.Contracts.Common;
+using VFMS.Contracts.Operations;
 using VFMS.Contracts.Procurement;
 
 namespace VFMS.API.Controllers;
@@ -29,6 +30,13 @@ public sealed class PurchaseProposalsController : ControllerBase
     [ProducesResponseType(typeof(PagedResponse<PurchaseProposalResponse>), 200)]
     public Task<IActionResult> GetMine([FromQuery] PurchaseProposalListRequest request, CancellationToken cancellationToken) =>
         Run(userId => _service.GetMyProposalsAsync(request, userId, cancellationToken));
+
+    /// <summary>The Staff member's own proposals per status.</summary>
+    [HttpGet("mine/counts")]
+    [Authorize(Roles = "Staff")]
+    [ProducesResponseType(typeof(StatusCountsResponse), 200)]
+    public Task<IActionResult> GetMyCounts(CancellationToken cancellationToken) =>
+        Run(userId => _service.GetMyCountsAsync(userId, cancellationToken));
 
     [HttpPost]
     [Authorize(Roles = "Staff")]
@@ -71,6 +79,13 @@ public sealed class PurchaseProposalsController : ControllerBase
     [ProducesResponseType(typeof(PagedResponse<PurchaseProposalResponse>), 200)]
     public async Task<IActionResult> GetForReview([FromQuery] PurchaseProposalListRequest request, CancellationToken cancellationToken) =>
         this.ToActionResult(await _service.GetForReviewAsync(request, cancellationToken));
+
+    /// <summary>Sent proposals per status (no drafts).</summary>
+    [HttpGet("counts")]
+    [Authorize(Roles = "Manager")]
+    [ProducesResponseType(typeof(StatusCountsResponse), 200)]
+    public async Task<IActionResult> GetReviewCounts(CancellationToken cancellationToken) =>
+        this.ToActionResult(await _service.GetReviewCountsAsync(cancellationToken));
 
     [HttpPost("{id:int}/approve")]
     [Authorize(Roles = "Manager")]

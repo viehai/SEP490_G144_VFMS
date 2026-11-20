@@ -36,6 +36,9 @@ public sealed partial class MembershipPurchaseService(
 
             var planIds = request.Items.Select(item => item.PlanId).Distinct().ToArray();
             var plans = (await repository.LoadPlansAsync(planIds, ct)).ToDictionary(plan => plan.Id);
+            // A yoga-only plan is sold only while a yoga class can be booked, as in the public catalog.
+            var yogaOpen = !plans.Values.Any(IsYogaOnly) ||
+                await repository.AnyBookableYogaClassAsync(clock.GetUtcNow().UtcDateTime, ct);
             var byEmail = users.ToLookup(user => NormalizeEmail(user.Email));
             var order = NewOrder(purchaserId, today,
                 request.PaymentMethod == MembershipPaymentMethods.Cash ? OrderChannel.Counter : OrderChannel.Online);
@@ -48,7 +51,8 @@ public sealed partial class MembershipPurchaseService(
                     return Result<MembershipPurchaseResponse>.Failure(
                         "Người thụ hưởng phải có tài khoản Khách hàng hoặc Hội viên đang hoạt động.", "BENEFICIARY_NOT_ELIGIBLE");
 
-                if (!plans.TryGetValue(item.PlanId, out var plan) || !IsPurchasable(plan, today.AddDays(30)))
+                if (!plans.TryGetValue(item.PlanId, out var plan) || !IsPurchasable(plan, today.AddDays(30)) ||
+                    (IsYogaOnly(plan) && !yogaOpen))
                     return Result<MembershipPurchaseResponse>.Failure(
                         "Một hoặc nhiều gói tập không còn mở bán hoặc chưa có cấu hình thanh toán hợp lệ.", "PLAN_NOT_PURCHASABLE");
 
@@ -340,9 +344,12 @@ public sealed partial class MembershipPurchaseService(
             Math.Max(0, subtotal - payment.AmountDue), applied);
     }
 
+    private static bool IsYogaOnly(Package plan) =>
+        plan.Components.All(component => component.ComponentType != ComponentType.GYM);
+
     private static bool IsPurchasable(Package plan, DateOnly latestStart) =>
         plan.PackageStatus == PackageStatus.Active && plan.Price > 0 && decimal.Truncate(plan.Price) == plan.Price &&
-        plan.Components.Any(component => component.ComponentType == ComponentType.GYM) &&
+        plan.Components.Any(component => component.ComponentType is ComponentType.GYM or ComponentType.YOGA) &&
         plan.Components.All(component => IsValidComponent(component, latestStart));
 
     private static ComponentTerms[] ReadComponentTerms(OrderItem item) =>

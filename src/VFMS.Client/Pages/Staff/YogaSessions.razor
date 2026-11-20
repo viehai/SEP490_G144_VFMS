@@ -1,0 +1,74 @@
+@page "/staff/yoga"
+@layout StaffPTLayout
+@attribute [Authorize(Roles = "Staff")]
+@using Microsoft.AspNetCore.Authorization
+@using VFMS.Client.Components.Operations
+@using VFMS.Contracts.Yoga
+@inject VfmsApiClient Api
+
+<PageTitle>Điểm danh Yoga | Victor Fitness</PageTitle>
+
+@* GBR-86: Staff may take attendance for any session; pick it from the day's published timetable. *@
+<div class="workspace-page space-y-8 font-['Inter',sans-serif] text-[#242424]">
+    <PageHeader Overline="VFMS / YOGA" Title="Điểm danh Yoga" Description="Chọn buổi học trong ngày để điểm danh học viên.">
+        <div class="flex items-center gap-2">
+            <button type="button" class="@Ui.Button" @onclick="() => Move(-1)" aria-label="Ngày trước">←</button>
+            <input type="date" class="@Ui.Field mt-0 w-auto" aria-label="Ngày" @bind="_day" @bind:after="Load" />
+            <button type="button" class="@Ui.Button" @onclick="() => Move(1)" aria-label="Ngày sau">→</button>
+        </div>
+    </PageHeader>
+
+    <Alerts Error="@_error" />
+
+    @if (_loading)
+    {
+        <p role="status" class="text-sm text-[#6F6966]">Đang tải…</p>
+    }
+    else if (_sessions.Count == 0)
+    {
+        <p class="@Ui.Card text-sm text-[#6F6966]">Không có buổi yoga nào ngày @_day.ToString("dd/MM/yyyy").</p>
+    }
+    else
+    {
+        <div class="@Ui.ListCard">
+            <ul class="divide-y divide-[#D8D1CD]">
+                @foreach (var s in _sessions)
+                {
+                    <li @key="s.Id" class="flex flex-wrap items-center justify-between gap-3 px-5 py-4 hover:bg-[#F3EDEA]">
+                        <div>
+                            <p class="font-semibold">@s.ClassName</p>
+                            <p class="text-xs text-[#6F6966]">@s.StartTime.ToString("HH:mm")–@s.EndTime.ToString("HH:mm") · @s.StudioName (tầng @s.FloorNumber) · @s.InstructorName · @s.ConfirmedBookings/@s.MaxParticipants đã đặt</p>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            @if (s.AttendanceSubmittedAt is not null)
+                            {
+                                <StatusBadge Status="Completed" Label="@(s.AttendanceSubmittedLate ? "Đã điểm danh · trễ" : "Đã điểm danh")" />
+                            }
+                            <a href="/staff/yoga/sessions/@s.Id/attendance" class="@Ui.PrimaryButton">Điểm danh</a>
+                        </div>
+                    </li>
+                }
+            </ul>
+        </div>
+    }
+</div>
+
+@code {
+    private DateOnly _day = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7));
+    private bool _loading = true;
+    private string? _error;
+    private List<YogaSessionResponse> _sessions = [];
+
+    protected override Task OnInitializedAsync() => Load();
+
+    private async Task Move(int days) { _day = _day.AddDays(days); await Load(); }
+
+    private async Task Load()
+    {
+        _loading = true;
+        _error = null;
+        try { _sessions = (await Api.GetAsync<List<YogaSessionResponse>>($"api/yoga/schedule?from={_day:yyyy-MM-dd}&to={_day:yyyy-MM-dd}")).OrderBy(s => s.StartTime).ToList(); }
+        catch (ApiException ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+}

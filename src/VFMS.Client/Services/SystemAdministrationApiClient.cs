@@ -33,6 +33,10 @@ public sealed class SystemAdministrationApiClient(HttpClient http, AuthSession s
     public Task<BusinessReportResponse> GetReportAsync(int id, CancellationToken cancellationToken = default) =>
         SendAsync<BusinessReportResponse>(HttpMethod.Get, $"{ReportsPath}/{id}", cancellationToken);
 
+    public Task<BusinessReportTrendResponse> GetReportTrendAsync(BusinessReportTrendRequest request, CancellationToken cancellationToken = default) =>
+        SendAsync<BusinessReportTrendResponse>(HttpMethod.Get, WithQuery($"{ReportsPath}/trend",
+            ("periodType", request.PeriodType), ("date", Date(request.Date)), ("count", Number(request.Count))), cancellationToken);
+
     public Task<BusinessReportResponse> GenerateReportAsync(GenerateBusinessReportRequest request, CancellationToken cancellationToken = default) =>
         SendAsync<BusinessReportResponse>(HttpMethod.Post, ReportsPath, cancellationToken, JsonContent.Create(request));
 

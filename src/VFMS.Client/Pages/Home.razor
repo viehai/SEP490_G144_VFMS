@@ -1,4 +1,5 @@
 @page "/"
+@using VFMS.Contracts.Memberships
 @layout PublicLayout
 @using VFMS.Client.Components.Memberships
 @inject NavigationManager Navigation
@@ -392,37 +393,8 @@
                 </p>
             </div>
 
-            <!-- Class Cards Grid: ảnh lớn, warm surface, border nhẹ, radius 10px -->
-            <div class="w-full overflow-hidden">
-                <div id="classes-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
-                    @for (int i = 0; i < FeaturedClasses.Count; i++)
-                    {
-                        var item = FeaturedClasses[i];
-                        var delayStyle = $"transition-delay: {i * 250}ms;";
-
-                        <div style="@delayStyle"
-                             class="slide-reveal-right group relative w-full h-[68vh] min-h-[520px] max-h-[750px] overflow-hidden bg-[#ECE8E4] border border-[#D8D1CD] hover:border-[#B83A3A] rounded-xl select-none transition-all duration-300">
-                            
-                            <!-- Ảnh màu tự nhiên, nhẹ scale khi hover -->
-                            <img src="@item.ImageUrl"
-                                 alt="@item.Title"
-                                 class="w-full h-full object-cover object-center group-hover:scale-105 transition-all duration-700 ease-out pointer-events-none" />
-
-                            <!-- Muted red badge nhỏ ở góc trên -->
-                            <div class="absolute top-3 left-3 z-10">
-                                <span class="bg-[#B83A3A] text-white font-heading text-[10px] font-bold uppercase tracking-[0.1em] px-2.5 py-1 rounded-md">@item.Badge</span>
-                            </div>
-
-                            <!-- Info layer: xuất hiện khi hover -->
-                            <div class="absolute inset-x-0 bottom-0 bg-[#F8F5F2]/95 border-t border-[#D8D1CD] p-4 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out pointer-events-none rounded-b-xl">
-                                <span class="font-heading text-[10px] font-bold text-[#B83A3A] uppercase tracking-[0.12em] block">@item.Category</span>
-                                <h4 class="font-heading font-bold text-sm text-[#252323] mt-0.5 truncate tracking-tight">@item.TitleShort</h4>
-                                <p class="font-body text-xs text-[#6F6966] mt-1">@item.Duration · @item.Level</p>
-                            </div>
-                        </div>
-                    }
-                </div>
-            </div>
+            <!-- Class Cards Grid: the real yoga classes of the next 4 weeks -->
+            <FeaturedYogaClasses />
 
             <!-- Bottom Information Banner -->
             <div class="mt-16 p-8 bg-[#F8F5F2] border border-[#D8D1CD] rounded-xl flex flex-col md:flex-row items-center justify-between gap-6">
@@ -490,60 +462,16 @@
             <!-- TAB 1: GYM MEMBERSHIP -->
             @if (ActivePricingTab == "GYM")
             {
-                <AuthorizeView Roles="Customer,Member">
-                    <Authorized>
-                        <MembershipPlanCatalog />
-                    </Authorized>
-                    <NotAuthorized>
-                        <div class="bg-[#F8F5F2] border border-[#D8D1CD] rounded-xl p-8 sm:p-12 text-center max-w-2xl mx-auto">
-                            <span class="inline-block text-[11px] font-heading font-bold uppercase tracking-[0.14em] text-[#B83A3A] mb-3">
-                                GÓI HỘI VIÊN GYM
-                            </span>
-                            <h3 class="font-heading text-2xl sm:text-3xl font-black uppercase text-[#252323] tracking-[-0.02em] mb-3">
-                                TẬP LUYỆN KHÔNG GIỚI HẠN TẠI VFMS
-                            </h3>
-                            <p class="font-body text-sm text-[#6F6966] mb-8 leading-relaxed max-w-lg mx-auto">
-                                Khám phá các gói tập Gym linh hoạt theo tháng hoặc theo năm với quyền lợi tập luyện toàn diện, bảo lưu tự động và trang thiết bị chuẩn quốc tế.
-                            </p>
-                            <div class="flex flex-col sm:flex-row items-center justify-center gap-3.5">
-                                <a href="/membership-plans?type=gym"
-                                   class="home-focus w-full sm:w-auto min-h-[46px] inline-flex items-center justify-center bg-[#B83A3A] hover:bg-[#9F3030] text-white px-7 py-3 font-heading font-extrabold text-xs uppercase tracking-[0.08em] rounded-lg transition-colors">
-                                    XEM TẤT CẢ GÓI
-                                </a>
-                                <a href="/auth/login?returnUrl=/membership-plans?type=gym"
-                                   class="home-focus w-full sm:w-auto min-h-[46px] inline-flex items-center justify-center bg-[#F2EFEC] hover:bg-[#ECE8E4] text-[#252323] hover:text-[#B83A3A] px-6 py-3 font-heading font-extrabold text-xs uppercase tracking-[0.08em] rounded-lg transition-colors border border-[#D8D1CD] hover:border-[#B83A3A]">
-                                    ĐĂNG NHẬP ĐỂ CHỌN GÓI
-                                </a>
-                            </div>
-                        </div>
-                    </NotAuthorized>
-                </AuthorizeView>
+                <MembershipPlanCatalog ServiceType="@MembershipPlanServiceTypes.Gym" />
             }
 
             <!-- TAB 2: YOGA STUDIO -->
             @if (ActivePricingTab == "YOGA")
             {
-                <div class="bg-[#F8F5F2] border border-[#D8D1CD] rounded-xl p-8 sm:p-12 text-center max-w-2xl mx-auto">
-                    <span class="inline-block text-[11px] font-heading font-bold uppercase tracking-[0.14em] text-[#B83A3A] mb-3">
-                        YOGA &amp; PILATES STUDIO
-                    </span>
-                    <h3 class="font-heading text-2xl sm:text-3xl font-black uppercase text-[#252323] tracking-[-0.02em] mb-3">
-                        KHÔNG GIAN LUYỆN TẬP THÂN TÂM
-                    </h3>
-                    <p class="font-body text-sm text-[#6F6966] mb-8 leading-relaxed max-w-lg mx-auto">
-                        Các gói thẻ lớp học Yoga từ cơ bản đến nâng cao, linh hoạt theo số buổi và theo thời hạn. Tra cứu gói tập niêm yết hoặc xem thời khóa biểu các lớp yoga đang mở.
-                    </p>
-                    <div class="flex flex-col sm:flex-row items-center justify-center gap-3.5">
-                        <a href="/membership-plans?type=yoga"
-                           class="home-focus w-full sm:w-auto min-h-[46px] inline-flex items-center justify-center bg-[#B83A3A] hover:bg-[#9F3030] text-white px-7 py-3 font-heading font-extrabold text-xs uppercase tracking-[0.08em] rounded-lg transition-colors">
-                            XEM TẤT CẢ GÓI
-                        </a>
-                        <a href="/yoga/schedule"
-                           class="home-focus w-full sm:w-auto min-h-[46px] inline-flex items-center justify-center bg-[#F2EFEC] hover:bg-[#ECE8E4] text-[#252323] hover:text-[#B83A3A] px-6 py-3 font-heading font-extrabold text-xs uppercase tracking-[0.08em] rounded-lg transition-colors border border-[#D8D1CD] hover:border-[#B83A3A]">
-                            XEM LỊCH TẬP YOGA
-                        </a>
-                    </div>
-                </div>
+                <YogaClassCards />
+                <h3 class="font-heading mt-12 mb-5 text-xl font-black text-[#242424]">Gói Yoga</h3>
+                <p class="-mt-3 mb-5 font-body text-sm text-[#6F6966]">Mỗi lớp yoga cần một gói Yoga còn hiệu lực để đặt chỗ.</p>
+                <MembershipPlanCatalog ServiceType="@MembershipPlanServiceTypes.Yoga" />
             }
 
             <!-- TAB 3: PERSONAL TRAINER -->
@@ -580,81 +508,6 @@
 @code {
     // Tab đang chọn trong phần Gói Thẻ & Lịch Tập (Mặc định: GYM)
     private string ActivePricingTab = "GYM";
-    // =========================================================================
-    // MOCK DATA (Dữ liệu tĩnh 4 thẻ lớp học chuẩn theo ảnh tham chiếu)
-    // =========================================================================
-    private readonly List<ClassCardItem> FeaturedClasses = new()
-    {
-        new ClassCardItem
-        {
-            Id = 1,
-            Title = "HYBRID HYPERTROPHY & POWER",
-            TitleShort = "HYBRID HYPERTROPHY",
-            Category = "GYM & STRENGTH",
-            Level = "NÂNG CAO",
-            Badge = "HOT",
-            Instructor = "Alexander Trần (IFBB Pro)",
-            InstructorShort = "Alexander Trần",
-            Duration = "60 Phút • 3 Buổi/Tuần",
-            DurationShort = "60 PHÚT",
-            PriceFormatted = "1.850.000 ₫",
-            ImageUrl = "https://images.unsplash.com/photo-1584735935682-2f2b69dff9d2?auto=format&fit=crop&w=800&h=1200&q=80",
-            ShortDescription = "Giáo trình tập tạ chuyên sâu kết hợp Hypertrophy và Powerlifting tối ưu khối lượng cơ nạc.",
-            DetailedDescription = "Chương trình chuyên biệt dành cho vận động viên và gymer mong muốn gia tăng sức mạnh nguyên bản (Deadlift, Squat, Bench Press) kết hợp hypertrophy để phát triển thể hình cân đối, bùng nổ sức mạnh cơ bắp."
-        },
-        new ClassCardItem
-        {
-            Id = 2,
-            Title = "ASHTANGA POWER FLOW",
-            TitleShort = "ASHTANGA POWER FLOW",
-            Category = "YOGA STUDIO",
-            Level = "MỌI CẤP ĐỘ",
-            Badge = "POPULAR",
-            Instructor = "Master Ananya Sharma",
-            InstructorShort = "Master Ananya",
-            Duration = "75 Phút • Studio 1",
-            DurationShort = "75 PHÚT",
-            PriceFormatted = "1.450.000 ₫",
-            ImageUrl = "https://images.unsplash.com/photo-1545205597-3d9d02c29597?auto=format&fit=crop&w=800&h=1200&q=80",
-            ShortDescription = "Đồng bộ hóa hơi thở và chuyển động liên tục giúp kéo giãn, cân bằng tâm trí và cơ thể.",
-            DetailedDescription = "Chuỗi bài tập Ashtanga nguyên bản kết hợp kiểm soát nhịp thở (Pranayama) và các tư thế Asana tăng cường sự dẻo dai của cột sống, mở khớp hông và thanh lọc năng lượng tiêu cực sau những giờ làm việc căng thẳng."
-        },
-        new ClassCardItem
-        {
-            Id = 3,
-            Title = "ELITE 1-ON-1 TRANSFORMATION",
-            TitleShort = "ELITE TRANSFORMATION",
-            Category = "PERSONAL TRAINER",
-            Level = "CHUYÊN SÂU",
-            Badge = "EXCLUSIVE",
-            Instructor = "Marcus Vũ (Master Coach)",
-            InstructorShort = "Marcus Vũ",
-            Duration = "24 Buổi • Lộ Trình Riêng",
-            DurationShort = "KÈM 1-1",
-            PriceFormatted = "9.600.000 ₫",
-            ImageUrl = "https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?auto=format&fit=crop&w=800&h=1200&q=80",
-            ShortDescription = "Kèm cặp 1-1 toàn diện về dinh dưỡng, kỹ thuật chuyển động và theo dõi InBody mỗi tuần.",
-            DetailedDescription = "Gói huấn luyện cá nhân cao cấp nhất tại VFMS. HLV đồng hành sát sao trong từng rep tạ, kiểm soát chế độ dinh dưỡng hàng ngày (Macro/Calo) và bảo đảm đạt mục tiêu giảm mỡ, tăng cơ theo hợp đồng cam kết."
-        },
-        new ClassCardItem
-        {
-            Id = 4,
-            Title = "TACTICAL METCON & CALISTHENICS",
-            TitleShort = "TACTICAL METCON",
-            Category = "HIIT & CONDITIONING",
-            Level = "TRUNG CẤP",
-            Badge = "NEW",
-            Instructor = "Đặng Hoàng Long (CrossFit Level 2)",
-            InstructorShort = "Đặng Hoàng Long",
-            Duration = "45 Phút • Cường Độ Cao",
-            DurationShort = "45 PHÚT",
-            PriceFormatted = "1.600.000 ₫",
-            ImageUrl = "https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&w=800&h=1200&q=80",
-            ShortDescription = "Bài tập chuỗi vòng lặp cường độ cao kết hợp thể lực trọng lượng cơ thể và tạ chuông.",
-            DetailedDescription = "Thử thách sức bền tim mạch và độ dẻo dai cơ bắp tối đa với chuỗi Metabolic Conditioning (MetCon) nhịp độ cao. Đốt cháy tới 800 calo mỗi buổi tập và kích hoạt hiệu ứng đốt mỡ tự nhiên sau tập luyện (EPOC)."
-        }
-    };
-
     private async Task ScrollToFeaturedClasses()
     {
         try
@@ -813,24 +666,4 @@
         public string ImageUrl { get; set; } = string.Empty;
     }
 
-    // =========================================================================
-    // MODEL CLASS NỘI TUYẾN DÀNH CHO THẺ CLASS CARD
-    // =========================================================================
-    public class ClassCardItem
-    {
-        public int Id { get; set; }
-        public string Title { get; set; } = string.Empty;
-        public string TitleShort { get; set; } = string.Empty;
-        public string Category { get; set; } = string.Empty;
-        public string Level { get; set; } = string.Empty;
-        public string Badge { get; set; } = string.Empty;
-        public string Instructor { get; set; } = string.Empty;
-        public string InstructorShort { get; set; } = string.Empty;
-        public string Duration { get; set; } = string.Empty;
-        public string DurationShort { get; set; } = string.Empty;
-        public string PriceFormatted { get; set; } = string.Empty;
-        public string ImageUrl { get; set; } = string.Empty;
-        public string ShortDescription { get; set; } = string.Empty;
-        public string DetailedDescription { get; set; } = string.Empty;
-    }
 }

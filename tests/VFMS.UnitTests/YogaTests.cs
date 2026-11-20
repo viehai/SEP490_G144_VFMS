@@ -322,6 +322,24 @@ public sealed class YogaTests
     }
 
     [Fact]
+    public async Task ClassOfAnInactiveInstructorIsHiddenFromTheScheduleAndCannotBePublished()
+    {
+        var repo = Seeded(out var yogaClass, out var studio);
+        var session = Session(10, studio, yogaClass, Today.AddDays(7), new(9, 0), new(10, 0));
+        yogaClass.Schedules.Add(session);
+        repo.Sessions.Add(session);
+        repo.Roles.Remove("pt-1");   // account locked, inactive or banned, or role removed: not listed as an active instructor
+        var service = new YogaClassService(repo, Clock);
+
+        var publish = await service.PublishClassAsync(yogaClass.Id, "manager", null);
+        yogaClass.ClassStatus = YogaClassStatus.Open;   // published before the trainer became inactive
+        var schedule = await service.GetPublishedScheduleAsync(new YogaScheduleQuery(Today, Today.AddDays(7)));
+
+        Assert.Equal("YOGA_INSTRUCTOR_INACTIVE", publish.ErrorCode);
+        Assert.Empty(schedule.Data!);
+    }
+
+    [Fact]
     public async Task AssignedSessionsOnlyShowInstructorsOwnSessionsWithRoster()
     {
         var repo = Seeded(out var yogaClass, out var studio);

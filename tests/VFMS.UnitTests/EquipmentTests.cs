@@ -59,6 +59,27 @@ public sealed class EquipmentTests
         Assert.False(v.Validate(new ReportEquipmentIssueRequest(0, "Damage", "x")).IsValid);
     }
 
+    [Fact]
+    public void EquipmentListValidatorChecksBrandAndSort()
+    {
+        var v = new EquipmentListRequestValidator();
+        Assert.True(v.Validate(new EquipmentListRequest(Brand: "Life Fitness", Sort: "purchase_date")).IsValid);
+        Assert.True(v.Validate(new EquipmentListRequest(Sort: "CODE")).IsValid);
+        Assert.True(v.Validate(new EquipmentListRequest()).IsValid);
+        Assert.False(v.Validate(new EquipmentListRequest(Sort: "price")).IsValid);
+        Assert.False(v.Validate(new EquipmentListRequest(Brand: new string('b', 101))).IsValid);
+    }
+
+    [Fact]
+    public void IssueListValidatorChecksSearchAndSort()
+    {
+        var v = new EquipmentIssueListRequestValidator();
+        Assert.True(v.Validate(new EquipmentIssueListRequest(Search: "TM-0001", Sort: "severity")).IsValid);
+        Assert.True(v.Validate(new EquipmentIssueListRequest(Sort: "Newest")).IsValid);
+        Assert.False(v.Validate(new EquipmentIssueListRequest(Sort: "oldest")).IsValid);
+        Assert.False(v.Validate(new EquipmentIssueListRequest(Search: new string('s', 101))).IsValid);
+    }
+
     // ── Equipment service ────────────────────────────────────────
 
     [Fact]
@@ -321,6 +342,120 @@ public sealed class EquipmentTests
 
     // ── Helpers ──────────────────────────────────────────────────
 
+    [Theory]
+    [InlineData(null, EquipmentSort.Name)]
+    [InlineData("code", EquipmentSort.Code)]
+    [InlineData(" Newest ", EquipmentSort.Newest)]
+    [InlineData("purchase_date", EquipmentSort.PurchaseDate)]
+    public async Task EquipmentListPassesBrandAndSortToTheRepository(string? sort, EquipmentSort expected)
+    {
+        var repo = new Repo();
+        await new EquipmentService(repo, Mapper()).GetEquipmentListAsync(new EquipmentListRequest(Brand: "  Life Fitness ", Sort: sort));
+
+        Assert.Equal(expected, repo.LastEquipmentQuery!.Sort);
+        Assert.Equal("Life Fitness", repo.LastEquipmentQuery.Brand);
+    }
+
+    [Fact]
+    public async Task BlankBrandMeansNoBrandFilter()
+    {
+        var repo = new Repo();
+        await new EquipmentService(repo, Mapper()).GetEquipmentListAsync(new EquipmentListRequest(Brand: "   "));
+        Assert.Null(repo.LastEquipmentQuery!.Brand);
+    }
+
+    [Theory]
+    [InlineData(null, EquipmentIssueSort.Newest)]
+    [InlineData("severity", EquipmentIssueSort.Severity)]
+    [InlineData("SEVERITY", EquipmentIssueSort.Severity)]
+    public async Task IssueListPassesSearchAndSortToTheRepository(string? sort, EquipmentIssueSort expected)
+    {
+        var repo = new Repo();
+        await Issues(repo).GetIssuesAsync(new EquipmentIssueListRequest(Search: " TM-0001 ", Sort: sort), null);
+
+        Assert.Equal(expected, repo.LastIssueQuery!.Sort);
+        Assert.Equal("TM-0001", repo.LastIssueQuery.Search);
+    }
+
+        [Fact]
+    public async Task IssueSummaryCountsOpenRecentAndSafetyIssues()
+    {
+        var repo = new Repo();
+        var equipment = repo.SeedEquipment(EquipmentStatus.Operational);
+        var now = DateTime.UtcNow;
+        Issue(repo, equipment, IncidentType.Safety, EquipmentIssueStatus.Reported, now.AddDays(-2));
+        Issue(repo, equipment, IncidentType.Malfunction, EquipmentIssueStatus.Resolved, now.AddDays(-20), resolvedAt: now.AddDays(-19));
+        Issue(repo, equipment, IncidentType.Damage, EquipmentIssueStatus.MarkedSafe, now.AddDays(-200), resolvedAt: now.AddDays(-199));
+
+        var summary = (await new EquipmentService(repo, Mapper()).GetIssueSummaryAsync(equipment.Id)).Data!;
+
+        Assert.Equal(3, summary.TotalIssues);
+        Assert.Equal(1, summary.OpenIssues);
+        Assert.Equal(2, summary.RecentIssues);
+        Assert.Equal(1, summary.SafetyIssues);
+        Assert.False(summary.RepeatedIssues);
+        Assert.Equal(now.AddDays(-19), summary.LastClosedAt);
+        Assert.InRange(repo.LastRecentSince!.Value, now.AddDays(-90).AddMinutes(-1), now.AddDays(-90).AddMinutes(1));
+    }
+
+    [Fact]
+    public async Task ThreeReportsInNinetyDaysAreFlaggedAsRepeated()
+    {
+        var repo = new Repo();
+        var equipment = repo.SeedEquipment(EquipmentStatus.Operational);
+        foreach (var days in new[] { 1, 30, 80 })
+            Issue(repo, equipment, IncidentType.Malfunction, EquipmentIssueStatus.Resolved, DateTime.UtcNow.AddDays(-days));
+
+        Assert.True((await new EquipmentService(repo, Mapper()).GetIssueSummaryAsync(equipment.Id)).Data!.RepeatedIssues);
+    }
+
+    [Fact]
+    public async Task IssueSummaryOfMissingEquipmentIsNotFound() =>
+        Assert.Equal("EQUIPMENT_NOT_FOUND", (await new EquipmentService(new Repo(), Mapper()).GetIssueSummaryAsync(99)).ErrorCode);
+
+    [Fact]
+    public async Task EquipmentListShowsRecentIssueCounts()
+    {
+        var repo = new Repo();
+        var busy = repo.SeedEquipment(EquipmentStatus.Operational);
+        var quiet = repo.SeedEquipment(EquipmentStatus.Operational);
+        Issue(repo, busy, IncidentType.Damage, EquipmentIssueStatus.Reported, DateTime.UtcNow.AddDays(-3));
+        Issue(repo, busy, IncidentType.Damage, EquipmentIssueStatus.Resolved, DateTime.UtcNow.AddDays(-10));
+        Issue(repo, quiet, IncidentType.Other, EquipmentIssueStatus.Resolved, DateTime.UtcNow.AddDays(-120));
+
+        var rows = (await new EquipmentService(repo, Mapper()).GetEquipmentListAsync(new EquipmentListRequest())).Data!.Items;
+
+        Assert.Equal(2, rows.Single(r => r.Id == busy.Id).RecentIssueCount);
+        Assert.Equal(0, rows.Single(r => r.Id == quiet.Id).RecentIssueCount);
+    }
+
+    [Fact]
+    public async Task IssueCountsListEveryStatus()
+    {
+        var repo = new Repo();
+        var equipment = repo.SeedEquipment(EquipmentStatus.Operational);
+        repo.SeedIssue(equipment, EquipmentIssueStatus.Reported);
+        repo.SeedIssue(equipment, EquipmentIssueStatus.Reported);
+        repo.SeedIssue(equipment, EquipmentIssueStatus.Escalated);
+
+        var counts = (await Issues(repo).GetIssueCountsAsync()).Data!;
+
+        Assert.Equal(5, counts.Counts.Count);
+        Assert.Equal(2, counts.Counts["Reported"]);
+        Assert.Equal(1, counts.Counts["Escalated"]);
+        Assert.Equal(0, counts.Counts["Resolved"]);
+        Assert.Equal(3, counts.Total);
+    }
+
+    private static void Issue(Repo repo, Equipment equipment, IncidentType type, EquipmentIssueStatus status, DateTime reportedAt,
+        DateTime? resolvedAt = null)
+    {
+        var issue = repo.SeedIssue(equipment, status);
+        issue.IncidentType = type;
+        issue.ReportedAt = reportedAt;
+        issue.ResolvedAt = resolvedAt;
+    }
+
     private static EquipmentIssueService Issues(Repo repo) => new(repo, Mapper());
 
     private static IMapper Mapper()
@@ -425,9 +560,18 @@ public sealed class EquipmentTests
         public Task<bool> CategoryInUseAsync(int id, CancellationToken cancellationToken = default) =>
             Task.FromResult(_equipment.Any(e => e.CatalogCategoryId == id));
 
+        public EquipmentQuery? LastEquipmentQuery { get; private set; }
+        public EquipmentIssueQuery? LastIssueQuery { get; private set; }
+
         public Task<(IReadOnlyList<Equipment> Items, int TotalCount)> SearchEquipmentAsync(
-            string? search, int? categoryId, EquipmentStatus? status, int page, int pageSize, CancellationToken cancellationToken = default) =>
-            Task.FromResult<(IReadOnlyList<Equipment>, int)>((_equipment, _equipment.Count));
+            EquipmentQuery query, CancellationToken cancellationToken = default)
+        {
+            LastEquipmentQuery = query;
+            return Task.FromResult<(IReadOnlyList<Equipment>, int)>((_equipment, _equipment.Count));
+        }
+
+        public Task<IReadOnlyList<string>> GetBrandsAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<string>>(_equipment.Select(e => e.EquipmentBrand).OfType<string>().Distinct().Order().ToList());
 
         public Task<Equipment?> GetEquipmentAsync(int id, CancellationToken cancellationToken = default)
         {
@@ -447,11 +591,40 @@ public sealed class EquipmentTests
                 i.IssueStatus is EquipmentIssueStatus.Reported or EquipmentIssueStatus.InProgress or EquipmentIssueStatus.Escalated));
 
         public Task<(IReadOnlyList<EquipmentIssueReport> Items, int TotalCount)> SearchIssuesAsync(
-            EquipmentIssueStatus? status, int? equipmentId, string? reportedByUserId, int page, int pageSize,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<(IReadOnlyList<EquipmentIssueReport>, int)>((_issues, _issues.Count));
+            EquipmentIssueQuery query, CancellationToken cancellationToken = default)
+        {
+            LastIssueQuery = query;
+            return Task.FromResult<(IReadOnlyList<EquipmentIssueReport>, int)>((_issues, _issues.Count));
+        }
 
         public Task<EquipmentIssueReport?> GetIssueAsync(int id, CancellationToken cancellationToken = default) =>
             Task.FromResult(_issues.FirstOrDefault(i => i.Id == id));
+
+        public Task<IReadOnlyDictionary<EquipmentIssueStatus, int>> CountIssuesByStatusAsync(
+            string? reportedByUserId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyDictionary<EquipmentIssueStatus, int>>(_issues
+                .Where(i => reportedByUserId == null || i.ReportedByUserId == reportedByUserId)
+                .GroupBy(i => i.IssueStatus).ToDictionary(g => g.Key, g => g.Count()));
+
+        public DateTime? LastRecentSince { get; private set; }
+
+        public Task<EquipmentIssueStats> GetIssueStatsAsync(int equipmentId, DateTime recentSinceUtc, CancellationToken cancellationToken = default)
+        {
+            LastRecentSince = recentSinceUtc;
+            var mine = _issues.Where(i => i.EquipmentId == equipmentId).ToList();
+            return Task.FromResult(new EquipmentIssueStats(
+                mine.Count,
+                mine.Count(i => i.IssueStatus is EquipmentIssueStatus.Reported or EquipmentIssueStatus.InProgress or EquipmentIssueStatus.Escalated),
+                mine.Count(i => i.ReportedAt >= recentSinceUtc),
+                mine.Count(i => i.IncidentType == IncidentType.Safety),
+                mine.Count == 0 ? null : mine.Max(i => i.ReportedAt),
+                mine.Where(i => i.IssueStatus is EquipmentIssueStatus.Resolved or EquipmentIssueStatus.MarkedSafe).Max(i => i.ResolvedAt)));
+        }
+
+        public Task<IReadOnlyDictionary<int, int>> CountRecentIssuesAsync(
+            IReadOnlyCollection<int> equipmentIds, DateTime sinceUtc, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyDictionary<int, int>>(_issues
+                .Where(i => equipmentIds.Contains(i.EquipmentId) && i.ReportedAt >= sinceUtc)
+                .GroupBy(i => i.EquipmentId).ToDictionary(g => g.Key, g => g.Count()));
     }
 }

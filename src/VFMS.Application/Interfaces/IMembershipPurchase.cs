@@ -36,6 +36,8 @@ public interface IMembershipPurchaseRepository
 {
     Task<T> ExecuteInSerializableTransactionAsync<T>(Func<Task<T>> work, CancellationToken ct);
     Task<List<Package>> LoadPlansAsync(int[] ids, CancellationToken ct);
+    /// <summary>Whether any yoga class can be booked now (YogaClassRules.Bookable): yoga-only plans are sold only then.</summary>
+    Task<bool> AnyBookableYogaClassAsync(DateTime nowUtc, CancellationToken ct);
     Task<List<ApplicationUser>> LoadCheckoutUsersAsync(string purchaserId, string[] emails, CancellationToken ct);
     Task<List<ApplicationUser>> LockUsersAsync(string[] userIds, CancellationToken ct);
     Task<ApplicationRole?> GetMemberRoleAsync(CancellationToken ct);

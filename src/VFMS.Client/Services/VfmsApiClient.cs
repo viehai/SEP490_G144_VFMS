@@ -2,15 +2,17 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using VFMS.Client.Auth;
 
 namespace VFMS.Client.Services;
 
 /// <summary>
 /// Calls authenticated VFMS.API endpoints with the signed-in user's access token.
-/// Failures surface as <see cref="ApiException"/> carrying the server message and field errors.
+/// Failures surface as <see cref="ApiException"/> carrying the server message, field errors and the failing call,
+/// and are logged once here, so pages only need to show <c>ex.Message</c>.
 /// </summary>
-public sealed class VfmsApiClient(HttpClient http, AuthSession session)
+public sealed class VfmsApiClient(HttpClient http, AuthSession session, ILogger<VfmsApiClient>? logger = null)
 {
     public Task<T> GetAsync<T>(string path, CancellationToken cancellationToken = default) =>
         SendAsync<T>(HttpMethod.Get, path, null, cancellationToken);
@@ -38,23 +40,45 @@ public sealed class VfmsApiClient(HttpClient http, AuthSession session)
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
             using var response = await http.SendAsync(request, cancellationToken);
-            if (response.IsSuccessStatusCode)
-                return await response.Content.ReadFromJsonAsync<T>(cancellationToken: cancellationToken)
-                       ?? throw new ApiException("Máy chủ chưa trả về dữ liệu. Vui lòng thử lại.");
+            if (!response.IsSuccessStatusCode)
+                throw Logged(await ToExceptionAsync(method, path, response, cancellationToken));
 
-            throw await ToExceptionAsync(response, cancellationToken);
+            T? result;
+            try
+            {
+                result = await response.Content.ReadFromJsonAsync<T>(cancellationToken: cancellationToken);
+            }
+            // A changed DTO or content type on the server breaks here, not in the page: name the endpoint and the type.
+            catch (Exception ex) when (ex is JsonException or NotSupportedException)
+            {
+                throw Logged(new ApiException("Phản hồi từ máy chủ không hợp lệ. Vui lòng thử lại sau.", response.StatusCode,
+                    "INVALID_RESPONSE", method: method.Method, path: path, inner: ex, responseType: typeof(T).Name));
+            }
+            return result ?? throw Logged(new ApiException("Máy chủ chưa trả về dữ liệu. Vui lòng thử lại.", response.StatusCode,
+                "EMPTY_RESPONSE", method: method.Method, path: path, responseType: typeof(T).Name));
         }
-        catch (HttpRequestException)
+        catch (HttpRequestException ex)
         {
-            throw new ApiException("Không kết nối được máy chủ. Vui lòng kiểm tra kết nối và thử lại.");
+            throw Logged(new ApiException("Không kết nối được máy chủ. Vui lòng kiểm tra kết nối và thử lại.", null,
+                "NETWORK_ERROR", method: method.Method, path: path, inner: ex));
         }
-        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+        catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new ApiException("Máy chủ phản hồi quá lâu. Vui lòng thử lại.");
+            throw Logged(new ApiException("Máy chủ phản hồi quá lâu. Vui lòng thử lại.", null,
+                "TIMEOUT", method: method.Method, path: path, inner: ex));
         }
     }
 
-    private static async Task<ApiException> ToExceptionAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    // One log line per failed call, so the browser console names the endpoint, status and code.
+    // 4xx answers are expected rules (anti-passback, late cancel): Warning. No answer, 5xx or a bad body: Error.
+    private ApiException Logged(ApiException ex)
+    {
+        var level = ex.StatusCode is { } status && (int)status < 500 && ex.InnerException is null ? LogLevel.Warning : LogLevel.Error;
+        logger?.Log(level, ex.InnerException, "{Failure}", ex.Describe());
+        return ex;
+    }
+
+    private static async Task<ApiException> ToExceptionAsync(HttpMethod method, string path, HttpResponseMessage response, CancellationToken cancellationToken)
     {
         var message = response.StatusCode switch
         {
@@ -71,7 +95,8 @@ public sealed class VfmsApiClient(HttpClient http, AuthSession session)
             var root = document.RootElement;
             if (root.ValueKind == JsonValueKind.Object)
             {
-                code = root.TryGetProperty("errorCode", out var c) ? c.GetString() : null;
+                // ToActionResult puts the code in the ProblemDetails "code" extension; "errorCode" is the older shape.
+                code = root.TryGetProperty("code", out var c) || root.TryGetProperty("errorCode", out c) ? c.GetString() : null;
                 if (root.TryGetProperty("errorMessage", out var m) && m.GetString() is { Length: > 0 } text)
                     message = text;
                 else if (root.TryGetProperty("detail", out m) && m.GetString() is { Length: > 0 } detail)
@@ -85,15 +110,36 @@ public sealed class VfmsApiClient(HttpClient http, AuthSession session)
                 }
             }
         }
-        catch (JsonException) { /* non-JSON error page */ }
-        return new ApiException(message, response.StatusCode, code, errors);
+        catch (JsonException) { /* non-JSON error page (proxy, IIS): the status code still names the failure */ }
+        return new ApiException(message, response.StatusCode, code, errors, method.Method, path);
     }
 }
 
+/// <summary>
+/// A failed <see cref="VfmsApiClient"/> call. <see cref="Exception.Message"/> is the user-facing text;
+/// <see cref="Method"/>, <see cref="Path"/>, <see cref="StatusCode"/> and <see cref="ErrorCode"/> say which call failed and how.
+/// Client-side codes: NETWORK_ERROR, TIMEOUT, EMPTY_RESPONSE, INVALID_RESPONSE. Any other code came from the API.
+/// </summary>
 public sealed class ApiException(string message, HttpStatusCode? statusCode = null, string? errorCode = null,
-    IReadOnlyDictionary<string, string[]>? errors = null) : Exception(message)
+    IReadOnlyDictionary<string, string[]>? errors = null, string? method = null, string? path = null,
+    Exception? inner = null, string? responseType = null) : Exception(message, inner)
 {
     public HttpStatusCode? StatusCode { get; } = statusCode;
     public string? ErrorCode { get; } = errorCode;
     public IReadOnlyDictionary<string, string[]> Errors { get; } = errors ?? new Dictionary<string, string[]>();
+    public string? Method { get; } = method;
+    public string? Path { get; } = path;
+    /// <summary>The DTO the page expected; set for INVALID_RESPONSE and EMPTY_RESPONSE.</summary>
+    public string? ResponseType { get; } = responseType;
+
+    /// <summary>For example "VFMS API POST api/yoga/bookings/5/cancel -> 409 Conflict LATE_CANCELLATION_CONFIRM: ...".</summary>
+    public string Describe()
+    {
+        var status = StatusCode is { } s ? $"{(int)s} {s}" : "no response";
+        var expected = ResponseType is null ? "" : $" (expected {ResponseType})";
+        var cause = InnerException is null ? "" : $" [{InnerException.GetType().Name}: {InnerException.Message}]";
+        return $"VFMS API {Method ?? "?"} {Path ?? "?"} -> {status} {ErrorCode ?? "-"}{expected}: {Message}{cause}";
+    }
+
+    public override string ToString() => $"{nameof(ApiException)}: {Describe()}{Environment.NewLine}{StackTrace}";
 }

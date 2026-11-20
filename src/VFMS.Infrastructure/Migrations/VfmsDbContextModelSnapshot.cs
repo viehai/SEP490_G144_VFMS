@@ -3003,6 +3003,9 @@ namespace VFMS.Infrastructure.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
+                    b.Property<int?>("StockQuantity")
+                        .HasColumnType("int");
+
                     b.Property<decimal>("UnitPrice")
                         .HasColumnType("decimal(18,2)");
 
@@ -3013,7 +3016,10 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.HasIndex("Brand");
 
-                    b.ToTable("SupplementProducts");
+                    b.ToTable("SupplementProducts", t =>
+                        {
+                            t.HasCheckConstraint("CK_SupplementProducts_StockQuantity", "[StockQuantity] IS NULL OR [StockQuantity] >= 0");
+                        });
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.TrainerApplication", b =>

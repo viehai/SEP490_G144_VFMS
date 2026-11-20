@@ -15,7 +15,22 @@
         });
     }
 
+    let stream = null;
+
     window.vfmsQr = {
+        // Opens the camera for QR-only screens (yoga attendance) without loading the face models.
+        startCamera: async function (video) {
+            stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+            video.srcObject = stream;
+            await video.play();
+            return true;
+        },
+
+        stopCamera: function () {
+            if (stream) stream.getTracks().forEach(t => t.stop());
+            stream = null;
+        },
+
         svg: async function (text) {
             await loadLibrary();
             const qr = window.qrcode(0, "M");

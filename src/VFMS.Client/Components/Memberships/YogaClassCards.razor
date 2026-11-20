@@ -1,0 +1,123 @@
+@using VFMS.Contracts.Yoga
+@inject VfmsApiClient Api
+@implements IDisposable
+
+@* The real yoga classes of the next 4 weeks, one card per class, from the public schedule (UC-37). *@
+@if (_loading)
+{
+    <p role="status" class="font-body text-sm">Đang tải các lớp yoga...</p>
+}
+else if (_error is not null)
+{
+    <p role="alert" class="rounded-xl border border-red-200 bg-red-50 p-5 font-body text-sm text-red-900">@_error</p>
+}
+else if (_cards.Count == 0)
+{
+    <p role="status" class="font-body text-sm text-[#6F6966]">Chưa có lớp yoga nào trong 4 tuần tới.</p>
+}
+else
+{
+    <div class="grid grid-cols-1 gap-6 md:grid-cols-3">
+        @foreach (var card in _cards)
+        {
+            var badge = card.Badge(DateTime.UtcNow);
+            <article @key="card.ClassId" class="flex flex-col justify-between bg-[#F8F5F2] border border-[#D8D1CD] p-6 lg:p-8 rounded-xl hover:border-[#B83A3A] transition-colors">
+                <div>
+                    <header class="pb-4 border-b border-[#D8D1CD]">
+                        <div class="flex items-center justify-between gap-3">
+                            <span class="whitespace-nowrap font-heading text-[10px] font-bold uppercase tracking-widest text-[#6F6966]">YOGA STUDIO</span>
+                            <span class="@($"shrink-0 whitespace-nowrap px-2.5 py-1 text-[10px] font-heading font-bold uppercase text-white rounded-full {YogaClassCard.BadgeColor(badge)}")">@YogaClassCard.BadgeText(badge)</span>
+                        </div>
+                        <h3 class="font-heading text-2xl font-black uppercase text-[#242424] mt-1.5">@card.Name</h3>
+                    </header>
+
+                    @if (!string.IsNullOrWhiteSpace(card.TypeName))
+                    {
+                        <p class="font-body text-xs text-[#6F6966] mt-4 leading-relaxed">Loại lớp: @card.TypeName@(string.IsNullOrWhiteSpace(card.Instructor) ? "" : $" · Huấn luyện viên: {card.Instructor}")</p>
+                    }
+
+                    <div class="my-6 p-4 bg-[#F2EFEC] border border-[#D8D1CD] rounded-lg">
+                        <span class="font-heading text-[10px] font-bold uppercase text-[#6F6966] tracking-wider block mb-2.5">LỊCH HỌC:</span>
+                        @foreach (var slot in card.Slots)
+                        {
+                            <div class="flex flex-wrap items-center gap-2 mb-2">
+                                @foreach (var day in slot.Days)
+                                {
+                                    <span class="w-8 h-8 bg-[#B83A3A] text-white font-heading font-bold text-xs flex items-center justify-center rounded-md">@day</span>
+                                }
+                                <span class="font-heading font-bold text-xs text-[#242424] ml-2">@slot.Start.ToString("HH:mm") - @slot.End.ToString("HH:mm")</span>
+                            </div>
+                        }
+                        <div class="text-[11px] text-[#6F6966] font-body flex items-center justify-between gap-3 pt-2 border-t border-[#D8D1CD]">
+                            <span>@card.Studio</span>
+                            <span>Cường độ: <strong class="text-[#242424]">@card.DifficultyName</strong></span>
+                        </div>
+                    </div>
+
+                    <p class="mb-6 font-body text-xs text-[#6F6966]">
+                        Còn <strong class="text-[#242424]">@card.FreeSeats / @card.MaxParticipants</strong> chỗ
+                        @if (card.RegistrationDeadline is { } deadline)
+                        {
+                            <span> · Hạn đăng ký @GymTime(deadline).ToString("dd/MM/yyyy HH:mm")</span>
+                        }
+                    </p>
+                </div>
+
+                @if (badge == YogaClassBadge.Closed)
+                {
+                    <p class="py-4 text-center font-heading text-xs font-bold uppercase tracking-wider text-[#6F6966] border border-[#D8D1CD] rounded-lg">Đã hết hạn đăng ký</p>
+                }
+                else
+                {
+                    <AuthorizeView>
+                        <Authorized>
+                            <a href="/yoga/schedule" class="w-full bg-[#B83A3A] hover:bg-[#9F3030] text-white py-4 font-heading font-bold text-xs uppercase tracking-wider text-center transition-colors block rounded-lg">Đăng ký lớp</a>
+                        </Authorized>
+                        <NotAuthorized>
+                            <a href="/auth/register" class="w-full bg-[#B83A3A] hover:bg-[#9F3030] text-white py-4 font-heading font-bold text-xs uppercase tracking-wider text-center transition-colors block rounded-lg">Đăng ký lớp</a>
+                        </NotAuthorized>
+                    </AuthorizeView>
+                }
+            </article>
+        }
+    </div>
+}
+
+@code {
+    private static readonly TimeSpan GymOffset = TimeSpan.FromHours(7);
+    private readonly CancellationTokenSource _lifetime = new();
+    private IReadOnlyList<YogaClassCard> _cards = [];
+    private bool _loading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var today = DateOnly.FromDateTime(DateTimeOffset.UtcNow.ToOffset(GymOffset).DateTime);
+        try
+        {
+            var sessions = await Api.GetAsync<List<YogaSessionResponse>>(
+                $"api/yoga/schedule?from={today:yyyy-MM-dd}&to={today.AddDays(27):yyyy-MM-dd}", _lifetime.Token);
+            _cards = YogaClassCard.FromSessions(sessions);
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+            // The visitor left the page.
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static DateTime GymTime(DateTime utc) => DateTime.SpecifyKind(utc, DateTimeKind.Utc).Add(GymOffset);
+
+    public void Dispose()
+    {
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+    }
+}
