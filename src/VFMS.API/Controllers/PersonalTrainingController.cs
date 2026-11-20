@@ -95,6 +95,11 @@ public sealed class PersonalTrainingController(PersonalTrainingService service, 
     public Task<IActionResult> StartPayment(string orderNumber, PTPaymentRequest request, CancellationToken ct) =>
         AsUser(actor => service.StartPayment(actor, orderNumber, request, ct));
 
+    [HttpPost("purchases/{orderNumber}/cash-confirmation")]
+    [Authorize(Roles = "Staff")]
+    public Task<IActionResult> ConfirmCash(string orderNumber, PTCashConfirmationRequest request, CancellationToken ct) =>
+        AsUser(actor => service.ConfirmCash(actor, orderNumber.Trim().ToUpperInvariant(), request.AmountReceived, ct));
+
     [HttpPost("purchases/{orderNumber}/demo-payment")]
     [Authorize(Roles = "Member")]
     public Task<IActionResult> ConfirmDemoPayment(string orderNumber, CancellationToken ct) =>

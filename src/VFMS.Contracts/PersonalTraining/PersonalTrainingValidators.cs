@@ -1,4 +1,5 @@
 using FluentValidation;
+using VFMS.Contracts.Memberships;
 
 namespace VFMS.Contracts.PersonalTraining;
 
@@ -60,7 +61,17 @@ public sealed class PTBookingSlotsRequestValidator : AbstractValidator<PTBooking
 
 public sealed class PTPaymentRequestValidator : AbstractValidator<PTPaymentRequest>
 {
-    public PTPaymentRequestValidator() => RuleFor(x => x.VoucherCode).MaximumLength(80);
+    public PTPaymentRequestValidator()
+    {
+        RuleFor(x => x.VoucherCode).MaximumLength(80);
+        RuleFor(x => x.PaymentMethod).Must(m => m is null or MembershipPaymentMethods.VietQr or MembershipPaymentMethods.Cash)
+            .WithMessage("Chọn VietQR hoặc thanh toán tại quầy.");
+    }
+}
+
+public sealed class PTCashConfirmationRequestValidator : AbstractValidator<PTCashConfirmationRequest>
+{
+    public PTCashConfirmationRequestValidator() => RuleFor(x => x.AmountReceived).GreaterThan(0);
 }
 
 public sealed class PTProposalRequestValidator : AbstractValidator<PTProposalRequest>

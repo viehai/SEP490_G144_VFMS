@@ -14,8 +14,11 @@ public sealed partial class PersonalTrainingService
     private static readonly TimeSpan HoldDuration = TimeSpan.FromMinutes(20);
     // GBR-96: the Member must click 'Proceed to Payment' within the first 10 minutes of the order.
     private static readonly TimeSpan ProceedWindow = TimeSpan.FromMinutes(10);
+    // Counter (cash) orders hold the slots as long as a membership cash order (NewScope: UC 4.4).
+    private static readonly TimeSpan CounterHold = TimeSpan.FromHours(24);
     private const string DemoGateway = "PTDemo";
-    private static DateTime PaymentDeadline(Order order) => order.CreatedAt.Add(PaymentDuration);
+    private static DateTime PaymentDeadline(Order order) =>
+        order.CreatedAt.Add(order.Channel == OrderChannel.Counter ? CounterHold : PaymentDuration);
     private sealed record Booking(PTBookingPreview Preview, Package Package, TrainerProfile Trainer,
         ApplicationUser TrainerUser, PTAvailability[] Pattern);
 
@@ -235,6 +238,8 @@ public sealed partial class PersonalTrainingService
                 order.OrderStatus != OrderStatus.Pending)
                 return Conflict<PTCheckoutResponse>("Đơn PT đã hết hạn hoặc đã được xử lý.");
 
+            if (order.Channel == OrderChannel.Counter)
+                return Result<PTCheckoutResponse>.Success(CheckoutResponse(purchase, order, null, now));
             if (order.PaymentTransaction is null && order.CreatedAt.Add(ProceedWindow) <= now)
                 return Result<PTCheckoutResponse>.Failure(
                     "Đã quá 10 phút để bắt đầu thanh toán. Vui lòng đặt lại lịch.", "PT_PAYMENT_WINDOW_CLOSED", 409);
@@ -255,6 +260,16 @@ public sealed partial class PersonalTrainingService
                     return Result<PTCheckoutResponse>.Failure("Voucher không hợp lệ hoặc đã hết lượt.", "PT_VOUCHER_INVALID");
             }
             var due = purchase.PurchasePrice - (voucher?.DiscountAmount ?? 0);
+            if (request.PaymentMethod == MembershipPaymentMethods.Cash)
+            {
+                // The payment row is created when Staff confirms the cash, so SePay and membership cash confirmation never match it.
+                order.Channel = OrderChannel.Counter;
+                order.VoucherRedemption = voucher;
+                purchase.PurchasePrice = due;
+                purchase.HoldExpiresAt = order.CreatedAt.Add(CounterHold);
+                await store.Save(ct);
+                return Result<PTCheckoutResponse>.Success(CheckoutResponse(purchase, order, null, now));
+            }
             var qr = gateway.CreateVietQr(order.OrderNumber, due);
             if (qr is null)
                 return Result<PTCheckoutResponse>.Failure("VietQR chưa được cấu hình.", "PAYMENT_UNAVAILABLE", 503);
@@ -287,15 +302,7 @@ public sealed partial class PersonalTrainingService
             var now = clock.GetUtcNow();
             if (!CanSimulatePayment(contract, order, now.UtcDateTime))
                 return Conflict<PTCheckoutResponse>("Đơn đã hết hạn, đã tạo VietQR hoặc đã được xử lý.");
-
-            var slots = contract.Sessions.Where(s => s.SessionStatus == PTSessionStatus.CheckoutHold)
-                .Select(s => new PTCalendarSlot(s.PTAvailabilityId ?? 0, s.SessionDate, s.StartTime, s.EndTime, "Proposed"))
-                .ToArray();
-            var trainer = await User(contract.PTUserId, UserRole.PT, ct);
-            if (slots.Length == 0 || slots.Length != contract.TotalSessions || trainer is null ||
-                slots.Any(s => Utc(s.Date, s.StartTime) <= now.UtcDateTime || !InHours(trainer.Gym, s.StartTime, s.EndTime)) ||
-                await ActiveYogaAssignments.AnyAsync(store, c => c.InstructorUserId == contract.PTUserId, ct) ||
-                await HasConflict(contract.PTUserId, actor, slots, now.UtcDateTime, ct, ignorePurchase: contract.Id))
+            if (!await HeldSlotsStillValid(contract, now.UtcDateTime, ct))
                 return Conflict<PTCheckoutResponse>("Lịch PT không còn hợp lệ.");
 
             order.PaymentTransaction = new PaymentTransaction
@@ -312,6 +319,60 @@ public sealed partial class PersonalTrainingService
             await store.Save(ct);
             return Result<PTCheckoutResponse>.Success(CheckoutResponse(contract, order, null, now.UtcDateTime));
         }, ct);
+
+    public Task<Result<PTCheckoutResponse>> ConfirmCash(string staffId, string orderNumber, decimal amount, CancellationToken ct) =>
+        Write(async () =>
+        {
+            var staff = await User(staffId, UserRole.Staff, ct);
+            if (staff is null)
+                return Result<PTCheckoutResponse>.Failure("Cần quyền nhân viên lễ tân.", "CASH_CONFIRMATION_FORBIDDEN", 403);
+            var order = await payments.FindOrderAsync(orderNumber, purchaserId: null, forUpdate: true, ct);
+            var contract = order is null || order.Purchaser.GymId != staff.GymId ? null
+                : await store.Query<PTPurchase>().Including(store, "Sessions").SingleOrDefaultAsync(store, p => p.OrderId == order.Id, ct);
+            if (order is null || contract is null)
+                return Missing<PTCheckoutResponse>();
+
+            var now = clock.GetUtcNow();
+            if (order.OrderStatus == OrderStatus.Paid && order.PaymentTransaction is { PaymentMethod: PaymentMethod.Cash } paid &&
+                paid.AmountReceived == amount)
+                return Result<PTCheckoutResponse>.Success(CheckoutResponse(contract, order, null, now.UtcDateTime));
+            if (order.Channel != OrderChannel.Counter || order.PaymentTransaction is not null || order.OrderStatus != OrderStatus.Pending ||
+                contract.Status != PTPurchaseStatus.PendingPayment || contract.HoldExpiresAt <= now.UtcDateTime)
+                return Result<PTCheckoutResponse>.Failure(
+                    "Đơn không chờ thanh toán tại quầy hoặc đã hết hạn giữ lịch.", "PT_CASH_NOT_PENDING", 409);
+            if (amount != contract.PurchasePrice)
+                return Result<PTCheckoutResponse>.Failure(
+                    $"Số tiền nhận phải đúng {contract.PurchasePrice:N0} VND.", "PT_CASH_AMOUNT_MISMATCH", 409);
+            if (!await HeldSlotsStillValid(contract, now.UtcDateTime, ct))
+                return Conflict<PTCheckoutResponse>("Lịch PT không còn hợp lệ.");
+
+            order.PaymentTransaction = new PaymentTransaction
+            {
+                UserId = contract.MemberUserId,
+                GatewayName = "Cash",
+                PaymentMethod = PaymentMethod.Cash,
+                AmountDue = contract.PurchasePrice
+            };
+            MembershipPurchaseService.RecordPaidOrder(order, amount, now, null, now);
+            ActivatePTContract(contract);
+            Audit(staffId, nameof(PTPurchase), contract.Id, "CashPaymentConfirmed");
+            Notify(contract.MemberUserId, "Đã thanh toán gói PT", $"Hóa đơn {order.PaymentTransaction.Invoice!.InvoiceNumber}. Lịch tập đã được xác nhận.",
+                nameof(PTPurchase), contract.Id);
+            await store.Save(ct);
+            return Result<PTCheckoutResponse>.Success(CheckoutResponse(contract, order, null, now.UtcDateTime));
+        }, ct);
+
+    private async Task<bool> HeldSlotsStillValid(PTPurchase contract, DateTime now, CancellationToken ct)
+    {
+        var slots = contract.Sessions.Where(s => s.SessionStatus == PTSessionStatus.CheckoutHold)
+            .Select(s => new PTCalendarSlot(s.PTAvailabilityId ?? 0, s.SessionDate, s.StartTime, s.EndTime, "Proposed"))
+            .ToArray();
+        var trainer = await User(contract.PTUserId, UserRole.PT, ct);
+        return slots.Length > 0 && slots.Length == contract.TotalSessions && trainer is not null &&
+            !slots.Any(s => Utc(s.Date, s.StartTime) <= now || !InHours(trainer.Gym, s.StartTime, s.EndTime)) &&
+            !await ActiveYogaAssignments.AnyAsync(store, c => c.InstructorUserId == contract.PTUserId, ct) &&
+            !await HasConflict(contract.PTUserId, contract.MemberUserId, slots, now, ct, ignorePurchase: contract.Id);
+    }
 
     private static bool CanSimulatePayment(PTPurchase contract, Order order, DateTime now) =>
         contract.Status == PTPurchaseStatus.PendingPayment && contract.HoldExpiresAt > now &&
@@ -364,7 +425,8 @@ public sealed partial class PersonalTrainingService
             DateTime.SpecifyKind(PaymentDeadline(order), DateTimeKind.Utc),
             qr, order.PaymentTransaction?.Invoice?.InvoiceNumber, DateTime.SpecifyKind(purchase.HoldExpiresAt!.Value, DateTimeKind.Utc),
             IsDemoPayment: order.PaymentTransaction?.GatewayName == DemoGateway,
-            ProceedBefore: DateTime.SpecifyKind(order.CreatedAt.Add(ProceedWindow), DateTimeKind.Utc));
+            ProceedBefore: DateTime.SpecifyKind(order.CreatedAt.Add(ProceedWindow), DateTimeKind.Utc),
+            PayAtCounter: order.Channel == OrderChannel.Counter);
 
     private async Task<VoucherRedemption?> ReserveVoucher(string actor, string code, decimal price, DateTime now, CancellationToken ct)
     {

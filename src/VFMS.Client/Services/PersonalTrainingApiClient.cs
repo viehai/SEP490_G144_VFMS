@@ -33,6 +33,8 @@ public sealed class PersonalTrainingApiClient(HttpClient http, AuthSession sessi
         Send<PTCheckoutResponse>(HttpMethod.Post, "purchases", request);
     public Task<PTCheckoutResponse> StartPaymentAsync(string order, PTPaymentRequest request) =>
         Send<PTCheckoutResponse>(HttpMethod.Post, $"purchases/{Uri.EscapeDataString(order)}/payment", request);
+    public Task<PTCheckoutResponse> ConfirmCashAsync(string order, PTCashConfirmationRequest request, CancellationToken ct) =>
+        Send<PTCheckoutResponse>(HttpMethod.Post, $"purchases/{Uri.EscapeDataString(order)}/cash-confirmation", request, ct: ct);
     public Task<PTCheckoutResponse> ConfirmDemoPaymentAsync(string order, CancellationToken ct) =>
         Send<PTCheckoutResponse>(HttpMethod.Post, $"purchases/{Uri.EscapeDataString(order)}/demo-payment", ct: ct);
     public Task<PTCheckoutResponse> CheckoutAsync(string order, CancellationToken ct = default) =>

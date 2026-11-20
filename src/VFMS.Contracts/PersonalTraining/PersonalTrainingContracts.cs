@@ -23,13 +23,14 @@ public sealed record PTBookingRequest(string TrainerId, int PackageId,
     DateOnly StartDate, int[] TemplateIds);
 public sealed record PTBookingSlotsRequest(string TrainerId, int PackageId,
     DateOnly StartDate, int[] TemplateIds);
-public sealed record PTPaymentRequest(string? VoucherCode = null);
+public sealed record PTPaymentRequest(string? VoucherCode = null, string? PaymentMethod = null);
+public sealed record PTCashConfirmationRequest(decimal AmountReceived);
 public sealed record PTBookingPreview(int PackageId, string TrainerId, DateOnly ExpiresOn,
     decimal Price, IReadOnlyList<PTCalendarSlot> Sessions);
 public sealed record PTCheckoutResponse(int ContractId, string OrderNumber, string Status, decimal AmountDue,
     DateTime ExpiresAt, VietQrPaymentResponse? VietQr, string? InvoiceNumber, DateTime HoldExpiresAt = default,
     IReadOnlyList<CheckoutRefundView>? Refunds = null, bool CanSimulatePayment = false, bool IsDemoPayment = false,
-    DateTime? ProceedBefore = null);
+    DateTime? ProceedBefore = null, bool PayAtCounter = false);
 public sealed record PTProposalRequest(DateOnly Date, TimeOnly StartTime, string Type);
 public sealed record PTProposalResponse(DateOnly Date, TimeOnly StartTime, TimeOnly EndTime,
     string Type, DateTime ExpiresAt);
