@@ -10,6 +10,32 @@ namespace VFMS.IntegrationTests;
 
 public class TrainerMigrationTests
 {
+    // AlignTrainerApplicationRoles: an open recruitment whose old Specialty said "Yoga" gets the Yoga Trainer Role;
+    // hired and PT applications keep PT (UC 3.1, 3.2).
+    [SqlTrainerFact]
+    public async Task Open_yoga_recruitment_gets_the_yoga_trainer_role_and_hired_ones_stay_PT()
+    {
+        await using var fixture = new TrainerTestDatabase(); var db = fixture.Db;
+        await db.GetService<IMigrator>().MigrateAsync("20261120101437_AddTrainerRoles");
+        var pt = await db.TrainerRoles.Where(t => t.RoleName == TrainerRole.PT).Select(t => t.Id).SingleAsync();
+        TrainerApplication App(string code, string specialty, TrainerApplicationStatus status) => new()
+        {
+            TrackingCode = code, FullName = code, Email = code + "@example.test", PhoneNumber = "0900000000",
+            CitizenId = "", Specialty = specialty, Gender = "Other", Bio = "Bio", ApplicationStatus = status, SubmittedAt = DateTime.UtcNow,
+            TrainerRoleId = pt
+        };
+        db.TrainerApplications.AddRange(App("open-yoga", "Yoga", TrainerApplicationStatus.Interviewing),
+            App("hired-yoga", "Yoga", TrainerApplicationStatus.Hired), App("open-pt", "PT", TrainerApplicationStatus.Pending));
+        await db.SaveChangesAsync();
+
+        await db.Database.MigrateAsync();
+        var roles = await db.TrainerApplications.AsNoTracking().Select(a => new { a.TrackingCode, a.TrainerRole!.RoleName })
+            .ToDictionaryAsync(a => a.TrackingCode, a => a.RoleName);
+        Assert.Equal("Yoga", roles["open-yoga"]);
+        Assert.Equal("PT", roles["hired-yoga"]);
+        Assert.Equal("PT", roles["open-pt"]);
+    }
+
     [SqlTrainerFact]
     public async Task Nonempty_legacy_tables_preserve_documents_reviews_tokens_and_mail()
     {

@@ -16,7 +16,7 @@ public sealed class TrainerApiClient(HttpClient http, AuthSession session) : IDi
 
     public Task<PagedResponse<TrainerProfileResponse>> SearchAsync(TrainerSearch filter) =>
         Send<PagedResponse<TrainerProfileResponse>>(HttpMethod.Get, Root + Query(
-            ("Search", filter.Search), ("Specialty", filter.Specialty), ("Gender", filter.Gender),
+            ("Search", filter.Search), ("TrainerRole", filter.TrainerRole), ("Gender", filter.Gender),
             ("MinimumRating", filter.MinimumRating?.ToString(CultureInfo.InvariantCulture)),
             ("Page", filter.Page.ToString(CultureInfo.InvariantCulture))));
 
@@ -56,7 +56,7 @@ public sealed class TrainerApiClient(HttpClient http, AuthSession session) : IDi
 
     public Task<PagedResponse<TrainerApplicationResponse>> ApplicationsAsync(TrainerApplicationFilter filter, bool mine = false) =>
         Send<PagedResponse<TrainerApplicationResponse>>(HttpMethod.Get, $"{Root}/{(mine ? "me/" : "")}applications" + Query(
-            ("Status", filter.Status), ("Specialty", filter.Specialty), ("ApplicationType", filter.ApplicationType),
+            ("Status", filter.Status), ("TrainerRole", filter.TrainerRole), ("ApplicationType", filter.ApplicationType),
             ("From", filter.From?.ToString("O", CultureInfo.InvariantCulture)),
             ("To", filter.To?.ToString("O", CultureInfo.InvariantCulture)),
             ("Page", filter.Page.ToString(CultureInfo.InvariantCulture))), auth: true);

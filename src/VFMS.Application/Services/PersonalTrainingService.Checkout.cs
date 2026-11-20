@@ -39,12 +39,12 @@ public sealed partial class PersonalTrainingService
             return Missing<Booking>();
         if (await ActiveYogaAssignments.AnyAsync(store, c => c.InstructorUserId == request.TrainerId, ct))
             return Conflict<Booking>("Huấn luyện viên đang phụ trách lớp Yoga.");
-        var profile = await store.Query<TrainerProfile>().SingleOrDefaultAsync(store, p => p.PTUserId == request.TrainerId && p.IsActive, ct);
+        var profile = await PTProfiles.SingleOrDefaultAsync(store, p => p.PTUserId == request.TrainerId, ct);
         var package = await PTPackages.SingleOrDefaultAsync(store, p => p.Id == request.PackageId &&
             p.PackageStatus == PackageStatus.Active, ct);
         if (profile is null || package is null || package.Components.Single().ApplicableTrainerLevel != profile.Level)
             return Invalid<Booking>("Gói PT hoặc cấp độ huấn luyện viên không hợp lệ.");
-        if (profile.Specialty == "Yoga" || !profile.AcceptingNewMembers)
+        if (!profile.AcceptingNewMembers)
             return Conflict<Booking>("Huấn luyện viên hiện không nhận học viên mới.");
         var terms = package.Components.Single();
         var pattern = await Templates(request.TrainerId).Where(x => request.TemplateIds.Contains(x.Id))
@@ -124,7 +124,7 @@ public sealed partial class PersonalTrainingService
         if (trainer is null || trainer.GymId != member.GymId || actor == request.TrainerId)
             return Missing<PTWeeklySlot[]>();
 
-        var level = await store.Query<TrainerProfile>().Where(p => p.PTUserId == request.TrainerId && p.IsActive)
+        var level = await PTProfiles.Where(p => p.PTUserId == request.TrainerId)
             .Select(p => (TrainerLevel?)p.Level).SingleOrDefaultAsync(store, ct);
         var package = await PTPackages.SingleOrDefaultAsync(store, p => p.Id == request.PackageId &&
             p.PackageStatus == PackageStatus.Active, ct);

@@ -40,6 +40,8 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
     private readonly TestClock _clock = new();
     private WebApplication _app = null!;
     private int _basic;
+    private int _ptTrainerRole;
+    private int _yogaTrainerRole;
     private int _combo;
     private int _inactive;
     private DateOnly Today => DateOnly.FromDateTime(_clock.Now.ToOffset(TimeSpan.FromHours(7)).DateTime);
@@ -107,8 +109,13 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
         combo.Components.Add(new PackageComponent { ComponentType = ComponentType.YOGA, DurationMonths = 1 });
         var inactive = Plan("Inactive", 200_000m, PackageStatus.Inactive);
         db.Packages.AddRange(basic, combo, inactive);
+        // Trainer Roles as the AddTrainerRoles migration seeds them; EnsureCreated does not run migrations.
+        var ptTrainer = new TrainerRole { RoleName = TrainerRole.PT, Role = roles["PT"] };
+        var yogaTrainer = new TrainerRole { RoleName = TrainerRole.Yoga, Role = new ApplicationRole { RoleName = "YogaInstructor" } };
+        db.TrainerRoles.AddRange(ptTrainer, yogaTrainer);
         await db.SaveChangesAsync();
         (_basic, _combo, _inactive) = (basic.Id, combo.Id, inactive.Id);
+        (_ptTrainerRole, _yogaTrainerRole) = (ptTrainer.Id, yogaTrainer.Id);
     }
 
     public async Task DisposeAsync()

@@ -148,9 +148,9 @@ public sealed partial class PersonalTrainingService
         int[] templateIds, CancellationToken ct)
     {
         var trainer = await User(trainerId, UserRole.PT, ct);
-        var profile = await store.Query<TrainerProfile>().SingleOrDefaultAsync(store, x => x.PTUserId == trainerId && x.IsActive, ct);
+        var profile = await PTProfiles.SingleOrDefaultAsync(store, x => x.PTUserId == trainerId, ct);
         if (trainer is null || profile is null || trainerId == p.PTUserId || trainer.GymId != p.PTUser.GymId ||
-            !profile.AcceptingNewMembers || profile.Specialty == "Yoga" || profile.Level != p.TrainerLevelSnapshot ||
+            !profile.AcceptingNewMembers || profile.Level != p.TrainerLevelSnapshot ||
             await ActiveYogaAssignments.AnyAsync(store, c => c.InstructorUserId == trainerId, ct))
             return Conflict<FreezePlan>("Huấn luyện viên thay thế phải cùng cấp với gói và đang nhận học viên mới.");
         var pattern = await Templates(trainerId).Where(t => templateIds.Contains(t.Id)).OrderBy(t => t.DayOfWeek).ToArrayAsync(store, ct);
@@ -426,8 +426,8 @@ public sealed partial class PersonalTrainingService
         DateTime now, CancellationToken ct)
     {
         var replacementInvalid = freeze.ReplacementTrainerId is { } trainerId &&
-            !await store.Query<TrainerProfile>().AnyAsync(store, p => p.PTUserId == trainerId && p.IsActive &&
-                p.AcceptingNewMembers && p.Specialty != "Yoga" && p.Level == purchase.TrainerLevelSnapshot, ct);
+            !await PTProfiles.AnyAsync(store, p => p.PTUserId == trainerId &&
+                p.AcceptingNewMembers && p.Level == purchase.TrainerLevelSnapshot, ct);
         var unavailable = new List<PTSession>();
         foreach (var hold in holds)
         {

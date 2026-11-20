@@ -32,6 +32,10 @@ public sealed partial class PersonalTrainingService(IPersonalTrainingStore store
     private IQueryable<YogaClass> ActiveYogaAssignments => store.Query<YogaClass>().Where(c =>
         !c.IsDeleted && (c.ClassStatus == YogaClassStatus.Draft || c.ClassStatus == YogaClassStatus.Published));
 
+    // Feature 4 serves trainers whose Trainer Role is PT only; Yoga trainers never sell or take over PT contracts.
+    private IQueryable<TrainerProfile> PTProfiles => store.Query<TrainerProfile>()
+        .Where(p => p.IsActive && p.TrainerRole!.RoleName == TrainerRole.PT);
+
     private IQueryable<PTAvailability> Templates(string trainerId) => store.Query<PTAvailability>()
         .Where(x => x.PTUserId == trainerId && x.DayOfWeek != null && x.SlotStatus == SlotStatus.Available);
 

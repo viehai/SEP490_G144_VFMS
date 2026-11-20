@@ -61,7 +61,9 @@ internal sealed class TrainerTestDatabase : IAsyncDisposable
         Db.Add(gym); await Db.SaveChangesAsync();
         var manager = new ApplicationUser { UserId = "manager", GymId = gym.Id, FullName = "Test Manager", Email = "manager@example.test", PhoneNumber = "0900000099", AccountStatus = AccountStatus.Active };
         var role = new ApplicationRole { RoleName = "Manager" };
-        Db.AddRange(manager, role, new ApplicationRole { RoleName = "PT" }); await Db.SaveChangesAsync();
+        // The AddTrainerRoles migration already seeds the PT role.
+        if (!await Db.ApplicationRoles.AnyAsync(r => r.RoleName == "PT")) Db.Add(new ApplicationRole { RoleName = "PT" });
+        Db.AddRange(manager, role); await Db.SaveChangesAsync();
         Db.Add(new ApplicationUserRole { UserId = manager.UserId, RoleId = role.Id }); await Db.SaveChangesAsync();
         Db.ChangeTracker.Clear();
     }
@@ -69,7 +71,7 @@ internal sealed class TrainerTestDatabase : IAsyncDisposable
     {
         Assert.True(result.IsSuccess, $"{result.ErrorCode}: {result.ErrorMessage}"); return result.Data!;
     }
-    public static SubmitTrainerApplicationRequest Request => new("Test Trainer", "trainer@example.test", "0900000010", "000000000010", new(2000, 1, 1), "Other", "PT", 3, "Strength coach", true, [new("proof.pdf", "%PDF-1.7 synthetic"u8.ToArray())]);
+    public static SubmitTrainerApplicationRequest Request => new("Test Trainer", "trainer@example.test", "0900000010", "000000000010", new(2000, 1, 1), "Other", "Strength training", 3, "Strength coach", true, [new("proof.pdf", "%PDF-1.7 synthetic"u8.ToArray())], TrainerRole: "PT");
     public async Task<TrainerApplication> Hire()
     {
         Success(await Service.Submit(Request, null, default));
@@ -312,6 +314,46 @@ public class TrainerWorkflowTests
     }
 
     [SqlTrainerFact]
+    public async Task Yoga_recruitment_hires_a_yoga_instructor_who_manages_the_profile_but_not_PT_features()
+    {
+        await using var fixture = new TrainerTestDatabase();
+        await fixture.Initialize();
+        var db = fixture.Db; var service = fixture.Service;
+        var yoga = TrainerTestDatabase.Request with { TrainerRole = "Yoga", Specialty = "Hatha yoga" };
+        TrainerTestDatabase.Success(await service.Submit(yoga, null, default));
+        var application = await db.TrainerApplications.SingleAsync();
+        Assert.Equal("Yoga", TrainerTestDatabase.Success(await service.Application(application.Id, "manager", default)).TrainerRole);
+        Assert.Single(TrainerTestDatabase.Success(await service.Applications(new(TrainerRole: "Yoga"), "manager", default)).Items);
+        Assert.Empty(TrainerTestDatabase.Success(await service.Applications(new(TrainerRole: "PT"), "manager", default)).Items);
+
+        TrainerTestDatabase.Success(await service.Review(application.Id, new("Interview", "Interview completed"), "manager", default));
+        TrainerTestDatabase.Success(await service.Review(application.Id, new("Hire", "Verified", "Junior", null, true), "manager", default));
+        db.ChangeTracker.Clear();
+        var profile = await db.TrainerProfiles.Include(p => p.TrainerRole).SingleAsync();
+        Assert.Equal("Yoga", profile.TrainerRole!.RoleName);
+        Assert.Equal("Hatha yoga", profile.Specialty);
+        // UC 3.2 step 7: Trainer Role Yoga grants the YogaInstructor login role, not PT.
+        Assert.Equal(["YogaInstructor"], await db.ApplicationUserRoles.Where(x => x.UserId == profile.PTUserId)
+            .Select(x => x.Role.RoleName).ToListAsync());
+        TrainerTestDatabase.Success(await service.Setup(new(await fixture.SetupToken(application.Id), "TestPassword1!"), default));
+
+        // UC 3.3: a Yoga trainer manages the shared profile; accepting status (UC 4.12) stays PT-only.
+        Assert.Equal("Yoga", TrainerTestDatabase.Success(await service.Mine(profile.PTUserId, default)).Profile.TrainerRole);
+        TrainerTestDatabase.Success(await service.Update(new("Yoga coach biography"), profile.PTUserId, default));
+        Assert.Equal(403, (await service.SetReadiness(false, profile.PTUserId, default)).StatusCode);
+
+        // UC 3.4: the directory lists the Yoga trainer and filters by Trainer Role.
+        Assert.Single(TrainerTestDatabase.Success(await service.Search(new(TrainerRole: "Yoga"), default)).Items);
+        Assert.Empty(TrainerTestDatabase.Success(await service.Search(new(TrainerRole: "PT"), default)).Items);
+        Assert.Single(TrainerTestDatabase.Success(await service.Search(new(Search: "Hatha"), default)).Items);
+
+        // GBR-101: an active Yoga trainer cannot submit another recruitment, signed in or not.
+        Assert.Equal("TRAINER_NOT_ELIGIBLE", (await service.Submit(yoga with { TrainerRole = "PT", CitizenId = "000000000077" }, null, default)).ErrorCode);
+        Assert.Equal("TRAINER_NOT_ELIGIBLE", (await service.Submit(yoga with { Email = "other@example.test", CitizenId = "000000000078" },
+            profile.PTUserId, default)).ErrorCode);
+    }
+
+    [SqlTrainerFact]
     public async Task Signed_in_member_without_customer_role_can_apply()
     {
         await using var fixture = new TrainerTestDatabase();
@@ -545,22 +587,26 @@ public class TrainerWorkflowTests
         var rolesBefore = await db.ApplicationUserRoles.OrderBy(x => x.Id).Select(x => new { x.Id, x.UserId, x.RoleId }).ToListAsync();
         var oldDetail = TrainerTestDatabase.Success(await service.Public(profile.Id, default));
         var oldFile = oldDetail.Certificates.Single();
-        var update = TrainerTestDatabase.Request with { ApplicationType = "ProfileUpdate", Specialty = "Yoga", Bio = "Requested biography", Certificates = [new("yoga.pdf", "%PDF-1.7 yoga"u8.ToArray())] };
+        var update = TrainerTestDatabase.Request with { ApplicationType = "ProfileUpdate", Specialty = "Mobility coaching", Bio = "Requested biography", Certificates = [new("yoga.pdf", "%PDF-1.7 yoga"u8.ToArray())] };
         Assert.Equal(403, (await service.Submit(update, null, default)).StatusCode);
         TrainerTestDatabase.Success(await service.Submit(update, userId, default));
         Assert.Equal("TRAINER_CHANGE_PENDING", (await service.Submit(update, userId, default)).ErrorCode);
         var pending = await db.TrainerApplications.SingleAsync(x => x.ApplicationType == "ProfileUpdate");
         var pendingFile = JsonSerializer.Deserialize<List<TrainerStoredFile>>(pending.CertificatesJson)!.Single();
         var stillPublic = TrainerTestDatabase.Success(await service.Public(profile.Id, default));
-        Assert.Equal("PT", stillPublic.Profile.Specialty); Assert.Equal(oldFile.Id, stillPublic.Certificates.Single().Id);
-        Assert.Single(TrainerTestDatabase.Success(await service.Search(new(Specialty: "PT"), default)).Items);
+        Assert.Equal("Strength training", stillPublic.Profile.Specialty); Assert.Equal(oldFile.Id, stillPublic.Certificates.Single().Id);
+        Assert.Equal("PT", stillPublic.Profile.TrainerRole);
+        Assert.Single(TrainerTestDatabase.Success(await service.Search(new(TrainerRole: "PT"), default)).Items);
+        Assert.Empty(TrainerTestDatabase.Success(await service.Search(new(TrainerRole: "Yoga"), default)).Items);
+        Assert.Single(TrainerTestDatabase.Success(await service.Search(new(Search: "Strength"), default)).Items);
         Assert.Equal(404, (await service.Document(profile.Id, pendingFile.Id, null, default)).StatusCode);
         Assert.Equal(404, (await service.ApplicationDocument(pending.Id, pendingFile.Id, null, default)).StatusCode);
         TrainerTestDatabase.Success(await service.ApplicationDocument(pending.Id, pendingFile.Id, userId, default));
         Assert.Equal(403, (await service.Review(pending.Id, new("Approve", "Self approval"), userId, default)).StatusCode);
         TrainerTestDatabase.Success(await service.Review(pending.Id, new("Approve", "Verified credentials"), "manager", default));
         var approved = TrainerTestDatabase.Success(await service.Public(profile.Id, default));
-        Assert.Equal("Yoga", approved.Profile.Specialty);
+        Assert.Equal("Mobility coaching", approved.Profile.Specialty);
+        Assert.Equal("PT", approved.Profile.TrainerRole);
         Assert.Contains(approved.Certificates, file => file.Id == pendingFile.Id);
         Assert.Contains(approved.Certificates, file => file.Id == oldFile.Id);
         Assert.Equal(oldDetail.Profile.Bio, approved.Profile.Bio);
@@ -571,7 +617,7 @@ public class TrainerWorkflowTests
         pending = await db.TrainerApplications.SingleAsync(x => x.Id == pending.Id);
         pending.SubmittedAt = DateTime.UtcNow.AddMinutes(-11);
         await db.SaveChangesAsync();
-        TrainerTestDatabase.Success(await service.Submit(update with { Specialty = "PT" }, userId, default));
+        TrainerTestDatabase.Success(await service.Submit(update with { Specialty = "Strength training" }, userId, default));
         var rejected = await db.TrainerApplications.SingleAsync(x => x.ApplicationType == "ProfileUpdate" && x.ApplicationStatus == TrainerApplicationStatus.Pending);
         var profileBeforeReject = await db.TrainerProfiles.AsNoTracking().Select(x => new { x.Specialty, x.CertificatesJson, x.Bio, x.AvatarJson, x.Level, x.CommissionTier }).SingleAsync();
         TrainerTestDatabase.Success(await service.Review(rejected.Id, new("Reject", "Certificate not verified"), "manager", default));

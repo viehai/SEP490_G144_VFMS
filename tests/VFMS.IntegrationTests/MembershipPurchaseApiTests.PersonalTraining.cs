@@ -824,7 +824,8 @@ public sealed partial class MembershipPurchaseApiTests
                 }]
             };
             db.Orders.Add(order);
-            db.TrainerProfiles.Add(new TrainerProfile { PTUserId = "buyer", Level = TrainerLevel.Senior, AcceptingNewMembers = true });
+            db.TrainerProfiles.Add(new TrainerProfile { PTUserId = "buyer", Level = TrainerLevel.Senior, AcceptingNewMembers = true,
+                TrainerRoleId = _ptTrainerRole });
             db.Vouchers.Add(new Voucher
             {
                 Code = "PT-OFF",

@@ -137,6 +137,38 @@ public sealed partial class MembershipPurchaseApiTests
             new EphemeralDataProtectionProvider(), new ConfigurationBuilder().Build()), new PasswordHasher(), new Mapper(mapping));
     }
 
+    // Feature 4 serves Trainer Role PT only: a Yoga trainer neither sells packages nor takes over a contract,
+    // even if the account also holds the PT login role.
+    [Fact]
+    public async Task OnlyTrainerRolePTSellsPackagesAndTakesOverContracts()
+    {
+        using var member = Client("member", "Member");
+        var (id, contract) = await ActivatedPTContract(member);
+        await using (var scope = _app.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+            var gym = await db.Gyms.SingleAsync(g => g.GymName == "VFMS");
+            var ptRole = await db.ApplicationRoles.SingleAsync(r => r.RoleName == "PT");
+            db.ApplicationUsers.Add(User("yoga-pt", gym, ptRole));
+            db.TrainerProfiles.Add(new TrainerProfile { PTUserId = "yoga-pt", Level = TrainerLevel.Senior, AcceptingNewMembers = true,
+                TrainerRoleId = _yogaTrainerRole });
+            (await db.PTPurchases.SingleAsync(p => p.Id == id)).TrainerChangeDeadline = _clock.Now.UtcDateTime.AddDays(7);
+            await db.SaveChangesAsync();
+        }
+        Assert.Empty((await member.GetFromJsonAsync<PTReplacementTrainer[]>($"/api/pt/contracts/{id}/replacement-trainers"))!);
+
+        var packageId = (await member.GetFromJsonAsync<PTPackageResponse[]>("/api/pt/packages"))!.Single().Id;
+        await using (var scope = _app.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+            (await db.TrainerProfiles.SingleAsync(p => p.PTUserId == "buyer")).TrainerRoleId = _yogaTrainerRole;
+            await db.SaveChangesAsync();
+        }
+        using var slots = await member.PostAsJsonAsync("/api/pt/schedule/booking-slots",
+            new PTBookingSlotsRequest("buyer", packageId, contract.StartDate.AddDays(28), []));
+        Assert.Equal(HttpStatusCode.BadRequest, slots.StatusCode);
+    }
+
     // Hiring itself runs on SQL Server only (TrainerStore.Write); the hire and role removal are in TrainerWorkflowTests.
     [Fact]
     public async Task ApplicationDetailFlagsAMemberWithAnUnfinishedPTContractAndActiveMemberServices()

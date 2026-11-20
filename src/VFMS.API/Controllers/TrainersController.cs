@@ -56,10 +56,10 @@ public sealed class TrainersController(TrainerService service) : ControllerBase
     public async Task<IActionResult> Setup(TrainerSetupRequest request, CancellationToken ct) =>
         this.ToActionResult(await service.Setup(request, ct));
 
-    [HttpGet("me"), Authorize(Roles = "PT")]
+    [HttpGet("me"), Authorize(Roles = "PT,YogaInstructor")]
     public async Task<IActionResult> Mine(CancellationToken ct) => this.ToActionResult(await service.Mine(Actor, ct));
 
-    [HttpPut("me"), Authorize(Roles = "PT")]
+    [HttpPut("me"), Authorize(Roles = "PT,YogaInstructor")]
     public async Task<IActionResult> Update(UpdateTrainerProfileRequest request, CancellationToken ct) =>
         this.ToActionResult(await service.Update(request, Actor, ct));
 
@@ -67,11 +67,11 @@ public sealed class TrainersController(TrainerService service) : ControllerBase
     public async Task<IActionResult> SetReadiness(SetTrainerReadinessRequest request, CancellationToken ct) =>
         this.ToActionResult(await service.SetReadiness(request.IsAcceptingNewMembers, Actor, ct));
 
-    [HttpGet("me/applications"), Authorize(Roles = "PT")]
+    [HttpGet("me/applications"), Authorize(Roles = "PT,YogaInstructor")]
     public async Task<IActionResult> MyApplications([FromQuery] TrainerApplicationFilter query, CancellationToken ct) =>
         this.ToActionResult(await service.MyApplications(query, Actor, ct));
 
-    [HttpGet("applications/{id:int}/documents/{fileId}"), Authorize(Roles = "Manager,PT")]
+    [HttpGet("applications/{id:int}/documents/{fileId}"), Authorize(Roles = "Manager,PT,YogaInstructor")]
     public async Task<IActionResult> ApplicationDocument(int id, string fileId, CancellationToken ct) =>
         Download(await service.ApplicationDocument(id, fileId, Actor, ct));
 
