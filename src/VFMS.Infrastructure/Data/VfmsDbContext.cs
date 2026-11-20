@@ -46,6 +46,7 @@ public class VfmsDbContext : DbContext
     // ─────────────────────────────────────────────────────────────
     public DbSet<TrainerApplication> TrainerApplications { get; set; }
     public DbSet<TrainerProfile> TrainerProfiles { get; set; }
+    public DbSet<TrainerRole> TrainerRoles { get; set; }
 
     // ─────────────────────────────────────────────────────────────
     //  Personal Training / PT (Module 4)
