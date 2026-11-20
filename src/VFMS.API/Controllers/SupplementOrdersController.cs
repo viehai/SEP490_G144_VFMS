@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using VFMS.API.Extensions;
 using VFMS.Application.Interfaces;
 using VFMS.Contracts.Common;
+using VFMS.Contracts.Operations;
 using VFMS.Contracts.Supplements;
 
 namespace VFMS.API.Controllers;
@@ -76,6 +77,13 @@ public sealed class SupplementOrdersController : ControllerBase
         Run(userId => _service.GetAsync(id, IsHandler ? null : userId, cancellationToken));
 
     // ── Staff / Manager (UC-82) ──────────────────────────────────
+
+    /// <summary>Orders per status, for the counts on the board's status filter.</summary>
+    [HttpGet("counts")]
+    [Authorize(Roles = HandlerRoles)]
+    [ProducesResponseType(typeof(StatusCountsResponse), 200)]
+    public async Task<IActionResult> GetCounts(CancellationToken cancellationToken) =>
+        this.ToActionResult(await _service.GetCountsAsync(cancellationToken));
 
     /// <summary>All orders, newest first. Filter by status, fulfillment type, date range, or search order number / customer name.</summary>
     [HttpGet]

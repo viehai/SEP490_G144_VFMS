@@ -5,6 +5,8 @@ namespace VFMS.Contracts.Supplements;
 /// <summary>
 /// Create or edit a supplement product (UC-83). Status: Active (default), Inactive or OutOfStock.
 /// The image is a link to a png, jpg or jpeg file. Brand, Size (pack size, e.g. "5 lbs") and Flavour are optional.
+/// StockQuantity is the starting stock when creating (blank = stock not tracked); an edit ignores it, stock is
+/// changed with the stock action instead so orders placed meanwhile are never overwritten.
 /// </summary>
 public sealed record SupplementProductRequest(
     string Name,
@@ -15,8 +17,29 @@ public sealed record SupplementProductRequest(
     string Status = "Active",
     string? Brand = null,
     string? Size = null,
-    string? Flavour = null
+    string? Flavour = null,
+    int? StockQuantity = null
 );
+
+/// <summary>Stock rules shared by the API and the screens.</summary>
+public static class SupplementStock
+{
+    /// <summary>At or below this many units a tracked product is "low on stock".</summary>
+    public const int LowStockThreshold = 5;
+    public const int MaxQuantity = 100_000;
+
+    /// <summary>Add Quantity units (a delivery arrived); starts tracking at 0 when stock was not tracked.</summary>
+    public const string Add = "Add";
+    /// <summary>Set the stock to exactly Quantity (after a stock count).</summary>
+    public const string Set = "Set";
+    /// <summary>Stop tracking stock for the product; Quantity is ignored.</summary>
+    public const string StopTracking = "StopTracking";
+
+    public static bool IsLow(int? stock) => stock is { } units && units <= LowStockThreshold;
+}
+
+/// <summary>Change a product's stock (Manager). Action: Add, Set or StopTracking. Note is kept in the audit log.</summary>
+public sealed record SupplementStockRequest(string Action, int Quantity = 0, string? Note = null);
 
 public sealed record SupplementProductStatusRequest(string Status);
 
@@ -25,6 +48,8 @@ public sealed record SupplementProductStatusRequest(string Status);
 /// the Manager can also filter by any status.
 /// Brand is an exact match; MinPrice and MaxPrice are inclusive, in VND.
 /// Sort is one of name (default), price_asc, price_desc or newest.
+/// LowStock (Manager only) keeps tracked products with at most SupplementStock.LowStockThreshold units.
+/// In the store, StockQuantity is only filled in when the product is low on stock.
 /// </summary>
 public sealed record SupplementProductListRequest(
     string? Search = null,
@@ -35,7 +60,8 @@ public sealed record SupplementProductListRequest(
     string? Brand = null,
     decimal? MinPrice = null,
     decimal? MaxPrice = null,
-    string? Sort = null
+    string? Sort = null,
+    bool LowStock = false
 );
 
 public sealed record SupplementProductResponse(
@@ -51,7 +77,9 @@ public sealed record SupplementProductResponse(
     DateTime UpdatedAt,
     string? Brand = null,
     string? Size = null,
-    string? Flavour = null
+    string? Flavour = null,
+    int? StockQuantity = null,
+    bool LowStock = false
 );
 
 // ── Orders (UC-78..82) ───────────────────────────────────────────

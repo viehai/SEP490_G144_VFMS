@@ -5,7 +5,8 @@ namespace VFMS.Domain.Entities;
 
 /// <summary>
 /// Supplement product in the catalog (GBR-57–GBR-61).
-/// No stock inventory tracking; catalog-only display.
+/// Stock is tracked when StockQuantity has a value: orders take items out of stock, cancellations put them back,
+/// and a tracked product switches between Active and OutOfStock with its stock. Null means stock is not tracked.
 /// </summary>
 public class SupplementProduct : BaseEntity
 {
@@ -18,6 +19,8 @@ public class SupplementProduct : BaseEntity
     public string? Size { get; set; }
     public string? Flavour { get; set; }
     public decimal UnitPrice { get; set; }
+    /// <summary>Units in the gym; null when stock is not tracked for this product.</summary>
+    public int? StockQuantity { get; set; }
     public string? ImageUrl { get; set; }
     public SupplementProductStatus ProductStatus { get; set; } = SupplementProductStatus.Active;
 

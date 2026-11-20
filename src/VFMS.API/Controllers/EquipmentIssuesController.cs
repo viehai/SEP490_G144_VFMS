@@ -4,6 +4,7 @@ using VFMS.API.Extensions;
 using VFMS.Application.Interfaces;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Equipment;
+using VFMS.Contracts.Operations;
 
 namespace VFMS.API.Controllers;
 
@@ -56,6 +57,13 @@ public sealed class EquipmentIssuesController : ControllerBase
     [ProducesResponseType(typeof(PagedResponse<EquipmentIssueResponse>), 200)]
     public async Task<IActionResult> GetAll([FromQuery] EquipmentIssueListRequest request, CancellationToken cancellationToken) =>
         this.ToActionResult(await _service.GetIssuesAsync(request, null, cancellationToken));
+
+    /// <summary>Issues per status, for the counts on the board's status filter.</summary>
+    [HttpGet("counts")]
+    [Authorize(Roles = "Staff,Manager")]
+    [ProducesResponseType(typeof(StatusCountsResponse), 200)]
+    public async Task<IActionResult> GetCounts(CancellationToken cancellationToken) =>
+        this.ToActionResult(await _service.GetIssueCountsAsync(cancellationToken));
 
     /// <summary>Staff and Manager see any issue; a Member sees only their own.</summary>
     [HttpGet("{id:int}")]

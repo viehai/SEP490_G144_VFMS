@@ -46,6 +46,22 @@ public sealed class GenerateBusinessReportRequestValidator : AbstractValidator<G
     }
 }
 
+public sealed class BusinessReportTrendRequestValidator : AbstractValidator<BusinessReportTrendRequest>
+{
+    public const int MaxPeriods = 12;
+
+    public BusinessReportTrendRequestValidator()
+    {
+        RuleFor(x => x.PeriodType)
+            .Must(t => t is not null && GenerateBusinessReportRequestValidator.PeriodTypes.Contains(t.Trim(), StringComparer.OrdinalIgnoreCase))
+            .WithMessage("Period type must be Day, Week or Month.");
+        RuleFor(x => x.Date)
+            .Must(d => d.Year >= 2000).WithMessage("Date is invalid.");
+        RuleFor(x => x.Count)
+            .InclusiveBetween(2, MaxPeriods).WithMessage($"Count must be between 2 and {MaxPeriods}.");
+    }
+}
+
 public sealed class BusinessReportListRequestValidator : AbstractValidator<BusinessReportListRequest>
 {
     public BusinessReportListRequestValidator()

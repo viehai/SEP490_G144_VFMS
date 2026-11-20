@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using MapsterMapper;
 using VFMS.Application.Interfaces;
 using VFMS.Contracts.Common;
+using VFMS.Contracts.Operations;
 using VFMS.Contracts.Procurement;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
@@ -32,6 +33,14 @@ public sealed class PurchaseProposalService : IPurchaseProposalService
     public Task<Result<PagedResponse<PurchaseProposalResponse>>> GetMyProposalsAsync(
         PurchaseProposalListRequest request, string staffUserId, CancellationToken cancellationToken = default) =>
         SearchAsync(request, staffUserId, excludeDrafts: false, cancellationToken);
+
+    public async Task<Result<StatusCountsResponse>> GetMyCountsAsync(string staffUserId, CancellationToken cancellationToken = default) =>
+        Result<StatusCountsResponse>.Success(StatusCounts.From(
+            await _repository.CountByStatusAsync(staffUserId, excludeDrafts: false, cancellationToken)));
+
+    public async Task<Result<StatusCountsResponse>> GetReviewCountsAsync(CancellationToken cancellationToken = default) =>
+        Result<StatusCountsResponse>.Success(StatusCounts.From(
+            await _repository.CountByStatusAsync(null, excludeDrafts: true, cancellationToken), PurchaseProposalStatus.Draft));
 
     public async Task<Result<PurchaseProposalResponse>> CreateAsync(
         PurchaseProposalRequest request, string staffUserId, string? ipAddress, CancellationToken cancellationToken = default)

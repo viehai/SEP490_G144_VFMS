@@ -115,6 +115,110 @@ public sealed class SupplementRepositoryTests : IAsyncLifetime
     {
         Assert.DoesNotContain(await Search(Query("Old test")), p => p.ProductStatus == SupplementProductStatus.Inactive);
     }
+
+    // ── Stock ────────────────────────────────────────────────────
+
+    private async Task<int> StockedProduct(string name, int? stock, SupplementProductStatus status = SupplementProductStatus.Active)
+    {
+        await using var db = new PriceSortableContext(_options);
+        var product = Product(name, "Brand", "Whey Protein", 100_000m, status);
+        product.StockQuantity = stock;
+        db.SupplementProducts.Add(product);
+        await db.SaveChangesAsync();
+        return product.Id;
+    }
+
+    private async Task<SupplementProduct> Load(int id)
+    {
+        await using var db = new PriceSortableContext(_options);
+        return await db.SupplementProducts.AsNoTracking().SingleAsync(p => p.Id == id);
+    }
+
+    [Fact]
+    public async Task ReserveTakesStockAndSwitchesToOutOfStockAtZero()
+    {
+        var id = await StockedProduct("Stock A", 3);
+        await using (var db = new PriceSortableContext(_options))
+            Assert.Empty(await new SupplementRepository(db).ReserveStockAsync([(id, 3)]));
+
+        var product = await Load(id);
+        Assert.Equal(0, product.StockQuantity);
+        Assert.Equal(SupplementProductStatus.OutOfStock, product.ProductStatus);
+    }
+
+    [Fact]
+    public async Task ReserveReportsShortagesAndSkipsUntrackedProducts()
+    {
+        var short1 = await StockedProduct("Stock B", 1);
+        var untracked = await StockedProduct("Stock C", null);
+        await using var db = new PriceSortableContext(_options);
+
+        var shortages = await new SupplementRepository(db).ReserveStockAsync([(untracked, 50), (short1, 2)]);
+
+        Assert.Equal([new StockShortage(short1, "Stock B", 1)], shortages);
+        Assert.Equal(1, (await Load(short1)).StockQuantity);
+    }
+
+    [Fact]
+    public async Task TheLastUnitCanOnlyBeTakenOnce()
+    {
+        var id = await StockedProduct("Stock D", 1);
+        await using var first = new PriceSortableContext(_options);
+        await using var second = new PriceSortableContext(_options);
+
+        var a = await new SupplementRepository(first).ReserveStockAsync([(id, 1)]);
+        var b = await new SupplementRepository(second).ReserveStockAsync([(id, 1)]);
+
+        Assert.Empty(a);
+        Assert.Single(b);
+        Assert.Equal(0, (await Load(id)).StockQuantity);
+    }
+
+    [Fact]
+    public async Task ReleasePutsStockBackAndReactivates()
+    {
+        var id = await StockedProduct("Stock E", 0, SupplementProductStatus.OutOfStock);
+        await using (var db = new PriceSortableContext(_options))
+            await new SupplementRepository(db).ReleaseStockAsync([(id, 2)]);
+
+        var product = await Load(id);
+        Assert.Equal(2, product.StockQuantity);
+        Assert.Equal(SupplementProductStatus.Active, product.ProductStatus);
+    }
+
+    [Fact]
+    public async Task AdjustAddsSetsAndStopsTrackingButKeepsInactive()
+    {
+        var id = await StockedProduct("Stock F", null, SupplementProductStatus.Inactive);
+        await using var db = new PriceSortableContext(_options);
+        var repo = new SupplementRepository(db);
+
+        Assert.Equal((null, 4), await repo.AdjustStockAsync(id, SupplementStockAction.Add, 4));
+        Assert.Equal((4, 0), await repo.AdjustStockAsync(id, SupplementStockAction.Set, 0));
+        Assert.Equal(SupplementProductStatus.Inactive, (await Load(id)).ProductStatus);
+        Assert.Equal((0, null), await repo.AdjustStockAsync(id, SupplementStockAction.StopTracking, 0));
+    }
+
+    [Fact]
+    public async Task LowStockFilterKeepsTrackedProductsAtOrBelowTheThreshold()
+    {
+        await StockedProduct("Stock G", 5);
+        await StockedProduct("Stock H", 6);
+        var items = await Search(Query("Stock ") with { LowStockOnly = true, Statuses = Enum.GetValues<SupplementProductStatus>() });
+
+        Assert.Equal(["Stock G"], items.Select(p => p.ProductName));
+    }
+
+    [Fact]
+    public async Task TheDatabaseRefusesNegativeStock()
+    {
+        await using var db = new PriceSortableContext(_options);
+        var product = Product("Stock I", null, null, 1m);
+        product.StockQuantity = -1;
+        db.SupplementProducts.Add(product);
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+    }
 }
 
 /// <summary>

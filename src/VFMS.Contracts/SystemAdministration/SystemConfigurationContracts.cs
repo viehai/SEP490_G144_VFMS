@@ -57,11 +57,13 @@ public sealed record BusinessReportListRequest(
     int PageSize = 20
 );
 
+/// <summary><see cref="PreviousValue"/> is the same metric for the period just before the report's period.</summary>
 public sealed record ReportMetricResponse(
     string MetricType,
     string MetricName,
     decimal Value,
-    string ValueType
+    string ValueType,
+    decimal? PreviousValue = null
 );
 
 public sealed record BusinessReportSummaryResponse(
@@ -85,5 +87,35 @@ public sealed record BusinessReportResponse(
     string? GeneratedByName,
     DateTime GeneratedAt,
     bool HasData,
+    IReadOnlyCollection<ReportMetricResponse> Metrics,
+    DateOnly? PreviousPeriodStart = null,
+    DateOnly? PreviousPeriodEnd = null,
+    string? PreviousSource = null
+)
+{
+    /// <summary>The previous values come from a saved report of the previous period.</summary>
+    public const string FromSnapshot = "Snapshot";
+
+    /// <summary>No report was saved for the previous period, so its values were calculated from the current data.</summary>
+    public const string FromCurrentData = "CurrentData";
+}
+
+/// <summary>Up to <see cref="Count"/> consecutive periods ending with the period that contains <see cref="Date"/>.</summary>
+public sealed record BusinessReportTrendRequest(
+    string PeriodType,
+    DateOnly Date,
+    int Count = 6
+);
+
+/// <summary>One period of a trend, calculated from the current data (not saved).</summary>
+public sealed record ReportTrendPoint(
+    DateOnly PeriodStart,
+    DateOnly PeriodEnd,
     IReadOnlyCollection<ReportMetricResponse> Metrics
+);
+
+/// <summary>Points are ordered from the oldest period to the newest.</summary>
+public sealed record BusinessReportTrendResponse(
+    string PeriodType,
+    IReadOnlyList<ReportTrendPoint> Points
 );

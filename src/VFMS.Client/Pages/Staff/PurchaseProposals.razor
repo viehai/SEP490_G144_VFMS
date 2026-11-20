@@ -110,21 +110,20 @@
         <div class="@Ui.ListHeader">
             <h2 id="proposal-list-title" class="mb-3 text-sm font-bold text-vfms-text">Đề xuất của tôi</h2>
             <form @onsubmit="() => LoadAsync(1)" @onsubmit:preventDefault>
-                <fieldset disabled="@Busy" class="flex flex-wrap items-end gap-3">
+                <fieldset disabled="@_working" class="flex flex-wrap items-end gap-3">
                     <label class="@Ui.Label w-full sm:w-64" for="proposal-search">Tìm kiếm
-                        <input id="proposal-search" type="search" class="@Ui.Field" @bind="_search" maxlength="100" placeholder="Mã hoặc mô tả" />
+                        <input id="proposal-search" type="search" class="@Ui.Field" @bind="_search" @bind:event="oninput" @bind:after="SearchTypedAsync" maxlength="100" placeholder="Mã hoặc mô tả" />
                     </label>
                     <label class="@Ui.Label" for="proposal-status">Trạng thái
-                        <select id="proposal-status" class="@Ui.Field" @bind="_status">
-                            <option value="">Tất cả</option>
-                            @foreach (var status in OperationsText.ProposalStatuses) { <option value="@status">@OperationsText.Label(status)</option> }
+                        <select id="proposal-status" class="@Ui.Field" @bind="_status" @bind:after="() => LoadAsync(1)">
+                            <option value="">@OperationsText.CountLabel(null, _counts)</option>
+                            @foreach (var status in OperationsText.ProposalStatuses) { <option value="@status">@OperationsText.CountLabel(status, _counts)</option> }
                         </select>
                     </label>
-                    <button type="submit" class="@Ui.Button">Áp dụng</button>
                 </fieldset>
             </form>
         </div>
-        @if (_loading)
+        @if (_loading && _page is null)
         {
             <p role="status" class="p-5 text-sm">Đang tải đề xuất...</p>
         }
@@ -177,6 +176,7 @@
     private readonly PurchaseProposalRequestValidator _validator = new();
     private OperationsValidation<PurchaseProposalRequest>? _validation;
     private PagedResponse<PurchaseProposalResponse>? _page;
+    private VFMS.Contracts.Operations.StatusCountsResponse? _counts;
     private List<EquipmentResponse> _equipment = [];
     private PurchaseProposalResponse? _editing, _selected;
     private string _search = "", _status = "";
@@ -197,17 +197,25 @@
             int.TryParse(i.EquipmentId, out var id) ? id : null, string.IsNullOrWhiteSpace(i.Reason) ? null : i.Reason.Trim())).ToList(),
         _submit);
 
-    private async Task LoadAsync(int page)
+    // Filters apply as they change: dropdowns and dates at once, text boxes after a short pause in typing.
+    private LiveQuery Live => _live ??= new(_lifetime.Token);
+    private LiveQuery? _live;
+
+    private Task LoadAsync(int page) => Live.NowAsync(token => FetchAsync(page, token));
+
+    private Task SearchTypedAsync() => Live.AfterTypingAsync(token => FetchAsync(1, token));
+
+    private async Task FetchAsync(int page, CancellationToken token)
     {
         _loading = true;
         try
         {
             _page = await Api.GetProposalsAsync(new(string.IsNullOrEmpty(_status) ? null : _status,
-                string.IsNullOrWhiteSpace(_search) ? null : _search.Trim(), page, PageSize), mine: true, _lifetime.Token);
+                string.IsNullOrWhiteSpace(_search) ? null : _search.Trim(), page, PageSize), mine: true, token);
+            _counts = await Api.GetProposalCountsAsync(mine: true, token);
         }
         catch (AuthApiException error) { _error = error.Message; }
-        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
-        finally { _loading = false; }
+        finally { if (!token.IsCancellationRequested) _loading = false; }
     }
 
     private void StartCreate()
@@ -275,6 +283,7 @@
     public void Dispose()
     {
         _lifetime.Cancel();
+        _live?.Dispose();
         _lifetime.Dispose();
     }
 
