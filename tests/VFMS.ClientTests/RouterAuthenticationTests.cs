@@ -42,6 +42,8 @@ public sealed class RouterAuthenticationTests
                 {
                     Content = JsonContent.Create(new PagedResponse<MembershipPlanCatalogItemResponse>(1, 9, 0, []))
                 };
+            if (request.RequestUri!.AbsolutePath == "/api/yoga/schedule")   // the home page's yoga classes
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(Array.Empty<object>()) };
             Assert.Equal("/api/auth/logout", request.RequestUri!.AbsolutePath);
             logoutCalls++;
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new { Message = "Logged out." }) };
@@ -52,6 +54,7 @@ public sealed class RouterAuthenticationTests
         var registrations = new ServiceCollection().AddLogging().AddAuthorizationCore()
             .AddSingleton(session).AddSingleton<AuthenticationStateProvider>(session)
             .AddSingleton(new MembershipPlanApiClient(http, session))
+            .AddSingleton(new VfmsApiClient(http, session))
             .AddSingleton<IJSRuntime>(storage).AddSingleton<NavigationManager>(navigation)
             .AddSingleton<IComponentActivator>(components)
             .AddSingleton<INavigationInterception>(new NoNavigationInterception())

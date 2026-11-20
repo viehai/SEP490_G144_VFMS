@@ -26,7 +26,7 @@ else
                     <header class="pb-4 border-b border-[#D8D1CD]">
                         <div class="flex items-center justify-between gap-3">
                             <span class="whitespace-nowrap font-heading text-[10px] font-bold uppercase tracking-widest text-[#6F6966]">YOGA STUDIO</span>
-                            <span class="@($"shrink-0 whitespace-nowrap px-2.5 py-1 text-[10px] font-heading font-bold uppercase text-white rounded-full {BadgeColor(badge)}")">@BadgeText(badge)</span>
+                            <span class="@($"shrink-0 whitespace-nowrap px-2.5 py-1 text-[10px] font-heading font-bold uppercase text-white rounded-full {YogaClassCard.BadgeColor(badge)}")">@YogaClassCard.BadgeText(badge)</span>
                         </div>
                         <h3 class="font-heading text-2xl font-black uppercase text-[#242424] mt-1.5">@card.Name</h3>
                     </header>
@@ -114,22 +114,6 @@ else
     }
 
     private static DateTime GymTime(DateTime utc) => DateTime.SpecifyKind(utc, DateTimeKind.Utc).Add(GymOffset);
-
-    private static string BadgeText(YogaClassBadge badge) => badge switch
-    {
-        YogaClassBadge.Closed => "HẾT HẠN",
-        YogaClassBadge.Full => "HẾT CHỖ",
-        YogaClassBadge.AlmostFull => "SẮP ĐẦY",
-        _ => "CÒN CHỖ",
-    };
-
-    private static string BadgeColor(YogaClassBadge badge) => badge switch
-    {
-        YogaClassBadge.Closed => "bg-[#6F6966]",
-        YogaClassBadge.Full => "bg-[#B83A3A]",
-        YogaClassBadge.AlmostFull => "bg-[#B45309]",
-        _ => "bg-[#15803D]",
-    };
 
     public void Dispose()
     {

@@ -40,6 +40,27 @@ public sealed record YogaClassCard(
         : FreeSeats * 5 <= MaxParticipants ? YogaClassBadge.AlmostFull
         : YogaClassBadge.Open;
 
+    public static string BadgeText(YogaClassBadge badge) => badge switch
+    {
+        YogaClassBadge.Closed => "HẾT HẠN",
+        YogaClassBadge.Full => "HẾT CHỖ",
+        YogaClassBadge.AlmostFull => "SẮP ĐẦY",
+        _ => "CÒN CHỖ",
+    };
+
+    public static string BadgeColor(YogaClassBadge badge) => badge switch
+    {
+        YogaClassBadge.Closed => "bg-[#6F6966]",
+        YogaClassBadge.Full => "bg-[#B83A3A]",
+        YogaClassBadge.AlmostFull => "bg-[#B45309]",
+        _ => "bg-[#15803D]",
+    };
+
+    /// <summary>Weekdays the class runs on, across all its time slots.</summary>
+    public int SessionsPerWeek => Slots.SelectMany(slot => slot.Days).Distinct().Count();
+
+    public int Minutes => Slots.Count == 0 ? 0 : (int)(Slots[0].End - Slots[0].Start).TotalMinutes;
+
     public string DifficultyName => Difficulty switch
     {
         "Beginner" => "Cơ bản",
