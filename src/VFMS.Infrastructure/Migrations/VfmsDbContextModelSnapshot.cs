@@ -3127,6 +3127,9 @@ namespace VFMS.Infrastructure.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("nvarchar(40)");
 
+                    b.Property<int?>("TrainerRoleId")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
 
@@ -3140,6 +3143,8 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.HasIndex("TrackingCode")
                         .IsUnique();
+
+                    b.HasIndex("TrainerRoleId");
 
                     b.HasIndex("CitizenId", "SubmittedAt");
 
@@ -3223,6 +3228,9 @@ namespace VFMS.Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<int?>("TrainerRoleId")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
 
@@ -3234,6 +3242,8 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.HasIndex("PTUserId")
                         .IsUnique();
+
+                    b.HasIndex("TrainerRoleId");
 
                     b.ToTable("TrainerProfiles");
                 });
@@ -3307,6 +3317,44 @@ namespace VFMS.Infrastructure.Migrations
                     b.HasIndex("TrainerUserId");
 
                     b.ToTable("TrainerReviews");
+                });
+
+            modelBuilder.Entity("VFMS.Domain.Entities.TrainerRole", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("RoleId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RoleName")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RoleId");
+
+                    b.HasIndex("RoleName")
+                        .IsUnique();
+
+                    b.ToTable("TrainerRoles");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.Voucher", b =>
@@ -4823,9 +4871,16 @@ namespace VFMS.Infrastructure.Migrations
                         .HasForeignKey("ReviewedByUserId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("VFMS.Domain.Entities.TrainerRole", "TrainerRole")
+                        .WithMany("TrainerApplications")
+                        .HasForeignKey("TrainerRoleId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Applicant");
 
                     b.Navigation("ReviewedByUser");
+
+                    b.Navigation("TrainerRole");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.TrainerProfile", b =>
@@ -4836,7 +4891,14 @@ namespace VFMS.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("VFMS.Domain.Entities.TrainerRole", "TrainerRole")
+                        .WithMany("TrainerProfiles")
+                        .HasForeignKey("TrainerRoleId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("PTUser");
+
+                    b.Navigation("TrainerRole");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.TrainerReview", b =>
@@ -4874,6 +4936,17 @@ namespace VFMS.Infrastructure.Migrations
                     b.Navigation("ReviewedByUser");
 
                     b.Navigation("TrainerUser");
+                });
+
+            modelBuilder.Entity("VFMS.Domain.Entities.TrainerRole", b =>
+                {
+                    b.HasOne("VFMS.Domain.Entities.ApplicationRole", "Role")
+                        .WithMany()
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Role");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.Voucher", b =>
@@ -5319,6 +5392,13 @@ namespace VFMS.Infrastructure.Migrations
                     b.Navigation("PTPurchases");
 
                     b.Navigation("Reviews");
+                });
+
+            modelBuilder.Entity("VFMS.Domain.Entities.TrainerRole", b =>
+                {
+                    b.Navigation("TrainerApplications");
+
+                    b.Navigation("TrainerProfiles");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.Voucher", b =>
