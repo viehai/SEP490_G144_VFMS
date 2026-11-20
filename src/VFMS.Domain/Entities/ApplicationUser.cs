@@ -58,5 +58,8 @@ public class ApplicationUser : BaseEntity
     public ICollection<AuditLog> AuditLogs { get; set; } = [];
     public ICollection<Voucher> CreatedVouchers { get; set; } = [];
     public ICollection<PurchaseProposal> PurchaseProposals { get; set; } = [];
+    public ICollection<ConsultationConversation> StartedConversations { get; set; } = [];
+    public ICollection<ConsultationConversation> ManagedConversations { get; set; } = [];
+    public ICollection<ConsultationMessage> SentConsultationMessages { get; set; } = [];
 }
 

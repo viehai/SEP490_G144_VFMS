@@ -13,6 +13,30 @@ public sealed record MembershipPlanReadModel(
     PackageStatus Status,
     int SubscriberCount);
 
+/// <summary>
+/// Read model cho public package catalog — phản ánh đúng các field trong PackageComponent.
+/// </summary>
+public sealed record PackageCatalogReadModel(
+    int Id,
+    string Name,
+    string? Description,
+    decimal Price,
+    PackageStatus Status,
+    ComponentType ComponentType,
+    int? DurationDays,
+    int? DurationMonths,
+    int? SessionCount,
+    int? YogaClassTypeId,
+    string? YogaClassTypeName,
+    string? ApplicableTrainerLevel,
+    int? PTFreezeMinimumDays,
+    int? PTFreezeMaxTotalDays,
+    bool AllowFreeze,
+    int? MaxFreezeDaysPerRequest,
+    int? MaxFreezeCount,
+    TimeOnly? AccessStartTime,
+    TimeOnly? AccessEndTime);
+
 public interface IMembershipPlanRepository : IAuditedRepository
 {
     Task<(IReadOnlyList<MembershipPlanReadModel> Items, int TotalCount)> SearchAsync(
@@ -25,4 +49,11 @@ public interface IMembershipPlanRepository : IAuditedRepository
     Task<bool> HasUsageAsync(int id, CancellationToken cancellationToken = default);
     void Remove(Package package);
     Task ExecuteInSerializableTransactionAsync(Func<Task> work, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Trả về các Package Active có ít nhất một PackageComponent không bị xóa mềm
+    /// thuộc <paramref name="componentType"/>.
+    /// </summary>
+    Task<(IReadOnlyList<PackageCatalogReadModel> Items, int TotalCount)> SearchByComponentTypeAsync(
+        ComponentType componentType, int page, int pageSize, CancellationToken cancellationToken = default);
 }

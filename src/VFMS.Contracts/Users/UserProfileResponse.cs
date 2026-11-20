@@ -7,5 +7,7 @@ public sealed record UserProfileResponse(
     string PhoneNumber,
     string? AvatarUrl,
     string AccountStatus,
-    IReadOnlyCollection<string> Roles
+    IReadOnlyCollection<string> Roles,
+    DateTime CreatedAt,
+    DateOnly? DateOfBirth = null
 );

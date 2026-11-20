@@ -1,0 +1,186 @@
+@page "/manager/feedback"
+@page "/staff/feedback"
+@layout ManagerAdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using VFMS.Contracts.Common
+@using VFMS.Contracts.Feedback
+@attribute [Authorize(Roles = "Manager,Staff")]
+@inject SystemAdministrationApiClient Api
+@implements IDisposable
+
+<PageTitle>Quản lý phản hồi | Victor Fitness</PageTitle>
+
+<div class="workspace-page space-y-6">
+    <header class="border-b border-[#D8D1CD] pb-6">
+        <p class="text-xs font-bold tracking-wider text-[#B83A3A]">VFMS / CUSTOMER FEEDBACK</p>
+        <h1 class="mt-2 text-3xl font-extrabold text-[#242424]">Phản hồi khách hàng.</h1>
+        <p class="mt-2 text-sm text-[#6F6966]">Duyệt đánh giá, trả lời hội viên và kiểm soát hiển thị.</p>
+    </header>
+
+    @if (_notice is not null) { <p role="status" class="rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm">@_notice</p> }
+    @if (_error is not null) { <p role="alert" class="rounded-lg border border-red-300 bg-red-50 p-3 text-sm">@_error</p> }
+
+    <form @onsubmit="() => LoadAsync(1)" @onsubmit:preventDefault class="flex flex-wrap items-end gap-3 rounded-xl border border-[#D8D1CD] bg-[#F8F5F2] p-4">
+        <label class="text-xs font-semibold text-[#242424]">Tìm kiếm
+            <input class="mt-1 block rounded-lg border border-[#D8D1CD] px-3 py-2 text-sm" @bind="_search" />
+        </label>
+        <label class="text-xs font-semibold text-[#242424]">Trạng thái
+            <select class="mt-1 block rounded-lg border border-[#D8D1CD] px-3 py-2 text-sm" @bind="_status">
+                <option value="">Tất cả</option>
+                <option value="Pending">Chờ duyệt</option>
+                <option value="Approved">Đã duyệt</option>
+                <option value="Rejected">Từ chối</option>
+            </select>
+        </label>
+        <button type="submit" class="rounded-lg border border-[#C9C0BB] px-3 py-2 text-xs font-bold" disabled="@Busy">Áp dụng</button>
+    </form>
+
+    @if (_loading)
+    {
+        <p role="status">Đang tải phản hồi...</p>
+    }
+    else if (_page is { Items.Count: > 0 } page)
+    {
+        <div class="divide-y divide-[#D8D1CD] overflow-hidden rounded-xl border border-[#D8D1CD] bg-[#F8F5F2]">
+            @foreach (var row in page.Items)
+            {
+                <article @key="row.Id" class="p-5">
+                    <div class="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <p class="text-sm font-bold">@row.MemberName · Đánh giá phòng gym</p>
+                            <p class="mt-1 text-xs text-[#6F6966]">@row.Status · @(row.IsVisible ? "Đang hiển thị" : "Đang ẩn")</p>
+                            <p class="mt-2 text-sm text-[#B83A3A]">@Stars(row.Rating)</p>
+                            <p class="mt-3 text-sm">@(row.Comment ?? "Không có nội dung")</p>
+                            @if (!string.IsNullOrWhiteSpace(row.ManagerReply))
+                            {
+                                <p class="mt-2 rounded-lg bg-[#F3EDEA] p-3 text-sm"><b>Phản hồi:</b> @row.ManagerReply</p>
+                            }
+                        </div>
+                        <fieldset disabled="@Busy" class="flex gap-2">
+                            @if (row.Status == "Pending")
+                            {
+                                <button type="button" class="rounded-lg bg-[#B83A3A] px-3 py-2 text-xs font-bold text-white" @onclick="() => ApproveAsync(row)">Duyệt</button>
+                                <button type="button" class="rounded-lg border border-red-300 px-3 py-2 text-xs font-bold" @onclick="() => Reject(row)">Từ chối</button>
+                            }
+                            @if (row.Status == "Approved")
+                            {
+                                <button type="button" class="rounded-lg border px-3 py-2 text-xs font-bold" @onclick="() => ToggleAsync(row)">@(row.IsVisible ? "Ẩn" : "Hiển thị")</button>
+                            }
+                            <button type="button" class="rounded-lg border px-3 py-2 text-xs font-bold" @onclick="() => Reply(row)">Trả lời</button>
+                        </fieldset>
+                    </div>
+                    @if (_editingId == row.Id)
+                    {
+                        <div class="mt-4 border-t border-[#D8D1CD] pt-4">
+                            <label class="block text-xs font-semibold">@(_editorAction == "reject" ? "Lý do từ chối" : "Nội dung trả lời")
+                                <textarea class="mt-1 block w-full rounded-lg border border-[#D8D1CD] px-3 py-2 text-sm" rows="3" maxlength="1000" @bind="_editorText"></textarea>
+                            </label>
+                            <div class="mt-2 flex gap-2">
+                                <button type="button" class="rounded-lg bg-[#B83A3A] px-3 py-2 text-xs font-bold text-white" disabled="@Busy" @onclick="() => SubmitEditorAsync(row)">Lưu</button>
+                                <button type="button" class="rounded-lg border px-3 py-2 text-xs font-bold" @onclick="CancelEditor">Hủy</button>
+                            </div>
+                        </div>
+                    }
+                </article>
+            }
+        </div>
+    }
+    else
+    {
+        <p>Không có phản hồi phù hợp.</p>
+    }
+</div>
+
+@code {
+    private readonly CancellationTokenSource _lifetime = new();
+    private PagedResponse<FeedbackResponse>? _page;
+    private string _search = "", _status = "";
+    private int? _editingId;
+    private string _editorAction = "", _editorText = "";
+    private string? _notice, _error;
+    private bool _loading, _working;
+    private bool Busy => _loading || _working;
+
+    protected override Task OnInitializedAsync() => LoadAsync(1);
+
+    private async Task LoadAsync(int page)
+    {
+        _loading = true;
+        try
+        {
+            _page = await Api.GetFeedbackAsync(new(
+                string.IsNullOrWhiteSpace(_search) ? null : _search.Trim(),
+                string.IsNullOrWhiteSpace(_status) ? null : _status,
+                null, page, 20), _lifetime.Token);
+        }
+        catch (AuthApiException error) { _error = error.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task ApproveAsync(FeedbackResponse row) =>
+        await RunAsync(async () => { await Api.ApproveFeedbackAsync(row.Id, _lifetime.Token); _notice = "Đã duyệt phản hồi."; await LoadAsync(1); });
+
+    private void Reject(FeedbackResponse row)
+    {
+        _editingId = row.Id;
+        _editorAction = "reject";
+        _editorText = "";
+        _error = null;
+    }
+
+    private void Reply(FeedbackResponse row)
+    {
+        _editingId = row.Id;
+        _editorAction = "reply";
+        _editorText = row.ManagerReply ?? "";
+        _error = null;
+    }
+
+    private async Task ToggleAsync(FeedbackResponse row) =>
+        await RunAsync(async () => { await Api.SetFeedbackVisibilityAsync(row.Id, !row.IsVisible, _lifetime.Token); _notice = "Đã cập nhật hiển thị."; await LoadAsync(1); });
+
+    private void CancelEditor()
+    {
+        _editingId = null;
+        _editorAction = "";
+        _editorText = "";
+    }
+
+    private async Task SubmitEditorAsync(FeedbackResponse row)
+    {
+        if (string.IsNullOrWhiteSpace(_editorText))
+        {
+            _error = _editorAction == "reject" ? "Vui lòng nhập lý do từ chối." : "Vui lòng nhập nội dung trả lời.";
+            return;
+        }
+        await RunAsync(async () =>
+        {
+            var request = new FeedbackReplyRequest(_editorText.Trim());
+            if (_editorAction == "reject")
+            {
+                await Api.RejectFeedbackAsync(row.Id, request, _lifetime.Token);
+                _notice = "Đã từ chối phản hồi.";
+            }
+            else
+            {
+                await Api.ReplyFeedbackAsync(row.Id, request, _lifetime.Token);
+                _notice = "Đã gửi phản hồi.";
+            }
+            CancelEditor();
+            await LoadAsync(1);
+        });
+    }
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        _working = true; _notice = _error = null;
+        try { await action(); }
+        catch (AuthApiException error) { _error = error.Message; }
+        finally { _working = false; }
+    }
+
+    private static string Stars(int rating) =>
+        new string('★', rating) + new string('☆', 5 - rating);
+
+    public void Dispose() { _lifetime.Cancel(); _lifetime.Dispose(); }
+}

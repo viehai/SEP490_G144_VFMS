@@ -27,7 +27,7 @@ public sealed class SupplementProductsController : ControllerBase
         _service = service;
     }
 
-    /// <summary>Store list (Active and OutOfStock), filtered by keyword and category.</summary>
+    /// <summary>Store list (Active and OutOfStock), filtered by keyword, category, brand and price range, with a sort.</summary>
     [HttpGet]
     [Authorize(Roles = StoreRoles)]
     [ProducesResponseType(typeof(PagedResponse<SupplementProductResponse>), 200)]
@@ -40,6 +40,16 @@ public sealed class SupplementProductsController : ControllerBase
     [ProducesResponseType(typeof(IReadOnlyList<string>), 200)]
     public async Task<IActionResult> GetCategories(CancellationToken cancellationToken) =>
         this.ToActionResult(await _service.GetCategoriesAsync(!IsManager, cancellationToken));
+
+    /// <summary>
+    /// Brands in use, for the brand filter. The store only lists brands with a product on sale
+    /// (Active or OutOfStock), so a brand whose products are all Inactive does not appear.
+    /// </summary>
+    [HttpGet("brands")]
+    [Authorize(Roles = ViewRoles)]
+    [ProducesResponseType(typeof(IReadOnlyList<string>), 200)]
+    public async Task<IActionResult> GetBrands(CancellationToken cancellationToken) =>
+        this.ToActionResult(await _service.GetBrandsAsync(!IsManager, cancellationToken));
 
     /// <summary>Manager list with every status.</summary>
     [HttpGet("manage")]

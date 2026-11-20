@@ -2,6 +2,7 @@
 @layout ManagerAdminLayout
 @using Microsoft.AspNetCore.Authorization
 @using VFMS.Client.Components.Operations
+@using VFMS.Client.Services
 @using VFMS.Contracts.Common
 @using VFMS.Contracts.Supplements
 @using VFMS.Contracts.Supplements.Validators
@@ -21,7 +22,7 @@
     @if (_formOpen)
     {
         <section class="@Ui.Card" aria-labelledby="product-form-title">
-            <h2 id="product-form-title" class="text-base font-bold text-[#242424]">@(_editingId is null ? "Thêm sản phẩm" : "Sửa sản phẩm")</h2>
+            <h2 id="product-form-title" class="text-base font-bold text-vfms-text">@(_editingId is null ? "Thêm sản phẩm" : "Sửa sản phẩm")</h2>
             <EditForm Model="_form" OnValidSubmit="SaveAsync" class="mt-4" novalidate>
                 <OperationsValidation TRequest="SupplementProductRequest" Validator="_validator" CreateRequest="CreateRequest" @ref="_validation" />
                 <ValidationSummary />
@@ -29,22 +30,42 @@
                     <label class="@Ui.Label sm:col-span-2" for="product-name">Tên sản phẩm
                         <InputText id="product-name" class="@Ui.Field" @bind-Value="_form.Name" maxlength="200" required />
                     </label>
-                    <div class="row-span-3 flex items-start justify-center">
-                        @if (!string.IsNullOrWhiteSpace(_form.ImageUrl))
+                    <div class="row-span-5 flex items-start justify-center">
+                        @if (!string.IsNullOrWhiteSpace(_form.ImageUrl) && _brokenPreview != _form.ImageUrl)
                         {
-                            <img src="@_form.ImageUrl" alt="Ảnh xem trước" class="h-36 w-36 rounded-lg border border-[#D8D1CD] object-cover" />
+                            <img src="@_form.ImageUrl" alt="Ảnh xem trước" class="h-36 w-36 rounded-lg border border-vfms-border object-contain bg-white" @onerror="() => _brokenPreview = _form.ImageUrl" />
                         }
                         else
                         {
-                            <div class="flex h-36 w-36 items-center justify-center rounded-lg border border-dashed border-[#D8D1CD] text-xs text-[#8C8581]">Chưa có ảnh</div>
+                            <div class="flex h-36 w-36 items-center justify-center rounded-lg border border-dashed border-vfms-border px-3 text-center text-xs text-vfms-text-muted">@(string.IsNullOrWhiteSpace(_form.ImageUrl) ? "Chưa có ảnh" : "Không tải được ảnh từ link này")</div>
                         }
                     </div>
-                    <label class="@Ui.Label" for="product-category">Danh mục
-                        <InputText id="product-category" class="@Ui.Field" @bind-Value="_form.Category" list="product-categories" maxlength="100" />
-                        <datalist id="product-categories">@foreach (var category in _categories) { <option value="@category"></option> }</datalist>
+                    <label class="@Ui.Label" for="product-brand">Thương hiệu
+                        <InputSelect id="product-brand" class="@Ui.Field" @bind-Value="_form.Brand">
+                            <option value="">Chọn thương hiệu</option>
+                            @foreach (var brand in SupplementCatalog.WithCurrent(SupplementCatalog.Brands, _form.Brand)) { <option value="@brand">@brand</option> }
+                        </InputSelect>
+                    </label>
+                    <label class="@Ui.Label" for="product-category">Loại sản phẩm
+                        <InputSelect id="product-category" class="@Ui.Field" @bind-Value="_form.Category" aria-describedby="product-category-hint">
+                            <option value="">Chọn loại</option>
+                            @foreach (var type in SupplementCatalog.WithCurrent(SupplementCatalog.TypeNames, _form.Category)) { <option value="@type">@type</option> }
+                        </InputSelect>
+                        <span id="product-category-hint" class="mt-1 block text-xs font-normal normal-case tracking-normal text-vfms-text-secondary">@SupplementCatalog.HintOf(_form.Category)</span>
+                    </label>
+                    <label class="@Ui.Label" for="product-size">Quy cách
+                        <InputText id="product-size" class="@Ui.Field" @bind-Value="_form.Size" maxlength="50" placeholder="VD: 5 lbs (2.27 kg), 120 viên" />
+                    </label>
+                    <label class="@Ui.Label" for="product-flavour">Hương vị
+                        <InputText id="product-flavour" class="@Ui.Field" @bind-Value="_form.Flavour" maxlength="100" placeholder="VD: Double Rich Chocolate" />
                     </label>
                     <label class="@Ui.Label" for="product-price">Giá bán (₫)
                         <InputNumber id="product-price" class="@Ui.Field" @bind-Value="_form.UnitPrice" min="1" step="1000" />
+                    </label>
+                    <label class="@Ui.Label" for="product-status">Trạng thái
+                        <InputSelect id="product-status" class="@Ui.Field" @bind-Value="_form.Status">
+                            @foreach (var status in OperationsText.ProductStatuses) { <option value="@status">@OperationsText.Label(status)</option> }
+                        </InputSelect>
                     </label>
                     <label class="@Ui.Label sm:col-span-2" for="product-image">Link ảnh (png, jpg, jpeg)
                         <InputText id="product-image" class="@Ui.Field" @bind-Value="_form.ImageUrl" placeholder="https://.../anh.jpg" />
@@ -52,12 +73,7 @@
                     <label class="@Ui.Label sm:col-span-3" for="product-description">Mô tả
                         <InputTextArea id="product-description" class="@Ui.Field" rows="3" @bind-Value="_form.Description" maxlength="2000" />
                     </label>
-                    <label class="@Ui.Label" for="product-status">Trạng thái
-                        <InputSelect id="product-status" class="@Ui.Field" @bind-Value="_form.Status">
-                            @foreach (var status in OperationsText.ProductStatuses) { <option value="@status">@OperationsText.Label(status)</option> }
-                        </InputSelect>
-                    </label>
-                    <div class="flex flex-wrap items-end gap-3 sm:col-span-2">
+                    <div class="flex flex-wrap items-end gap-3 sm:col-span-3">
                         <button type="submit" class="@Ui.PrimaryButton">@(_working ? "Đang lưu..." : "Lưu sản phẩm")</button>
                         <button type="button" class="@Ui.Button" @onclick="() => _formOpen = false">Hủy</button>
                     </div>
@@ -68,17 +84,29 @@
 
     <section class="@Ui.ListCard" aria-labelledby="product-list-title" aria-busy="@_loading">
         <div class="@Ui.ListHeader">
-            <h2 id="product-list-title" class="mb-3 text-sm font-bold text-[#242424]">Sản phẩm</h2>
+            <h2 id="product-list-title" class="mb-3 text-sm font-bold text-vfms-text">Sản phẩm</h2>
             <form @onsubmit="() => LoadAsync(1)" @onsubmit:preventDefault>
                 <fieldset disabled="@Busy" class="flex flex-wrap items-end gap-3">
                     <label class="@Ui.Label w-full sm:w-64" for="product-search">Tìm kiếm
                         <input id="product-search" type="search" class="@Ui.Field" @bind="_search" maxlength="100" />
                     </label>
-                    <label class="@Ui.Label" for="product-filter-category">Danh mục
+                    <label class="@Ui.Label" for="product-filter-brand">Thương hiệu
+                        <select id="product-filter-brand" class="@Ui.Field" @bind="_filterBrand">
+                            <option value="">Tất cả</option>
+                            @foreach (var brand in _brands) { <option value="@brand">@brand</option> }
+                        </select>
+                    </label>
+                    <label class="@Ui.Label" for="product-filter-category">Loại
                         <select id="product-filter-category" class="@Ui.Field" @bind="_filterCategory">
                             <option value="">Tất cả</option>
                             @foreach (var category in _categories) { <option value="@category">@category</option> }
                         </select>
+                    </label>
+                    <label class="@Ui.Label w-32" for="product-filter-min">Giá từ (₫)
+                        <input id="product-filter-min" type="number" class="@Ui.Field" min="0" step="10000" @bind="_minPrice" placeholder="0" />
+                    </label>
+                    <label class="@Ui.Label w-32" for="product-filter-max">Đến (₫)
+                        <input id="product-filter-max" type="number" class="@Ui.Field" min="0" step="10000" @bind="_maxPrice" placeholder="Tối đa" />
                     </label>
                     <label class="@Ui.Label" for="product-filter-status">Trạng thái
                         <select id="product-filter-status" class="@Ui.Field" @bind="_filterStatus">
@@ -86,8 +114,21 @@
                             @foreach (var status in OperationsText.ProductStatuses) { <option value="@status">@OperationsText.Label(status)</option> }
                         </select>
                     </label>
+                    <label class="@Ui.Label" for="product-sort">Sắp xếp
+                        <select id="product-sort" class="@Ui.Field" @bind="_sort">
+                            @foreach (var (value, label) in Sorts) { <option value="@value">@label</option> }
+                        </select>
+                    </label>
                     <button type="submit" class="@Ui.Button">Áp dụng</button>
+                    @if (HasFilters)
+                    {
+                        <button type="button" class="text-xs font-semibold text-vfms-primary underline-offset-2 hover:underline" @onclick="ClearFiltersAsync">Xóa bộ lọc</button>
+                    }
                 </fieldset>
+                @if (_priceError is not null)
+                {
+                    <p role="alert" class="mt-2 text-xs font-semibold text-vfms-error">@_priceError</p>
+                }
             </form>
         </div>
         @if (_loading)
@@ -97,9 +138,9 @@
         else if (_page is { Items.Count: > 0 } list)
         {
             <div class="overflow-x-auto">
-                <table class="workspace-table min-w-[860px]">
+                <table class="workspace-table min-w-[960px]">
                     <thead>
-                        <tr><th scope="col">Sản phẩm</th><th scope="col">Danh mục</th><th scope="col" class="text-right">Giá bán</th><th scope="col">Trạng thái</th><th scope="col">Thao tác</th></tr>
+                        <tr><th scope="col">Sản phẩm</th><th scope="col">Thương hiệu</th><th scope="col">Loại</th><th scope="col" class="text-right">Giá bán</th><th scope="col">Trạng thái</th><th scope="col">Thao tác</th></tr>
                     </thead>
                     <tbody>
                         @foreach (var row in list.Items)
@@ -107,17 +148,31 @@
                             <tr @key="row.Id">
                                 <th scope="row">
                                     <div class="flex items-center gap-3">
-                                        @if (row.ImageUrl is { } image) { <img src="@image" alt="" class="h-10 w-10 flex-none rounded-md border border-[#D8D1CD] object-cover" loading="lazy" /> }
-                                        <span class="font-semibold">@row.Name</span>
+                                        @if (row.ImageUrl is { } image && !_brokenImages.Contains(row.Id))
+                                        {
+                                            <img src="@image" alt="" class="h-10 w-10 flex-none rounded-md border border-vfms-border bg-white object-contain" loading="lazy" @onerror="() => _brokenImages.Add(row.Id)" />
+                                        }
+                                        else
+                                        {
+                                            <span class="h-10 w-10 flex-none rounded-md border border-dashed border-vfms-border bg-vfms-surface-alt" aria-hidden="true"></span>
+                                        }
+                                        <div class="min-w-0">
+                                            <span class="block font-semibold">@row.Name</span>
+                                            @if (Details(row) is { Length: > 0 } details)
+                                            {
+                                                <span class="block text-xs font-normal text-vfms-text-secondary">@details</span>
+                                            }
+                                        </div>
                                     </div>
                                 </th>
+                                <td>@(row.Brand ?? "—")</td>
                                 <td>@(row.Category ?? "—")</td>
                                 <td class="text-right whitespace-nowrap">@OperationsText.Money(row.UnitPrice)</td>
                                 <td><span class="@OperationsText.Badge(row.Status)">@OperationsText.Label(row.Status)</span></td>
                                 <td>
-                                    <div class="flex flex-wrap items-center gap-2">
+                                    <div class="flex flex-nowrap whitespace-nowrap items-center gap-2">
                                         <button type="button" class="@Ui.Button" disabled="@Busy" aria-label="Sửa @row.Name" @onclick="() => StartEdit(row)">Sửa</button>
-                                        <select class="rounded-lg border border-[#D8D1CD] bg-[#F8F5F2] px-2 py-1.5 text-xs font-semibold text-[#242424]" disabled="@Busy"
+                                        <select class="rounded-lg border border-vfms-border bg-vfms-surface px-2 py-1.5 text-xs font-semibold text-vfms-text" disabled="@Busy"
                                                 aria-label="Đổi trạng thái @row.Name" value="@row.Status" @onchange="args => ChangeStatusAsync(row, args.Value?.ToString())">
                                             @foreach (var status in OperationsText.ProductStatuses) { <option value="@status">@OperationsText.Label(status)</option> }
                                         </select>
@@ -132,7 +187,7 @@
         }
         else
         {
-            <p role="status" class="p-5 text-sm text-[#6F6966]">Chưa có sản phẩm phù hợp.</p>
+            <p role="status" class="p-5 text-sm text-vfms-text-secondary">Chưa có sản phẩm phù hợp.</p>
         }
     </section>
 </div>
@@ -144,8 +199,23 @@
     private readonly SupplementProductRequestValidator _validator = new();
     private OperationsValidation<SupplementProductRequest>? _validation;
     private PagedResponse<SupplementProductResponse>? _page;
+    private static readonly (string Value, string Label)[] Sorts =
+    [
+        ("name", "Tên A → Z"),
+        ("price_asc", "Giá thấp → cao"),
+        ("price_desc", "Giá cao → thấp"),
+        ("newest", "Mới thêm"),
+    ];
     private List<string> _categories = [];
+    private List<string> _brands = [];
+    private string _filterBrand = "", _sort = "name";
+    private decimal? _minPrice, _maxPrice;
+    private string? _priceError;
+    private bool HasFilters => !string.IsNullOrWhiteSpace(_search) || _filterBrand != "" || _filterCategory != "" || _filterStatus != ""
+        || _minPrice.HasValue || _maxPrice.HasValue || _sort != "name";
     private int? _editingId;
+    private string? _brokenPreview;
+    private readonly HashSet<int> _brokenImages = [];
     private string _search = "", _filterCategory = "", _filterStatus = "";
     private string? _notice, _error;
     private bool _formOpen, _loading, _working;
@@ -158,22 +228,49 @@
     }
 
     private SupplementProductRequest CreateRequest() => new(_form.Name.Trim(), _form.Description.Trim(), _form.ImageUrl.Trim(),
-        _form.UnitPrice, string.IsNullOrWhiteSpace(_form.Category) ? null : _form.Category.Trim(), _form.Status);
+        _form.UnitPrice, Blank(_form.Category), _form.Status,
+        Brand: Blank(_form.Brand), Size: Blank(_form.Size), Flavour: Blank(_form.Flavour));
 
-    private static string? Blank(string value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    /// <summary>Size and flavour under the product name, e.g. "5 lbs · Double Rich Chocolate".</summary>
+    private static string Details(SupplementProductResponse row) =>
+        string.Join(" · ", new[] { row.Size, row.Flavour }.Where(v => !string.IsNullOrWhiteSpace(v)));
 
     private async Task LoadAsync(int page)
     {
+        _priceError = _minPrice > _maxPrice ? "Giá \"từ\" phải nhỏ hơn hoặc bằng giá \"đến\"." : null;
+        if (_priceError is not null || _minPrice < 0 || _maxPrice < 0)
+        {
+            _priceError ??= "Giá không được âm.";
+            return;
+        }
         _loading = true;
-        try { _page = await Api.GetProductsAsync(new(Blank(_search), Blank(_filterCategory), Blank(_filterStatus), page, PageSize), manage: true, _lifetime.Token); }
+        try
+        {
+            _page = await Api.GetProductsAsync(new(Blank(_search), Blank(_filterCategory), Blank(_filterStatus), page, PageSize,
+                Brand: Blank(_filterBrand), MinPrice: _minPrice, MaxPrice: _maxPrice, Sort: _sort), manage: true, _lifetime.Token);
+        }
         catch (AuthApiException error) { _error = error.Message; }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
         finally { _loading = false; }
     }
 
+    private async Task ClearFiltersAsync()
+    {
+        _search = _filterBrand = _filterCategory = _filterStatus = "";
+        _minPrice = _maxPrice = null;
+        _sort = "name";
+        await LoadAsync(1);
+    }
+
     private async Task LoadCategoriesAsync()
     {
-        try { _categories = await Api.GetProductCategoriesAsync(_lifetime.Token); }
+        try
+        {
+            _categories = await Api.GetProductCategoriesAsync(_lifetime.Token);
+            _brands = await Api.GetProductBrandsAsync(_lifetime.Token);
+        }
         catch (AuthApiException error) { _error = error.Message; }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
     }
@@ -182,7 +279,7 @@
     {
         _editingId = null;
         _form.Name = _form.Description = _form.ImageUrl = "";
-        _form.Category = null;
+        _form.Category = _form.Brand = _form.Size = _form.Flavour = null;
         _form.UnitPrice = 0;
         _form.Status = "Active";
         _formOpen = true;
@@ -195,6 +292,9 @@
         _form.Description = product.Description ?? "";
         _form.ImageUrl = product.ImageUrl ?? "";
         _form.Category = product.Category;
+        _form.Brand = product.Brand;
+        _form.Size = product.Size;
+        _form.Flavour = product.Flavour;
         _form.UnitPrice = product.UnitPrice;
         _form.Status = product.Status;
         _formOpen = true;
@@ -252,6 +352,9 @@
         public string Description { get; set; } = "";
         public string ImageUrl { get; set; } = "";
         public string? Category { get; set; }
+        public string? Brand { get; set; }
+        public string? Size { get; set; }
+        public string? Flavour { get; set; }
         public decimal UnitPrice { get; set; }
         public string Status { get; set; } = "Active";
     }

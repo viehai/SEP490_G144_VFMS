@@ -24,10 +24,10 @@ public sealed class EquipmentIssuesController : ControllerBase
         _service = service;
     }
 
-    // ── Member ───────────────────────────────────────────────────
+    // ── Member and Staff (UC-71) ─────────────────────────────────
 
     [HttpPost]
-    [Authorize(Roles = "Member")]
+    [Authorize(Roles = "Member,Staff")]
     [ProducesResponseType(typeof(EquipmentIssueResponse), 201)]
     [ProducesResponseType(400)]
     [ProducesResponseType(404)]

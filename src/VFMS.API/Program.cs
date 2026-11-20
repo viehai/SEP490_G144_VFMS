@@ -26,8 +26,11 @@ using Microsoft.AspNetCore.RateLimiting;
 var builder = WebApplication.CreateBuilder(args);
 
 // ── Database ──────────────────────────────────────────────────
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? throw new InvalidOperationException("ConnectionStrings:DefaultConnection is not configured.");
+
 builder.Services.AddDbContext<VfmsDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseSqlServer(connectionString));
 
 // ── FluentValidation ─────────────────────────────────────────
 builder.Services.AddFluentValidationAutoValidation();
@@ -45,6 +48,7 @@ builder.Services.AddScoped<IUserAdministrationService, UserAdministrationService
 builder.Services.AddSystemAdministrationModule();
 builder.Services.AddEquipmentModule();
 builder.Services.AddSupplementModule();
+builder.Services.AddCompetitionModule();
 builder.Services.AddDataProtection();
 builder.Services.AddScoped<ITrainerStore, TrainerStore>();
 builder.Services.AddScoped<TrainerService>();
@@ -72,6 +76,8 @@ builder.Services.AddMembershipFreezeRequestModule();
 builder.Services.AddMembershipFreezeReviewModule();
 builder.Services.AddMembershipFreezeLifecycleModule();
 builder.Services.AddPromotionModule();
+builder.Services.AddFeedbackModule();
+builder.Services.AddConsultationModule();
 
 var mapsterConfig = new TypeAdapterConfig();
 mapsterConfig.Scan(typeof(UserAdministrationMapping).Assembly);

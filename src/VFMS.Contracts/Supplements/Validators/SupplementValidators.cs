@@ -8,6 +8,7 @@ internal static class SupplementRules
     public static readonly string[] OrderStatuses =
         ["Pending", "Processing", "ReadyForPickup", "OutForDelivery", "Completed", "Cancelled"];
     public static readonly string[] FulfillmentTypes = ["GymPickup", "HomeDelivery"];
+    public static readonly string[] ProductSorts = ["name", "price_asc", "price_desc", "newest"];
     private static readonly string[] ImageExtensions = [".png", ".jpg", ".jpeg"];
 
     public static bool IsOneOf(string? value, string[] allowed) =>
@@ -46,6 +47,9 @@ public sealed class SupplementProductRequestValidator : AbstractValidator<Supple
         RuleFor(x => x.UnitPrice).InclusiveBetween(1m, 1_000_000_000m)
             .WithMessage("Unit price must be at least 1 VND.");
         RuleFor(x => x.Category).MaximumLength(100);
+        RuleFor(x => x.Brand).MaximumLength(100);
+        RuleFor(x => x.Size).MaximumLength(50);
+        RuleFor(x => x.Flavour).MaximumLength(100);
         RuleFor(x => x.Status)
             .Must(s => SupplementRules.IsOneOf(s, SupplementRules.ProductStatuses))
             .WithMessage("Status must be Active, Inactive or OutOfStock.");
@@ -71,6 +75,17 @@ public sealed class SupplementProductListRequestValidator : AbstractValidator<Su
         RuleFor(x => x.Status)
             .Must(s => SupplementRules.IsBlankOrOneOf(s, SupplementRules.ProductStatuses))
             .WithMessage("Status filter is invalid.");
+        RuleFor(x => x.Brand).MaximumLength(100);
+        RuleFor(x => x.MinPrice).GreaterThanOrEqualTo(0).When(x => x.MinPrice.HasValue);
+        RuleFor(x => x.MaxPrice).GreaterThanOrEqualTo(0).When(x => x.MaxPrice.HasValue);
+        RuleFor(x => x)
+            .Must(x => x.MinPrice <= x.MaxPrice)
+            .When(x => x.MinPrice.HasValue && x.MaxPrice.HasValue)
+            .WithName("MaxPrice")
+            .WithMessage("Maximum price must not be less than the minimum price.");
+        RuleFor(x => x.Sort)
+            .Must(s => SupplementRules.IsBlankOrOneOf(s, SupplementRules.ProductSorts))
+            .WithMessage("Sort must be name, price_asc, price_desc or newest.");
         RuleFor(x => x.Page).InclusiveBetween(1, 1_000_000);
         RuleFor(x => x.PageSize).InclusiveBetween(1, 100);
     }
