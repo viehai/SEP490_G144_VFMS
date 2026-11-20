@@ -53,12 +53,20 @@
                                  class="@MyMembershipsClass">
                             Cửa hàng
                         </NavLink>
+                        <NavLink href="/consultations" Match="NavLinkMatch.All" ActiveClass="text-[#B83A3A] underline underline-offset-4"
+                                 class="@MyMembershipsClass">
+                            Trò chuyện
+                        </NavLink>
                     }
                     @if (auth.User.IsInRole("Member"))
                     {
                         <NavLink href="/equipment-issues" Match="NavLinkMatch.All" ActiveClass="text-[#B83A3A] underline underline-offset-4"
                                  class="@MyMembershipsClass">
                             Báo hỏng
+                        </NavLink>
+                        <NavLink href="/gym-review" Match="NavLinkMatch.All" ActiveClass="text-[#B83A3A] underline underline-offset-4"
+                                 class="@MyMembershipsClass">
+                            Đánh giá
                         </NavLink>
                     }
                     <NavLink href="/profile" Match="NavLinkMatch.All" ActiveClass="text-[#B83A3A] underline underline-offset-4"
