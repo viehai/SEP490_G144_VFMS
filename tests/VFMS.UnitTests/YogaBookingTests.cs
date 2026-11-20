@@ -39,6 +39,19 @@ public sealed class YogaBookingTests
     };
 
     [Fact]
+    public async Task ClassOfAnInactiveInstructorCannotBeBooked()
+    {
+        var (repo, service, yogaClass) = Setup();
+        repo.InstructorActive = false;
+
+        var booking = await service.BookAsync("m1", new YogaBookingRequest(1));
+        var mats = await service.GetMatMapAsync(1);
+
+        Assert.Equal((404, 404), (booking.StatusCode, mats.StatusCode));
+        Assert.Empty(yogaClass.Bookings);
+    }
+
+    [Fact]
     public async Task BookingTakesAMatAndTheLastSeatMakesTheClassFull()   // GBR-79, GBR-80, MSG-32, MSG-33
     {
         var (repo, service, yogaClass) = Setup();
@@ -306,6 +319,7 @@ public sealed class YogaBookingTests
     private sealed class Fake : IYogaBookingRepository
     {
         public YogaClass? Class { get; set; }
+        public bool InstructorActive { get; set; } = true;
         public List<MemberMembership> Memberships { get; } = [];
         public List<DateTime> NoShows { get; } = [];
         public List<YogaWaitlist> Waitlist { get; } = [];
@@ -326,6 +340,8 @@ public sealed class YogaBookingTests
         public Task<YogaClass?> GetClassAsync(int classId, CancellationToken cancellationToken = default) =>
             Task.FromResult(Class?.Id == classId ? Class : null);
         public Task LockClassAsync(int classId, CancellationToken cancellationToken = default) { LockCount++; return Task.CompletedTask; }
+        public Task<bool> IsActiveInstructorAsync(string userId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(InstructorActive && userId == Class?.InstructorUserId);
         public Task<IReadOnlyList<MemberMembership>> GetMembershipsAsync(string userId, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<MemberMembership>>(Memberships.Where(m => m.MemberUserId == userId).ToList());
         public Task<IReadOnlyList<DateTime>> GetNoShowTimesAsync(string userId, DateTime sinceUtc, CancellationToken cancellationToken = default) =>

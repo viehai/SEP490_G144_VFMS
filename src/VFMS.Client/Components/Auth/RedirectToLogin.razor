@@ -1,0 +1,12 @@
+@* Sends a signed-out visitor of a protected page to the login page, which returns them here afterwards. *@
+@inject NavigationManager Navigation
+
+<p role="status" class="px-5 pb-16 pt-32 text-center text-sm text-[#6F6966]">Đang chuyển đến trang đăng nhập…</p>
+
+@code {
+    protected override void OnInitialized() => Navigation.NavigateTo(LoginUrl(Navigation), replace: true);
+
+    /// <summary>The login URL with this page as returnUrl; Login only follows local return URLs (AuthNavigation).</summary>
+    public static string LoginUrl(NavigationManager navigation) =>
+        $"/auth/login?returnUrl={Uri.EscapeDataString("/" + navigation.ToBaseRelativePath(navigation.Uri))}";
+}

@@ -1,25 +1,29 @@
 @page "/face-id"
 @layout PublicLayout
+@attribute [Authorize(Roles = "Customer,Member")]
+@using Microsoft.AspNetCore.Authorization
 @using VFMS.Contracts.CheckIn
 @inject VfmsApiClient Api
 @inject IJSRuntime JS
+@using Microsoft.Extensions.Logging
+@inject ILogger<FaceProfile> Log
 @implements IAsyncDisposable
 
 <PageTitle>FaceID | Victor Fitness</PageTitle>
 
-<div class="mx-auto max-w-4xl space-y-8 px-4 py-28 font-['Inter',sans-serif] text-[#252525] sm:px-6">
-    <header class="border-b-2 border-black pb-7">
-        <p class="mb-3 text-[10px] font-bold tracking-[.18em] text-neutral-500">TÀI KHOẢN / FACEID</p>
-        <h1 class="font-['Montserrat'] text-3xl font-extrabold uppercase tracking-tight sm:text-4xl">Nhận diện khuôn mặt<span class="text-neutral-400">.</span></h1>
-        <p class="mt-3 max-w-2xl text-sm leading-6 text-neutral-600">Đăng ký khuôn mặt để check-in tại Kiosk mà không cần điện thoại.</p>
+<div class="mx-auto max-w-4xl space-y-8 px-4 py-28 font-['Inter',sans-serif] text-[#242424] sm:px-6">
+    <header class="border-b border-[#D8D1CD] pb-7">
+        <p class="mb-3 text-[10px] font-bold tracking-[.18em] text-[#B83A3A]">TÀI KHOẢN / FACEID</p>
+        <h1 class="font-['Montserrat'] text-3xl font-extrabold uppercase tracking-tight sm:text-4xl">Nhận diện khuôn mặt<span class="text-[#B83A3A]">.</span></h1>
+        <p class="mt-3 max-w-2xl text-sm leading-6 text-[#6F6966]">Đăng ký khuôn mặt để check-in tại Kiosk mà không cần điện thoại.</p>
     </header>
 
     @if (_message is not null)
     {
-        <p role="status" class="border-2 px-4 py-3 text-sm rounded-none @(_isError ? "border-[#EF4444] bg-red-50 text-[#B91C1C]" : "border-[#10B981] bg-emerald-50 text-[#047857]")">@_message</p>
+        <p role="status" class="border px-4 py-3 text-sm rounded-lg @(_isError ? "border-[#EF4444] bg-red-50 text-[#B91C1C]" : "border-[#10B981] bg-emerald-50 text-[#047857]")">@_message</p>
     }
 
-    <section class="border-2 border-black bg-white p-6 rounded-none">
+    <section class="border border-[#D8D1CD] bg-[#F8F5F2] p-6 rounded-xl">
         <div class="flex flex-wrap items-center justify-between gap-3">
             <p class="font-['Montserrat'] text-sm font-extrabold uppercase">Trạng thái</p>
             @if (_profile?.IsRegistered == true)
@@ -33,36 +37,36 @@
         </div>
         @if (_profile?.IsRegistered == true)
         {
-            <p class="mt-3 text-sm text-neutral-600">Đăng ký lúc @_profile.RegisteredAt?.ToLocalTime().ToString("dd/MM/yyyy HH:mm")@(_profile.LastUsedAt is { } used ? $" · dùng gần nhất {used.ToLocalTime():dd/MM/yyyy HH:mm}" : "")</p>
-            <button type="button" disabled="@_busy" class="mt-4 border-2 border-[#EF4444] px-5 py-3 text-xs font-bold uppercase text-[#B91C1C] rounded-none" @onclick="Delete">Xóa dữ liệu khuôn mặt</button>
+            <p class="mt-3 text-sm text-[#6F6966]">Đăng ký lúc @_profile.RegisteredAt?.ToLocalTime().ToString("dd/MM/yyyy HH:mm")@(_profile.LastUsedAt is { } used ? $" · dùng gần nhất {used.ToLocalTime():dd/MM/yyyy HH:mm}" : "")</p>
+            <button type="button" disabled="@_busy" class="mt-4 border border-red-200 px-5 py-3 text-xs font-bold uppercase text-[#B91C1C] rounded-lg" @onclick="Delete">Xóa dữ liệu khuôn mặt</button>
         }
     </section>
 
-    <section class="space-y-4 border-2 border-black bg-white p-6 rounded-none">
+    <section class="space-y-4 border border-[#D8D1CD] bg-[#F8F5F2] p-6 rounded-xl">
         <h2 class="font-['Montserrat'] text-sm font-extrabold uppercase">@(_profile?.IsRegistered == true ? "Cập nhật khuôn mặt" : "Đăng ký khuôn mặt")</h2>
         <label class="flex items-start gap-2 text-xs leading-5">
             <input type="checkbox" class="mt-1" @bind="_consent" />
             <span>Tôi đồng ý cho Victor Fitness xử lý dữ liệu sinh trắc học khuôn mặt để check-in. Ảnh chỉ được xử lý trên thiết bị này; hệ thống chỉ lưu mẫu khuôn mặt đã mã hóa và xóa sau 90 ngày kể từ khi gói tập cuối cùng hết hạn.</span>
         </label>
-        <div class="relative aspect-[4/3] w-full max-w-md overflow-hidden border-2 border-black bg-[#0A0A0A] rounded-none">
+        <div class="relative aspect-[4/3] w-full max-w-md overflow-hidden border border-[#D8D1CD] bg-[#2B2928] rounded-lg">
             <video @ref="_video" class="h-full w-full -scale-x-100 object-cover" playsinline muted></video>
             @if (!_cameraOn)
             {
-                <p class="absolute inset-0 flex items-center justify-center p-6 text-center text-xs text-neutral-300">Camera đang tắt</p>
+                <p class="absolute inset-0 flex items-center justify-center p-6 text-center text-xs text-[#ECE8E4]">Camera đang tắt</p>
             }
         </div>
         <div class="flex flex-wrap gap-2">
             @if (!_cameraOn)
             {
-                <button type="button" disabled="@(!_consent || _busy)" class="bg-black px-6 py-3 text-xs font-bold uppercase text-white rounded-none disabled:opacity-40" @onclick="StartCamera">Bật camera</button>
+                <button type="button" disabled="@(!_consent || _busy)" class="bg-[#B83A3A] hover:bg-[#9F3030] px-6 py-3 text-xs font-bold uppercase text-white rounded-lg disabled:opacity-40" @onclick="StartCamera">Bật camera</button>
             }
             else
             {
-                <button type="button" disabled="@_busy" class="bg-black px-6 py-3 text-xs font-bold uppercase text-white rounded-none disabled:opacity-40" @onclick="Capture">@(_busy ? "Đang xử lý…" : "Chụp & lưu")</button>
-                <button type="button" class="border-2 border-black px-6 py-3 text-xs font-bold uppercase rounded-none" @onclick="StopCamera">Tắt camera</button>
+                <button type="button" disabled="@_busy" class="bg-[#B83A3A] hover:bg-[#9F3030] px-6 py-3 text-xs font-bold uppercase text-white rounded-lg disabled:opacity-40" @onclick="Capture">@(_busy ? "Đang xử lý…" : "Chụp & lưu")</button>
+                <button type="button" class="border border-[#D8D1CD] px-6 py-3 text-xs font-bold uppercase rounded-lg" @onclick="StopCamera">Tắt camera</button>
             }
         </div>
-        <p class="text-xs text-neutral-500">Nhìn thẳng vào camera, đủ sáng, không đeo khẩu trang hay kính râm.</p>
+        <p class="text-xs text-[#6F6966]">Nhìn thẳng vào camera, đủ sáng, không đeo khẩu trang hay kính râm.</p>
     </section>
 </div>
 
@@ -87,7 +91,7 @@
             _cameraOn = await JS.InvokeAsync<bool>("vfmsFace.start", _video);
             _message = null;
         }
-        catch (JSException) { Show("Không mở được camera hoặc tải mô hình nhận diện. Hãy cấp quyền camera và thử lại.", true); }
+        catch (JSException ex) { Log.LogWarning(ex, "FaceProfile: vfmsFace.start (face-capture.js) failed"); Show("Không mở được camera hoặc tải mô hình nhận diện. Hãy cấp quyền camera và thử lại.", true); }
         finally { _busy = false; }
     }
 
@@ -107,7 +111,7 @@
             Show("Face profile updated successfully.", false);
         }
         catch (ApiException ex) { Show(ex.Message, true); }
-        catch (JSException) { Show("Không xử lý được ảnh. Vui lòng thử lại.", true); }
+        catch (JSException ex) { Log.LogWarning(ex, "FaceProfile: vfmsFace.capture (face-capture.js) failed"); Show("Không xử lý được ảnh. Vui lòng thử lại.", true); }
         finally { _busy = false; }
     }
 

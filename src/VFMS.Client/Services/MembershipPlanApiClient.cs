@@ -27,6 +27,8 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
             path += $"&search={Uri.EscapeDataString(request.Search.Trim())}";
         if (!string.IsNullOrWhiteSpace(request.Status))
             path += $"&status={Uri.EscapeDataString(request.Status)}";
+        if (!string.IsNullOrWhiteSpace(request.ServiceType))
+            path += $"&serviceType={Uri.EscapeDataString(request.ServiceType)}";
         return SendAsync<PagedResponse<MembershipPlanResponse>>(HttpMethod.Get, path, cancellationToken);
     }
 
@@ -53,9 +55,12 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
         MembershipFreezePolicyRequest request, CancellationToken cancellationToken = default) =>
         SendAsync<MembershipFreezePolicyResponse>(HttpMethod.Put, FreezePolicyPath, cancellationToken, JsonContent.Create(request));
 
-    public Task<PagedResponse<MembershipPlanCatalogItemResponse>> ListCatalogAsync(int page, CancellationToken cancellationToken = default) =>
+    public Task<PagedResponse<MembershipPlanCatalogItemResponse>> ListCatalogAsync(int page, CancellationToken cancellationToken = default,
+        string? serviceType = null) =>
         SendAsync<PagedResponse<MembershipPlanCatalogItemResponse>>(HttpMethod.Get,
-            FormattableString.Invariant($"api/membership-plans?page={page}&pageSize=9"), cancellationToken);
+            FormattableString.Invariant($"api/membership-plans?page={page}&pageSize=9") +
+            (string.IsNullOrWhiteSpace(serviceType) ? "" : $"&serviceType={Uri.EscapeDataString(serviceType)}"), cancellationToken,
+            allowAnonymous: true);   // the public price list on the home page
 
     /// <summary>
     /// Gọi public catalog endpoint GET /api/packages?type={type}&page={page}&pageSize={pageSize}.
@@ -242,12 +247,14 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
 
     private async Task<T> SendAsync<T>(
         HttpMethod method, string path, CancellationToken cancellationToken, HttpContent? content = null,
-        Func<HttpResponseMessage, CancellationToken, Task<T>>? readResponse = null)
+        Func<HttpResponseMessage, CancellationToken, Task<T>>? readResponse = null, bool allowAnonymous = false)
     {
         using var request = new HttpRequestMessage(method, path) { Content = content };
-        var token = await session.GetAccessTokenAsync()
-            ?? throw new AuthApiException("Vui lòng đăng nhập để tiếp tục.", HttpStatusCode.Unauthorized);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        var token = await session.GetAccessTokenAsync();
+        if (token is null && !allowAnonymous)
+            throw new AuthApiException("Vui lòng đăng nhập để tiếp tục.", HttpStatusCode.Unauthorized);
+        if (token is not null)
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         return readResponse is null ? await AuthApiClient.SendAsync<T>(http, request, cancellationToken)
             : await AuthApiClient.SendAsync(http, request, readResponse, cancellationToken);
     }

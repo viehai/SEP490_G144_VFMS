@@ -1,0 +1,204 @@
+@page "/yoga/my-bookings"
+@layout PublicLayout
+@attribute [Authorize(Roles = "Member")]
+@using Microsoft.AspNetCore.Authorization
+@using VFMS.Client.Components.Operations
+@using VFMS.Contracts.Yoga
+@inject VfmsApiClient Api
+
+<PageTitle>Lịch yoga của tôi | Victor Fitness</PageTitle>
+
+@* UC-40 View My Yoga Bookings, UC-39 Cancel Yoga Booking. *@
+<section class="mx-auto max-w-4xl space-y-6 px-5 pb-16 pt-28 font-['Inter',sans-serif] text-[#242424]" aria-labelledby="bookings-title">
+    <header class="flex flex-wrap items-end justify-between gap-4 border-b border-[#D8D1CD] pb-5">
+        <div class="space-y-2">
+            <p class="text-[10px] font-bold tracking-[.18em] text-[#B83A3A]">VICTOR FITNESS / YOGA</p>
+            <h1 id="bookings-title" class="font-['Montserrat',sans-serif] text-3xl font-black text-[#242424]">Lịch yoga của tôi</h1>
+            <p class="text-sm text-[#6F6966]">Lớp đã đặt, lịch sử tham gia và danh sách chờ.</p>
+        </div>
+        <a href="/yoga/schedule" class="text-sm font-semibold text-[#B83A3A] underline underline-offset-4">Xem thời khóa biểu →</a>
+    </header>
+
+    <Alerts Notice="@_notice" Error="@_error" />
+
+    <div class="flex flex-wrap gap-2" role="tablist" aria-label="Loại lịch">
+        @foreach (var (key, label) in Tabs)
+        {
+            <button type="button" role="tab" aria-selected="@(_tab == key)" class="@Tab(_tab == key)" @onclick="() => _tab = key">@label (@Count(key))</button>
+        }
+    </div>
+
+    @if (_loading)
+    {
+        <p role="status" class="text-sm text-[#6F6966]">Đang tải lịch yoga…</p>
+    }
+    else if (_data is not null)
+    {
+        @if (_tab == "upcoming")
+        {
+            @if (_data.Upcoming.Count == 0)
+            {
+                <p class="@Ui.Card text-sm text-[#6F6966]">Bạn chưa đặt lớp nào. <a href="/yoga/schedule" class="font-semibold text-[#B83A3A] underline">Đặt lớp yoga</a>.</p>
+            }
+            else
+            {
+                <ul class="space-y-3">
+                    @foreach (var b in _data.Upcoming)
+                    {
+                        <li @key="b.BookingId" class="@Ui.Card">
+                            <div class="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                    <p class="text-base font-bold">@b.ClassName</p>
+                                    <p class="text-xs text-[#6F6966]">Buổi tới: @b.NextDate.ToString("dddd dd/MM/yyyy") · @b.StartTime.ToString("HH:mm")–@b.EndTime.ToString("HH:mm") · @b.StudioName@(b.MatNumber is { } mat ? $" · thảm {mat}" : "")</p>
+                                </div>
+                                <StatusBadge Status="@b.Status" Label="Đã đặt" />
+                            </div>
+                            <div class="mt-3 flex flex-wrap items-center gap-2">
+                                @if (_confirmId == b.BookingId)
+                                {
+                                    <span class="text-sm text-[#242424]">Hủy đặt chỗ lớp này?</span>
+                                    <button type="button" class="@Ui.DangerButton" disabled="@_working" @onclick="() => Cancel(b, confirmLate: false)">Xác nhận hủy</button>
+                                    <button type="button" class="@Ui.Button" @onclick="() => _confirmId = null">Không</button>
+                                }
+                                else
+                                {
+                                    <button type="button" class="@Ui.DangerButton" disabled="@_working" @onclick="() => _confirmId = b.BookingId">Hủy đặt chỗ</button>
+                                }
+                            </div>
+                        </li>
+                    }
+                </ul>
+            }
+        }
+        else if (_tab == "past")
+        {
+            @if (_data.Past.Count == 0)
+            {
+                <p class="@Ui.Card text-sm text-[#6F6966]">Chưa có buổi nào đã qua.</p>
+            }
+            else
+            {
+                <div class="@Ui.ListCard">
+                    <ul class="divide-y divide-[#D8D1CD]">
+                        @foreach (var p in _data.Past)
+                        {
+                            <li @key="p.SessionId" class="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+                                <div>
+                                    <p class="font-semibold">@p.ClassName</p>
+                                    <p class="text-xs text-[#6F6966]">@p.Date.ToString("dd/MM/yyyy") · @p.StartTime.ToString("HH:mm") · @p.StudioName</p>
+                                </div>
+                                <StatusBadge Status="@(p.Result switch { "Attended" => "Attended", "No-show" => "NoShow", _ => "Inactive" })"
+                                             Label="@(p.Result switch { "Attended" => "Có mặt", "No-show" => "Vắng", _ => "Chưa điểm danh" })" />
+                            </li>
+                        }
+                    </ul>
+                </div>
+            }
+        }
+        else
+        {
+            @if (_data.Waitlist.Count == 0)
+            {
+                <p class="@Ui.Card text-sm text-[#6F6966]">Bạn không ở danh sách chờ lớp nào.</p>
+            }
+            else
+            {
+                <ul class="space-y-3">
+                    @foreach (var w in _data.Waitlist)
+                    {
+                        <li @key="w.YogaClassId" class="@Ui.Card flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                                <p class="font-semibold">@w.ClassName</p>
+                                <p class="text-xs text-[#6F6966]">Vị trí thứ @w.Position trong danh sách chờ</p>
+                            </div>
+                            @if (w.SeatOffered)
+                            {
+                                <a href="/yoga/schedule" class="@Ui.PrimaryButton">Có chỗ trống · Đặt ngay</a>
+                            }
+                            else
+                            {
+                                <StatusBadge Status="Waitlisted" Label="Đang chờ" />
+                            }
+                        </li>
+                    }
+                </ul>
+            }
+        }
+    }
+</section>
+
+@* GBR-83/84: a late cancel needs the member's explicit consent to the no-show penalty (MSG-34). *@
+@if (_late is { } late)
+{
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-[#252323]/50 p-4" role="alertdialog" aria-modal="true" aria-labelledby="late-title" aria-describedby="late-text">
+        <div class="@Ui.Card w-full max-w-md space-y-4">
+            <h2 id="late-title" class="font-['Montserrat'] text-lg font-extrabold text-[#242424]">Hủy muộn sẽ tính là vắng mặt</h2>
+            <div id="late-text" class="space-y-2 text-sm text-[#242424]">
+                <p>Buổi <b>@late.ClassName</b> bắt đầu lúc @late.StartTime.ToString("HH:mm") ngày @late.NextDate.ToString("dd/MM"), còn chưa đến 2 giờ.</p>
+                <p>Hủy lúc này được tính là <b>một lần vắng mặt</b>. Vắng 3 lần trong 30 ngày sẽ bị khóa đặt yoga 7 ngày.</p>
+            </div>
+            <div class="flex justify-end gap-2">
+                <button type="button" class="@Ui.Button" @onclick="KeepBooking">Giữ chỗ</button>
+                <button type="button" class="@Ui.DangerButton" disabled="@_working" @onclick="() => Cancel(late, confirmLate: true)">Vẫn hủy</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private static readonly (string Key, string Label)[] Tabs = [("upcoming", "Sắp tới"), ("past", "Đã qua"), ("waitlist", "Danh sách chờ")];
+    private MyYogaBookingsResponse? _data;
+    private MyYogaBookingResponse? _late;
+    private string _tab = "upcoming";
+    private string? _notice, _error;
+    private int? _confirmId;
+    private bool _loading = true, _working;
+
+    private static string Tab(bool active) => active
+        ? "rounded-lg bg-[#B83A3A] px-4 py-1.5 text-xs font-semibold text-white"
+        : "rounded-lg border border-[#D8D1CD] bg-[#F8F5F2] px-4 py-1.5 text-xs font-semibold text-[#242424] hover:bg-[#F3EDEA]";
+
+    private int Count(string tab) => tab switch
+    {
+        "upcoming" => _data?.Upcoming.Count ?? 0,
+        "past" => _data?.Past.Count ?? 0,
+        _ => _data?.Waitlist.Count ?? 0
+    };
+
+    protected override Task OnInitializedAsync() => Load();
+
+    private void KeepBooking()
+    {
+        _late = null;
+        _confirmId = null;
+    }
+
+    private async Task Load()
+    {
+        _loading = true;
+        try { _data = await Api.GetAsync<MyYogaBookingsResponse>("api/yoga/bookings/mine"); }
+        catch (ApiException ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task Cancel(MyYogaBookingResponse booking, bool confirmLate)
+    {
+        if (_working) return;
+        _working = true;
+        _notice = _error = null;
+        try
+        {
+            if (!await Api.CancelBookingAsync(booking.BookingId, confirmLate))
+            {
+                _late = booking;   // within 2 hours: ask before cancelling
+                return;
+            }
+            _late = null;
+            _confirmId = null;
+            _notice = confirmLate ? $"Đã hủy lớp {booking.ClassName}. Lần hủy muộn này được tính là vắng mặt." : $"Đã hủy đặt chỗ lớp {booking.ClassName}.";
+            await Load();
+        }
+        catch (ApiException ex) { _error = ex.Message; _late = null; }
+        finally { _working = false; }
+    }
+}

@@ -10,6 +10,8 @@ public interface IYogaBookingRepository : IAuditedRepository
     Task<YogaClass?> GetClassAsync(int classId, CancellationToken cancellationToken = default);
     /// <summary>Exclusive lock on one class's seats until the current transaction ends (last seat, mats, duplicates).</summary>
     Task LockClassAsync(int classId, CancellationToken cancellationToken = default);
+    /// <summary>Whether the user is an active yoga instructor (YogaClassRules.ActiveInstructor).</summary>
+    Task<bool> IsActiveInstructorAsync(string userId, CancellationToken cancellationToken = default);
     /// <summary>The member's memberships with their package component (no tracking).</summary>
     Task<IReadOnlyList<MemberMembership>> GetMembershipsAsync(string userId, CancellationToken cancellationToken = default);
     /// <summary>When the member's no-shows (incl. late cancellations) were recorded, since the given time (GBR-84).</summary>

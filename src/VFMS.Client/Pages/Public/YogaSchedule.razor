@@ -1,6 +1,8 @@
 @page "/yoga/schedule"
 @layout PublicLayout
+@using VFMS.Client.Components.Operations
 @using VFMS.Contracts.Yoga
+@using Microsoft.AspNetCore.Components.Authorization
 @inject VfmsApiClient Api
 
 <PageTitle>Lịch Yoga | Victor Fitness</PageTitle>
@@ -43,41 +45,250 @@
     }
     else
     {
-        <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3" aria-live="polite">
-            @foreach (var day in _sessions.GroupBy(s => s.ScheduledDate))
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[#6F6966]" aria-label="Chú thích">
+            <span class="flex items-center gap-1.5"><span class="h-3 w-3 rounded-sm border border-[#D8D1CD] bg-white"></span>Còn chỗ</span>
+            <span class="flex items-center gap-1.5"><span class="h-3 w-3 rounded-sm border border-amber-200 bg-amber-50"></span>Hết chỗ (vào danh sách chờ)</span>
+            @if (_isMember)
             {
-                <section class="border border-[#D8D1CD] bg-[#F8F5F2] rounded-xl overflow-hidden shadow-sm">
-                    <h2 class="border-b border-[#D8D1CD] bg-[#ECE8E4] px-4 py-3 font-['Montserrat'] text-xs font-extrabold uppercase tracking-wider text-[#242424]">@day.Key.ToString("dddd dd/MM")</h2>
-                    <ul class="divide-y divide-[#D8D1CD]">
-                        @foreach (var s in day)
+                <span class="flex items-center gap-1.5"><span class="h-3 w-3 rounded-sm border border-[#B83A3A] bg-[#F3E4E2]"></span>Lớp bạn đã đặt hoặc đang chờ: không đặt lại được</span>
+            }
+        </div>
+
+        @* Desktop: a week timetable, one row per start time. *@
+        <div class="hidden overflow-hidden rounded-xl border border-[#D8D1CD] bg-[#F8F5F2] shadow-sm md:block" aria-live="polite">
+            <table class="w-full table-fixed border-collapse text-left text-xs">
+                <caption class="sr-only">Thời khóa biểu yoga tuần @_from.ToString("dd/MM") – @_from.AddDays(6).ToString("dd/MM")</caption>
+                <thead>
+                    <tr class="bg-[#ECE8E4]">
+                        <th scope="col" class="w-16 border-b border-[#D8D1CD] px-2 py-3 text-[#6F6966]">Giờ</th>
+                        @foreach (var day in Week)
                         {
-                            <li class="px-4 py-4 hover:bg-[#F3EDEA] transition-colors">
-                                <div class="flex items-start justify-between gap-3">
-                                    <div>
-                                        <p class="font-semibold text-[#242424]">@s.ClassName</p>
-                                        <p class="text-xs text-[#6F6966]">@s.StartTime.ToString("HH:mm")–@s.EndTime.ToString("HH:mm") · @s.TypeName · @s.DifficultyLevel</p>
-                                        <p class="text-xs text-[#6F6966]">@s.StudioName (tầng @s.FloorNumber) · @s.InstructorName</p>
-                                    </div>
-                                    @if (s.FreeSeats > 0)
-                                    {
-                                        <StatusBadge Status="Available" Label="@($"Còn {s.FreeSeats} chỗ")" />
-                                    }
-                                    else
-                                    {
-                                        <StatusBadge Status="Full" Label="Hết chỗ · Waitlist" />
-                                    }
-                                </div>
-                            </li>
+                            <th scope="col" class="@($"border-b border-l border-[#D8D1CD] px-2 py-3 {(day == _today ? "bg-[#F3E4E2] text-[#B83A3A]" : "text-[#242424]")}")">
+                                <span class="block font-['Montserrat'] font-extrabold uppercase">@DayName(day)</span>
+                                <span class="font-normal text-[#6F6966]">@day.ToString("dd/MM")</span>
+                            </th>
                         }
-                    </ul>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var slot in _sessions.Select(x => x.StartTime).Distinct().Order())
+                    {
+                        <tr>
+                            <th scope="row" class="border-t border-[#D8D1CD] px-2 py-3 align-top font-semibold text-[#242424]">@slot.ToString("HH:mm")</th>
+                            @foreach (var day in Week)
+                            {
+                                <td class="@($"border-l border-t border-[#D8D1CD] p-1.5 align-top {(day == _today ? "bg-[#F3E4E2]/40" : "")}")">
+                                    @foreach (var x in _sessions.Where(x => x.ScheduledDate == day && x.StartTime == slot))
+                                    {
+                                        @SessionCard(x)
+                                    }
+                                </td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        @* Phones: the same sessions, one day after another. *@
+        <div class="space-y-4 md:hidden">
+            @foreach (var day in _sessions.GroupBy(x => x.ScheduledDate))
+            {
+                <section>
+                    <h2 class="@($"mb-2 font-['Montserrat'] text-xs font-extrabold uppercase tracking-wider {(day.Key == _today ? "text-[#B83A3A]" : "text-[#242424]")}")">@DayName(day.Key) @day.Key.ToString("dd/MM")</h2>
+                    <div class="space-y-2">
+                        @foreach (var x in day) { @SessionCard(x) }
+                    </div>
                 </section>
             }
         </div>
     }
 </div>
 
+@* UC-38 Book Yoga Class & Reserve Mat. Booking is per class: one booking holds the mat for every session of the class. *@
+@if (_booking is { } b)
+{
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-[#252323]/50 p-4" role="dialog" aria-modal="true" aria-labelledby="book-title" @onkeydown="CloseOnEscape">
+        <div class="@Ui.Card w-full max-w-lg space-y-4">
+            <div>
+                <p class="text-[10px] font-bold tracking-[.18em] text-[#B83A3A]">@(b.FreeSeats > 0 ? "ĐẶT CHỖ" : "DANH SÁCH CHỜ")</p>
+                <h2 id="book-title" class="font-['Montserrat'] text-xl font-extrabold text-[#242424]">@b.ClassName</h2>
+                <p class="mt-1 text-xs text-[#6F6966]">@b.TypeName · @b.StudioName (tầng @b.FloorNumber) · @b.InstructorName</p>
+            </div>
+            <p class="rounded-lg border border-[#D8D1CD] bg-[#ECE8E4] px-3 py-2 text-xs text-[#242424]">Một lần đặt chỗ giữ thảm của bạn cho <b>mọi buổi</b> của lớp này. Hủy trong vòng 2 giờ trước buổi học sẽ tính là vắng mặt.</p>
+
+            @if (_bookingResult is { } result)
+            {
+                <p role="status" class="@Ui.Notice">@result</p>
+                <div class="flex justify-end gap-2">
+                    <a href="/yoga/my-bookings" class="@Ui.PrimaryButton">Lịch yoga của tôi</a>
+                    <button type="button" class="@Ui.Button" @onclick="CloseBooking">Đóng</button>
+                </div>
+            }
+            else
+            {
+                @if (b.FreeSeats > 0)
+                {
+                    <fieldset>
+                        <legend class="@Ui.Label">Chọn thảm (không bắt buộc)</legend>
+                        @if (_mats is null)
+                        {
+                            <p class="mt-2 text-xs text-[#6F6966]">Đang tải sơ đồ thảm…</p>
+                        }
+                        else
+                        {
+                            <div class="mt-2 grid grid-cols-6 gap-2 sm:grid-cols-8">
+                                @for (var n = 1; n <= _mats.MatCount; n++)
+                                {
+                                    var mat = n;
+                                    var taken = _mats.TakenMats.Contains(mat);
+                                    <button type="button" disabled="@taken" aria-pressed="@(_mat == mat)" aria-label="@($"Thảm {mat}{(taken ? ", đã có người" : "")}")"
+                                            class="@MatClass(taken, _mat == mat)" @onclick="() => _mat = _mat == mat ? null : mat">@mat</button>
+                                }
+                            </div>
+                            <p class="mt-2 text-xs text-[#6F6966]">@(_mat is { } chosen ? $"Đã chọn thảm {chosen}." : "Không chọn: hệ thống giữ thảm trống có số nhỏ nhất.")</p>
+                        }
+                    </fieldset>
+                }
+                else
+                {
+                    <p class="text-sm text-[#242424]">Lớp đã đủ chỗ. Bạn sẽ được vào danh sách chờ miễn phí và được báo khi có chỗ trống.</p>
+                }
+                <Alerts Error="@_bookingError" />
+                <div class="flex justify-end gap-2">
+                    <button type="button" class="@Ui.Button" @onclick="CloseBooking">Hủy</button>
+                    <button type="button" class="@Ui.PrimaryButton disabled:opacity-50" disabled="@_bookingBusy" @onclick="ConfirmBooking">
+                        @(_bookingBusy ? "Đang gửi…" : b.FreeSeats > 0 ? "Xác nhận đặt chỗ" : "Vào danh sách chờ")
+                    </button>
+                </div>
+            }
+        </div>
+    </div>
+}
+
 @code {
-    private DateOnly _from;
+    private YogaSessionResponse? _booking;
+    private YogaMatMapResponse? _mats;
+    private int? _mat;
+    private string? _bookingResult, _bookingError;
+    private bool _bookingBusy;
+
+    private async Task OpenBooking(YogaSessionResponse session)
+    {
+        _booking = session;
+        _mats = null;
+        _mat = null;
+        _bookingResult = _bookingError = null;
+        if (session.FreeSeats == 0) return;
+        try { _mats = await Api.GetAsync<YogaMatMapResponse>($"api/yoga/bookings/classes/{session.YogaClassId}/mats"); }
+        catch (ApiException ex) { _bookingError = ex.Message; }
+    }
+
+    private async Task ConfirmBooking()
+    {
+        if (_booking is null || _bookingBusy) return;
+        _bookingBusy = true;
+        _bookingError = null;
+        try
+        {
+            var r = await Api.PostAsync<YogaBookingResponse>("api/yoga/bookings", new YogaBookingRequest(_booking.YogaClassId, _mat));
+            _bookingResult = r.Status == "Waitlisted"
+                ? $"Bạn đang ở vị trí {r.WaitlistPosition} trong danh sách chờ của lớp {r.ClassName}."
+                : $"Đã đặt chỗ lớp {r.ClassName}{(r.MatNumber is { } mat ? $", thảm {mat}" : "")}.";
+            await Task.WhenAll(Load(), LoadMine());
+        }
+        catch (ApiException ex) { _bookingError = BookingError(ex); }
+        finally { _bookingBusy = false; }
+    }
+
+    private static string BookingError(ApiException ex) => ex.ErrorCode switch
+    {
+        "MEMBERSHIP_REQUIRED" => "Bạn cần gói hội viên còn hiệu lực có bao gồm yoga để đặt lớp này.",
+        "YOGA_BOOKING_SUSPENDED" => "Bạn tạm thời bị khóa đặt yoga vì vắng 3 buổi trong 30 ngày.",
+        "ALREADY_BOOKED" => "Bạn đã đặt lớp này rồi. Mỗi lớp chỉ giữ một chỗ cho bạn.",
+        "ALREADY_WAITLISTED" => "Bạn đã ở trong danh sách chờ của lớp này.",
+        "MAT_TAKEN" => "Thảm này vừa có người đặt. Hãy chọn thảm khác.",
+        "REGISTRATION_CLOSED" => "Lớp này đã đóng đăng ký.",
+        _ => ex.Message
+    };
+
+    private static string MatClass(bool taken, bool selected) =>
+        "h-9 rounded-lg border text-xs font-semibold transition " + (taken
+            ? "cursor-not-allowed border-[#D8D1CD] bg-[#ECE8E4] text-[#8C8581] line-through"
+            : selected ? "border-[#B83A3A] bg-[#B83A3A] text-white" : "border-[#C9C0BB] bg-[#F8F5F2] text-[#242424] hover:bg-[#F3E4E2]");
+
+    private void CloseBooking() => _booking = null;
+
+    private void CloseOnEscape(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") _booking = null;
+    }
+}
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    // The member's own classes, by class id. A booking is per class (GBR-79), so every session of a booked class is taken.
+    private Dictionary<int, MyYogaBookingResponse> _booked = [];
+    private Dictionary<int, MyYogaWaitlistResponse> _waiting = [];
+    private bool _isMember;
+
+    private (string Status, string Label, bool CanBook, bool Mine) State(YogaSessionResponse s)
+    {
+        if (_booked.TryGetValue(s.YogaClassId, out var b))
+            return ("Confirmed", b.MatNumber is { } mat ? $"Đã đặt · thảm {mat}" : "Đã đặt", false, true);
+        if (_waiting.TryGetValue(s.YogaClassId, out var w))
+            return w.SeatOffered ? ("Available", "Có chỗ cho bạn", true, true) : ("Waitlisted", $"Đang chờ · #{w.Position}", false, true);
+        return s.FreeSeats > 0 ? ("Available", $"Còn {s.FreeSeats} chỗ", true, false) : ("Full", "Hết chỗ", true, false);
+    }
+
+    private RenderFragment SessionCard(YogaSessionResponse s)
+    {
+        var (status, label, canBook, mine) = State(s);
+        var tone = mine ? "border-[#B83A3A] bg-[#F3E4E2]" : s.FreeSeats > 0 ? "border-[#D8D1CD] bg-white" : "border-amber-200 bg-amber-50";
+        return @<article class="@($"mb-1.5 space-y-1.5 rounded-lg border p-2 last:mb-0 {tone}")" aria-label="@($"{s.ClassName}, {DayName(s.ScheduledDate)} {s.StartTime:HH:mm}, {label}")">
+            <p class="font-semibold leading-tight text-[#242424]">@s.ClassName</p>
+            <p class="text-[11px] leading-snug text-[#6F6966]">@s.StartTime.ToString("HH:mm")–@s.EndTime.ToString("HH:mm") · @s.DifficultyLevel<br />@s.StudioName (tầng @s.FloorNumber) · @s.InstructorName</p>
+            <StatusBadge Status="@status" Label="@label" />
+            @if (_isMember)
+            {
+                @if (canBook)
+                {
+                    <button type="button" class="@($"block w-full rounded-lg px-2 py-1.5 text-xs font-semibold transition {(s.FreeSeats > 0 || mine ? "bg-[#B83A3A] text-white hover:bg-[#9F3030]" : "border border-[#C9C0BB] bg-[#F8F5F2] text-[#242424] hover:bg-[#ECE8E4]")}")" @onclick="() => OpenBooking(s)">
+                        @(mine || s.FreeSeats > 0 ? "Đặt chỗ" : "Vào danh sách chờ")
+                    </button>
+                }
+                else
+                {
+                    <a href="/yoga/my-bookings" class="block text-[11px] font-semibold text-[#B83A3A] underline underline-offset-2">Xem trong lịch của tôi</a>
+                }
+            }
+        </article>;
+    }
+
+    private IEnumerable<DateOnly> Week => Enumerable.Range(0, 7).Select(_from.AddDays);
+
+    private static string DayName(DateOnly d) => d.DayOfWeek switch
+    {
+        DayOfWeek.Monday => "Thứ 2", DayOfWeek.Tuesday => "Thứ 3", DayOfWeek.Wednesday => "Thứ 4", DayOfWeek.Thursday => "Thứ 5",
+        DayOfWeek.Friday => "Thứ 6", DayOfWeek.Saturday => "Thứ 7", _ => "Chủ nhật"
+    };
+
+    private async Task LoadMine()
+    {
+        if (!_isMember) return;
+        try
+        {
+            var mine = await Api.GetAsync<MyYogaBookingsResponse>("api/yoga/bookings/mine");
+            _booked = mine.Upcoming.GroupBy(b => b.YogaClassId).ToDictionary(g => g.Key, g => g.First());
+            _waiting = mine.Waitlist.GroupBy(w => w.YogaClassId).ToDictionary(g => g.Key, g => g.First());
+        }
+        catch (ApiException) { /* no marks; the API still refuses a second booking (ALREADY_BOOKED). VfmsApiClient logged the call. */ }
+    }
+}
+
+@code {
+    private DateOnly _from, _today;
     private string _difficulty = string.Empty, _instructor = string.Empty;
     private bool _loading = true;
     private string? _error;
@@ -86,11 +297,12 @@
 
     protected override async Task OnInitializedAsync()
     {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7));
-        _from = today.AddDays(-(((int)today.DayOfWeek + 6) % 7));
+        _today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7));
+        _from = _today.AddDays(-(((int)_today.DayOfWeek + 6) % 7));
+        _isMember = AuthState is not null && (await AuthState).User.IsInRole("Member");
         try { _instructors = await Api.GetAsync<List<YogaInstructorResponse>>("api/yoga/instructors"); }
-        catch (ApiException) { /* filter stays empty */ }
-        await Load();
+        catch (ApiException) { /* filter stays empty; VfmsApiClient already logged which call failed */ }
+        await Task.WhenAll(Load(), LoadMine());
     }
 
     private async Task Move(int days) { _from = _from.AddDays(days); await Load(); }

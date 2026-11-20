@@ -30,7 +30,8 @@ public sealed class YogaBookingService : IYogaBookingService
     public async Task<Result<YogaMatMapResponse>> GetMatMapAsync(int classId, CancellationToken cancellationToken = default)
     {
         var yogaClass = await _repository.GetClassAsync(classId, cancellationToken);
-        if (yogaClass is null || yogaClass.ClassStatus is not (YogaClassStatus.Open or YogaClassStatus.Full))
+        if (yogaClass is null || yogaClass.ClassStatus is not (YogaClassStatus.Open or YogaClassStatus.Full) ||
+            !await _repository.IsActiveInstructorAsync(yogaClass.InstructorUserId, cancellationToken))
             return NotFound<YogaMatMapResponse>();
         var taken = Confirmed(yogaClass).Where(b => b.MatNumber is not null).Select(b => b.MatNumber!.Value).Order().ToList();
         return Result<YogaMatMapResponse>.Success(new YogaMatMapResponse(classId, yogaClass.MaxParticipants, taken));
@@ -53,7 +54,8 @@ public sealed class YogaBookingService : IYogaBookingService
     {
         var now = _clock.GetUtcNow().UtcDateTime;
         var yogaClass = await _repository.GetClassAsync(request.YogaClassId, cancellationToken);
-        if (yogaClass is null || yogaClass.ClassStatus is YogaClassStatus.Draft)
+        if (yogaClass is null || yogaClass.ClassStatus is YogaClassStatus.Draft ||
+            !await _repository.IsActiveInstructorAsync(yogaClass.InstructorUserId, cancellationToken))   // hidden class
             return NotFound<YogaBookingResponse>();
 
         // Precondition: an active package that includes yoga, of this class type when the package names one (MSG-31).
