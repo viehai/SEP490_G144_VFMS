@@ -95,7 +95,8 @@
 
     protected override async Task OnInitializedAsync()
     {
-        // Midnight today in gym time, as UTC.
+        // Midnight today in gym time, as UTC. Sent without "Z": the API compares From with UTC times as given,
+        // and a "Z" value would be bound as server-local time.
         var todayStartUtc = DateTime.UtcNow.Add(GymOffset).Date.Subtract(GymOffset);
         await Task.WhenAll(
             Load("tài khoản", async ct => _staff = (await Api.GetAsync<PagedUsersResponse>("api/admin/users?role=Staff&page=1&pageSize=1", ct)).TotalCount),
@@ -103,7 +104,7 @@
             Load("nhật ký", async ct =>
             {
                 var today = await Api.GetAsync<PagedResponse<AuditLogResponse>>(
-                    $"api/admin/audit-logs?from={Uri.EscapeDataString(todayStartUtc.ToString("O"))}&page=1&pageSize=1", ct);
+                    $"api/admin/audit-logs?from={todayStartUtc.ToString("yyyy-MM-ddTHH:mm:ss", System.Globalization.CultureInfo.InvariantCulture)}&page=1&pageSize=1", ct);
                 _auditToday = today.TotalCount;
                 _audit = (await Api.GetAsync<PagedResponse<AuditLogResponse>>("api/admin/audit-logs?page=1&pageSize=8", ct)).Items;
             }));
