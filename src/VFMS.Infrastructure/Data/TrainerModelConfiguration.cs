@@ -27,6 +27,7 @@ internal static class TrainerModelConfiguration
             e.HasIndex(x => x.ApplicantUserId, "PendingProfileUpdate").IsUnique().HasDatabaseName("IX_TrainerApplications_PendingProfileUpdate")
                 .HasFilter("[ApplicationType] = 'ProfileUpdate' AND [ApplicationStatus] = 'Pending' AND [IsDeleted] = 0");
             e.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.HiredUserId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.TrainerRole).WithMany(r => r.TrainerApplications).HasForeignKey(x => x.TrainerRoleId).OnDelete(DeleteBehavior.Restrict);
         });
         b.Entity<TrainerProfile>(e =>
         {
@@ -36,6 +37,13 @@ internal static class TrainerModelConfiguration
             e.Property(x => x.CommissionTier).HasMaxLength(100);
             e.Property(x => x.CitizenId).HasMaxLength(12);
             e.HasIndex(x => x.CitizenId).IsUnique().HasFilter("[CitizenId] IS NOT NULL");
+            e.HasOne(x => x.TrainerRole).WithMany(r => r.TrainerProfiles).HasForeignKey(x => x.TrainerRoleId).OnDelete(DeleteBehavior.Restrict);
+        });
+        b.Entity<TrainerRole>(e =>
+        {
+            e.Property(x => x.RoleName).HasMaxLength(50).IsRequired();
+            e.HasIndex(x => x.RoleName).IsUnique();
+            e.HasOne(x => x.Role).WithMany().HasForeignKey(x => x.RoleId).OnDelete(DeleteBehavior.Restrict);
         });
     }
 }
