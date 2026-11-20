@@ -119,7 +119,7 @@
     [Parameter] public bool IsPreview { get; set; } = true;
     [Parameter] public RenderFragment? ChildContent { get; set; }
     private string RoleName => Variant switch { "admin" => "ADMIN", "manager" => "MANAGER", "pt" => "HUẤN LUYỆN VIÊN", "member" => "HỘI VIÊN", _ => "STAFF" };
-    private string RoleMark => Variant switch { "admin" => "AD", "manager" => "MG", "pt" => "PT", "member" => "HV", _ => "ST" };
+    private string RoleMark => Variant switch { "admin" => "AD", "manager" => "MG", "pt" => "HL", "member" => "HV", _ => "ST" };
     private string DashboardRoute => Variant switch { "admin" => "/admin/dashboard", "manager" => "/manager/dashboard", "pt" => "/pt/dashboard", _ => "/staff/dashboard" };
     private (string Href, string Label)[] FeatureLinks => Variant switch
     {

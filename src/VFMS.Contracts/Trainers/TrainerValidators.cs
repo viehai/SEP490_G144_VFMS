@@ -49,18 +49,22 @@ public sealed class SubmitTrainerApplicationValidator : AbstractValidator<Submit
     public SubmitTrainerApplicationValidator()
     {
         RuleFor(x => x.ApplicationType).Must(x => x is "Recruitment" or "ProfileUpdate");
-        RuleFor(x => x.FullName).NotEmpty().MaximumLength(256);
-        RuleFor(x => x.Email).NotEmpty().EmailAddress().MaximumLength(256);
-        RuleFor(x => x.PhoneNumber).NotEmpty().Matches(@"^\+?[0-9]{9,15}$");
-        RuleFor(x => x.CitizenId).NotEmpty().Matches(@"^[0-9]{12}$");
-        RuleFor(x => x.DateOfBirth).Must(d => d < DateOnly.FromDateTime(DateTime.UtcNow) && d.Year >= 1900);
-        RuleFor(x => x.Gender).Must(x => x is "Male" or "Female" or "Other");
+        // UC 3.3: a ProfileUpdate takes personal details from the account and TrainerProfile, so only Recruitment checks them.
+        When(x => x.ApplicationType == "Recruitment", () =>
+        {
+            RuleFor(x => x.FullName).NotEmpty().MaximumLength(256);
+            RuleFor(x => x.Email).NotEmpty().EmailAddress().MaximumLength(256);
+            RuleFor(x => x.PhoneNumber).NotEmpty().Matches(@"^\+?[0-9]{9,15}$");
+            RuleFor(x => x.CitizenId).NotEmpty().Matches(@"^[0-9]{12}$");
+            RuleFor(x => x.DateOfBirth).Must(d => d < DateOnly.FromDateTime(DateTime.UtcNow) && d.Year >= 1900);
+            RuleFor(x => x.Gender).Must(x => x is "Male" or "Female" or "Other");
+            RuleFor(x => x.ExperienceYears).InclusiveBetween(0, 80);
+            RuleFor(x => x.Bio).NotEmpty().MaximumLength(4000);
+        });
         // UC 3.1: free-text specialization; a ProfileUpdate may leave it empty to keep the published one (UC 3.3).
         RuleFor(x => x.Specialty).NotEmpty().When(x => x.ApplicationType == "Recruitment");
         RuleFor(x => x.Specialty).MaximumLength(200);
         RuleFor(x => x.TrainerRole).Must(TrainerRoleNames.IsValid).When(x => x.ApplicationType == "Recruitment");
-        RuleFor(x => x.ExperienceYears).InclusiveBetween(0, 80);
-        RuleFor(x => x.Bio).NotEmpty().MaximumLength(4000);
         RuleFor(x => x.Consent).Equal(true);
         RuleFor(x => x.Certificates).NotNull();
         RuleFor(x => x).Must(x => (x.Certificates?.Count ?? 0) + (x.CertificateUrls?.Count ?? 0) +
@@ -83,7 +87,9 @@ public sealed class ReviewTrainerApplicationValidator : AbstractValidator<Review
     public ReviewTrainerApplicationValidator()
     {
         RuleFor(x => x.Action).Must(x => x is "Interview" or "Reject" or "Hire" or "Approve");
-        RuleFor(x => x.Note).NotEmpty().MaximumLength(2000);
+        RuleFor(x => x.Note).MaximumLength(2000);
+        // UC 3.2/3.3: interview notes and rejection reasons are mandatory; Hire and Approve notes are optional.
+        When(x => x.Action is "Interview" or "Reject", () => RuleFor(x => x.Note).NotEmpty());
         When(x => x.Action == "Hire", () =>
         {
             RuleFor(x => x.Level).Must(x => x is "Junior" or "Senior" or "Master");

@@ -31,7 +31,7 @@
         <div class="trainer-panel trainer-stack">
             <h2>Danh sách hồ sơ</h2>
             @if (_loading) { <p role="status">Đang tải hồ sơ…</p> }
-            else if (_list is { TotalCount: 0 }) { <p>Không có hồ sơ phù hợp.</p> }
+            else if (_list is { TotalCount: 0 }) { <p>Không tìm thấy dữ liệu phù hợp.</p> }
             else if (_list is { } list)
             {
                 <div class="trainer-scroll">
@@ -151,9 +151,18 @@
                             @if (_action == "Hire")
                             {
                                 <label>Cấp huấn luyện viên<select class="trainer-input" @bind="_level"><option>Junior</option><option>Senior</option><option>Master</option></select></label>
-                                @if (app.AccountMatch is { Status: "Ambiguous" } && _chosenAccount is { } chosen)
+                                @if (app.AccountMatch is { Status: "Ambiguous" } && ChosenCandidate(app) is { } chosen)
                                 {
-                                    <p class="trainer-muted trainer-copy">Liên kết với tài khoản ID: @chosen</p>
+                                    <p class="trainer-muted trainer-copy">Liên kết với tài khoản ID: @chosen.UserId</p>
+                                    <p class="trainer-muted trainer-copy">Khi tuyển, tài khoản này chỉ còn vai trò @LoginRole(app) (gỡ vai trò Customer/Member).</p>
+                                    @if (AccountMatchError(app) is { } blocked)
+                                    {
+                                        <p class="trainer-feedback trainer-error" role="alert">@blocked</p>
+                                    }
+                                    @if (chosen.MemberServicesUntil is { } until)
+                                    {
+                                        <p class="trainer-feedback" role="status">Tài khoản còn gói Gym hoặc tủ đồ đến @until.ToString("dd/MM/yyyy"); sau khi tuyển sẽ không dùng được với tư cách hội viên.</p>
+                                    }
                                 }
                                 else if (app.AccountMatch is { Status: "Matched" } match)
                                 {
@@ -181,7 +190,7 @@
                                 }
                                 <label class="trainer-row"><input type="checkbox" required @bind="_verified" /> Đã xác minh danh tính ứng viên</label>
                             }
-                            <label>Ghi chú<textarea class="trainer-input" rows="3" required maxlength="2000" @bind="_note"></textarea></label>
+                            <label>@(NoteRequired ? "Ghi chú" : "Ghi chú (không bắt buộc)")<textarea class="trainer-input" rows="3" required="@NoteRequired" maxlength="2000" @bind="_note"></textarea></label>
                             <button class="trainer-button trainer-primary" disabled="@(_action == "Hire" && AccountMatchError(app) is not null)">Lưu quyết định</button>
                         </fieldset>
                     </form>
@@ -296,7 +305,7 @@
         catch (AuthApiException ex)
         {
             var banned = TrainerContentRules.ProhibitedWords(ex.ErrorCode, ex.Message);
-            _error = banned.Count > 0 ? $"Giới thiệu của ứng viên có từ ngữ không được phép: {string.Join(", ", banned)}." : ex.Message;
+            _error = banned.Count > 0 ? $"Giới thiệu hoặc chuyên môn của ứng viên có từ ngữ không được phép: {string.Join(", ", banned)}." : ErrorText(ex);
         }
         finally { _saving = false; }
     }
@@ -307,7 +316,7 @@
         _error = _message = null;
         _saving = true;
         try { await Api.ResendAsync(app.Id); _message = "Đã đưa email vào hàng chờ gửi."; }
-        catch (AuthApiException ex) { _error = ex.Message; }
+        catch (AuthApiException ex) { _error = ErrorText(ex); }
         finally { _saving = false; }
     }
 
@@ -343,15 +352,36 @@
     // UC 3.2 step 7: Trainer Role PT signs in as PT, Trainer Role Yoga as YogaInstructor.
     private static string LoginRole(TrainerApplicationResponse app) => app.TrainerRole == "Yoga" ? "YogaInstructor" : "PT";
 
+    private TrainerAccountCandidate? ChosenCandidate(TrainerApplicationResponse app) =>
+        app.AccountMatch?.Matches?.FirstOrDefault(match => match.UserId == _chosenAccount);
+
     private string? AccountMatchError(TrainerApplicationResponse app) => app.AccountMatch?.Status switch
     {
         "Matched" when app.AccountMatch.HasUnfinishedPTContract =>
             "Ứng viên còn hợp đồng PT với tư cách hội viên. Chỉ tuyển được sau khi hợp đồng đó kết thúc.",
         "Matched" or "None" => null,
+        "Ambiguous" when ChosenCandidate(app) is { HasUnfinishedPTContract: true } =>
+            "Ứng viên còn hợp đồng PT với tư cách hội viên. Chỉ tuyển được sau khi hợp đồng đó kết thúc.",
         "Ambiguous" when _chosenAccount is not null => null,
         "Ambiguous" => "Hồ sơ khớp nhiều tài khoản. Xác minh danh tính rồi chọn một tài khoản đủ điều kiện ở danh sách trên.",
         "Ineligible" => "Tài khoản khớp không phải tài khoản Customer/Member đang hoạt động nên không thể liên kết.",
         _ => "Chưa xác định được tài khoản. Mở lại hồ sơ để tải kết quả mới nhất."
+    };
+
+    // UC 3.2/3.3: a note is mandatory for Interview and Reject only.
+    private bool NoteRequired => _action is "Interview" or "Reject";
+
+    private static string ErrorText(AuthApiException ex) => ex.ErrorCode switch
+    {
+        "TRAINER_VALIDATION" => "Thông tin quyết định chưa hợp lệ. Kiểm tra ghi chú, cấp huấn luyện viên và xác nhận danh tính.",
+        "TRAINER_MEMBER_PT_CONTRACT" => "Ứng viên còn hợp đồng PT với tư cách hội viên. Chỉ tuyển được sau khi hợp đồng đó kết thúc.",
+        "TRAINER_IDENTITY_CONFLICT" => "Tài khoản khớp với hồ sơ đã thay đổi hoặc không đủ điều kiện. Mở lại hồ sơ, xác minh và chọn lại tài khoản.",
+        "TRAINER_INVALID_STATE" => "Hồ sơ không còn ở trạng thái cho phép thao tác này (hoặc tài khoản đã kích hoạt). Mở lại hồ sơ để tải trạng thái mới nhất.",
+        "TRAINER_INTERVIEW_REQUIRED" => "Cần ghi nhận phỏng vấn trước khi tuyển.",
+        "TRAINER_PROFILE_EXISTS" => "Tài khoản này đã có hồ sơ huấn luyện viên.",
+        "TRAINER_TEACHING_ROLE_CONFLICT" => "Huấn luyện viên Yoga đang được phân công lớp nên không thể tuyển làm PT.",
+        "TRAINER_CERTIFICATE_TARGET_INVALID" => "Chứng chỉ cần thay không còn được công bố. Từ chối yêu cầu để huấn luyện viên gửi lại.",
+        _ => ex.Message
     };
 
     private static string TypeName(string type) => type == "Recruitment" ? "Tuyển dụng" : "Cập nhật chứng chỉ";

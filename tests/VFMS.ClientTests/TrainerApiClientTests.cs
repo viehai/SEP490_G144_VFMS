@@ -36,7 +36,7 @@ public sealed class TrainerApiClientTests
         {
             Assert.Equal("/api/trainers/7", request.RequestUri!.AbsolutePath);
             Assert.Equal(authenticated ? "Bearer access" : null, request.Headers.Authorization?.ToString());
-            return Task.FromResult(Json(new TrainerPublicDetail(new(), [], [], [], authenticated)));
+            return Task.FromResult(Json(new TrainerPublicDetail(new(), [], [], authenticated)));
         }, authenticated);
 
         Assert.Equal(authenticated, (await api.DetailAsync(7)).HasActivePTContract);

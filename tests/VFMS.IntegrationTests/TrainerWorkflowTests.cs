@@ -197,7 +197,8 @@ public class TrainerWorkflowTests
         // UC 3.2 step 7: the linked account keeps only the PT role.
         Assert.Equal(["PT"], await db.ApplicationUserRoles.Where(x => x.UserId == customer.UserId)
             .Select(x => x.Role.RoleName).ToListAsync());
-        var update = request with { ApplicationType = "ProfileUpdate", Email = customer.Email, Specialty = "Yoga" };
+        // UC 3.3: identity comes from the account and TrainerProfile, so the form may leave personal details empty.
+        var update = request with { ApplicationType = "ProfileUpdate", Email = "", CitizenId = "", PhoneNumber = "", FullName = "", Specialty = "Yoga" };
         TrainerTestDatabase.Success(await service.Submit(update, customer.UserId, default));
         var firstUpdate = await db.TrainerApplications.SingleAsync(x => x.ApplicationType == "ProfileUpdate");
         TrainerTestDatabase.Success(await service.Review(firstUpdate.Id, new("Reject", "Resubmit certificate"), "manager", default));
@@ -207,6 +208,8 @@ public class TrainerWorkflowTests
         await db.SaveChangesAsync();
         var retried = TrainerTestDatabase.Success(await service.Submit(update, customer.UserId, default));
         Assert.Equal(2, retried.SubmissionAttempt);
+        var stored = await db.TrainerApplications.SingleAsync(x => x.TrackingCode == retried.TrackingCode);
+        Assert.Equal((customer.Email, request.CitizenId, customer.PhoneNumber), (stored.Email, stored.CitizenId, stored.PhoneNumber));
         var unchangedAccount = await db.ApplicationUsers.SingleAsync(x => x.UserId == customer.UserId);
         Assert.Equal(passwordBefore, unchangedAccount.PasswordHash); Assert.Equal(customer.Email, unchangedAccount.Email);
         Assert.Null(unchangedAccount.PasswordSetupTokenHash); Assert.Equal(AccountStatus.Active, unchangedAccount.AccountStatus);
@@ -446,6 +449,8 @@ public class TrainerWorkflowTests
                 Assert.False(match.EmailMatches);
                 Assert.True(match.PhoneMatches);
             });
+        // UC 3.2 step 7: each eligible candidate carries the PT contract and Gym/locker checks.
+        Assert.All(ambiguous.Matches!, match => Assert.False(match.HasUnfinishedPTContract));
         var blocked = await service.Review(application.Id, new("Hire", "Verified", "Senior", IdentityVerified: true), "manager", default);
         Assert.Equal("TRAINER_IDENTITY_CONFLICT", blocked.ErrorCode);
 
@@ -755,5 +760,12 @@ public class TrainerWorkflowTests
 
         var review = Assert.Single(TrainerTestDatabase.Success(await service.Public(profile.Id, default)).Reviews);
         Assert.Equal("member", review.MemberName);
+
+        // GBR-66: a recruitment application is screened when submitted, not first at Hire.
+        var applications = await db.TrainerApplications.CountAsync();
+        var banned = await service.Submit(TrainerTestDatabase.Request with
+            { Email = "other@example.test", PhoneNumber = "0900000061", CitizenId = "000000000061", Specialty = "Scam coaching" }, null, default);
+        Assert.Equal(["scam"], TrainerContentRules.ProhibitedWords(banned.ErrorCode, banned.ErrorMessage));
+        Assert.Equal(applications, await db.TrainerApplications.CountAsync());
     }
 }

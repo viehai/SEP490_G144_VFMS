@@ -67,10 +67,6 @@
                 {
                     <p class="trainer-feedback trainer-error" role="alert">Không tải được thông tin tài khoản. Tải lại trang để gửi hồ sơ chứng chỉ.</p>
                 }
-                else if (_identity is null)
-                {
-                    <p class="trainer-feedback trainer-error" role="alert">Tài khoản cần có hồ sơ ứng tuyển đã tuyển để xác minh CCCD trước khi cập nhật chứng chỉ.</p>
-                }
                 else
                 {
                     <p class="trainer-muted">Manager duyệt trước khi thay đổi được công bố.</p>
@@ -85,7 +81,7 @@
                     </div>
                     @if (_editingCredentials)
                     {
-                        <TrainerApplicationForm @key="_credentialFormVersion" Profile="detail.Profile" Identity="_identity"
+                        <TrainerApplicationForm @key="_credentialFormVersion" Profile="detail.Profile"
                             Published="detail.Certificates" Replacement="_replacement"
                             Email="@_account.Email" Phone="@_account.PhoneNumber" Submitted="ReloadHistoryAsync" />
                     }
@@ -119,7 +115,6 @@
 @code {
     private TrainerPublicDetail? _profile;
     private UserProfileResponse? _account;
-    private TrainerApplicationResponse? _identity;
     private PagedResponse<TrainerApplicationResponse>? _history;
     private TrainerFileInput? _avatar;
     private TrainerDocumentResponse? _replacement;
@@ -137,8 +132,6 @@
         {
             await LoadProfileAsync();
             _account = await Api.AccountAsync();
-            var recruitment = await Api.ApplicationsAsync(new(Status: "Hired", ApplicationType: "Recruitment"), mine: true);
-            _identity = recruitment.Items.FirstOrDefault(item => item.HiredUserId == _account.UserId);
         }
         catch (AuthApiException ex) { _error = ex.Message; }
         finally { _loading = false; }
@@ -215,7 +208,7 @@
         {
             await Api.UpdateAsync(request);
             _avatar = null;
-            _message = "Đã lưu hồ sơ PT.";
+            _message = "Đã lưu hồ sơ.";
             await LoadProfileAsync();
         }
         catch (AuthApiException ex)

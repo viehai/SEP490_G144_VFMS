@@ -40,6 +40,9 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
         .Where(w => !string.IsNullOrWhiteSpace(w) && BannedWordService.ContainsWholeWord(text, w))
         .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
+    // UC 3.2/3.3: a note is required for Interview and Reject only; Hire and Approve may leave it empty.
+    private static string? Note(ReviewTrainerApplicationRequest r) => string.IsNullOrWhiteSpace(r.Note) ? null : r.Note.Trim();
+
     private static Result<T> ContentRejected<T>(List<string> words) =>
         Error<T>(TrainerContentRules.RejectedCode, TrainerContentRules.Message(words), 400);
 
@@ -136,6 +139,9 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
         if (!(await new SubmitTrainerApplicationValidator().ValidateAsync(r, ct)).IsValid)
             return Error<TrainerApplicationReceipt>("TRAINER_VALIDATION", "Invalid application fields or certificates.", 400);
         var update = r.ApplicationType == "ProfileUpdate";
+        // GBR-66: screen the public text at submission; a ProfileUpdate only publishes its specialization.
+        if (await BannedWords(update ? r.Specialty ?? "" : r.Bio + " " + r.Specialty, ct) is { Count: > 0 } bannedText)
+            return ContentRejected<TrainerApplicationReceipt>(bannedText);
         if (!update && await store.Count(store.Query<Gym>().Where(gym => gym.IsAcceptingTrainerApplications), ct) == 0)
             return Error<TrainerApplicationReceipt>("TRAINER_RECRUITMENT_CLOSED", "Trainer recruitment is closed.", 409);
         var trainer = await IsTrainer(actor, ct);
@@ -145,8 +151,8 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
         if (!update && actor != null && !trainer && !await HasRole(actor, "Customer", ct) && !await HasRole(actor, "Member", ct))
             return Error<TrainerApplicationReceipt>("TRAINER_FORBIDDEN", "Customer or Member role required.", 403);
 
-        var email = r.Email.Trim().ToLowerInvariant();
-        var citizen = r.CitizenId.Trim();
+        var email = (r.Email ?? "").Trim().ToLowerInvariant();
+        var citizen = (r.CitizenId ?? "").Trim();
         var now = DateTime.UtcNow;
         if (!update && (trainer || await IsEmployee(email, citizen, ct)))
             return Error<TrainerApplicationReceipt>("TRAINER_NOT_ELIGIBLE", "Staff, Manager, Admin and active Trainer accounts cannot apply.");
@@ -157,8 +163,16 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
             var profile = await store.First(store.Query<TrainerProfile>().Where(x => x.PTUserId == actor && x.IsActive), ct);
             if (profile?.CitizenId == null)
                 return Error<TrainerApplicationReceipt>("TRAINER_IDENTITY_MISSING", "The trainer profile has no verified Citizen ID. Contact the Manager.");
-            if (owner == null || !string.Equals(owner.Email.Trim(), email, StringComparison.OrdinalIgnoreCase) || profile.CitizenId != citizen)
-                return Error<TrainerApplicationReceipt>("TRAINER_IDENTITY_CONFLICT", "Email must match the current account and Citizen ID must match the trainer profile.");
+            if (owner == null)
+                return Error<TrainerApplicationReceipt>("TRAINER_FORBIDDEN", "Trainer role required.", 403);
+            // UC 3.3: identity and personal details come from the signed-in account and its TrainerProfile, not the form.
+            email = owner.Email.Trim().ToLowerInvariant();
+            citizen = profile.CitizenId;
+            r = r with
+            {
+                FullName = owner.FullName, PhoneNumber = owner.PhoneNumber, Gender = profile.Gender,
+                ExperienceYears = profile.ExperienceYears, Bio = profile.Bio ?? ""
+            };
             var replacements = r.Certificates.Select(file => file.ReplacesCertificateId)
                 .Concat((r.CertificateLinks ?? []).Select(link => link.ReplacesCertificateId)).OfType<string>().ToArray();
             var published = Records<TrainerStoredFile>(profile.CertificatesJson);
@@ -208,7 +222,7 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
             CitizenId = citizen,
             DateOfBirth = r.DateOfBirth,
             Gender = r.Gender,
-            Specialty = r.Specialty.Trim(),
+            Specialty = (r.Specialty ?? "").Trim(),
             TrainerRoleId = trainerRoleId,
             ExperienceYears = r.ExperienceYears,
             Bio = r.Bio.Trim(),
@@ -294,6 +308,18 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
                     HasUnfinishedPTContract = await HasUnfinishedPTContract(matchedId, ct),
                     MemberServicesUntil = await MemberServicesUntil(matchedId, ct)
                 };
+            else if (accountMatch is { Status: "Ambiguous", Matches: { } candidates })
+            {
+                // UC 3.2 step 7: the same PT contract and Gym/locker warnings apply to the account the Manager picks.
+                var checkedCandidates = new List<TrainerAccountCandidate>();
+                foreach (var candidate in candidates)
+                    checkedCandidates.Add(!candidate.Eligible ? candidate : candidate with
+                    {
+                        HasUnfinishedPTContract = await HasUnfinishedPTContract(candidate.UserId, ct),
+                        MemberServicesUntil = await MemberServicesUntil(candidate.UserId, ct)
+                    });
+                accountMatch = accountMatch with { Matches = checkedCandidates };
+            }
         }
         var response = await ApplicationResponse(a, ct);
         if (a.ApplicationType == "ProfileUpdate")
@@ -455,7 +481,7 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
                 profile.CertificatesJson = JsonSerializer.Serialize(published);
             }
             a.ApplicationStatus = r.Action == "Approve" ? TrainerApplicationStatus.Approved : TrainerApplicationStatus.Rejected;
-            a.ReviewNote = r.Note.Trim();
+            a.ReviewNote = Note(r);
             a.ReviewedByUserId = actor;
             a.ReviewedAt = DateTime.UtcNow;
             Notify(profile.PTUserId, actor, a, "TrainerCredentialDecision", "Trainer credentials reviewed", $"Your profile update was {a.ApplicationStatus.ToString().ToLowerInvariant()}.");
@@ -573,9 +599,9 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
             if (r.Action == "Reject") Mail(a, a.Email, "Trainer application decision", $"Application {a.TrackingCode} was rejected. Contact the gym for details.");
         }
         if (r.Action == "Interview")
-            a.InterviewNote = r.Note.Trim();
+            a.InterviewNote = Note(r);
         else
-            a.ReviewNote = r.Note.Trim();
+            a.ReviewNote = Note(r);
         a.ReviewedByUserId = actor;
         a.ReviewedAt = DateTime.UtcNow;
         Audit(actor, nameof(TrainerApplication), a.Id, r.Action, before, a.ApplicationStatus.ToString());
@@ -709,23 +735,10 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
             return Error<TrainerPublicDetail>("TRAINER_NOT_FOUND", "Trainer not found.", 404);
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7));
-        var end = today.AddDays(14);
         var stored = await store.First(store.Query<TrainerProfile>().Where(x => x.Id == id), ct);
         var certificates = Docs(stored!.CertificatesJson, $"/api/trainers/{id}", true);
         if (Records<TrainerStoredFile>(stored.CertificatesJson).Count == 0 && !string.IsNullOrWhiteSpace(stored.CertificateUrl))
             certificates = [new TrainerDocumentResponse("legacy", "Certificate", "application/octet-stream", stored.CertificateUrl)];
-        var slots = await store.List(store.Query<PTAvailability>().Where(x => x.PTUserId == p.UserId &&
-            (x.DayOfWeek != null && x.SlotStatus == SlotStatus.Available || x.AvailableDate >= today && x.AvailableDate < end)), ct);
-        var now = DateTime.UtcNow;
-        var booked = await store.List(store.Query<PTSession>()
-            .Where(x => x.PTUserId == p.UserId && x.SessionDate >= today && x.SessionDate < end)
-            .Where(PersonalTrainingRules.OccupiesTime(now)), ct);
-        var availability = PersonalTrainingRules.Occurrences(today, end.AddDays(-1), slots, int.MaxValue)
-            .Concat(slots.Where(x => x.AvailableDate != null).Select(x => (Date: x.AvailableDate!.Value, Slot: x)))
-            .OrderBy(x => x.Date).ThenBy(x => x.Slot.StartTime)
-            .Select(x => new TrainerAvailabilityResponse(x.Date, x.Slot.StartTime, x.Slot.EndTime,
-                booked.Any(b => b.SessionDate == x.Date && PersonalTrainingRules.Overlaps(x.Slot.StartTime, x.Slot.EndTime, b.StartTime, b.EndTime))
-                    ? nameof(SlotStatus.Booked) : x.Slot.SlotStatus.ToString())).ToList();
         var hasActiveContract = await HasRole(actor, "Member", ct) &&
             await store.Count(store.Query<PTPurchase>().Where(x => x.MemberUserId == actor && x.PTUserId == p.UserId &&
                 x.Status == PTPurchaseStatus.Active && !x.IsCompleted && x.EndDate >= today &&
@@ -740,7 +753,7 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
         var page = await store.List(reviews.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id)
             .Skip((reviewPage - 1) * pageSize).Take(pageSize)
             .Select(x => new TrainerReviewResponse(x.Rating, x.Comment, x.MemberUser.FullName)), ct);
-        return Result<TrainerPublicDetail>.Success(new(p, certificates, availability, page,
+        return Result<TrainerPublicDetail>.Success(new(p, certificates, page,
             hasActiveContract, actor == p.UserId, reviewPage, reviewTotal));
     }
     public async Task<Result<TrainerPublicDetail>> Mine(string actor, CancellationToken ct)

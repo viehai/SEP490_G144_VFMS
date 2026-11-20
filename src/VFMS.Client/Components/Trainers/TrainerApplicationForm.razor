@@ -127,7 +127,6 @@ else
 
 @code {
     [Parameter] public TrainerProfileResponse? Profile { get; set; }
-    [Parameter] public TrainerApplicationResponse? Identity { get; set; }
     [Parameter] public string? Email { get; set; }
     [Parameter] public string? Phone { get; set; }
     [Parameter] public IReadOnlyList<TrainerDocumentResponse> Published { get; set; } = [];
@@ -153,14 +152,13 @@ else
         if (Profile is not { } profile)
             return;
         _name = profile.FullName;
-        _email = Email ?? Identity?.Email ?? "";
-        _phone = Phone ?? Identity?.PhoneNumber ?? "";
-        _citizenId = Identity?.CitizenId ?? "";
-        _birthDate = Identity?.DateOfBirth;
+        // UC 3.3: the API takes identity and personal details from the account and TrainerProfile.
+        _email = Email ?? "";
+        _phone = Phone ?? "";
         _gender = profile.Gender;
         _specialty = profile.Specialty;
         _experience = profile.ExperienceYears;
-        _bio = string.IsNullOrWhiteSpace(profile.Bio) ? Identity?.Bio ?? "" : profile.Bio;
+        _bio = profile.Bio ?? "";
         if (Replacement is { IsExternalLink: true } replacement)
             _links[0].Replaces = replacement.Id;
     }
@@ -244,7 +242,11 @@ else
             {
                 "TRAINER_CHANGE_PENDING" => "Bạn đang có yêu cầu cập nhật chờ Manager duyệt.",
                 "TRAINER_NOT_ELIGIBLE" => "Bạn không đủ điều kiện ứng tuyển: email hoặc CCCD thuộc tài khoản nhân viên hoặc huấn luyện viên đang hoạt động.",
-                "TRAINER_IDENTITY_MISSING" => "Hồ sơ PT chưa có CCCD đã xác minh. Liên hệ Manager để cập nhật.",
+                "TRAINER_IDENTITY_MISSING" => "Hồ sơ huấn luyện viên chưa có CCCD đã xác minh. Liên hệ Manager để cập nhật.",
+                "TRAINER_RECRUITMENT_CLOSED" => "Phòng tập đang tạm dừng nhận hồ sơ ứng tuyển. Vui lòng quay lại sau.",
+                "TRAINER_FORBIDDEN" => IsUpdate ? "Chỉ huấn luyện viên đang hoạt động mới gửi được yêu cầu này."
+                    : "Tài khoản đang đăng nhập không được nộp hồ sơ ứng tuyển. Đăng xuất hoặc dùng tài khoản khách hàng.",
+                "TRAINER_VALIDATION" => "Thông tin hồ sơ hoặc chứng chỉ chưa hợp lệ. Kiểm tra lại rồi gửi.",
                 // TrainerApiClient already turns the cooldown into Vietnamese text with the next eligible time (GBR-03).
                 TrainerContentRules.RejectedCode => "Giới thiệu hoặc chuyên môn có từ ngữ không được phép. Sửa các từ được tô đỏ rồi gửi lại.",
                 _ => ex.Message

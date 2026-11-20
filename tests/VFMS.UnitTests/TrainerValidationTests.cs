@@ -140,7 +140,7 @@ public class TrainerValidationTests
     [InlineData("ProfileUpdate", true)]
     [InlineData("CredentialChange", false)]
     [InlineData("", false)]
-    public void Application_type_is_explicit_and_profile_update_requires_the_full_application(string type, bool valid)
+    public void Application_type_is_explicit_and_profile_update_needs_only_certificates_and_consent(string type, bool valid)
     {
         var request = new SubmitTrainerApplicationRequest("Test Applicant", "applicant@example.test", "0900000000", "000000000001",
             new(2000, 1, 1), "Other", "Strength", 3, "Coach", true, [new("proof.pdf", "%PDF-1.7"u8.ToArray())], type,
@@ -149,15 +149,21 @@ public class TrainerValidationTests
         Assert.Equal(valid, validator.Validate(request).IsValid);
         Assert.False(validator.Validate(request with { ApplicationType = "ProfileUpdate", Consent = false }).IsValid);
         Assert.False(validator.Validate(request with { ApplicationType = "ProfileUpdate", Certificates = [] }).IsValid);
-        Assert.False(validator.Validate(request with { ApplicationType = "ProfileUpdate", CitizenId = "" }).IsValid);
+        // UC 3.3: personal details come from the account and TrainerProfile, so a ProfileUpdate may omit them.
+        Assert.True(validator.Validate(request with { ApplicationType = "ProfileUpdate", CitizenId = "", PhoneNumber = "",
+            FullName = "", Bio = "", DateOfBirth = default, Gender = "", Specialty = "" }).IsValid);
+        Assert.False(validator.Validate(request with { ApplicationType = "Recruitment", CitizenId = "" }).IsValid);
     }
 
     [Fact]
-    public void Profile_approval_requires_a_note_but_not_new_hire_fields()
+    public void Only_interview_and_reject_require_a_note()
     {
         var validator = new ReviewTrainerApplicationValidator();
         Assert.True(validator.Validate(new ReviewTrainerApplicationRequest("Approve", "Verified certificates")).IsValid);
-        Assert.False(validator.Validate(new ReviewTrainerApplicationRequest("Approve", "")).IsValid);
+        Assert.True(validator.Validate(new ReviewTrainerApplicationRequest("Approve", "")).IsValid);
+        Assert.True(validator.Validate(new ReviewTrainerApplicationRequest("Hire", null, "Junior", IdentityVerified: true)).IsValid);
+        Assert.False(validator.Validate(new ReviewTrainerApplicationRequest("Reject", " ")).IsValid);
+        Assert.False(validator.Validate(new ReviewTrainerApplicationRequest("Interview", "")).IsValid);
     }
 
     [Fact]

@@ -16,7 +16,7 @@ public sealed record TrainerRecruitmentStatus(bool IsAcceptingApplications);
 public sealed record SetTrainerRecruitmentStatusRequest(bool IsAcceptingApplications);
 public sealed record TrainerApplicationFilter(string? Status = null, string? TrainerRole = null,
     DateTime? From = null, DateTime? To = null, int Page = 1, int PageSize = 20, string? ApplicationType = null);
-public sealed record ReviewTrainerApplicationRequest(string Action, string Note, string? Level = null,
+public sealed record ReviewTrainerApplicationRequest(string Action, string? Note, string? Level = null,
     string? ExistingUserId = null, bool IdentityVerified = false);
 public sealed record UpdateTrainerProfileRequest(string? Bio = null, TrainerFileInput? Avatar = null);
 public sealed record TrainerSetupRequest(string Token, string Password);
@@ -34,7 +34,8 @@ public sealed record TrainerAccountMatch(string Status, string? UserId = null, s
     IReadOnlyList<TrainerAccountCandidate>? Matches = null, bool HasUnfinishedPTContract = false,
     DateOnly? MemberServicesUntil = null);
 public sealed record TrainerAccountCandidate(string UserId, string FullName, string Email, string PhoneNumber,
-    bool EmailMatches, bool PhoneMatches, bool Eligible = true);
+    bool EmailMatches, bool PhoneMatches, bool Eligible = true, bool HasUnfinishedPTContract = false,
+    DateOnly? MemberServicesUntil = null);
 public sealed record TrainerApplicationResponse(int Id, string TrackingCode, string Status, string FullName,
     string Email, string PhoneNumber, string CitizenId, DateOnly? DateOfBirth, string Gender, string Specialty,
     int ExperienceYears, string Bio, DateTime SubmittedAt, int SubmissionAttempt, string? ReviewNote,
@@ -54,9 +55,8 @@ public sealed record TrainerProfileResponse(int Id, string UserId, string FullNa
 /// <summary>ContractsNotified: members told they may change trainer within one week (GBR-98).</summary>
 public sealed record TrainerReadinessStatus(bool IsAcceptingNewMembers, int ContractsNotified);
 public sealed record SetTrainerReadinessRequest(bool IsAcceptingNewMembers);
-public sealed record TrainerAvailabilityResponse(DateOnly Date, TimeOnly StartTime, TimeOnly EndTime, string Status);
 public sealed record TrainerReviewResponse(int Rating, string? Comment, string MemberName = "");
 public sealed record TrainerPublicDetail(TrainerProfileResponse Profile, IReadOnlyList<TrainerDocumentResponse> Certificates,
-    IReadOnlyList<TrainerAvailabilityResponse> Availability, IReadOnlyList<TrainerReviewResponse> Reviews,
+    IReadOnlyList<TrainerReviewResponse> Reviews,
     bool HasActivePTContract = false, bool IsOwnProfile = false, int ReviewPage = 1, int ReviewTotal = 0);
 public sealed record TrainerFileResponse(string FileName, string ContentType, byte[] Content);
