@@ -58,14 +58,6 @@ public sealed class PersonalTrainingStore(VfmsDbContext db) : IPersonalTrainingS
         db.Packages.IgnoreQueryFilters().AnyAsync(p => p.Id == packageId &&
             (p.OrderItems.Any() || p.Components.Any(c => c.MemberMemberships.Any())), ct);
 
-    public Task MarkReceiptEmailSent(int purchaseId, DateTime claim, DateTime sentAt, CancellationToken ct) =>
-        db.PTPurchases.Where(p => p.Id == purchaseId && p.ReceiptEmailRetryAt == claim)
-            .ExecuteUpdateAsync(set => set.SetProperty(p => p.ReceiptEmailSentAt, sentAt), ct);
-
-    public Task MarkProposalEmailSent(int sessionId, DateTime claim, DateTime sentAt, CancellationToken ct) =>
-        db.PTSessions.Where(s => s.Id == sessionId && s.ProposalEmailRetryAt == claim)
-            .ExecuteUpdateAsync(set => set.SetProperty(s => s.ProposalEmailSentAt, sentAt), ct);
-
     public Task<bool> IsTransferRecorded(PaymentTransaction payment, string reference, CancellationToken ct) =>
         CheckoutRefunds.IsRecorded(db, payment, reference, ct);
 

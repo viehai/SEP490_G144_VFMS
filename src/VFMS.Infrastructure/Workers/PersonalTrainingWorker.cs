@@ -1,7 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using VFMS.Application.Interfaces;
 using VFMS.Application.Services;
 
 namespace VFMS.Infrastructure.Workers;
@@ -23,7 +22,6 @@ public sealed class PersonalTrainingWorker(IServiceScopeFactory scopes, ILogger<
                 await service.ExpirePending(ct);
                 await service.ProcessAttendance(ct);
                 await service.RemindPendingFreezes(ct);
-                await service.SendPendingEmail(scope.ServiceProvider.GetRequiredService<IEmailService>(), ct);
                 var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7));
                 if (lastTrainerSweep != today)
                 {

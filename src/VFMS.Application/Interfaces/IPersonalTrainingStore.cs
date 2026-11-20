@@ -28,8 +28,6 @@ public interface IPersonalTrainingStore
 
     /// <summary>True when a package is referenced by orders or memberships, including soft-deleted history.</summary>
     Task<bool> PackageHasHistory(int packageId, CancellationToken ct);
-    Task MarkReceiptEmailSent(int purchaseId, DateTime claim, DateTime sentAt, CancellationToken ct);
-    Task MarkProposalEmailSent(int sessionId, DateTime claim, DateTime sentAt, CancellationToken ct);
 
     Task<bool> IsTransferRecorded(PaymentTransaction payment, string reference, CancellationToken ct);
     void RecordExtraTransfer(PaymentTransaction payment, SepayTransfer transfer, DateTime now);

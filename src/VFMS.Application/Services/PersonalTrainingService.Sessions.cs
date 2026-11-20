@@ -179,8 +179,6 @@ public sealed partial class PersonalTrainingService
         s.ProposedEndTime = null;
         s.ProposedAdjustmentType = null;
         s.ProposalExpiresAt = null;
-        s.ProposalEmailSentAt = null;
-        s.ProposalEmailRetryAt = null;
         s.SessionStatus = PTSessionStatus.Scheduled;
     }
 
