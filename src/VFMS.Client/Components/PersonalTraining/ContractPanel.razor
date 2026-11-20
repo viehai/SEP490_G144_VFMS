@@ -124,10 +124,6 @@
                         else if (IsTrainer)
                         {
                             <button class="trainer-button" disabled="@_busy" @onclick="() => OpenOptionsAsync(item)">Đề xuất đổi lịch</button>
-                            @if (item.CreditUnits == 1 && Contract.AvailableCredits > 0)
-                            {
-                                <button class="trainer-button" disabled="@_busy" @onclick="() => DoubleAsync(item)">Đề xuất ca đôi</button>
-                            }
                             <button class="trainer-button" disabled="@_busy" @onclick="() => CancelAsync(item)">Xin hủy buổi</button>
                         }
                         else
@@ -249,7 +245,6 @@
     private static string ProposalText(PTProposalResponse p) => p.Type switch
     {
         "Cancellation" => "Đề nghị hủy buổi này (sẽ thành lượt bù)",
-        "DoubleSession" => $"Đề xuất ca đôi {Time(p.StartTime)} – {Time(p.EndTime)}",
         "MakeUp" => $"Buổi bù {Date(p.Date)} · {Time(p.StartTime)} – {Time(p.EndTime)}",
         _ => $"Đề xuất đổi sang {Date(p.Date)} · {Time(p.StartTime)} – {Time(p.EndTime)}"
     };
@@ -327,9 +322,6 @@
         else if (IsTrainer) await Api.DecideRescheduleAsync(item.Id, new(accept, proposal.Date, proposal.StartTime, proposal.ExpiresAt));
         else await Api.DecideProposalAsync(item.Id, new(accept, proposal.ExpiresAt));
     }, accept ? "Đã chấp nhận đề xuất." : "Đã từ chối đề xuất.", refresh: true);
-
-    private Task DoubleAsync(PTSessionResponse item) => RunAsync(async () =>
-        await Api.ProposeAsync(item.Id, new(item.Date, item.StartTime, "DoubleSession")), "Đã gửi đề xuất ca đôi.", refresh: true);
 
     private Task ReviewAsync()
     {

@@ -185,7 +185,7 @@ public sealed partial class PersonalTrainingService
     private async Task<bool> CanAdjust(PTPurchase p, PTSession s, DateOnly date, TimeOnly start, TimeOnly end,
         PTAdjustmentType type, DateTime now, CancellationToken ct, bool isMakeUp = false)
     {
-        var units = type == PTAdjustmentType.DoubleSession ? 2 : s.CreditUnits;
+        var units = s.CreditUnits;
         var (used, reserved) = PersonalTrainingRules.Credits(p.Sessions);
         var lastDay = isMakeUp ? PersonalTrainingRules.MakeUpDeadline(p.EndDate) : p.EndDate;
         if (EffectiveStatus(p) != PTPurchaseStatus.Active || date < p.StartDate || date > lastDay ||
@@ -252,7 +252,7 @@ public sealed partial class PersonalTrainingService
             return Result<PTSessionResponse>.Success(SessionResponse(session, now), 201);
         }, ct);
 
-    /// <summary>UC 4.7: the PT proposes a reschedule or a 120-minute double session; the Member decides.</summary>
+    /// <summary>UC 4.7: the PT proposes a reschedule; the Member decides.</summary>
     public Task<Result<PTSessionResponse>> Propose(string actor, int id, PTProposalRequest request, CancellationToken ct) => Write(async () =>
     {
         if (await User(actor, UserRole.PT, ct) is null)
@@ -269,21 +269,12 @@ public sealed partial class PersonalTrainingService
             return Conflict<PTSessionResponse>("Chỉ có thể đề xuất cho buổi sắp tới chưa có yêu cầu chờ.");
         if (LeadTimeError<PTSessionResponse>(s, now) is { } late)
             return late;
-        if (!Enum.TryParse<PTAdjustmentType>(request.Type, true, out var type) || type == PTAdjustmentType.Cancellation)
+        // UC 4.7: only a reschedule; the double session was removed from the spec.
+        if (!Enum.TryParse<PTAdjustmentType>(request.Type, true, out var type) || type != PTAdjustmentType.Reschedule)
             return Invalid<PTSessionResponse>("Loại đề xuất không hợp lệ.");
-        TimeOnly end;
-        if (type == PTAdjustmentType.DoubleSession)
-        {
-            if (s.CreditUnits != 1 || request.Date != s.SessionDate || request.StartTime != s.StartTime)
-                return Invalid<PTSessionResponse>("Ca đôi kéo dài buổi 60 phút hiện tại.");
-            end = request.StartTime.AddHours(2);
-        }
-        else
-        {
-            if (IsOriginalTime(s, request.Date, request.StartTime) || !IsWholeHour(request.StartTime))
-                return Invalid<PTSessionResponse>("Chọn giờ bắt đầu tròn giờ, khác lịch hiện tại.");
-            end = request.StartTime.Add(s.EndTime - s.StartTime);
-        }
+        if (IsOriginalTime(s, request.Date, request.StartTime) || !IsWholeHour(request.StartTime))
+            return Invalid<PTSessionResponse>("Chọn giờ bắt đầu tròn giờ, khác lịch hiện tại.");
+        var end = request.StartTime.Add(s.EndTime - s.StartTime);
         if (!await CanAdjust(p, s, request.Date, request.StartTime, end, type, now, ct))
             return Conflict<PTSessionResponse>("Lịch không khả dụng hoặc không đủ số buổi.");
         s.ProposedDate = request.Date;
@@ -293,7 +284,7 @@ public sealed partial class PersonalTrainingService
         s.ProposalExpiresAt = ResponseDeadline(oldStart);
         s.SessionStatus = PTSessionStatus.ReschedulePending;
         Audit(actor, nameof(PTSession), s.Id, $"Proposed:{type}:{request.Date:yyyy-MM-dd}:{request.StartTime:HH:mm}");
-        Notify(s.MemberUserId, type == PTAdjustmentType.DoubleSession ? "Đề xuất ca đôi PT" : "PT đề nghị đổi lịch",
+        Notify(s.MemberUserId, "PT đề nghị đổi lịch",
             $"Lịch đề xuất {request.Date:dd/MM/yyyy} {request.StartTime:HH:mm}–{end:HH:mm}.",
             nameof(PTSession), s.Id);
         await store.Save(ct);
@@ -340,7 +331,7 @@ public sealed partial class PersonalTrainingService
         Notify(session.PTUserId, "Đã hủy buổi PT", message, nameof(PTSession), session.Id);
     }
 
-    /// <summary>The Member answers a PT proposal: reschedule, double session, cancellation or make-up.</summary>
+    /// <summary>The Member answers a PT proposal: reschedule, cancellation or make-up.</summary>
     public Task<Result<PTSessionResponse>> DecideProposal(string actor, int id, PTProposalDecision request, CancellationToken ct) => Write(async () =>
     {
         if (await User(actor, UserRole.Member, ct) is null)
@@ -362,6 +353,9 @@ public sealed partial class PersonalTrainingService
             await store.Save(ct);
             return Result<PTSessionResponse>.Success(SessionResponse(s, now));
         }
+        // A double-session proposal left from before its removal can no longer be accepted.
+        if (type == PTAdjustmentType.DoubleSession)
+            valid = false;
         if (request.Accept && valid)
         {
             valid = await CanAdjust(p, s, s.ProposedDate!.Value, s.ProposedStartTime!.Value,
@@ -371,10 +365,7 @@ public sealed partial class PersonalTrainingService
                 s.SessionDate = s.ProposedDate.Value;
                 s.StartTime = s.ProposedStartTime.Value;
                 s.EndTime = s.ProposedEndTime.Value;
-                if (type == PTAdjustmentType.DoubleSession)
-                    s.CreditUnits = 2;
-                else
-                    s.PTAvailabilityId = await Templates(s.PTUserId).Where(x =>
+                s.PTAvailabilityId = await Templates(s.PTUserId).Where(x =>
                             x.DayOfWeek == s.SessionDate.DayOfWeek && x.StartTime == s.StartTime)
                         .Select(x => (int?)x.Id).FirstOrDefaultAsync(store, ct);
             }

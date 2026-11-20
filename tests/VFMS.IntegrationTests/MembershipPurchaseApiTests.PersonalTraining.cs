@@ -431,6 +431,10 @@ public sealed partial class MembershipPurchaseApiTests
         using var trainerRequest = await trainer.PostAsJsonAsync($"{sessionPath}/proposal",
             new PTProposalRequest(session.Date, busyTime, "Reschedule"));
         Assert.Equal(HttpStatusCode.Conflict, trainerRequest.StatusCode);
+        // The double session was removed from UC 4.7.
+        using var doubleSession = await trainer.PostAsJsonAsync($"{sessionPath}/proposal",
+            new PTProposalRequest(session.Date, session.StartTime, "DoubleSession"));
+        Assert.Equal(HttpStatusCode.BadRequest, doubleSession.StatusCode);
         var requestPath = $"{sessionPath}/reschedule-request";
         using var wrongMember = await otherMember.PostAsJsonAsync(requestPath, new PTRescheduleRequest(session.Date, newTime));
         Assert.Equal(HttpStatusCode.NotFound, wrongMember.StatusCode);
