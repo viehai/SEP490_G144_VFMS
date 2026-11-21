@@ -57,7 +57,7 @@ public static class PTDisputeDecisions
 public sealed record PTAttendanceDisputeDecision(string Decision, string Note);
 public sealed record PTAttendanceDispute(int SessionId, int ContractId, string MemberName, string TrainerName,
     DateOnly Date, TimeOnly StartTime, TimeOnly EndTime, string? MemberNote, DateTime ReportedAt, string Status,
-    string? Decision, string? ReviewNote);
+    string? Decision, string? ReviewNote, string? ReviewerName = null);
 public sealed record PTSessionResponse(int Id, DateOnly Date, TimeOnly StartTime, TimeOnly EndTime,
     string Status, int CreditUnits, string? Note, DateTime? NoteUpdatedAt, PTProposalResponse? Proposal,
     DateTime? TrainerAbsenceReportedAt = null, bool? TrainerAbsenceApproved = null,
@@ -82,6 +82,10 @@ public sealed record PTContractResponse(int Id, string TrainerId, string MemberI
     public DateTime? TrainerChangeDeadline { get; init; }
     /// <summary>UC 4.10: the Member already reviewed this contract.</summary>
     public bool HasReview { get; init; }
+    /// <summary>UC 4.10: completed and its final session was held, so it can be reviewed once.</summary>
+    public bool CanReview { get; init; }
+    /// <summary>The package's trainer level (tier), shown in the review modal (UC 4.10 step 2).</summary>
+    public string? TrainerLevel { get; init; }
     /// <summary>Gym operating hours, for choosing a make-up hour (UC 4.7).</summary>
     public TimeOnly? GymOpenTime { get; init; }
     public TimeOnly? GymCloseTime { get; init; }

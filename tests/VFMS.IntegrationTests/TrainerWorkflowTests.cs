@@ -284,13 +284,27 @@ public class TrainerWorkflowTests
         Assert.True(stored.AcceptingNewMembers);
         Assert.Null(stored.NotAcceptingSince);
 
+        // A contract with no session taught yet (the membership link is not needed here, so its FK check is off).
+        await fixture.Db.Database.ExecuteSqlRawAsync("ALTER TABLE PTPurchases NOCHECK CONSTRAINT ALL");
+        var contract = new PTPurchase
+        {
+            MemberUserId = "manager", PTUserId = stored.PTUserId, TotalSessions = 4, RemainingSessions = 4,
+            StartDate = today, EndDate = today.AddDays(30), PurchaseDate = today
+        };
+        fixture.Db.Add(contract);
+        await fixture.Db.SaveChangesAsync();
+
+        // UC 4.12 step 4: the Member of an untouched contract gets one week to change trainer.
         var stopped = TrainerTestDatabase.Success(await service.SetReadiness(false, stored.PTUserId, default));
         Assert.False(stopped.IsAcceptingNewMembers);
-        Assert.Equal(0, stopped.ContractsNotified);
+        Assert.Equal(1, stopped.ContractsNotified);
         Assert.Equal(today, (await fixture.Db.TrainerProfiles.AsNoTracking().SingleAsync()).NotAcceptingSince);
+        Assert.NotNull((await fixture.Db.PTPurchases.AsNoTracking().SingleAsync()).TrainerChangeDeadline);
 
+        // GBR-98: switching back to 'Accepting' closes that window early.
         var accepting = TrainerTestDatabase.Success(await service.SetReadiness(true, stored.PTUserId, default));
         Assert.True(accepting.IsAcceptingNewMembers);
+        Assert.Null((await fixture.Db.PTPurchases.AsNoTracking().SingleAsync()).TrainerChangeDeadline);
         var profile = TrainerTestDatabase.Success(await service.Mine(stored.PTUserId, default)).Profile;
         Assert.True(profile.IsAcceptingNewMembers);
         Assert.Null(profile.NotAcceptingSince);

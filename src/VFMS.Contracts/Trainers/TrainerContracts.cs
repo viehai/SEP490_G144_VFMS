@@ -49,6 +49,8 @@ public sealed record TrainerProfileResponse(int Id, string UserId, string FullNa
     public TrainerProfileResponse() : this(0, "", "", "", "", "", 0, null, null, 0) { }
     public bool IsAcceptingNewMembers { get; init; }
     public DateOnly? NotAcceptingSince { get; init; }
+    /// <summary>GBR-98: first day of the 60-day count (later than NotAcceptingSince while contracts were still running).</summary>
+    public DateOnly? NotAcceptingCountFrom { get; init; }
     /// <summary>PT or Yoga. Only a PT sells packages and publishes a weekly timetable (UC 3.4).</summary>
     public string TrainerRole { get; init; } = "";
 }

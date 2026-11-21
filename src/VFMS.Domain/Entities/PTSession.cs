@@ -37,6 +37,8 @@ public class PTSession : BaseEntity
     public PTSessionStatus? StatusBeforeTrainerAbsenceReport { get; set; }
     public DateTime? TrainerAbsenceReviewedAt { get; set; }
     public string? TrainerAbsenceReviewNote { get; set; }
+    /// <summary>The Manager who decided the attendance dispute (UC 4.11 step 5).</summary>
+    public string? TrainerAbsenceReviewedByUserId { get; set; }
     public bool? TrainerAbsenceApproved { get; set; }
     /// <summary>When the 20:00 attendance reminder was sent to the PT (GBR-97).</summary>
     public DateTime? AttendanceReminderSentAt { get; set; }

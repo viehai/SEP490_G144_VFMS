@@ -30,7 +30,7 @@
                         <strong>@(detail.Profile.IsAcceptingNewMembers ? "Đang nhận học viên mới" : "Không nhận học viên mới")</strong>
                         @if (!detail.Profile.IsAcceptingNewMembers && detail.Profile.NotAcceptingSince is { } since)
                         {
-                            <p class="trainer-muted">Từ ngày @since.ToString("dd/MM/yyyy"). Quá 60 ngày liên tục sẽ mất quyền PT khi không còn hợp đồng đang chạy.</p>
+                            <p class="trainer-muted">Từ ngày @since.ToString("dd/MM/yyyy"). 60 ngày được tính từ ngày @((detail.Profile.NotAcceptingCountFrom ?? since).ToString("dd/MM/yyyy")); nếu còn hợp đồng đang chạy, mốc này lùi tới ngày hợp đồng cuối kết thúc. Vẫn không nhận học viên quá 60 ngày thì mất quyền PT.</p>
                         }
                     </div>
                     <button type="button" class="trainer-button" disabled="@_saving" @onclick="ToggleReadinessAsync">

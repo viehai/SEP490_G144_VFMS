@@ -2162,6 +2162,10 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<DateTime?>("TrainerAbsenceReviewedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("TrainerAbsenceReviewedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
 
@@ -3225,6 +3229,9 @@ namespace VFMS.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateOnly?>("NotAcceptingCountFrom")
+                        .HasColumnType("date");
 
                     b.Property<DateOnly?>("NotAcceptingSince")
                         .HasColumnType("date");

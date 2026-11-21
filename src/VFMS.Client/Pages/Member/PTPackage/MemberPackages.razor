@@ -13,8 +13,15 @@
     <PageHeader Overline="VFMS / GÓI PT" Title="@(Id.HasValue ? "Lịch PT của tôi" : "Gói PT của tôi")"
                 Description="Theo dõi tiến độ, đổi lịch, bảo lưu và đánh giá huấn luyện viên." />
     <TrainerFeedback Error="@_error" />
+    <div class="trainer-row" role="group" aria-label="Loại hợp đồng">
+        <button type="button" class="trainer-button" aria-pressed="@(_completed ? "false" : "true")" disabled="@_loading"
+                @onclick="() => SwitchAsync(false)">Hợp đồng hiện tại</button>
+        <button type="button" class="trainer-button" aria-pressed="@(_completed ? "true" : "false")" disabled="@_loading"
+                @onclick="() => SwitchAsync(true)">Hợp đồng đã hoàn thành</button>
+    </div>
     @if (_loading) { <p role="status">Đang tải hợp đồng…</p> }
     else if (_contracts is null && _selected is null) { <button class="trainer-button" @onclick="() => LoadAsync()">Tải lại</button> }
+    else if (_contracts is { TotalCount: 0 } && _selected is null && _completed) { <p class="trainer-panel">Chưa có hợp đồng PT đã hoàn thành.</p> }
     else if (_contracts is { TotalCount: 0 } && _selected is null) { <p class="trainer-panel">Chưa có hợp đồng PT để hiển thị. <a class="trainer-link" href="/trainers">Khám phá gói PT</a></p> }
     else
     {
@@ -41,7 +48,8 @@
                             <a class="trainer-button trainer-primary" href="@($"/my-pt-packages/{selected.Id}/change-trainer")">Đổi huấn luyện viên</a>
                         }
                     </div>
-                    <ContractPanel @key="selected.Id" Contract="selected" TrainerName="@(selected.TrainerName ?? "Huấn luyện viên")" Changed="ReloadAsync" />
+                    <ContractPanel @key="selected.Id" Contract="selected" TrainerName="@(selected.TrainerName ?? "Huấn luyện viên")" Changed="ReloadAsync"
+                                   OpenReview="_completed" />
                 </div>
             }
         </div>
@@ -53,15 +61,17 @@
     [SupplyParameterFromQuery(Name = "contract")] public int? ContractId { get; set; }
     private PagedResponse<PTContractResponse>? _contracts;
     private PTContractResponse? _selected;
-    private bool _loading;
+    private bool _loading, _completed;
     private int _loadVersion;
     private string? _error;
 
-    protected override Task OnParametersSetAsync() => LoadAsync(selectedId: ContractId);
+    // UC 4.10: opening 'My PT Packages' shows the review modal for a completed contract not reviewed yet.
+    protected override Task OnParametersSetAsync() => LoadAsync(selectedId: ContractId, findReview: ContractId is null);
+    private Task SwitchAsync(bool completed) { _completed = completed; return LoadAsync(); }
     private Task ReloadAsync() => LoadAsync(_contracts?.Page ?? 1, _selected?.Id, showLoading: false);
     private Task LoadPageAsync(int page) => LoadAsync(page);
 
-    private async Task LoadAsync(int page = 1, int? selectedId = null, bool showLoading = true)
+    private async Task LoadAsync(int page = 1, int? selectedId = null, bool showLoading = true, bool findReview = false)
     {
         var version = ++_loadVersion;
         _loading = showLoading;
@@ -70,7 +80,16 @@
         try
         {
             var trainerId = Id is { } id ? (await Trainers.DetailAsync(id)).Profile.UserId : null;
-            var contracts = await Api.ContractPageAsync(page, trainerId);
+            if (findReview)
+            {
+                var done = await Api.ContractPageAsync(1, trainerId, true);
+                if (done.Items.FirstOrDefault(item => item.CanReview && !item.HasReview) is { } pending && version == _loadVersion)
+                {
+                    (_completed, _contracts, _selected) = (true, done, pending);
+                    return;
+                }
+            }
+            var contracts = await Api.ContractPageAsync(page, trainerId, _completed);
             var selected = contracts.Items.FirstOrDefault(item => item.Id == selectedId);
             if (selected is null && selectedId is { } contractId)
             {

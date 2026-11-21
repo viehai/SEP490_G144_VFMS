@@ -576,6 +576,7 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
             // New and rehired trainers start 'Accepting New Members', so the GBR-98 60-day count does not run.
             profile.AcceptingNewMembers = true;
             profile.NotAcceptingSince = null;
+            profile.NotAcceptingCountFrom = null;
             if (previous == null)
                 store.Add(profile);
             await store.Save(ct);
@@ -682,6 +683,7 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
                 .Average() ?? 0,
             IsAcceptingNewMembers = profile.AcceptingNewMembers,
             NotAcceptingSince = profile.NotAcceptingSince,
+            NotAcceptingCountFrom = profile.NotAcceptingCountFrom ?? profile.NotAcceptingSince,
             TrainerRole = profile.TrainerRole != null ? profile.TrainerRole.RoleName : ""
         };
 
@@ -702,8 +704,14 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
                 var before = profile.AcceptingNewMembers.ToString();
                 profile.AcceptingNewMembers = accepting;
                 profile.NotAcceptingSince = accepting ? null : today;
+                profile.NotAcceptingCountFrom = accepting ? null : today;
                 if (!accepting)
                     notified = await OfferTrainerChange(actor, now, today, ct);
+                else
+                    // GBR-98: switching back to 'Accepting' closes the one-week window to change trainer.
+                    foreach (var contract in await store.List(store.Query<PTPurchase>()
+                                 .Where(p => p.PTUserId == actor && p.TrainerChangeDeadline != null), ct))
+                        contract.TrainerChangeDeadline = null;
                 Audit(actor, nameof(TrainerProfile), profile.Id, "SetReadiness", before, accepting.ToString());
             }
             return Result<TrainerReadinessStatus>.Success(new(profile.AcceptingNewMembers, notified));

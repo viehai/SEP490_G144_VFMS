@@ -30,6 +30,8 @@ public class TrainerProfile : BaseEntity
     public bool AcceptingNewMembers { get; set; }
     /// <summary>First day of the current 'Not Accepting' period; null while accepting (GBR-98).</summary>
     public DateOnly? NotAcceptingSince { get; set; }
+    /// <summary>GBR-98: start of the 60-day count; moved forward each day the trainer still has a running contract.</summary>
+    public DateOnly? NotAcceptingCountFrom { get; set; }
 
     // ── Navigation Properties ──────────────────────────────────
     public ApplicationUser PTUser { get; set; } = null!;

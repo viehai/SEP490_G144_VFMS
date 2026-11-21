@@ -43,9 +43,10 @@ public sealed class PersonalTrainingApiClient(HttpClient http, AuthSession sessi
     public Task<PagedResponse<PTAssignedMember>> AssignedPageAsync(string search, bool historical, int page) =>
         Send<PagedResponse<PTAssignedMember>>(HttpMethod.Get,
             $"assigned-members/page?search={Uri.EscapeDataString(search)}&historical={(historical ? "true" : "false")}&page={page}");
-    public Task<PagedResponse<PTContractResponse>> ContractPageAsync(int page, string? trainerId) =>
+    public Task<PagedResponse<PTContractResponse>> ContractPageAsync(int page, string? trainerId, bool? completed = null) =>
         Send<PagedResponse<PTContractResponse>>(HttpMethod.Get,
-            $"contracts/page?page={page}" + (trainerId is null ? "" : $"&trainerId={Uri.EscapeDataString(trainerId)}"));
+            $"contracts/page?page={page}" + (trainerId is null ? "" : $"&trainerId={Uri.EscapeDataString(trainerId)}") +
+            (completed is { } done ? $"&completed={(done ? "true" : "false")}" : ""));
     public Task<PTTeachingSlot[]> TeachingScheduleAsync(DateOnly monday, CancellationToken ct = default) =>
         Send<PTTeachingSlot[]>(HttpMethod.Get, $"teaching-schedule?from={monday:yyyy-MM-dd}", ct: ct);
     public Task<PTRescheduleSlot[]> RescheduleOptionsAsync(int id, DateOnly from) =>

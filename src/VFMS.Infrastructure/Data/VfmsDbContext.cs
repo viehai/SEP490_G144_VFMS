@@ -535,6 +535,7 @@ public class VfmsDbContext : DbContext
             entity.Property(e => e.TrainerAbsenceReason).HasMaxLength(1000);
             entity.Property(e => e.TrainerAbsenceReviewNote).HasMaxLength(1000);
             entity.Property(e => e.NoteAuthorUserId).HasMaxLength(450);
+            entity.Property(e => e.TrainerAbsenceReviewedByUserId).HasMaxLength(450);
             entity.Property(e => e.CreditUnits).HasDefaultValue(1);
             entity.Property(e => e.ProposedAdjustmentType).HasConversion<string>().HasMaxLength(20);
             entity.HasIndex(e => new { e.PTUserId, e.SessionDate, e.StartTime });

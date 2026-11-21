@@ -107,8 +107,8 @@ public sealed class PersonalTrainingController(PersonalTrainingService service) 
 
     [HttpGet("contracts/page")]
     [Authorize(Roles = "Member")]
-    public Task<IActionResult> ContractPage([FromQuery] int page, [FromQuery] string? trainerId, CancellationToken ct) =>
-        AsUser(actor => service.ContractPage(actor, page, trainerId, ct));
+    public Task<IActionResult> ContractPage([FromQuery] int page, [FromQuery] string? trainerId, [FromQuery] bool? completed,
+        CancellationToken ct) => AsUser(actor => service.ContractPage(actor, page, trainerId, ct, completed));
 
     [HttpGet("contracts/{id:int}")]
     [Authorize(Roles = "Member,PT")]

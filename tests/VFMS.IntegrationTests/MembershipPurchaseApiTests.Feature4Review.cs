@@ -90,7 +90,7 @@ public sealed partial class MembershipPurchaseApiTests
         await service.ExpireInactiveTrainers(Today, default);
         Assert.True((await db.TrainerProfiles.AsNoTracking().SingleAsync(p => p.PTUserId == "buyer")).IsActive);
 
-        // Without make-up left, the ended contract moves to 'Ended' and no longer keeps the PT role.
+        // Without make-up left, the ended contract moves to 'Ended'; the 60 days count from that day, then the PT role goes.
         unit.IsCreditForfeited = true;
         await db.SaveChangesAsync();
         Assert.DoesNotContain((await trainer.GetFromJsonAsync<PagedResponse<PTAssignedMember>>(currentPath))!.Items,
@@ -98,6 +98,8 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Contains((await trainer.GetFromJsonAsync<PagedResponse<PTAssignedMember>>(endedPath))!.Items,
             row => row.ContractId == id);
         await service.ExpireInactiveTrainers(Today, default);
+        Assert.True((await db.TrainerProfiles.AsNoTracking().SingleAsync(p => p.PTUserId == "buyer")).IsActive);
+        await service.ExpireInactiveTrainers(Today.AddDays(61), default);
         Assert.False((await db.TrainerProfiles.AsNoTracking().SingleAsync(p => p.PTUserId == "buyer")).IsActive);
     }
 

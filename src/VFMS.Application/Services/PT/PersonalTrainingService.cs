@@ -119,9 +119,15 @@ public sealed partial class PersonalTrainingService(IPersonalTrainingStore store
             .Select(role => (int?)role.Id), ct);
         foreach (var profile in profiles)
         {
-            if (!TrainerReadinessRules.HasExpired(profile.NotAcceptingSince, today) ||
-                await store.Query<PTPurchase>().Where(p => p.PTUserId == profile.PTUserId)
+            // GBR-98: while a contract is still running the 60 days have not started; they count from the day the last one ends.
+            // shortcut: the start moves forward once per daily sweep, so a missed sweep day starts the count that much earlier.
+            if (await store.Query<PTPurchase>().Where(p => p.PTUserId == profile.PTUserId)
                     .Where(PersonalTrainingRules.StillRunning(today)).AnyAsync(store, ct))
+            {
+                profile.NotAcceptingCountFrom = today;
+                continue;
+            }
+            if (!TrainerReadinessRules.HasExpired(profile.NotAcceptingCountFrom ?? profile.NotAcceptingSince, today))
                 continue;
             profile.IsActive = false;
             if (ptRoleId is { } roleId)
