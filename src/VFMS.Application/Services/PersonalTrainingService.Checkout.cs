@@ -51,11 +51,31 @@ public sealed partial class PersonalTrainingService
             .OrderBy(x => x.DayOfWeek).ToArrayAsync(store, ct);
         if (pattern.Length != request.TemplateIds.Length || pattern.Select(x => x.DayOfWeek).Distinct().Count() != pattern.Length)
             return Invalid<Booking>("Chọn một ca đã công bố cho mỗi ngày tập.");
-        var dates = ProposedDates(request.StartDate, pattern, terms.SessionCount.GetValueOrDefault());
+        var count = terms.SessionCount.GetValueOrDefault();
+        var candidates = Candidates(request.StartDate, pattern, count);
+        var (dates, skipped) = Schedule(candidates, await ConflictingSlots(request.TrainerId, actor, candidates, now, ct), count);
+        // Too many busy dates to move: keep the plain schedule so the hold reports the conflict (MSG-30).
         if (dates.Length == 0)
+            dates = candidates.Take(count).ToArray();
+        if (dates.Length < count || count <= 0)
             return Invalid<Booking>("Không thể xếp đủ số buổi từ ngày bắt đầu đã chọn.");
-        return Result<Booking>.Success(new(new(package.Id, request.TrainerId, dates[^1].Date, package.Price, dates),
-            package, profile, trainer, pattern));
+        return Result<Booking>.Success(new(new(package.Id, request.TrainerId, dates[^1].Date, package.Price, dates)
+            { Skipped = skipped }, package, profile, trainer, pattern));
+    }
+
+    // UC 4.2 / GBR-12: a date on which the trainer or the Member is busy is skipped and the session moves to the
+    // next free occurrence of the pattern after the last session.
+    // At most one week of sessions is moved; a slot busy more often than that is taken by another schedule.
+    private static PTCalendarSlot[] Candidates(DateOnly start, PTAvailability[] pattern, int count) =>
+        count <= 0 ? [] : ProposedDates(start, pattern, count + pattern.Length);
+
+    private static (PTCalendarSlot[] Dates, PTCalendarSlot[] Skipped) Schedule(PTCalendarSlot[] candidates,
+        IReadOnlySet<PTCalendarSlot> busy, int count)
+    {
+        var dates = candidates.Where(slot => !busy.Contains(slot)).Take(count).ToArray();
+        if (count <= 0 || dates.Length < count)
+            return ([], []);
+        return (dates, candidates.Where(slot => busy.Contains(slot) && slot.Date <= dates[^1].Date).ToArray());
     }
 
     private static PTCalendarSlot[] ProposedDates(DateOnly start, PTAvailability[] pattern, int count)
@@ -137,11 +157,15 @@ public sealed partial class PersonalTrainingService
             return Result<PTWeeklySlot[]>.Success([]);
         var selected = templates.Where(s => request.TemplateIds.Contains(s.Id))
             .DistinctBy(s => s.DayOfWeek).ToArray();
-        var patterns = templates.ToDictionary(s => s.Id, s => ProposedDates(request.StartDate,
-            selected.Where(item => item.DayOfWeek != s.DayOfWeek).Append(s).ToArray(), component.SessionCount.GetValueOrDefault()));
-        var dates = patterns.Values.SelectMany(slots => slots).Distinct().ToArray();
+        var count = component.SessionCount.GetValueOrDefault();
+        var candidates = templates.ToDictionary(s => s.Id, s => Candidates(request.StartDate,
+            selected.Where(item => item.DayOfWeek != s.DayOfWeek).Append(s).ToArray(), count));
         var now = Now;
-        var conflicts = await ConflictingSlots(request.TrainerId, actor, dates, now, ct);
+        var conflicts = await ConflictingSlots(request.TrainerId, actor,
+            candidates.Values.SelectMany(slots => slots).Distinct().ToArray(), now, ct);
+        // GBR-12: busy dates move to the end, so a slot is blocked only when the schedule cannot be completed.
+        var patterns = candidates.ToDictionary(item => item.Key, item => Schedule(item.Value, conflicts, count).Dates);
+        var dates = candidates.Values.SelectMany(slots => slots).ToArray();
         var through = dates.Length == 0 ? request.StartDate : dates.Max(s => s.Date);
         var trainerBusy = await Occupied(now).Where(s => s.PTUserId == request.TrainerId &&
                 s.SessionDate >= request.StartDate && s.SessionDate <= through)
@@ -153,7 +177,12 @@ public sealed partial class PersonalTrainingService
         {
             var pattern = patterns[slot.Id];
             var proposed = pattern.Where(s => s.TemplateId == slot.Id).ToArray();
-            var reason = yogaAssigned || pattern.Length == 0 || proposed.Any(s =>
+            // A slot that can still complete the schedule is available; its busy dates are moved to the end.
+            if (pattern.Length > 0 && !yogaAssigned && proposed.All(s =>
+                    InHours(trainer.Gym, s.StartTime, s.EndTime) && Utc(s.Date, s.StartTime) > now.Add(HoldDuration)))
+                return new PTWeeklySlot(slot.Id, slot.DayOfWeek!.Value, slot.StartTime, slot.EndTime, null);
+            proposed = candidates[slot.Id].Take(count).Where(s => s.TemplateId == slot.Id).ToArray();
+            var reason = yogaAssigned || proposed.Length == 0 || proposed.Any(s =>
                 !InHours(trainer.Gym, s.StartTime, s.EndTime) || Utc(s.Date, s.StartTime) <= now.Add(HoldDuration))
                 ? "Không khả dụng"
                 : proposed.Any(d => trainerBusy.Any(s => s.SessionStatus != PTSessionStatus.CheckoutHold &&

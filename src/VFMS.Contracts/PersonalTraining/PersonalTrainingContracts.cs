@@ -26,7 +26,11 @@ public sealed record PTBookingSlotsRequest(string TrainerId, int PackageId,
 public sealed record PTPaymentRequest(string? VoucherCode = null, string? PaymentMethod = null);
 public sealed record PTCashConfirmationRequest(decimal AmountReceived);
 public sealed record PTBookingPreview(int PackageId, string TrainerId, DateOnly ExpiresOn,
-    decimal Price, IReadOnlyList<PTCalendarSlot> Sessions);
+    decimal Price, IReadOnlyList<PTCalendarSlot> Sessions)
+{
+    /// <summary>GBR-12: busy dates that were skipped; their sessions moved to the end of the schedule.</summary>
+    public IReadOnlyList<PTCalendarSlot> Skipped { get; init; } = [];
+}
 public sealed record PTCheckoutResponse(int ContractId, string OrderNumber, string Status, decimal AmountDue,
     DateTime ExpiresAt, VietQrPaymentResponse? VietQr, string? InvoiceNumber, DateTime HoldExpiresAt = default,
     IReadOnlyList<CheckoutRefundView>? Refunds = null, bool CanSimulatePayment = false, bool IsDemoPayment = false,
@@ -76,6 +80,11 @@ public sealed record PTContractResponse(int Id, string TrainerId, string MemberI
     public bool FreezeUsed { get; init; }
     /// <summary>Open one-week window to choose another trainer (GBR-98).</summary>
     public DateTime? TrainerChangeDeadline { get; init; }
+    /// <summary>UC 4.10: the Member already reviewed this contract.</summary>
+    public bool HasReview { get; init; }
+    /// <summary>Gym operating hours, for choosing a make-up hour (UC 4.7).</summary>
+    public TimeOnly? GymOpenTime { get; init; }
+    public TimeOnly? GymCloseTime { get; init; }
 }
 public sealed record PTAssignedMember(int ContractId, string MemberId, string FullName, string? AvatarUrl,
     string Email, string Phone, int TotalCredits, int RemainingCredits, DateOnly ExpiresOn, DateOnly? LastTrainedOn);

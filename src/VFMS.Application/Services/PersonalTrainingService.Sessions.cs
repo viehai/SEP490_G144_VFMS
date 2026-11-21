@@ -102,7 +102,9 @@ public sealed partial class PersonalTrainingService
             MakeUpDeadline = MakeUpUnits(p).Count > 0 ? PersonalTrainingRules.MakeUpDeadline(p.EndDate) : null,
             FreezeUsed = p.PTFreezes.Any(Approved),
             TrainerChangeDeadline = p.TrainerChangeDeadline > Now
-                ? DateTime.SpecifyKind(p.TrainerChangeDeadline.Value, DateTimeKind.Utc) : null
+                ? DateTime.SpecifyKind(p.TrainerChangeDeadline.Value, DateTimeKind.Utc) : null,
+            GymOpenTime = p.PTUser.Gym?.OpenTime,
+            GymCloseTime = p.PTUser.Gym?.CloseTime
         };
     }
 
@@ -112,9 +114,16 @@ public sealed partial class PersonalTrainingService
             return Forbidden<IReadOnlyList<PTContractResponse>>();
         var contracts = await VisibleContracts(actor).Where(p => id == null || p.Id == id)
             .OrderByDescending(p => p.Id).Take(100).ToListAsync(store, ct);
+        var reviewed = await ReviewedContracts(actor, ct);
         return id != null && contracts.Count == 0 ? Missing<IReadOnlyList<PTContractResponse>>() :
-            Result<IReadOnlyList<PTContractResponse>>.Success(contracts.Select(ContractResponse).ToArray());
+            Result<IReadOnlyList<PTContractResponse>>.Success(contracts
+                .Select(p => ContractResponse(p) with { HasReview = reviewed.Contains(p.Id) }).ToArray());
     }
+
+    // UC 4.10: contracts this Member has already reviewed.
+    private async Task<HashSet<int>> ReviewedContracts(string memberId, CancellationToken ct) =>
+        (await store.Query<TrainerReview>().Where(r => r.MemberUserId == memberId && r.PTPurchaseId != null)
+            .Select(r => r.PTPurchaseId!.Value).ToListAsync(store, ct)).ToHashSet();
 
     private IQueryable<PTPurchase> VisibleContracts(string actor) => ContractsWithSessions.AsNoTracking(store).Including(store, "Order")
         .Where(p => p.MemberUserId == actor || p.PTUserId == actor && p.Status != PTPurchaseStatus.PendingPayment &&
@@ -127,7 +136,9 @@ public sealed partial class PersonalTrainingService
             return Forbidden<PagedResponse<PTContractResponse>>();
         var query = VisibleContracts(actor).Where(p => p.MemberUserId == actor &&
             (trainerId == null || p.PTUserId == trainerId));
-        return await PageOf(query.OrderByDescending(p => p.Id), page, ContractResponse, ct);
+        var reviewed = await ReviewedContracts(actor, ct);
+        return await PageOf(query.OrderByDescending(p => p.Id), page,
+            p => ContractResponse(p) with { HasReview = reviewed.Contains(p.Id) }, ct);
     }
 
     public async Task<Result<PagedResponse<PTAssignedMember>>> AssignedPage(string actor, string? search, bool historical,
@@ -140,13 +151,14 @@ public sealed partial class PersonalTrainingService
 
     private IQueryable<PTPurchase> AssignedContracts(string actor, string? search, bool historical)
     {
-        var today = Today;
+        // UC 4.6 / GBR-14: a contract stays 'Currently Assigned' until its 14-day make-up period ends.
+        var makeUpFrom = Today.AddDays(-PersonalTrainingRules.MakeUpGraceDays);
         var query = VisibleContracts(actor).Where(p => p.PTUserId == actor &&
             (p.Status == PTPurchaseStatus.Active || p.Status == PTPurchaseStatus.Frozen ||
              p.Status == PTPurchaseStatus.Completed || p.Status == PTPurchaseStatus.Expired));
         query = historical
-            ? query.Where(p => p.EndDate < today || p.IsCompleted || p.Status == PTPurchaseStatus.Completed || p.Status == PTPurchaseStatus.Expired)
-            : query.Where(p => p.EndDate >= today && !p.IsCompleted &&
+            ? query.Where(p => p.EndDate < makeUpFrom || p.IsCompleted || p.Status == PTPurchaseStatus.Completed || p.Status == PTPurchaseStatus.Expired)
+            : query.Where(p => p.EndDate >= makeUpFrom && !p.IsCompleted &&
                 (p.Status == PTPurchaseStatus.Active || p.Status == PTPurchaseStatus.Frozen));
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(p => p.Member.FullName.Contains(search));
@@ -156,7 +168,8 @@ public sealed partial class PersonalTrainingService
     private static PTAssignedMember AssignedResponse(PTPurchase p) => new(p.Id, p.MemberUserId,
             p.Member.FullName, p.Member.AvatarUrl, p.Member.Email, p.Member.PhoneNumber, p.TotalSessions,
             p.TotalSessions - PersonalTrainingRules.Credits(p.Sessions).Used, p.EndDate,
-            p.Sessions.Where(s => s.SessionStatus == PTSessionStatus.Completed).Max(s => (DateOnly?)s.SessionDate));
+            p.Sessions.Where(s => s.SessionStatus is PTSessionStatus.Completed or PTSessionStatus.AutoCompleted)
+                .Max(s => (DateOnly?)s.SessionDate));
 
     private async Task<Result<PagedResponse<TResponse>>> PageOf<T, TResponse>(IQueryable<T> query, int page,
         Func<T, TResponse> map, CancellationToken ct)
@@ -511,7 +524,10 @@ public sealed partial class PersonalTrainingService
                 CloseMemberReschedule(s, null, "RescheduleExpired", "Yêu cầu đổi lịch đã hết hạn.");
             else if (AwaitingAttendance(s.SessionStatus))
                 ClearProposal(s);
-            s.SessionStatus = attended ? PTSessionStatus.Completed : PTSessionStatus.NoShow;
+            // UC 4.8 step 8.1 / GBR-97: a session under a pending freeze is never penalised, even after a 'Present' is corrected.
+            var pendingFreeze = s.SessionStatus == PTSessionStatus.Completed && p.PTFreezes.Any(f =>
+                f.RequestStatus == PTFreezeRequestStatus.Pending && f.RequestedStartDate <= s.SessionDate && s.SessionDate < f.RequestedEndDate);
+            s.SessionStatus = attended ? PTSessionStatus.Completed : pendingFreeze ? PTSessionStatus.PendingFreeze : PTSessionStatus.NoShow;
         }
         else
             return Conflict<PTSessionResponse>("Buổi này không thể điểm danh.");

@@ -853,7 +853,8 @@ public sealed partial class MembershipPurchaseApiTests
             .Select(hour => new PTSlotInput((DayOfWeek)day, new TimeOnly(hour, 0)))).ToArray();
         using var published = await trainer.PutAsJsonAsync("/api/pt/availability", new PTPublishRequest(slots));
         Assert.True(published.StatusCode == HttpStatusCode.OK, await published.Content.ReadAsStringAsync());
-        var start = NextMonday(Today.AddDays(1));
+        // GBR-12: the first Monday that can still be held today (at least 3 days ahead).
+        var start = NextMonday(Today.AddDays(3));
         var calendar = (await trainer.GetFromJsonAsync<PTCalendarSlot[]>($"/api/pt/trainers/buyer/calendar?from={start:yyyy-MM-dd}"))!;
         var pattern = calendar.Where(s => s.StartTime.Hour == 18 &&
             s.Date.DayOfWeek is DayOfWeek.Monday or DayOfWeek.Wednesday or DayOfWeek.Friday)

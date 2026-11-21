@@ -110,7 +110,8 @@ public sealed partial class PersonalTrainingService(IPersonalTrainingStore store
             NotifiedAt = Now
         });
 
-    /// <summary>GBR-98: removes the PT role after more than 60 consecutive 'Not Accepting' days, once no contract is still running.</summary>
+    /// <summary>GBR-98: removes the PT role after more than 60 consecutive 'Not Accepting' days, once no contract is still running,
+    /// including its 14-day make-up period (GBR-14).</summary>
     public async Task ExpireInactiveTrainers(DateOnly today, CancellationToken ct)
     {
         var profiles = await store.List(store.Query<TrainerProfile>().Where(p => p.IsActive && !p.AcceptingNewMembers &&
@@ -121,7 +122,8 @@ public sealed partial class PersonalTrainingService(IPersonalTrainingStore store
         {
             if (!TrainerReadinessRules.HasExpired(profile.NotAcceptingSince, today) ||
                 await store.Query<PTPurchase>().AnyAsync(store, p => p.PTUserId == profile.PTUserId && !p.IsCompleted &&
-                    (p.Status == PTPurchaseStatus.Active || p.Status == PTPurchaseStatus.Frozen) && p.EndDate >= today, ct))
+                    (p.Status == PTPurchaseStatus.Active || p.Status == PTPurchaseStatus.Frozen) &&
+                    p.EndDate >= today.AddDays(-PersonalTrainingRules.MakeUpGraceDays), ct))
                 continue;
             profile.IsActive = false;
             if (ptRoleId is { } roleId)
