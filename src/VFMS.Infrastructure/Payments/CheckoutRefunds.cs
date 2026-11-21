@@ -37,7 +37,9 @@ public static class CheckoutRefunds
         RecordUnappliedTransfer(db, extra, transfer, now);
     }
 
-    public static void RecordUnappliedTransfer(VfmsDbContext db, PaymentTransaction payment, SepayTransfer transfer, DateTime now)
+    // notify: false when the caller sends its own in-app notice for the same transfer (PT checkout).
+    public static void RecordUnappliedTransfer(VfmsDbContext db, PaymentTransaction payment, SepayTransfer transfer, DateTime now,
+        bool notify = true)
     {
         payment.GatewayTransactionReference = transfer.TransactionId;
         payment.AmountReceived = transfer.Amount;
@@ -45,14 +47,16 @@ public static class CheckoutRefunds
         payment.RawGatewayStatus = "CHECKOUT_REFUND_REQUESTED";
         payment.PaymentStatus = PaymentStatus.Cancelled;
         payment.Order.OrderStatus = OrderStatus.Expired;
-        Request(db, payment, "CheckoutUnfulfilled", now);
+        Request(db, payment, "CheckoutUnfulfilled", now, notify);
     }
 
-    public static void Request(VfmsDbContext db, PaymentTransaction payment, string reason, DateTime now)
+    public static void Request(VfmsDbContext db, PaymentTransaction payment, string reason, DateTime now, bool notify = true)
     {
         payment.RefundAmount = payment.AmountReceived;
         payment.RefundReason = reason;
         payment.RefundStatus = "Pending";
+        if (!notify)
+            return;
         var order = payment.SourcePaymentTransaction?.Order ?? payment.Order;
         Notify(db, order, $"Đã tạo yêu cầu hoàn toàn bộ {payment.RefundAmount:N0} VND cho đơn {order.OrderNumber}.", now);
     }

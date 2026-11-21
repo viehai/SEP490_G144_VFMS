@@ -16,6 +16,8 @@ public sealed class TrainerMapping : IRegister
             // Ignore() breaks positional-record constructor mapping, so these are set to null explicitly.
             .Map(d => d.SubmissionHistory, _ => (IReadOnlyList<TrainerSubmissionAttempt>?)null)
             .Map(d => d.InterviewNote, _ => (string?)null)
-            .Map(d => d.AccountMatch, _ => (TrainerAccountMatch?)null);
+            .Map(d => d.AccountMatch, _ => (TrainerAccountMatch?)null)
+            // TrainerService fills the role name from TrainerRoleId; the navigation is not loaded.
+            .Map(d => d.TrainerRole, _ => (string?)null);
     }
 }

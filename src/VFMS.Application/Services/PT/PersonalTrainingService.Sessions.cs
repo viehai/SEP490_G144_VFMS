@@ -43,7 +43,7 @@ public sealed partial class PersonalTrainingService
         if (p.PTFreezes.Any(f => Approved(f) && f.ActualStartDate <= Today && Today < f.ActualEndDate))
             return PTPurchaseStatus.Frozen;
         // GBR-14: after the end date the contract stays usable only for make-up units, for 14 more days.
-        if (Today <= p.EndDate || Today <= PersonalTrainingRules.MakeUpDeadline(p.EndDate) && MakeUpUnits(p).Count > 0)
+        if (PersonalTrainingRules.IsStillRunning(p, Today))
             return PTPurchaseStatus.Active;
         return PTPurchaseStatus.Expired;
     }
@@ -101,8 +101,12 @@ public sealed partial class PersonalTrainingService
             MakeUpUnits = MakeUpUnits(p).Count,
             MakeUpDeadline = MakeUpUnits(p).Count > 0 ? PersonalTrainingRules.MakeUpDeadline(p.EndDate) : null,
             FreezeUsed = p.PTFreezes.Any(Approved),
+            CanReview = FinalTaughtSession(p) is not null,
+            TrainerLevel = p.TrainerLevelSnapshot?.ToString(),
             TrainerChangeDeadline = p.TrainerChangeDeadline > Now
-                ? DateTime.SpecifyKind(p.TrainerChangeDeadline.Value, DateTimeKind.Utc) : null
+                ? DateTime.SpecifyKind(p.TrainerChangeDeadline.Value, DateTimeKind.Utc) : null,
+            GymOpenTime = p.PTUser.Gym?.OpenTime,
+            GymCloseTime = p.PTUser.Gym?.CloseTime
         };
     }
 
@@ -112,22 +116,39 @@ public sealed partial class PersonalTrainingService
             return Forbidden<IReadOnlyList<PTContractResponse>>();
         var contracts = await VisibleContracts(actor).Where(p => id == null || p.Id == id)
             .OrderByDescending(p => p.Id).Take(100).ToListAsync(store, ct);
+        var reviewed = await ReviewedContracts(actor, ct);
         return id != null && contracts.Count == 0 ? Missing<IReadOnlyList<PTContractResponse>>() :
-            Result<IReadOnlyList<PTContractResponse>>.Success(contracts.Select(ContractResponse).ToArray());
+            Result<IReadOnlyList<PTContractResponse>>.Success(contracts
+                .Select(p => ContractResponse(p) with { HasReview = reviewed.Contains(p.Id) }).ToArray());
     }
 
-    private IQueryable<PTPurchase> VisibleContracts(string actor) => ContractsWithSessions.AsNoTracking(store).Including(store, "Order")
-        .Where(p => p.MemberUserId == actor || p.PTUserId == actor && p.Status != PTPurchaseStatus.PendingPayment &&
-            (p.OrderId == null || p.Order!.OrderStatus == OrderStatus.Paid));
+    // UC 4.10: contracts this Member has already reviewed.
+    private async Task<HashSet<int>> ReviewedContracts(string memberId, CancellationToken ct) =>
+        (await store.Query<TrainerReview>().Where(r => r.MemberUserId == memberId && r.PTPurchaseId != null)
+            .Select(r => r.PTPurchaseId!.Value).ToListAsync(store, ct)).ToHashSet();
+
+    // UC 4.5: an unpaid checkout is listed only while its hold is live; once it expires it is not a contract.
+    private IQueryable<PTPurchase> VisibleContracts(string actor)
+    {
+        var now = Now;
+        return ContractsWithSessions.AsNoTracking(store).Including(store, "Order")
+            .Where(p => p.OrderId == null || p.Order!.OrderStatus == OrderStatus.Paid ||
+                p.MemberUserId == actor && p.Status == PTPurchaseStatus.PendingPayment && p.HoldExpiresAt > now)
+            .Where(p => p.MemberUserId == actor || p.PTUserId == actor && p.Status != PTPurchaseStatus.PendingPayment);
+    }
 
     public async Task<Result<PagedResponse<PTContractResponse>>> ContractPage(string actor, int page, string? trainerId,
-        CancellationToken ct)
+        CancellationToken ct, bool? completed = null)
     {
         if (await User(actor, UserRole.Member, ct) is null)
             return Forbidden<PagedResponse<PTContractResponse>>();
+        // UC 4.10: 'My PT Packages' > 'Completed Contracts' lists only completed contracts.
         var query = VisibleContracts(actor).Where(p => p.MemberUserId == actor &&
-            (trainerId == null || p.PTUserId == trainerId));
-        return await PageOf(query.OrderByDescending(p => p.Id), page, ContractResponse, ct);
+            (trainerId == null || p.PTUserId == trainerId) &&
+            (completed == null || (p.IsCompleted || p.Status == PTPurchaseStatus.Completed) == completed));
+        var reviewed = await ReviewedContracts(actor, ct);
+        return await PageOf(query.OrderByDescending(p => p.Id), page,
+            p => ContractResponse(p) with { HasReview = reviewed.Contains(p.Id) }, ct);
     }
 
     public async Task<Result<PagedResponse<PTAssignedMember>>> AssignedPage(string actor, string? search, bool historical,
@@ -140,14 +161,13 @@ public sealed partial class PersonalTrainingService
 
     private IQueryable<PTPurchase> AssignedContracts(string actor, string? search, bool historical)
     {
-        var today = Today;
+        // UC 4.6 / GBR-14: a contract stays 'Currently Assigned' until its end date, and through the 14-day
+        // make-up period only while it still has make-up to use.
+        var running = PersonalTrainingRules.StillRunning(Today);
         var query = VisibleContracts(actor).Where(p => p.PTUserId == actor &&
             (p.Status == PTPurchaseStatus.Active || p.Status == PTPurchaseStatus.Frozen ||
              p.Status == PTPurchaseStatus.Completed || p.Status == PTPurchaseStatus.Expired));
-        query = historical
-            ? query.Where(p => p.EndDate < today || p.IsCompleted || p.Status == PTPurchaseStatus.Completed || p.Status == PTPurchaseStatus.Expired)
-            : query.Where(p => p.EndDate >= today && !p.IsCompleted &&
-                (p.Status == PTPurchaseStatus.Active || p.Status == PTPurchaseStatus.Frozen));
+        query = query.Where(historical ? PersonalTrainingRules.Not(running) : running);
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(p => p.Member.FullName.Contains(search));
         return query.OrderBy(p => p.Member.FullName).ThenByDescending(p => p.Id);
@@ -156,7 +176,8 @@ public sealed partial class PersonalTrainingService
     private static PTAssignedMember AssignedResponse(PTPurchase p) => new(p.Id, p.MemberUserId,
             p.Member.FullName, p.Member.AvatarUrl, p.Member.Email, p.Member.PhoneNumber, p.TotalSessions,
             p.TotalSessions - PersonalTrainingRules.Credits(p.Sessions).Used, p.EndDate,
-            p.Sessions.Where(s => s.SessionStatus == PTSessionStatus.Completed).Max(s => (DateOnly?)s.SessionDate));
+            p.Sessions.Where(s => s.SessionStatus is PTSessionStatus.Completed or PTSessionStatus.AutoCompleted)
+                .Max(s => (DateOnly?)s.SessionDate));
 
     private async Task<Result<PagedResponse<TResponse>>> PageOf<T, TResponse>(IQueryable<T> query, int page,
         Func<T, TResponse> map, CancellationToken ct)
@@ -179,26 +200,40 @@ public sealed partial class PersonalTrainingService
         s.ProposedEndTime = null;
         s.ProposedAdjustmentType = null;
         s.ProposalExpiresAt = null;
-        s.ProposalEmailSentAt = null;
-        s.ProposalEmailRetryAt = null;
         s.SessionStatus = PTSessionStatus.Scheduled;
     }
 
     private async Task<bool> CanAdjust(PTPurchase p, PTSession s, DateOnly date, TimeOnly start, TimeOnly end,
-        PTAdjustmentType type, DateTime now, CancellationToken ct, bool isMakeUp = false)
+        DateTime now, CancellationToken ct, bool isMakeUp = false) =>
+        await AdjustError<bool>(p, s, date, start, end, now, ct, isMakeUp) is null;
+
+    private async Task<Result<T>?> AdjustError<T>(PTPurchase p, PTSession s, DateOnly date, TimeOnly start, TimeOnly end,
+        DateTime now, CancellationToken ct, bool isMakeUp = false)
     {
-        var units = type == PTAdjustmentType.DoubleSession ? 2 : s.CreditUnits;
         var (used, reserved) = PersonalTrainingRules.Credits(p.Sessions);
         var lastDay = isMakeUp ? PersonalTrainingRules.MakeUpDeadline(p.EndDate) : p.EndDate;
         if (EffectiveStatus(p) != PTPurchaseStatus.Active || date < p.StartDate || date > lastDay ||
             Utc(date, start) <= now || !InHours(p.PTUser.Gym, start, end) ||
-            p.TotalSessions - used - reserved < (isMakeUp ? units : units - s.CreditUnits) ||
+            p.TotalSessions - used - reserved < (isMakeUp ? s.CreditUnits : 0) ||
             p.PTFreezes.Any(f => (Approved(f) || f.RequestStatus == PTFreezeRequestStatus.Pending) &&
-                f.RequestedStartDate <= date && date < (f.ActualEndDate ?? f.RequestedEndDate)) ||
-            !await Coverage(p.MemberUserId).AnyAsync(store, m => m.StartDate <= Today && m.EndDate >= date, ct))
-            return false;
-        return !await HasConflict(p.PTUserId, p.MemberUserId, [new(0, date, start, end, "Available")],
-            now, ct, ignoreSession: s.Id, allowSecondMemberSession: true);
+                f.RequestedStartDate <= date && date < (f.ActualEndDate ?? f.RequestedEndDate)))
+            return Conflict<T>(isMakeUp
+                ? "Lịch ngoài giờ gym, ngoài hạn tập bù, trong thời gian bảo lưu hoặc không đủ số buổi."
+                : "Lịch ngoài giờ gym, sau ngày kết thúc hợp đồng hoặc trong thời gian bảo lưu.");
+        // GBR-10: Gym access matters only when attendance is recorded, so a new date may fall after the membership ends.
+        return await ScheduleConflict<T>(p, s.Id, date, start, end, now, ct);
+    }
+
+    // UC 4.7: MSG-32 when the Member has another PT/Yoga session, MSG-30 when the trainer is busy.
+    private async Task<Result<T>?> ScheduleConflict<T>(PTPurchase p, int sessionId, DateOnly date, TimeOnly start,
+        TimeOnly end, DateTime now, CancellationToken ct)
+    {
+        PTCalendarSlot[] slot = [new(0, date, start, end, "Available")];
+        if (!await HasConflict(p.PTUserId, p.MemberUserId, slot, now, ct, ignoreSession: sessionId))
+            return null;
+        return await HasMemberBookingConflict(p.MemberUserId, slot, now, ct, sessionId)
+            ? Result<T>.Failure("Hội viên đã có buổi PT hoặc lớp Yoga khác trong khung giờ này.", "PT_MEMBER_SCHEDULE_CONFLICT", 409)
+            : Result<T>.Failure("Huấn luyện viên đã có lịch hoặc không rảnh trong khung giờ này.", "PT_TRAINER_SLOT_UNAVAILABLE", 409);
     }
 
     // GBR-14: requests are sent at least 12 hours ahead and answered no later than 4 hours before the start.
@@ -239,9 +274,11 @@ public sealed partial class PersonalTrainingService
                 SessionStatus = asTrainer ? PTSessionStatus.MakeUpPending : PTSessionStatus.MakeUpRequested,
                 ReplacementForSessionId = id
             };
-            if (!await CanAdjust(contract, session, session.SessionDate, session.StartTime, session.EndTime,
-                PTAdjustmentType.Reschedule, now, ct, isMakeUp: true))
-                return Conflict<PTSessionResponse>("Lịch không khả dụng, ngoài hạn tập bù hoặc không đủ số buổi.");
+            if (!IsWholeHour(request.StartTime))
+                return Invalid<PTSessionResponse>("Buổi bù phải bắt đầu vào giờ tròn.");
+            if (await AdjustError<PTSessionResponse>(contract, session, session.SessionDate, session.StartTime,
+                    session.EndTime, now, ct, isMakeUp: true) is { } error)
+                return error;
 
             session.ProposalExpiresAt = new[] { now.AddHours(24), Utc(session.SessionDate, session.StartTime) }.Min();
             contract.Sessions.Add(session);
@@ -254,7 +291,7 @@ public sealed partial class PersonalTrainingService
             return Result<PTSessionResponse>.Success(SessionResponse(session, now), 201);
         }, ct);
 
-    /// <summary>UC 4.7: the PT proposes a reschedule or a 120-minute double session; the Member decides.</summary>
+    /// <summary>UC 4.7: the PT proposes a reschedule; the Member decides.</summary>
     public Task<Result<PTSessionResponse>> Propose(string actor, int id, PTProposalRequest request, CancellationToken ct) => Write(async () =>
     {
         if (await User(actor, UserRole.PT, ct) is null)
@@ -271,23 +308,14 @@ public sealed partial class PersonalTrainingService
             return Conflict<PTSessionResponse>("Chỉ có thể đề xuất cho buổi sắp tới chưa có yêu cầu chờ.");
         if (LeadTimeError<PTSessionResponse>(s, now) is { } late)
             return late;
-        if (!Enum.TryParse<PTAdjustmentType>(request.Type, true, out var type) || type == PTAdjustmentType.Cancellation)
+        // UC 4.7: only a reschedule; the double session was removed from the spec.
+        if (!Enum.TryParse<PTAdjustmentType>(request.Type, true, out var type) || type != PTAdjustmentType.Reschedule)
             return Invalid<PTSessionResponse>("Loại đề xuất không hợp lệ.");
-        TimeOnly end;
-        if (type == PTAdjustmentType.DoubleSession)
-        {
-            if (s.CreditUnits != 1 || request.Date != s.SessionDate || request.StartTime != s.StartTime)
-                return Invalid<PTSessionResponse>("Ca đôi kéo dài buổi 60 phút hiện tại.");
-            end = request.StartTime.AddHours(2);
-        }
-        else
-        {
-            if (IsOriginalTime(s, request.Date, request.StartTime) || !IsWholeHour(request.StartTime))
-                return Invalid<PTSessionResponse>("Chọn giờ bắt đầu tròn giờ, khác lịch hiện tại.");
-            end = request.StartTime.Add(s.EndTime - s.StartTime);
-        }
-        if (!await CanAdjust(p, s, request.Date, request.StartTime, end, type, now, ct))
-            return Conflict<PTSessionResponse>("Lịch không khả dụng hoặc không đủ số buổi.");
+        if (IsOriginalTime(s, request.Date, request.StartTime) || !IsWholeHour(request.StartTime))
+            return Invalid<PTSessionResponse>("Chọn giờ bắt đầu tròn giờ, khác lịch hiện tại.");
+        var end = request.StartTime.Add(s.EndTime - s.StartTime);
+        if (await AdjustError<PTSessionResponse>(p, s, request.Date, request.StartTime, end, now, ct) is { } error)
+            return error;
         s.ProposedDate = request.Date;
         s.ProposedStartTime = request.StartTime;
         s.ProposedEndTime = end;
@@ -295,7 +323,7 @@ public sealed partial class PersonalTrainingService
         s.ProposalExpiresAt = ResponseDeadline(oldStart);
         s.SessionStatus = PTSessionStatus.ReschedulePending;
         Audit(actor, nameof(PTSession), s.Id, $"Proposed:{type}:{request.Date:yyyy-MM-dd}:{request.StartTime:HH:mm}");
-        Notify(s.MemberUserId, type == PTAdjustmentType.DoubleSession ? "Đề xuất ca đôi PT" : "PT đề nghị đổi lịch",
+        Notify(s.MemberUserId, "PT đề nghị đổi lịch",
             $"Lịch đề xuất {request.Date:dd/MM/yyyy} {request.StartTime:HH:mm}–{end:HH:mm}.",
             nameof(PTSession), s.Id);
         await store.Save(ct);
@@ -342,7 +370,7 @@ public sealed partial class PersonalTrainingService
         Notify(session.PTUserId, "Đã hủy buổi PT", message, nameof(PTSession), session.Id);
     }
 
-    /// <summary>The Member answers a PT proposal: reschedule, double session, cancellation or make-up.</summary>
+    /// <summary>The Member answers a PT proposal: reschedule, cancellation or make-up.</summary>
     public Task<Result<PTSessionResponse>> DecideProposal(string actor, int id, PTProposalDecision request, CancellationToken ct) => Write(async () =>
     {
         if (await User(actor, UserRole.Member, ct) is null)
@@ -364,19 +392,19 @@ public sealed partial class PersonalTrainingService
             await store.Save(ct);
             return Result<PTSessionResponse>.Success(SessionResponse(s, now));
         }
+        // A double-session proposal left from before its removal can no longer be accepted.
+        if (type == PTAdjustmentType.DoubleSession)
+            valid = false;
         if (request.Accept && valid)
         {
             valid = await CanAdjust(p, s, s.ProposedDate!.Value, s.ProposedStartTime!.Value,
-                s.ProposedEndTime!.Value, type, now, ct);
+                s.ProposedEndTime!.Value, now, ct);
             if (valid)
             {
                 s.SessionDate = s.ProposedDate.Value;
                 s.StartTime = s.ProposedStartTime.Value;
                 s.EndTime = s.ProposedEndTime.Value;
-                if (type == PTAdjustmentType.DoubleSession)
-                    s.CreditUnits = 2;
-                else
-                    s.PTAvailabilityId = await Templates(s.PTUserId).Where(x =>
+                s.PTAvailabilityId = await Templates(s.PTUserId).Where(x =>
                             x.DayOfWeek == s.SessionDate.DayOfWeek && x.StartTime == s.StartTime)
                         .Select(x => (int?)x.Id).FirstOrDefaultAsync(store, ct);
             }
@@ -416,7 +444,7 @@ public sealed partial class PersonalTrainingService
         var valid = session.ProposalExpiresAt > now;
         if (valid && accept)
             valid = await CanAdjust(contract, session, session.SessionDate, session.StartTime, session.EndTime,
-                PTAdjustmentType.Reschedule, now, ct, isMakeUp: true);
+                now, ct, isMakeUp: true);
 
         ClearProposal(session);
         if (!valid || !accept)
@@ -522,7 +550,10 @@ public sealed partial class PersonalTrainingService
                 CloseMemberReschedule(s, null, "RescheduleExpired", "Yêu cầu đổi lịch đã hết hạn.");
             else if (AwaitingAttendance(s.SessionStatus))
                 ClearProposal(s);
-            s.SessionStatus = attended ? PTSessionStatus.Completed : PTSessionStatus.NoShow;
+            // UC 4.8 step 8.1 / GBR-97: a session under a pending freeze is never penalised, even after a 'Present' is corrected.
+            var pendingFreeze = s.SessionStatus == PTSessionStatus.Completed && p.PTFreezes.Any(f =>
+                f.RequestStatus == PTFreezeRequestStatus.Pending && f.RequestedStartDate <= s.SessionDate && s.SessionDate < f.RequestedEndDate);
+            s.SessionStatus = attended ? PTSessionStatus.Completed : pendingFreeze ? PTSessionStatus.PendingFreeze : PTSessionStatus.NoShow;
         }
         else
             return Conflict<PTSessionResponse>("Buổi này không thể điểm danh.");
@@ -589,17 +620,23 @@ public sealed partial class PersonalTrainingService
                 ? s.TrainerAbsenceReviewedAt != null
                 : s.SessionStatus == PTSessionStatus.Disputed))
             .OrderByDescending(s => s.TrainerAbsenceReportedAt);
+        // UC 4.11: the processed list names the Manager who decided; Manager accounts are few, so load them once.
+        var names = processed
+            ? (await store.Query<ApplicationUser>().Where(u => u.UserRoles.Any(r => r.Role.RoleName == nameof(UserRole.Manager)))
+                .Select(u => new { u.UserId, u.FullName }).ToListAsync(store, ct)).ToDictionary(u => u.UserId, u => u.FullName)
+            : new Dictionary<string, string>();
         return await PageOf(query, page, s => new PTAttendanceDispute(s.Id, s.PTPurchaseId,
             s.Member.FullName, s.PTUser.FullName, s.SessionDate, s.StartTime, s.EndTime, s.TrainerAbsenceReason,
             s.TrainerAbsenceReportedAt!.Value, s.SessionStatus.ToString(),
-            s.TrainerAbsenceReviewedAt == null ? null : DisputeDecision(s.SessionStatus), s.TrainerAbsenceReviewNote), ct);
+            s.TrainerAbsenceReviewedAt == null ? null : DisputeDecision(s.SessionStatus), s.TrainerAbsenceReviewNote,
+            s.TrainerAbsenceReviewedByUserId is { } reviewer ? names.GetValueOrDefault(reviewer) : null), ct);
     }
 
     private static string? DisputeDecision(PTSessionStatus status) => status switch
     {
         PTSessionStatus.Completed => PTDisputeDecisions.SessionHeld,
         PTSessionStatus.Cancelled => PTDisputeDecisions.PTAbsent,
-        PTSessionStatus.NoShow => PTDisputeDecisions.MemberAbsent,
+        PTSessionStatus.NoShow or PTSessionStatus.PendingFreeze => PTDisputeDecisions.MemberAbsent,
         _ => null
     };
 
@@ -609,7 +646,7 @@ public sealed partial class PersonalTrainingService
     {
         if (await User(actor, UserRole.Manager, ct) is null)
             return Forbidden<PTSessionResponse>();
-        var session = await store.Query<PTSession>().Including(store, "PTPurchase.Sessions")
+        var session = await store.Query<PTSession>().Including(store, "PTPurchase.Sessions", "PTPurchase.PTFreezes")
             .SingleOrDefaultAsync(store, s => s.Id == id, ct);
         if (session is null)
             return Missing<PTSessionResponse>();
@@ -626,7 +663,10 @@ public sealed partial class PersonalTrainingService
                 ReopenIfCompleted(session.PTPurchase, Today);
                 break;
             case PTDisputeDecisions.MemberAbsent:
-                session.SessionStatus = PTSessionStatus.NoShow;
+                // GBR-97: a session under a pending freeze is never penalised.
+                session.SessionStatus = session.PTPurchase.PTFreezes.Any(f => f.RequestStatus == PTFreezeRequestStatus.Pending &&
+                    f.RequestedStartDate <= session.SessionDate && session.SessionDate < f.RequestedEndDate)
+                    ? PTSessionStatus.PendingFreeze : PTSessionStatus.NoShow;
                 break;
             default:
                 return Invalid<PTSessionResponse>("Quyết định không hợp lệ.");
@@ -634,6 +674,7 @@ public sealed partial class PersonalTrainingService
         session.TrainerAbsenceApproved = request.Decision == PTDisputeDecisions.PTAbsent;
         session.TrainerAbsenceReviewNote = request.Note.Trim();
         session.TrainerAbsenceReviewedAt = now;
+        session.TrainerAbsenceReviewedByUserId = actor;
         SettleCredits(session.PTPurchase);
         Audit(actor, nameof(PTSession), id, $"DisputeDecided:{request.Decision}");
         var outcome = request.Decision switch
@@ -695,10 +736,22 @@ public sealed partial class PersonalTrainingService
             return Invalid<PTSessionResponse>("Chỉ ghi chú cho buổi đã hoàn thành.");
         session.Note = request.Note.Trim();
         session.NoteUpdatedAt = Now;
+        session.NoteAuthorUserId = actor;
         Audit(actor, nameof(PTSession), session.Id, "CoachingNoteUpdated");
         await store.Save(ct);
         return Result<PTSessionResponse>.Success(SessionResponse(session, Now));
     }, ct);
+
+    /// <summary>UC 4.10 / GBR-102: the completed contract's final session, if it was held; its trainer is the one reviewed.</summary>
+    private PTSession? FinalTaughtSession(PTPurchase p)
+    {
+        if (EffectiveStatus(p) != PTPurchaseStatus.Completed)
+            return null;
+        var last = p.Sessions.Where(s => s.SessionStatus != PTSessionStatus.MakeUpPending &&
+                (s.SessionStatus != PTSessionStatus.Cancelled || s.IsCreditForfeited))
+            .OrderByDescending(s => s.SessionDate).ThenByDescending(s => s.StartTime).FirstOrDefault();
+        return last?.SessionStatus is PTSessionStatus.Completed or PTSessionStatus.AutoCompleted ? last : null;
+    }
 
     public Task<Result<int>> Review(string actor, int id, PTReviewRequest request, CancellationToken ct) => Write(async () =>
     {
@@ -707,12 +760,8 @@ public sealed partial class PersonalTrainingService
         var p = await ContractsWithSessions.SingleOrDefaultAsync(store, p => p.Id == id && p.MemberUserId == actor, ct);
         if (p is null)
             return Missing<int>();
-        var last = p.Sessions.Where(s => s.SessionStatus != PTSessionStatus.MakeUpPending &&
-                (s.SessionStatus != PTSessionStatus.Cancelled || s.IsCreditForfeited))
-            .OrderByDescending(s => s.SessionDate).ThenByDescending(s => s.StartTime).FirstOrDefault();
-        if (EffectiveStatus(p) != PTPurchaseStatus.Completed ||
-            last?.SessionStatus is not (PTSessionStatus.Completed or PTSessionStatus.AutoCompleted) ||
-            await store.Query<TrainerReview>().AnyAsync(store, r => r.PTPurchaseId == id, ct))
+        var last = FinalTaughtSession(p);
+        if (last is null || await store.Query<TrainerReview>().AnyAsync(store, r => r.PTPurchaseId == id, ct))
             return Result<int>.Failure("Chỉ hợp đồng đã hoàn thành đủ buổi và chưa được đánh giá mới có thể đánh giá.",
                 "PT_REVIEW_NOT_ELIGIBLE", 409);
         var comment = request.Comment.Trim();

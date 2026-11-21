@@ -32,6 +32,10 @@ public sealed partial class PersonalTrainingService(IPersonalTrainingStore store
     private IQueryable<YogaClass> ActiveYogaAssignments => store.Query<YogaClass>().Where(c =>
         !c.IsDeleted && (c.ClassStatus == YogaClassStatus.Draft || c.ClassStatus == YogaClassStatus.Published));
 
+    // Feature 4 serves trainers whose Trainer Role is PT only; Yoga trainers never sell or take over PT contracts.
+    private IQueryable<TrainerProfile> PTProfiles => store.Query<TrainerProfile>()
+        .Where(p => p.IsActive && p.TrainerRole!.RoleName == TrainerRole.PT);
+
     private IQueryable<PTAvailability> Templates(string trainerId) => store.Query<PTAvailability>()
         .Where(x => x.PTUserId == trainerId && x.DayOfWeek != null && x.SlotStatus == SlotStatus.Available);
 
@@ -49,13 +53,12 @@ public sealed partial class PersonalTrainingService(IPersonalTrainingStore store
 
     private async Task<bool> HasConflict(string trainerId, string memberId,
         IReadOnlyList<PTCalendarSlot> dates, DateTime now, CancellationToken ct, int? ignoreSession = null,
-        int? ignorePurchase = null, bool allowSecondMemberSession = false) =>
-        (await ConflictingSlots(trainerId, memberId, dates, now, ct, ignoreSession, ignorePurchase,
-            allowSecondMemberSession)).Count != 0;
+        int? ignorePurchase = null) =>
+        (await ConflictingSlots(trainerId, memberId, dates, now, ct, ignoreSession, ignorePurchase)).Count != 0;
 
     private async Task<HashSet<PTCalendarSlot>> ConflictingSlots(string trainerId, string memberId,
         IReadOnlyList<PTCalendarSlot> dates, DateTime now, CancellationToken ct, int? ignoreSession = null,
-        int? ignorePurchase = null, bool allowSecondMemberSession = false)
+        int? ignorePurchase = null)
     {
         if (dates.Count == 0)
             return [];
@@ -65,12 +68,12 @@ public sealed partial class PersonalTrainingService(IPersonalTrainingStore store
             (s.PTUserId == trainerId || s.MemberUserId == memberId) &&
             (ignoreSession == null || s.Id != ignoreSession) &&
             (ignorePurchase == null || s.PTPurchaseId != ignorePurchase))
-            .Select(s => new { s.SessionDate, s.StartTime, s.EndTime, s.MemberUserId }).ToListAsync(store, ct);
+            .Select(s => new { s.SessionDate, s.StartTime, s.EndTime }).ToListAsync(store, ct);
         var yoga = await Yoga(trainerId, memberId, from, through)
             .Select(s => new { s.ScheduledDate, s.StartTime, s.EndTime }).ToListAsync(store, ct);
+        // A Member may train several PT sessions a day, never two at the same time.
         return dates.Where(d => pt.Any(s => s.SessionDate == d.Date &&
-            (!allowSecondMemberSession && s.MemberUserId == memberId ||
-             PersonalTrainingRules.Overlaps(d.StartTime, d.EndTime, s.StartTime, s.EndTime))) ||
+             PersonalTrainingRules.Overlaps(d.StartTime, d.EndTime, s.StartTime, s.EndTime)) ||
             yoga.Any(s => s.ScheduledDate == d.Date &&
              PersonalTrainingRules.Overlaps(d.StartTime, d.EndTime, s.StartTime, s.EndTime))).ToHashSet();
     }
@@ -106,7 +109,8 @@ public sealed partial class PersonalTrainingService(IPersonalTrainingStore store
             NotifiedAt = Now
         });
 
-    /// <summary>GBR-98: removes the PT role after more than 60 consecutive 'Not Accepting' days, once no contract is still running.</summary>
+    /// <summary>GBR-98: removes the PT role after more than 60 consecutive 'Not Accepting' days, once no contract is still running,
+    /// including its 14-day make-up period (GBR-14).</summary>
     public async Task ExpireInactiveTrainers(DateOnly today, CancellationToken ct)
     {
         var profiles = await store.List(store.Query<TrainerProfile>().Where(p => p.IsActive && !p.AcceptingNewMembers &&
@@ -115,9 +119,15 @@ public sealed partial class PersonalTrainingService(IPersonalTrainingStore store
             .Select(role => (int?)role.Id), ct);
         foreach (var profile in profiles)
         {
-            if (!TrainerReadinessRules.HasExpired(profile.NotAcceptingSince, today) ||
-                await store.Query<PTPurchase>().AnyAsync(store, p => p.PTUserId == profile.PTUserId && !p.IsCompleted &&
-                    (p.Status == PTPurchaseStatus.Active || p.Status == PTPurchaseStatus.Frozen) && p.EndDate >= today, ct))
+            // GBR-98: while a contract is still running the 60 days have not started; they count from the day the last one ends.
+            // shortcut: the start moves forward once per daily sweep, so a missed sweep day starts the count that much earlier.
+            if (await store.Query<PTPurchase>().Where(p => p.PTUserId == profile.PTUserId)
+                    .Where(PersonalTrainingRules.StillRunning(today)).AnyAsync(store, ct))
+            {
+                profile.NotAcceptingCountFrom = today;
+                continue;
+            }
+            if (!TrainerReadinessRules.HasExpired(profile.NotAcceptingCountFrom ?? profile.NotAcceptingSince, today))
                 continue;
             profile.IsActive = false;
             if (ptRoleId is { } roleId)

@@ -12,12 +12,8 @@ namespace VFMS.API.Controllers;
 [Route("api/pt")]
 [Authorize]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
-public sealed class PersonalTrainingController(PersonalTrainingService service, IWebHostEnvironment environment,
-    IConfiguration configuration) : ControllerBase
+public sealed class PersonalTrainingController(PersonalTrainingService service) : ControllerBase
 {
-    private bool DemoPaymentEnabled =>
-        environment.IsDevelopment() && configuration.GetValue<bool>("PersonalTraining:EnableDemoPayment");
-
     private Task<IActionResult> AsUser<T>(Func<string, Task<Result<T>>> action) =>
         User.GetUserId() is { } actor ? Reply(action(actor)) : Task.FromResult<IActionResult>(Unauthorized());
 
@@ -95,17 +91,15 @@ public sealed class PersonalTrainingController(PersonalTrainingService service, 
     public Task<IActionResult> StartPayment(string orderNumber, PTPaymentRequest request, CancellationToken ct) =>
         AsUser(actor => service.StartPayment(actor, orderNumber, request, ct));
 
-    [HttpPost("purchases/{orderNumber}/demo-payment")]
-    [Authorize(Roles = "Member")]
-    public Task<IActionResult> ConfirmDemoPayment(string orderNumber, CancellationToken ct) =>
-        DemoPaymentEnabled
-            ? AsUser(actor => service.ConfirmDemoPayment(actor, orderNumber, ct))
-            : Task.FromResult<IActionResult>(NotFound());
+    [HttpPost("purchases/{orderNumber}/cash-confirmation")]
+    [Authorize(Roles = "Staff")]
+    public Task<IActionResult> ConfirmCash(string orderNumber, PTCashConfirmationRequest request, CancellationToken ct) =>
+        AsUser(actor => service.ConfirmCash(actor, orderNumber.Trim().ToUpperInvariant(), request.AmountReceived, ct));
 
     [HttpGet("purchases/{orderNumber}")]
     [Authorize(Roles = "Member")]
     public Task<IActionResult> CheckoutStatus(string orderNumber, CancellationToken ct) =>
-        AsUser(actor => service.CheckoutStatus(actor, orderNumber, ct, DemoPaymentEnabled));
+        AsUser(actor => service.CheckoutStatus(actor, orderNumber, ct));
 
     [HttpGet("contracts")]
     [Authorize(Roles = "Member,PT")]
@@ -113,8 +107,8 @@ public sealed class PersonalTrainingController(PersonalTrainingService service, 
 
     [HttpGet("contracts/page")]
     [Authorize(Roles = "Member")]
-    public Task<IActionResult> ContractPage([FromQuery] int page, [FromQuery] string? trainerId, CancellationToken ct) =>
-        AsUser(actor => service.ContractPage(actor, page, trainerId, ct));
+    public Task<IActionResult> ContractPage([FromQuery] int page, [FromQuery] string? trainerId, [FromQuery] bool? completed,
+        CancellationToken ct) => AsUser(actor => service.ContractPage(actor, page, trainerId, ct, completed));
 
     [HttpGet("contracts/{id:int}")]
     [Authorize(Roles = "Member,PT")]
@@ -194,6 +188,16 @@ public sealed class PersonalTrainingController(PersonalTrainingService service, 
     [Authorize(Roles = "Member")]
     public Task<IActionResult> WithdrawFreeze(int id, CancellationToken ct) =>
         AsUser(actor => service.WithdrawFreeze(actor, id, ct));
+
+    [HttpGet("freezes/{id:int}/slots")]
+    [Authorize(Roles = "Member")]
+    public Task<IActionResult> FreezeSlots(int id, CancellationToken ct) =>
+        AsUser(actor => service.FreezeSlots(actor, id, ct));
+
+    [HttpPut("freezes/{id:int}/slots")]
+    [Authorize(Roles = "Member")]
+    public Task<IActionResult> ChangeFreezeSlots(int id, PTFreezeSlotChange request, CancellationToken ct) =>
+        AsUser(actor => service.ChangeFreezeSlots(actor, id, request, ct));
 
     [HttpGet("contracts/{id:int}/replacement-trainers")]
     [Authorize(Roles = "Member")]

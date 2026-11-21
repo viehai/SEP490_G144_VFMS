@@ -53,7 +53,7 @@ public sealed partial class PersonalTrainingService
     {
         if (await User(actor, UserRole.Member, ct) is null)
             return Forbidden<EarlyResumePlan>();
-        var purchase = await ContractsWithSessions.SingleOrDefaultAsync(store, 
+        var purchase = await ContractsWithSessions.SingleOrDefaultAsync(store,
             p => p.MemberUserId == actor && p.PTFreezes.Any(f => f.Id == id), ct);
         if (purchase is null)
             return Missing<EarlyResumePlan>();
@@ -101,7 +101,6 @@ public sealed partial class PersonalTrainingService
             }
         }
 
-        var memberships = await RescheduleCoverage(actor, resumeDate, ct);
         var templates = await Templates(purchase.PTUserId)
             .Select(t => new { t.Id, t.DayOfWeek, t.StartTime }).ToListAsync(store, ct);
         var templateIds = templates.ToDictionary(t => (t.DayOfWeek!.Value, t.StartTime), t => t.Id);
@@ -110,7 +109,7 @@ public sealed partial class PersonalTrainingService
         {
             var end = move.StartTime.AddHours(movable[move.SessionId].CreditUnits);
             if (move.Date >= resumeDate && (scheduledEnd || move.Date <= expiresOn) && Utc(move.Date, move.StartTime) > now &&
-                InHours(purchase.PTUser.Gym, move.StartTime, end) && HasGymCoverageOn(memberships, move.Date) &&
+                InHours(purchase.PTUser.Gym, move.StartTime, end) &&
                 templateIds.TryGetValue((move.Date.DayOfWeek, move.StartTime), out var templateId))
                 validSlots.Add(move.SessionId, new(templateId, move.Date, move.StartTime, end, "Available"));
         }
@@ -129,7 +128,7 @@ public sealed partial class PersonalTrainingService
             if (!validSlots.TryGetValue(session.Id, out var slot) || busy.Contains(slot) || occupied)
             {
                 if (explicitMove)
-                    return Conflict<EarlyResumePlan>("Khung giờ đã chọn không còn khả dụng hoặc không được gói Gym bao phủ.");
+                    return Conflict<EarlyResumePlan>("Khung giờ đã chọn không còn khả dụng.");
                 unavailableOriginals.Add(session.Id);
                 continue;
             }
@@ -146,14 +145,12 @@ public sealed partial class PersonalTrainingService
                 ? SessionResponse(s, now) with { Date = slot.Date, StartTime = slot.StartTime, EndTime = slot.EndTime }
                 : SessionResponse(s, now))
             .OrderBy(s => s.Date).ThenBy(s => s.StartTime).ToArray();
-        if (!HasGymCoverageOn(memberships, resumeDate) ||
-            projectedSessions.Any(s => !needsNewSlot.Contains(s.Id) && !HasGymCoverageOn(memberships, s.Date)))
-            return Conflict<EarlyResumePlan>("Gói Gym phải bao phủ ngày tập lại và toàn bộ lịch PT đã điều chỉnh.");
+        // GBR-10: Gym access is checked when attendance is recorded, not when the freeze ends early.
 
         if (scheduledEnd)
             expiresOn = ScheduledEnd(purchase, projectedSessions.Select(s => s.Date));
         var preview = new PTEarlyResumePreview(currentResume, resumeDate, expiresOn,
-            resumeDate.DayNumber - start.DayNumber, RemainingFreezeDays(purchase) + removedDays,
+            resumeDate.DayNumber - start.DayNumber, RemainingFreezeDays(purchase),
             replacements.Select(r => new PTEarlyResumeMove(r.Original.Id, r.Slot.Date, r.Slot.StartTime)).ToArray(),
             projectedSessions, needsNewSlot.Order().ToArray(), unavailableOriginals);
         return Result<EarlyResumePlan>.Success(new(purchase, freeze, preview, replacements));

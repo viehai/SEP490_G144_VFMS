@@ -11,16 +11,9 @@ public sealed partial class PersonalTrainingService
     private static bool Approved(PTFreeze f) => f.RequestStatus is PTFreezeRequestStatus.Approved or
         PTFreezeRequestStatus.Active or PTFreezeRequestStatus.Completed;
 
-    private static int FrozenDays(PTPurchase p) => p.PTFreezes.Where(Approved)
-        .Sum(f => (f.ActualEndDate ?? f.RequestedEndDate).DayNumber -
-            (f.ActualStartDate ?? f.RequestedStartDate).DayNumber);
-
-    private static int RemainingFreezeDays(PTPurchase p)
-    {
-        var pendingDays = p.PTFreezes.Where(f => f.RequestStatus == PTFreezeRequestStatus.Pending)
-            .Sum(f => f.RequestedEndDate.DayNumber - f.RequestedStartDate.DayNumber);
-        return Math.Max(0, p.FreezeMaxTotalDaysSnapshot - FrozenDays(p) - pendingDays);
-    }
+    /// <summary>GBR-15: one freeze per contract, so nothing remains once a request is pending or the freeze is used.</summary>
+    private static int RemainingFreezeDays(PTPurchase p) =>
+        p.PTFreezes.Any(f => f.RequestStatus == PTFreezeRequestStatus.Pending || Approved(f)) ? 0 : p.FreezeMaxTotalDaysSnapshot;
 
     private PTFreezeResponse FreezeResponse(PTFreeze f, PTPurchase p)
     {
@@ -30,7 +23,12 @@ public sealed partial class PersonalTrainingService
                 Today >= f.ActualStartDate ? PTFreezeRequestStatus.Active : PTFreezeRequestStatus.Approved;
         return new(f.Id, p.Id, p.MemberUserId, p.PTUserId, f.RequestedStartDate,
             f.ActualEndDate ?? f.RequestedEndDate, state.ToString(), f.Reason,
-            f.ReviewNote, f.ReviewedAt, ReplacementTrainerId: f.ReplacementTrainerId);
+            f.ReviewNote, f.ReviewedAt, ReplacementTrainerId: f.ReplacementTrainerId)
+        {
+            // UC 4.9: the freeze policy snapshot the Manager reviews against.
+            MinimumDays = f.MinimumDaysSnapshot ?? p.FreezeMinimumDaysSnapshot,
+            MaximumDays = f.MaxDaysSnapshot ?? p.FreezeMaxTotalDaysSnapshot
+        };
     }
 
     public async Task<Result<PagedResponse<PTFreezeResponse>>> FreezePage(string actor, bool managerView, bool processed,
@@ -44,11 +42,22 @@ public sealed partial class PersonalTrainingService
             : f.PTPurchase.MemberUserId == actor && f.PTPurchaseId == contractId);
         return await PageOf(query.OrderByDescending(f => f.Id).Select(f => new
         {
-            Freeze = f, Contract = f.PTPurchase, MemberName = f.PTPurchase.Member.FullName,
-            TrainerName = f.PTPurchase.PTUser.FullName
+            Freeze = f,
+            Contract = f.PTPurchase,
+            MemberName = f.PTPurchase.Member.FullName,
+            TrainerName = f.PTPurchase.PTUser.FullName,
+            ReplacementName = store.Query<ApplicationUser>().Where(u => u.UserId == f.ReplacementTrainerId)
+                .Select(u => u.FullName).FirstOrDefault(),
+            Held = f.PTPurchase.Sessions.Where(s => s.PTFreezeId == f.Id && s.SessionStatus == PTSessionStatus.FreezeHold)
+                .OrderBy(s => s.SessionDate).ThenBy(s => s.StartTime)
+                .Select(s => new { s.SessionDate, s.StartTime, s.EndTime }).ToList()
         }), page, row => FreezeResponse(row.Freeze, row.Contract) with
         {
-            MemberName = row.MemberName, TrainerName = row.TrainerName
+            MemberName = row.MemberName,
+            TrainerName = row.TrainerName,
+            // UC 4.9 step 2: the table shows the proposed schedule and the replacement trainer.
+            ReplacementTrainerName = row.ReplacementName,
+            ProposedSlots = row.Held.Select(h => new PTCalendarSlot(0, h.SessionDate, h.StartTime, h.EndTime, "Held")).ToArray()
         }, ct);
     }
 
@@ -76,7 +85,10 @@ public sealed partial class PersonalTrainingService
 
     private async Task<bool> GymCoverageShort(string memberId, DateOnly lastDate, CancellationToken ct)
     {
-        var coverageEnd = await Coverage(memberId).Where(m => m.StartDate <= Today)
+        // GBR-10: a paid Gym Membership that starts later (Scheduled) also counts.
+        var coverageEnd = await store.Query<MemberMembership>().Where(m => m.MemberUserId == memberId &&
+                (m.MembershipStatus == MembershipStatus.Active || m.MembershipStatus == MembershipStatus.Scheduled) &&
+                m.PackageComponent.ComponentType == ComponentType.GYM)
             .MaxAsync(store, m => (DateOnly?)m.EndDate, ct);
         return coverageEnd is null || coverageEnd < lastDate;
     }
@@ -104,11 +116,23 @@ public sealed partial class PersonalTrainingService
         var planned = new List<Replacement>();
         var missing = new List<int>();
 
-        async Task<bool> Fits(PTCalendarSlot slot) =>
+        async Task<bool> Fits(PTCalendarSlot slot, bool checkDay) =>
             slot.Date >= resume && Utc(slot.Date, slot.StartTime) > now && InHours(p.PTUser.Gym, slot.StartTime, slot.EndTime) &&
             templates.Any(t => t.DayOfWeek == slot.Date.DayOfWeek && t.StartTime == slot.StartTime) &&
-            !takenDays.Contains(slot.Date) &&
+            !(checkDay && takenDays.Contains(slot.Date)) &&
             !await HasConflict(p.PTUserId, p.MemberUserId, [slot], now, ct, ignorePurchase: p.Id);
+
+        // UC 4.8 step 5: the weekly pattern continues from the Resume Date, one pattern slot per frozen session in order.
+        // A busy slot is not skipped; that session is left for the Member to choose.
+        var defaults = new Dictionary<int, (DateOnly Date, TimeOnly Start)>();
+        using (var next = PersonalTrainingRules.Occurrences(resume, resume.AddDays(365), recurring, int.MaxValue)
+            .Where(o => !takenDays.Contains(o.Item1) && Utc(o.Item1, o.Item2.StartTime) > now).GetEnumerator())
+            foreach (var original in affected)
+                if (next.MoveNext())
+                    defaults[original.Id] = (next.Current.Item1, next.Current.Item2.StartTime);
+        foreach (var (sessionId, slot) in defaults)
+            if (moves.All(m => m.SessionId != sessionId))
+                takenDays.Add(slot.Date);
 
         foreach (var original in affected)
         {
@@ -117,18 +141,15 @@ public sealed partial class PersonalTrainingService
             if (moves.FirstOrDefault(m => m.SessionId == original.Id) is { } move)
             {
                 var slot = new PTCalendarSlot(0, move.Date, move.StartTime, move.StartTime.AddHours(hours), "Proposed");
-                if (!await Fits(slot))
+                if (!await Fits(slot, checkDay: true))
                     return Conflict<FreezePlan>($"Ca {move.Date:dd/MM/yyyy} {move.StartTime:HH:mm} không còn trống hoặc không hợp lệ.");
                 chosen = slot;
             }
-            else
+            else if (defaults.TryGetValue(original.Id, out var pick))
             {
-                var from = resume > Today ? resume : Today;
-                foreach (var (date, slot) in PersonalTrainingRules.Occurrences(from, from.AddDays(365), recurring, int.MaxValue))
-                {
-                    var candidate = new PTCalendarSlot(0, date, slot.StartTime, slot.StartTime.AddHours(hours), "Proposed");
-                    if (await Fits(candidate)) { chosen = candidate; break; }
-                }
+                var candidate = new PTCalendarSlot(0, pick.Date, pick.Start, pick.Start.AddHours(hours), "Proposed");
+                if (await Fits(candidate, checkDay: false))
+                    chosen = candidate;
             }
             if (chosen is null) { missing.Add(original.Id); continue; }
             takenDays.Add(chosen.Date);
@@ -147,11 +168,7 @@ public sealed partial class PersonalTrainingService
     private async Task<Result<FreezePlan>> PlanTransfer(PTPurchase p, DateOnly from, DateOnly firstDate, string trainerId,
         int[] templateIds, CancellationToken ct)
     {
-        var trainer = await User(trainerId, UserRole.PT, ct);
-        var profile = await store.Query<TrainerProfile>().SingleOrDefaultAsync(store, x => x.PTUserId == trainerId && x.IsActive, ct);
-        if (trainer is null || profile is null || trainerId == p.PTUserId || trainer.GymId != p.PTUser.GymId ||
-            !profile.AcceptingNewMembers || profile.Specialty == "Yoga" || profile.Level != p.TrainerLevelSnapshot ||
-            await ActiveYogaAssignments.AnyAsync(store, c => c.InstructorUserId == trainerId, ct))
+        if (!await ReplacementAllowed(p, trainerId, ct))
             return Conflict<FreezePlan>("Huấn luyện viên thay thế phải cùng cấp với gói và đang nhận học viên mới.");
         var pattern = await Templates(trainerId).Where(t => templateIds.Contains(t.Id)).OrderBy(t => t.DayOfWeek).ToArrayAsync(store, ct);
         if (pattern.Length != templateIds.Length || pattern.Select(t => t.DayOfWeek).Distinct().Count() != pattern.Length)
@@ -178,6 +195,16 @@ public sealed partial class PersonalTrainingService
             await GymCoverageShort(p.MemberUserId, end, ct)));
     }
 
+    /// <summary>GBR-99: an active PT of the same gym and level who accepts new members and teaches no Yoga class.</summary>
+    private async Task<bool> ReplacementAllowed(PTPurchase p, string trainerId, CancellationToken ct)
+    {
+        var trainer = await User(trainerId, UserRole.PT, ct);
+        var profile = await PTProfiles.SingleOrDefaultAsync(store, x => x.PTUserId == trainerId, ct);
+        return trainer is not null && profile is not null && trainerId != p.PTUserId && trainer.GymId == p.PTUser.GymId &&
+            profile.AcceptingNewMembers && profile.Level == p.TrainerLevelSnapshot &&
+            !await ActiveYogaAssignments.AnyAsync(store, c => c.InstructorUserId == trainerId, ct);
+    }
+
     private static PTPlannedSession Planned(Replacement r, string trainerId) =>
         new(r.Original.Id, r.Slot.Date, r.Slot.StartTime, r.Slot.EndTime, trainerId);
 
@@ -189,7 +216,7 @@ public sealed partial class PersonalTrainingService
         if (p.PTFreezes.Any(f => f.RequestStatus == PTFreezeRequestStatus.Pending || Approved(f)))
             return Conflict<FreezePlan>("Hợp đồng đã có yêu cầu bảo lưu đang chờ hoặc đã dùng lượt bảo lưu duy nhất.");
         var days = input.ResumeDate.DayNumber - input.StartDate.DayNumber;
-        if (days < p.FreezeMinimumDaysSnapshot || days > RemainingFreezeDays(p))
+        if (days < p.FreezeMinimumDaysSnapshot || days > p.FreezeMaxTotalDaysSnapshot)
             return Result<FreezePlan>.Failure(
                 $"Thời gian bảo lưu phải từ {p.FreezeMinimumDaysSnapshot} đến {p.FreezeMaxTotalDaysSnapshot} ngày.",
                 "PT_FREEZE_DURATION", 409);
@@ -220,6 +247,12 @@ public sealed partial class PersonalTrainingService
         {
             if (await User(actor, UserRole.Member, ct) is null)
                 return Forbidden<PTFreezeResponse>();
+            // GBR-09: serialize with other holds on the trainer whose slots are held after the freeze, as checkout does.
+            var trainerId = input.ReplacementTrainerId ?? await store.Query<PTPurchase>()
+                .Where(x => x.Id == id && x.MemberUserId == actor).Select(x => x.PTUserId).FirstOrDefaultAsync(store, ct);
+            if (trainerId is null)
+                return Missing<PTFreezeResponse>();
+            await payments.LockUsersAsync([actor, trainerId], ct);
             var p = await ContractsWithSessions.SingleOrDefaultAsync(store, x => x.Id == id && x.MemberUserId == actor, ct);
             if (p is null)
                 return Missing<PTFreezeResponse>();
@@ -243,6 +276,7 @@ public sealed partial class PersonalTrainingService
                 ReplacementTrainerId = input.ReplacementTrainerId
             };
             store.Add(freeze);
+            await store.Save(ct);
             // Schedule protection: sessions in the window are never penalised while the request is pending.
             foreach (var session in p.Sessions.Where(s => InFreezeWindow(s, input.StartDate, input.ResumeDate)))
             {
@@ -260,7 +294,8 @@ public sealed partial class PersonalTrainingService
                     EndTime = slot.EndTime,
                     CreditUnits = original.CreditUnits,
                     SessionStatus = PTSessionStatus.FreezeHold,
-                    ReplacementForSessionId = original.Id
+                    ReplacementForSessionId = original.Id,
+                    PTFreezeId = freeze.Id
                 });
             await store.Save(ct);
             Notify(actor, "Đã gửi yêu cầu bảo lưu PT",
@@ -336,13 +371,31 @@ public sealed partial class PersonalTrainingService
                     {
                         var hold = new PTSession
                         {
-                            PTUserId = purchase.PTUserId, MemberUserId = purchase.MemberUserId, SessionDate = r.Slot.Date,
-                            StartTime = r.Slot.StartTime, EndTime = r.Slot.EndTime, CreditUnits = r.Original.CreditUnits,
-                            SessionStatus = PTSessionStatus.FreezeHold, ReplacementForSessionId = r.Original.Id
+                            PTUserId = purchase.PTUserId,
+                            MemberUserId = purchase.MemberUserId,
+                            SessionDate = r.Slot.Date,
+                            StartTime = r.Slot.StartTime,
+                            EndTime = r.Slot.EndTime,
+                            CreditUnits = r.Original.CreditUnits,
+                            SessionStatus = PTSessionStatus.FreezeHold,
+                            ReplacementForSessionId = r.Original.Id,
+                            PTFreezeId = f.Id
                         };
                         purchase.Sessions.Add(hold);
                         return hold;
                     }).ToArray();
+                }
+                else if (await UnavailableHolds(purchase, f, holds, now, ct) is { Count: > 0 } unavailable)
+                {
+                    // UC 4.9 'Proposed Slot No Longer Available': the request stays Pending and its sessions stay protected.
+                    var dates = string.Join(", ", unavailable.Select(h => $"{h.SessionDate:dd/MM/yyyy} {h.StartTime:HH:mm}"));
+                    Notify(purchase.MemberUserId, "Lịch sau bảo lưu không còn khả dụng",
+                        $"Các ca {dates} không còn dùng được. Hãy chọn ca khác trong yêu cầu bảo lưu đang chờ.", nameof(PTFreeze), id);
+                    Audit(actor, nameof(PTFreeze), id, "ApprovalBlocked:SlotUnavailable");
+                    await store.Save(ct);
+                    return Result<PTFreezeResponse>.Failure(
+                        $"Không thể duyệt: các ca {dates} không còn khả dụng. Hội viên đã được thông báo để chọn lại.",
+                        "PT_FREEZE_SLOT_UNAVAILABLE", 409);
                 }
                 foreach (var hold in holds)
                 {
@@ -396,6 +449,32 @@ public sealed partial class PersonalTrainingService
             return Result<PTFreezeResponse>.Success(FreezeResponse(f, purchase));
         }, ct);
 
+    /// <summary>
+    /// UC 4.9 step 7: rechecks the held post-freeze slots before approval. A slot fails when its time has passed, it falls
+    /// outside opening hours, its trainer is no longer an active PT, a replacement trainer no longer meets GBR-99, or another
+    /// booking now overlaps it (the same check used when the slots were planned).
+    /// </summary>
+    private async Task<List<PTSession>> UnavailableHolds(PTPurchase purchase, PTFreeze freeze, PTSession[] holds,
+        DateTime now, CancellationToken ct)
+    {
+        var replacementInvalid = freeze.ReplacementTrainerId is { } trainerId && !await ReplacementAllowed(purchase, trainerId, ct);
+        var unavailable = new List<PTSession>();
+        foreach (var hold in holds)
+        {
+            var original = purchase.Sessions.FirstOrDefault(s => s.Id == hold.ReplacementForSessionId);
+            if (original is not null && (PersonalTrainingRules.Used(original.SessionStatus) ||
+                    original.SessionStatus == PTSessionStatus.Disputed))
+                continue; // attended while pending: the hold is dropped on approval
+            var trainer = await User(hold.PTUserId, UserRole.PT, ct);
+            var slot = new PTCalendarSlot(0, hold.SessionDate, hold.StartTime, hold.EndTime, "Held");
+            if (replacementInvalid || trainer is null || Utc(hold.SessionDate, hold.StartTime) <= now ||
+                !InHours(trainer.Gym, hold.StartTime, hold.EndTime) ||
+                await HasConflict(hold.PTUserId, purchase.MemberUserId, [slot], now, ct, ignorePurchase: purchase.Id))
+                unavailable.Add(hold);
+        }
+        return unavailable;
+    }
+
     /// <summary>Releases held slots; protected sessions return to normal, or become make-up units if their time passed.</summary>
     private void ReleaseFreeze(PTPurchase purchase, PTFreeze f, DateTime now)
     {
@@ -424,15 +503,17 @@ public sealed partial class PersonalTrainingService
             return Missing<PTFreezeResponse>();
         var f = p.PTFreezes.Single(x => x.Id == id);
         var now = Now;
-        if (f.RequestStatus == PTFreezeRequestStatus.Pending)
+        // UC 4.8 step 8.2 / GBR-15: a request can be withdrawn only before the freeze starts.
+        if (f.RequestStatus == PTFreezeRequestStatus.Pending && f.RequestedStartDate > Today)
             ReleaseFreeze(p, f, now);
         else if (f.RequestStatus == PTFreezeRequestStatus.Approved && f.ActualStartDate > Today)
         {
             if (f.ReplacementTrainerId is not null)
                 return Conflict<PTFreezeResponse>("Bảo lưu đã kèm đổi huấn luyện viên nên không thể rút. Vui lòng liên hệ quầy lễ tân.");
             // Restore each original slot where it is still free; otherwise keep the rescheduled session.
+            // Only sessions this freeze created move back: make-up and trainer-change sessions stay.
             foreach (var replacement in p.Sessions.Where(s => s.SessionStatus == PTSessionStatus.Scheduled &&
-                s.ReplacementForSessionId != null).ToArray())
+                s.PTFreezeId == f.Id && s.ReplacementForSessionId != null).ToArray())
             {
                 var original = p.Sessions.FirstOrDefault(s => s.Id == replacement.ReplacementForSessionId);
                 if (original is null || original.SessionStatus != PTSessionStatus.Cancelled ||
@@ -440,7 +521,7 @@ public sealed partial class PersonalTrainingService
                     Utc(original.SessionDate, original.StartTime) <= now ||
                     await HasConflict(p.PTUserId, p.MemberUserId,
                         [new(0, original.SessionDate, original.StartTime, original.EndTime, "Available")], now, ct,
-                        ignoreSession: replacement.Id, allowSecondMemberSession: true))
+                        ignoreSession: replacement.Id))
                     continue;
                 original.SessionStatus = PTSessionStatus.Scheduled;
                 original.CancelledAt = null;
@@ -452,13 +533,94 @@ public sealed partial class PersonalTrainingService
             f.ActualEndDate = null;
         }
         else
-            return Conflict<PTFreezeResponse>("Chỉ rút được yêu cầu đang chờ hoặc đã duyệt nhưng chưa bắt đầu.");
+            return Conflict<PTFreezeResponse>("Chỉ rút được yêu cầu đang chờ hoặc đã duyệt trước ngày bắt đầu bảo lưu.");
         f.RequestStatus = PTFreezeRequestStatus.Withdrawn;
         Audit(actor, nameof(PTFreeze), id, "Withdrawn");
         Notify(p.PTUserId, "Hội viên rút yêu cầu bảo lưu", "Lịch tập được khôi phục theo khả năng còn trống.", nameof(PTFreeze), id);
         await store.Save(ct);
         return Result<PTFreezeResponse>.Success(FreezeResponse(f, p));
     }, ct);
+
+    private Task<PTPurchase?> MemberFreeze(string actor, int freezeId, CancellationToken ct) =>
+        ContractsWithSessions.SingleOrDefaultAsync(store, x => x.MemberUserId == actor && x.PTFreezes.Any(f => f.Id == freezeId), ct);
+
+    private static PTPlannedSession HeldSession(PTSession hold) =>
+        new(hold.ReplacementForSessionId ?? hold.Id, hold.SessionDate, hold.StartTime, hold.EndTime, hold.PTUserId);
+
+    /// <summary>UC 4.8 step 8.4: the schedule held for a pending request; SessionsNeedingSlot lists held slots no longer usable.</summary>
+    public async Task<Result<PTFreezeProposal>> FreezeSlots(string actor, int id, CancellationToken ct)
+    {
+        if (await User(actor, UserRole.Member, ct) is null)
+            return Forbidden<PTFreezeProposal>();
+        var p = await MemberFreeze(actor, id, ct);
+        if (p is null)
+            return Missing<PTFreezeProposal>();
+        var f = p.PTFreezes.Single(x => x.Id == id);
+        if (f.RequestStatus != PTFreezeRequestStatus.Pending)
+            return Conflict<PTFreezeProposal>("Chỉ đổi ca được khi yêu cầu bảo lưu đang chờ duyệt.");
+        var holds = Holds(p);
+        var unavailable = await UnavailableHolds(p, f, holds, Now, ct);
+        var end = LastSessionDate(p);
+        return Result<PTFreezeProposal>.Success(new(end, holds.Select(HeldSession).ToArray(),
+            unavailable.Select(h => HeldSession(h).OriginalSessionId).ToArray(), await GymCoverageShort(p.MemberUserId, end, ct)));
+    }
+
+    /// <summary>
+    /// UC 4.8 step 8.4: the Member moves held post-freeze sessions to other published slots. The request stays Pending with
+    /// the same dates (even after the Start Date) and its protected sessions stay protected.
+    /// </summary>
+    public Task<Result<PTFreezeResponse>> ChangeFreezeSlots(string actor, int id, PTFreezeSlotChange input, CancellationToken ct) =>
+        Write(async () =>
+        {
+            if (await User(actor, UserRole.Member, ct) is null)
+                return Forbidden<PTFreezeResponse>();
+            // GBR-09: serialize with other holds on the trainer, as when the request was made.
+            var trainerId = await store.Query<PTSession>().Where(s => s.PTFreezeId == id && s.MemberUserId == actor &&
+                s.SessionStatus == PTSessionStatus.FreezeHold).Select(s => s.PTUserId).FirstOrDefaultAsync(store, ct);
+            if (trainerId is not null)
+                await payments.LockUsersAsync([actor, trainerId], ct);
+            var p = await MemberFreeze(actor, id, ct);
+            if (p is null)
+                return Missing<PTFreezeResponse>();
+            var f = p.PTFreezes.Single(x => x.Id == id);
+            if (f.RequestStatus != PTFreezeRequestStatus.Pending)
+                return Conflict<PTFreezeResponse>("Chỉ đổi ca được khi yêu cầu bảo lưu đang chờ duyệt.");
+            if (f.ReplacementTrainerId is { } replacement && !await ReplacementAllowed(p, replacement, ct))
+                return Conflict<PTFreezeResponse>("Huấn luyện viên thay thế không còn đáp ứng điều kiện. Vui lòng liên hệ quầy lễ tân.");
+            var now = Now;
+            var holds = Holds(p);
+            var moves = input.Moves.ToDictionary(m => m.SessionId);
+            var moved = holds.Where(h => moves.ContainsKey(HeldSession(h).OriginalSessionId)).ToArray();
+            if (moved.Length != moves.Count)
+                return Invalid<PTFreezeResponse>("Chỉ đổi được ca của các buổi đang giữ chỗ sau bảo lưu.");
+            if ((await UnavailableHolds(p, f, holds, now, ct)).Any(h => !moved.Contains(h)))
+                return Result<PTFreezeResponse>.Failure("Còn buổi có ca không còn khả dụng. Hãy chọn ca khác cho các buổi đó.",
+                    "PT_FREEZE_SLOT_REQUIRED", 409);
+            var takenDays = p.Sessions.Where(s => !moved.Contains(s) &&
+                    (PersonalTrainingRules.Reserved(s.SessionStatus) || s.SessionStatus == PTSessionStatus.FreezeHold))
+                .Select(s => s.SessionDate).ToHashSet();
+            foreach (var hold in moved)
+            {
+                var move = moves[HeldSession(hold).OriginalSessionId];
+                var slot = new PTCalendarSlot(0, move.Date, move.StartTime, move.StartTime.AddHours(hold.CreditUnits), "Held");
+                var day = move.Date.DayOfWeek;
+                var trainer = await User(hold.PTUserId, UserRole.PT, ct);
+                if (trainer is null || move.Date < f.RequestedEndDate || Utc(move.Date, move.StartTime) <= now ||
+                    !InHours(trainer.Gym, slot.StartTime, slot.EndTime) || !takenDays.Add(move.Date) ||
+                    !await Templates(hold.PTUserId).AnyAsync(store, t => t.DayOfWeek == day && t.StartTime == move.StartTime, ct) ||
+                    await HasConflict(hold.PTUserId, p.MemberUserId, [slot], now, ct, ignorePurchase: p.Id))
+                    return Conflict<PTFreezeResponse>($"Ca {move.Date:dd/MM/yyyy} {move.StartTime:HH:mm} không còn trống hoặc không hợp lệ.");
+                hold.SessionDate = slot.Date;
+                hold.StartTime = slot.StartTime;
+                hold.EndTime = slot.EndTime;
+            }
+            foreach (var manager in await ManagerIds(p.PTUserId, ct))
+                Notify(manager, "Lịch sau bảo lưu PT đã đổi", $"{p.Member.FullName} đã chọn ca mới cho yêu cầu bảo lưu.",
+                    nameof(PTFreeze), id);
+            Audit(actor, nameof(PTFreeze), id, "SlotsChanged");
+            await store.Save(ct);
+            return Result<PTFreezeResponse>.Success(FreezeResponse(f, p));
+        }, ct);
 
     /// <summary>UC 4.9: Managers get an in-app reminder 24 hours after a request and daily once it is 48 hours old.</summary>
     public Task<Result<int>> RemindPendingFreezes(CancellationToken ct) => Write(async () =>

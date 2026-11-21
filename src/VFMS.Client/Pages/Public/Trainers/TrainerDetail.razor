@@ -18,8 +18,11 @@
                 <TrainerAvatar Trainer="detail.Profile" />
                 <div>
                     <h1>@detail.Profile.FullName</h1>
-                    <p class="trainer-muted">@detail.Profile.Specialty · @detail.Profile.Level · @detail.Profile.ExperienceYears năm kinh nghiệm</p>
-                    <p class="trainer-muted">@(detail.Profile.IsAcceptingNewMembers ? "Sẵn sàng nhận học viên" : "Không nhận học viên mới")</p>
+                    <p class="trainer-muted">@detail.Profile.TrainerRole · @detail.Profile.Specialty · @detail.Profile.Level · @detail.Profile.ExperienceYears năm kinh nghiệm</p>
+                    @if (IsPT)
+                    {
+                        <p class="trainer-muted">@(detail.Profile.IsAcceptingNewMembers ? "Sẵn sàng nhận học viên" : "Không nhận học viên mới")</p>
+                    }
                 </div>
             </div>
             @if (!string.IsNullOrWhiteSpace(detail.Profile.Bio))
@@ -28,12 +31,12 @@
             }
             @if (detail.IsOwnProfile)
             {
-                <a class="trainer-button trainer-primary" href="/pt/trainer-profile">Quản lý hồ sơ PT</a>
+                <a class="trainer-button trainer-primary" href="/pt/trainer-profile">Quản lý hồ sơ</a>
             }
             else
             {
                 <div class="trainer-row">
-                    @if (detail.Profile.Specialty != "Yoga" && detail.Profile.IsAcceptingNewMembers)
+                    @if (IsPT && detail.Profile.IsAcceptingNewMembers)
                     {
                         <a class="trainer-button trainer-primary" href="@($"/trainers/{Id}/packages")">Khám phá gói PT</a>
                     }
@@ -86,7 +89,10 @@
             </section>
         </div>
 
-        <TrainerWeeklyCalendar @key="detail.Profile.UserId" TrainerId="@detail.Profile.UserId" />
+        @if (IsPT)
+        {
+            <TrainerWeeklyCalendar @key="detail.Profile.UserId" TrainerId="@detail.Profile.UserId" />
+        }
     }
     else
     {
@@ -97,6 +103,8 @@
 @code {
     [Parameter] public int Id { get; set; }
     private TrainerPublicDetail? _detail;
+    // UC 3.4: only a PT sells packages and publishes a weekly timetable.
+    private bool IsPT => _detail?.Profile.TrainerRole == "PT";
     private bool _loading;
     private bool _loadingReviews;
     private string? _error;

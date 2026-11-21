@@ -98,6 +98,10 @@ public sealed class TrainerEmailWorker(IServiceScopeFactory scopes, IConfigurati
                 await email.SendAsync(item.Recipient, item.Subject, body, ct);
                 item.SentAt = DateTime.UtcNow;
                 item.ProtectedBody = string.Empty;
+                // GBR-04: a setup link expires 48 hours after it is sent.
+                if (item.Subject == setupSubject && await db.ApplicationUsers
+                        .FirstOrDefaultAsync(u => u.UserId == application.HiredUserId, ct) is { } hired)
+                    hired.PasswordSetupExpiresAt = item.SentAt.Value.AddHours(48);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {

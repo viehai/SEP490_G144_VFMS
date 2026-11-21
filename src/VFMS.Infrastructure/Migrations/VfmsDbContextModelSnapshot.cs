@@ -2085,10 +2085,17 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<string>("Note")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("NoteAuthorUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
                     b.Property<DateTime?>("NoteUpdatedAt")
                         .HasColumnType("datetime2");
 
                     b.Property<int?>("PTAvailabilityId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("PTFreezeId")
                         .HasColumnType("int");
 
                     b.Property<int>("PTPurchaseId")
@@ -2154,6 +2161,10 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.Property<DateTime?>("TrainerAbsenceReviewedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("TrainerAbsenceReviewedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
@@ -3218,6 +3229,9 @@ namespace VFMS.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateOnly?>("NotAcceptingCountFrom")
+                        .HasColumnType("date");
 
                     b.Property<DateOnly?>("NotAcceptingSince")
                         .HasColumnType("date");

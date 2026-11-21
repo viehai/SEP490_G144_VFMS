@@ -1,4 +1,5 @@
 @inject TrainerApiClient Api
+@inject ToastService Toasts
 
 @if (_receipt is { } receipt)
 {
@@ -22,10 +23,8 @@ else
         <fieldset disabled="@_busy" class="trainer-stack">
             @if (IsUpdate)
             {
-                <label>Chuyên môn đề xuất
-                    <select class="trainer-input" required @bind="_specialty">
-                        <option value="PT">PT</option><option value="Yoga">Yoga</option>
-                    </select>
+                <label>Chuyên môn đề xuất (để trống nếu giữ chuyên môn hiện tại)
+                    <input class="trainer-input" maxlength="200" placeholder="Ví dụ: tăng cơ, giảm mỡ" @bind="_specialty" />
                     @FieldError("Specialty")
                 </label>
                 @if (Replacement is { } replacement)
@@ -48,11 +47,12 @@ else
                         @FieldError("Gender")
                     </label>
                     <label>Ứng tuyển vị trí
-                        <select class="trainer-input" required @bind="_specialty">
+                        <select class="trainer-input" required @bind="_trainerRole">
                             <option value="">Chọn vị trí</option><option value="PT">PT</option><option value="Yoga">Yoga</option>
                         </select>
-                        @FieldError("Specialty")
+                        @FieldError("TrainerRole")
                     </label>
+                    <label>Chuyên môn<input class="trainer-input" maxlength="200" required placeholder="Ví dụ: tăng cơ, Hatha yoga" @bind="_specialty" />@FieldError("Specialty")</label>
                     <label>Số năm kinh nghiệm<input class="trainer-input" type="number" min="0" max="80" required @bind="_experience" />@FieldError("ExperienceYears")</label>
                 </div>
                 <label>Giới thiệu chuyên môn<textarea class="trainer-input" rows="4" maxlength="4000" required @bind="_bio"></textarea>@FieldError("Bio")</label>
@@ -128,7 +128,6 @@ else
 
 @code {
     [Parameter] public TrainerProfileResponse? Profile { get; set; }
-    [Parameter] public TrainerApplicationResponse? Identity { get; set; }
     [Parameter] public string? Email { get; set; }
     [Parameter] public string? Phone { get; set; }
     [Parameter] public IReadOnlyList<TrainerDocumentResponse> Published { get; set; } = [];
@@ -138,7 +137,7 @@ else
     private const long MaxFileBytes = 5 * 1024 * 1024;
     private readonly List<SelectedCertificate> _files = [];
     private readonly List<CertificateLink> _links = [new()];
-    private string _name = "", _email = "", _phone = "", _citizenId = "", _gender = "", _specialty = "", _bio = "";
+    private string _name = "", _email = "", _phone = "", _citizenId = "", _gender = "", _specialty = "", _trainerRole = "", _bio = "";
     private DateOnly? _birthDate;
     private int _experience, _fileVersion;
     private bool _consent, _busy;
@@ -154,14 +153,13 @@ else
         if (Profile is not { } profile)
             return;
         _name = profile.FullName;
-        _email = Email ?? Identity?.Email ?? "";
-        _phone = Phone ?? Identity?.PhoneNumber ?? "";
-        _citizenId = Identity?.CitizenId ?? "";
-        _birthDate = Identity?.DateOfBirth;
+        // UC 3.3: the API takes identity and personal details from the account and TrainerProfile.
+        _email = Email ?? "";
+        _phone = Phone ?? "";
         _gender = profile.Gender;
         _specialty = profile.Specialty;
         _experience = profile.ExperienceYears;
-        _bio = string.IsNullOrWhiteSpace(profile.Bio) ? Identity?.Bio ?? "" : profile.Bio;
+        _bio = profile.Bio ?? "";
         if (Replacement is { IsExternalLink: true } replacement)
             _links[0].Replaces = replacement.Id;
     }
@@ -216,7 +214,8 @@ else
             IsUpdate ? "ProfileUpdate" : "Recruitment",
             IsUpdate ? null : _links.Select(link => link.Url.Trim()).Where(url => url.Length > 0).ToList(),
             IsUpdate ? _links.Where(link => !string.IsNullOrWhiteSpace(link.Url)).Select(link =>
-                new TrainerCertificateLinkInput(link.Url.Trim(), string.IsNullOrEmpty(link.Replaces) ? null : link.Replaces)).ToList() : null);
+                new TrainerCertificateLinkInput(link.Url.Trim(), string.IsNullOrEmpty(link.Replaces) ? null : link.Replaces)).ToList() : null,
+            IsUpdate ? null : _trainerRole);
         _fieldErrors = new SubmitTrainerApplicationValidator().Validate(request).Errors
             .Select(issue => FieldKey(issue.PropertyName))
             .Distinct().ToDictionary(key => key, FieldMessage);
@@ -231,6 +230,9 @@ else
         try
         {
             _receipt = await Api.SubmitAsync(request);
+            // MSG-04
+            Toasts.Show(IsUpdate ? "Đã tạo yêu cầu cập nhật chứng chỉ thành công. Chứng chỉ đang chờ Manager duyệt."
+                : "Đã tạo hồ sơ ứng tuyển thành công.");
             _files.Clear();
             _links.Clear();
             _consent = false;
@@ -244,26 +246,21 @@ else
             {
                 "TRAINER_CHANGE_PENDING" => "Bạn đang có yêu cầu cập nhật chờ Manager duyệt.",
                 "TRAINER_NOT_ELIGIBLE" => "Bạn không đủ điều kiện ứng tuyển: email hoặc CCCD thuộc tài khoản nhân viên hoặc huấn luyện viên đang hoạt động.",
-                "TRAINER_IDENTITY_MISSING" => "Hồ sơ PT chưa có CCCD đã xác minh. Liên hệ Manager để cập nhật.",
-                "RECRUITMENT_COOLDOWN" or "TRAINER_PROFILE_UPDATE_COOLDOWN" => CooldownMessage(ex.Message),
-                TrainerContentRules.RejectedCode => "Giới thiệu có từ ngữ không được phép. Sửa các từ được tô đỏ rồi gửi lại.",
+                "TRAINER_IDENTITY_MISSING" => "Hồ sơ huấn luyện viên chưa có CCCD đã xác minh. Liên hệ Manager để cập nhật.",
+                "TRAINER_RECRUITMENT_CLOSED" => "Phòng tập đang tạm dừng nhận hồ sơ ứng tuyển. Vui lòng quay lại sau.",
+                "TRAINER_FORBIDDEN" => IsUpdate ? "Chỉ huấn luyện viên đang hoạt động mới gửi được yêu cầu này."
+                    : "Tài khoản đang đăng nhập không được nộp hồ sơ ứng tuyển. Đăng xuất hoặc dùng tài khoản khách hàng.",
+                "TRAINER_VALIDATION" => "Thông tin hồ sơ hoặc chứng chỉ chưa hợp lệ. Kiểm tra lại rồi gửi.",
+                // TrainerApiClient already turns the cooldown into Vietnamese text with the next eligible time (GBR-03).
+                TrainerContentRules.RejectedCode => "Giới thiệu hoặc chuyên môn có từ ngữ không được phép. Sửa các từ được tô đỏ rồi gửi lại.",
                 _ => ex.Message
             };
         }
         finally { _busy = false; }
     }
 
-    // The API message ends with the next eligible time in ISO-8601 UTC (GBR-03).
-    private static string CooldownMessage(string message)
-    {
-        var iso = message.Split(' ').LastOrDefault()?.TrimEnd('.');
-        return DateTime.TryParse(iso, null, System.Globalization.DateTimeStyles.RoundtripKind, out var next)
-            ? $"Bạn vừa nộp hồ sơ. Có thể nộp lại sau {next.ToUniversalTime().AddHours(7):HH:mm dd/MM/yyyy}."
-            : "Bạn vừa nộp hồ sơ. Vui lòng chờ 10 phút rồi nộp lại.";
-    }
-
     private static readonly HashSet<string> SimpleFields =
-        ["FullName", "Email", "PhoneNumber", "CitizenId", "DateOfBirth", "Gender", "Specialty", "ExperienceYears", "Bio", "Consent"];
+        ["FullName", "Email", "PhoneNumber", "CitizenId", "DateOfBirth", "Gender", "TrainerRole", "Specialty", "ExperienceYears", "Bio", "Consent"];
 
     private static string FieldKey(string property) => SimpleFields.Contains(property) ? property : "Certificates";
 
@@ -281,7 +278,8 @@ else
         "CitizenId" => "CCCD phải có đúng 12 chữ số.",
         "DateOfBirth" => "Ngày sinh phải từ năm 1900 và trước hôm nay.",
         "Gender" => "Chọn giới tính.",
-        "Specialty" => "Chọn chuyên môn PT hoặc Yoga.",
+        "TrainerRole" => "Chọn vị trí ứng tuyển PT hoặc Yoga.",
+        "Specialty" => "Nhập chuyên môn, tối đa 200 ký tự.",
         "ExperienceYears" => "Nhập số năm kinh nghiệm từ 0 đến 80.",
         "Bio" => "Nhập giới thiệu chuyên môn, tối đa 4.000 ký tự.",
         "Consent" => "Xác nhận đồng ý trước khi gửi.",

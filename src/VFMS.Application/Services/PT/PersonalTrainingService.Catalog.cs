@@ -72,28 +72,13 @@ public sealed partial class PersonalTrainingService
         if (desired.Length != request.Slots.Length ||
             desired.Any(s => !Enum.IsDefined(s.DayOfWeek) || !InHours(trainer.Gym, s.StartTime, s.StartTime.AddHours(1))))
             return Invalid<bool>("Ca phải hợp lệ, không trùng nhau và nằm trong giờ hoạt động của gym.");
-        if (desired.GroupBy(s => s.DayOfWeek).Any(group => group.OrderBy(s => s.StartTime).Zip(
-                group.OrderBy(s => s.StartTime).Skip(1), (left, right) =>
-                    right.StartTime - left.StartTime < TimeSpan.FromHours(1)).Any(x => x)))
-            return Invalid<bool>("Các ca trong cùng ngày không được chồng giờ.");
-
         var existing = await Templates(actor).ToListAsync(store, ct);
         var added = desired.Where(slot => !existing.Any(x => x.DayOfWeek == slot.DayOfWeek && x.StartTime == slot.StartTime)).ToArray();
         if (added.Any(slot => !IsWholeHour(slot.StartTime)))
             return Invalid<bool>("Ca mới phải bắt đầu vào giờ tròn, ví dụ 06:00 hoặc 07:00.");
+        // UC 4.1 / GBR-08: removing a slot affects new purchases only; held and confirmed sessions keep their time.
+        // A new slot that overlaps a session booked on one date is still published; that date shows as busy.
         var removed = existing.Where(x => !desired.Contains(new(x.DayOfWeek!.Value, x.StartTime))).ToArray();
-        var removedIds = removed.Select(x => x.Id).ToArray();
-        var future = await Occupied(Now).Where(s => s.PTUserId == actor && s.SessionDate >= Today).ToListAsync(store, ct);
-        if (future.Any(s => s.PTAvailabilityId is { } id && removedIds.Contains(id) ||
-            removed.Any(slot => slot.DayOfWeek == s.SessionDate.DayOfWeek &&
-                slot.StartTime < s.EndTime && s.StartTime < slot.EndTime)))
-            return Conflict<bool>("Không thể sửa hoặc tắt ca đang được giữ hoặc đã xác nhận.");
-        var yoga = await Yoga(actor, null, Today, DateOnly.MaxValue).ToListAsync(store, ct);
-        if (added.Any(slot => future.Any(s => s.SessionDate.DayOfWeek == slot.DayOfWeek &&
-                PersonalTrainingRules.Overlaps(slot.StartTime, slot.StartTime.AddHours(1), s.StartTime, s.EndTime)) ||
-            yoga.Any(s => s.ScheduledDate.DayOfWeek == slot.DayOfWeek &&
-                PersonalTrainingRules.Overlaps(slot.StartTime, slot.StartTime.AddHours(1), s.StartTime, s.EndTime))))
-            return Conflict<bool>("Ca lặp trùng lịch đã đặt hoặc lớp Yoga đã phân công.");
 
         foreach (var slot in removed)
             slot.IsDeleted = true;
@@ -203,7 +188,7 @@ public sealed partial class PersonalTrainingService
         {
             if (await User(actor, UserRole.Manager, ct) is null)
                 return Forbidden<PTPackageResponse>();
-            if (string.IsNullOrWhiteSpace(request.Name) || request.Credits <= 0 ||
+            if (string.IsNullOrWhiteSpace(request.Name) || request.Credits is <= 0 or > PTPackageRequestValidator.MaxSessions ||
                 request.Price <= 0 ||
                 request.Price > 9_999_999_999_999_999m || decimal.Truncate(request.Price) != request.Price ||
                 !Enum.TryParse<TrainerLevel>(request.TrainerLevel, true, out var level) ||

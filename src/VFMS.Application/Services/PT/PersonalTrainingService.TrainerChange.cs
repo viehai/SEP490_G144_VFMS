@@ -18,9 +18,9 @@ public sealed partial class PersonalTrainingService
             return Missing<IReadOnlyList<PTReplacementTrainer>>();
         var gymId = contract.PTUser.GymId;
         var yoga = ActiveYogaAssignments.Select(c => c.InstructorUserId);
-        var trainers = await (from profile in store.Query<TrainerProfile>()
+        var trainers = await (from profile in PTProfiles
                               join user in ActiveUsers on profile.PTUserId equals user.UserId
-                              where profile.IsActive && profile.AcceptingNewMembers && profile.Specialty != "Yoga" &&
+                              where profile.AcceptingNewMembers &&
                                   profile.Level == contract.TrainerLevelSnapshot && profile.PTUserId != contract.PTUserId &&
                                   user.GymId == gymId && !yoga.Contains(profile.PTUserId) &&
                                   user.UserRoles.Any(r => r.Role.RoleName == nameof(UserRole.PT))
@@ -70,6 +70,8 @@ public sealed partial class PersonalTrainingService
     public Task<Result<PTContractResponse>> ChangeTrainer(string actor, int contractId, PTTrainerChangeRequest request,
         CancellationToken ct) => Write(async () =>
     {
+        // GBR-09: serialize with other holds on the new trainer's slots, as checkout does.
+        await payments.LockUsersAsync([actor, request.TrainerId], ct);
         var result = await PlanTrainerChange(actor, contractId, request, ct);
         if (!result.IsSuccess)
             return Result<PTContractResponse>.Failure(result.ErrorMessage!, result.ErrorCode!, result.StatusCode);

@@ -61,7 +61,9 @@ internal sealed class TrainerTestDatabase : IAsyncDisposable
         Db.Add(gym); await Db.SaveChangesAsync();
         var manager = new ApplicationUser { UserId = "manager", GymId = gym.Id, FullName = "Test Manager", Email = "manager@example.test", PhoneNumber = "0900000099", AccountStatus = AccountStatus.Active };
         var role = new ApplicationRole { RoleName = "Manager" };
-        Db.AddRange(manager, role, new ApplicationRole { RoleName = "PT" }); await Db.SaveChangesAsync();
+        // The AddTrainerRoles migration already seeds the PT role.
+        if (!await Db.ApplicationRoles.AnyAsync(r => r.RoleName == "PT")) Db.Add(new ApplicationRole { RoleName = "PT" });
+        Db.AddRange(manager, role); await Db.SaveChangesAsync();
         Db.Add(new ApplicationUserRole { UserId = manager.UserId, RoleId = role.Id }); await Db.SaveChangesAsync();
         Db.ChangeTracker.Clear();
     }
@@ -69,7 +71,7 @@ internal sealed class TrainerTestDatabase : IAsyncDisposable
     {
         Assert.True(result.IsSuccess, $"{result.ErrorCode}: {result.ErrorMessage}"); return result.Data!;
     }
-    public static SubmitTrainerApplicationRequest Request => new("Test Trainer", "trainer@example.test", "0900000010", "000000000010", new(2000, 1, 1), "Other", "PT", 3, "Strength coach", true, [new("proof.pdf", "%PDF-1.7 synthetic"u8.ToArray())]);
+    public static SubmitTrainerApplicationRequest Request => new("Test Trainer", "trainer@example.test", "0900000010", "000000000010", new(2000, 1, 1), "Other", "Strength training", 3, "Strength coach", true, [new("proof.pdf", "%PDF-1.7 synthetic"u8.ToArray())], TrainerRole: "PT");
     public async Task<TrainerApplication> Hire()
     {
         Success(await Service.Submit(Request, null, default));
@@ -84,7 +86,12 @@ internal sealed class TrainerTestDatabase : IAsyncDisposable
         var json = await Db.TrainerApplications.Where(x => x.Id == applicationId).Select(x => x.EmailQueueJson).SingleAsync();
         var mail = JsonSerializer.Deserialize<List<TrainerQueuedEmail>>(json)!.Single(x => x.Subject == "Set up your trainer account" && x.SentAt == null);
         var body = Protection.CreateProtector("VFMS.TrainerEmail.v1").Unprotect(mail.ProtectedBody);
-        Assert.StartsWith("SETUP:", body); return body[6..];
+        Assert.StartsWith("SETUP:", body);
+        // Stands in for TrainerEmailWorker sending the link, which starts the 48 hours (GBR-04).
+        var hiredUserId = await Db.TrainerApplications.Where(x => x.Id == applicationId).Select(x => x.HiredUserId).SingleAsync();
+        await Db.ApplicationUsers.Where(u => u.UserId == hiredUserId)
+            .ExecuteUpdateAsync(s => s.SetProperty(u => u.PasswordSetupExpiresAt, DateTime.UtcNow.AddHours(48)));
+        return body[6..];
     }
     public async ValueTask DisposeAsync()
     {
@@ -113,6 +120,8 @@ public class TrainerWorkflowTests
         await fixture.Initialize();
         var application = await fixture.Hire();
         var token = await fixture.SetupToken(application.Id);
+        await fixture.Db.ApplicationUsers.Where(u => u.UserId == application.HiredUserId)
+            .ExecuteUpdateAsync(s => s.SetProperty(u => u.PasswordSetupExpiresAt, (DateTime?)null));
 
         fixture.Configuration["PasswordReset:ResetUrl"] = "https://gym.example.test/auth/reset-password";
         var email = new CapturedTrainerEmail();
@@ -140,6 +149,10 @@ public class TrainerWorkflowTests
                 if (setup.SentAt is not null)
                 {
                     Assert.Empty(setup.ProtectedBody);
+                    // GBR-04: 48 hours from sending, not from hiring.
+                    var expires = await fixture.Db.ApplicationUsers.AsNoTracking().Where(u => u.UserId == application.HiredUserId)
+                        .Select(u => u.PasswordSetupExpiresAt).SingleAsync(timeout.Token);
+                    Assert.Equal(setup.SentAt.Value.AddHours(48), expires!.Value, TimeSpan.FromSeconds(1));
                     break;
                 }
                 await Task.Delay(50, timeout.Token);
@@ -187,13 +200,19 @@ public class TrainerWorkflowTests
         var original = await db.TrainerApplications.SingleAsync();
         TrainerTestDatabase.Success(await service.Review(original.Id, new("Interview", "Identity checked"), "manager", default));
         var detail = TrainerTestDatabase.Success(await service.Application(original.Id, "manager", default));
-        Assert.Equal(new TrainerAccountMatch("Matched", customer.UserId, customer.FullName), detail.AccountMatch);
-        Assert.Equal("TRAINER_IDENTITY_CONFLICT", (await service.Review(original.Id, new("Hire", "Stale match", "Senior", null, true), "manager", default)).ErrorCode);
+        // UC 3.2 step 8.2: a phone-only match is never linked automatically; the Manager verifies and picks it.
+        Assert.Equal("Ambiguous", detail.AccountMatch!.Status);
+        var candidate = Assert.Single(detail.AccountMatch.Matches!);
+        Assert.Equal((customer.UserId, false, true, true), (candidate.UserId, candidate.EmailMatches, candidate.PhoneMatches, candidate.Eligible));
+        Assert.Equal("TRAINER_IDENTITY_CONFLICT", (await service.Review(original.Id, new("Hire", "Not picked", "Senior", null, true), "manager", default)).ErrorCode);
         TrainerTestDatabase.Success(await service.Review(original.Id,
-            new("Hire", "Verified matching phone", "Senior", detail.AccountMatch!.UserId, true), "manager", default));
+            new("Hire", "Verified matching phone", "Senior", candidate.UserId, true), "manager", default));
         Assert.Equal(2, await db.ApplicationUsers.CountAsync());
-        Assert.Equal(2, await db.ApplicationUserRoles.CountAsync(x => x.UserId == customer.UserId));
-        var update = request with { ApplicationType = "ProfileUpdate", Email = customer.Email, Specialty = "Yoga" };
+        // UC 3.2 step 7: the linked account keeps only the PT role.
+        Assert.Equal(["PT"], await db.ApplicationUserRoles.Where(x => x.UserId == customer.UserId)
+            .Select(x => x.Role.RoleName).ToListAsync());
+        // UC 3.3: identity comes from the account and TrainerProfile, so the form may leave personal details empty.
+        var update = request with { ApplicationType = "ProfileUpdate", Email = "", CitizenId = "", PhoneNumber = "", FullName = "", Specialty = "Yoga" };
         TrainerTestDatabase.Success(await service.Submit(update, customer.UserId, default));
         var firstUpdate = await db.TrainerApplications.SingleAsync(x => x.ApplicationType == "ProfileUpdate");
         TrainerTestDatabase.Success(await service.Review(firstUpdate.Id, new("Reject", "Resubmit certificate"), "manager", default));
@@ -203,10 +222,12 @@ public class TrainerWorkflowTests
         await db.SaveChangesAsync();
         var retried = TrainerTestDatabase.Success(await service.Submit(update, customer.UserId, default));
         Assert.Equal(2, retried.SubmissionAttempt);
+        var stored = await db.TrainerApplications.SingleAsync(x => x.TrackingCode == retried.TrackingCode);
+        Assert.Equal((customer.Email, request.CitizenId, customer.PhoneNumber), (stored.Email, stored.CitizenId, stored.PhoneNumber));
         var unchangedAccount = await db.ApplicationUsers.SingleAsync(x => x.UserId == customer.UserId);
         Assert.Equal(passwordBefore, unchangedAccount.PasswordHash); Assert.Equal(customer.Email, unchangedAccount.Email);
         Assert.Null(unchangedAccount.PasswordSetupTokenHash); Assert.Equal(AccountStatus.Active, unchangedAccount.AccountStatus);
-        Assert.Equal(2, await db.ApplicationUserRoles.CountAsync(x => x.UserId == customer.UserId));
+        Assert.Equal(1, await db.ApplicationUserRoles.CountAsync(x => x.UserId == customer.UserId));
     }
 
     [SqlTrainerFact]
@@ -230,6 +251,23 @@ public class TrainerWorkflowTests
         Assert.DoesNotContain(await db.ApplicationUserRoles.Where(x => x.UserId == profile.PTUserId)
             .Select(x => x.Role.RoleName).ToListAsync(), role => role == "PT");
         Assert.Equal(AccountStatus.Active, (await db.ApplicationUsers.SingleAsync(x => x.UserId == profile.PTUserId)).AccountStatus);
+
+        // The removed trainer can apply again and be rehired: the old profile is reactivated with the PT role.
+        foreach (var previous in await db.TrainerApplications.ToListAsync())
+            previous.SubmittedAt = DateTime.UtcNow.AddMinutes(-11);
+        await db.SaveChangesAsync();
+        TrainerTestDatabase.Success(await fixture.Service.Submit(TrainerTestDatabase.Request, null, default));
+        var again = await db.TrainerApplications.OrderByDescending(x => x.Id).FirstAsync();
+        TrainerTestDatabase.Success(await fixture.Service.Review(again.Id, new("Interview", "Returning trainer"), "manager", default));
+        var match = TrainerTestDatabase.Success(await fixture.Service.Application(again.Id, "manager", default)).AccountMatch;
+        Assert.Equal(("Matched", profile.PTUserId), (match!.Status, match.UserId));
+        TrainerTestDatabase.Success(await fixture.Service.Review(again.Id,
+            new("Hire", "Rehired", "Master", profile.PTUserId, true), "manager", default));
+        var rehired = await db.TrainerProfiles.AsNoTracking().SingleAsync();
+        Assert.Equal((profile.Id, true, true, TrainerLevel.Master), (rehired.Id, rehired.IsActive, rehired.AcceptingNewMembers, rehired.Level));
+        Assert.Null(rehired.NotAcceptingSince);
+        Assert.Equal(["PT"], await db.ApplicationUserRoles.Where(x => x.UserId == profile.PTUserId)
+            .Select(x => x.Role.RoleName).ToListAsync());
     }
 
     [SqlTrainerFact]
@@ -241,20 +279,35 @@ public class TrainerWorkflowTests
         var service = fixture.Service;
         TrainerTestDatabase.Success(await service.Setup(new(await fixture.SetupToken(hired.Id), "TestPassword1!"), default));
         var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7));
+        // New trainers start 'Accepting New Members', so the GBR-98 60-day count does not run.
         var stored = await fixture.Db.TrainerProfiles.AsNoTracking().SingleAsync();
-        Assert.False(stored.AcceptingNewMembers);
-        Assert.Equal(today, stored.NotAcceptingSince);
+        Assert.True(stored.AcceptingNewMembers);
+        Assert.Null(stored.NotAcceptingSince);
 
+        // A contract with no session taught yet (the membership link is not needed here, so its FK check is off).
+        await fixture.Db.Database.ExecuteSqlRawAsync("ALTER TABLE PTPurchases NOCHECK CONSTRAINT ALL");
+        var contract = new PTPurchase
+        {
+            MemberUserId = "manager", PTUserId = stored.PTUserId, TotalSessions = 4, RemainingSessions = 4,
+            StartDate = today, EndDate = today.AddDays(30), PurchaseDate = today
+        };
+        fixture.Db.Add(contract);
+        await fixture.Db.SaveChangesAsync();
+
+        // UC 4.12 step 4: the Member of an untouched contract gets one week to change trainer.
+        var stopped = TrainerTestDatabase.Success(await service.SetReadiness(false, stored.PTUserId, default));
+        Assert.False(stopped.IsAcceptingNewMembers);
+        Assert.Equal(1, stopped.ContractsNotified);
+        Assert.Equal(today, (await fixture.Db.TrainerProfiles.AsNoTracking().SingleAsync()).NotAcceptingSince);
+        Assert.NotNull((await fixture.Db.PTPurchases.AsNoTracking().SingleAsync()).TrainerChangeDeadline);
+
+        // GBR-98: switching back to 'Accepting' closes that window early.
         var accepting = TrainerTestDatabase.Success(await service.SetReadiness(true, stored.PTUserId, default));
         Assert.True(accepting.IsAcceptingNewMembers);
+        Assert.Null((await fixture.Db.PTPurchases.AsNoTracking().SingleAsync()).TrainerChangeDeadline);
         var profile = TrainerTestDatabase.Success(await service.Mine(stored.PTUserId, default)).Profile;
         Assert.True(profile.IsAcceptingNewMembers);
         Assert.Null(profile.NotAcceptingSince);
-
-        var stopped = TrainerTestDatabase.Success(await service.SetReadiness(false, stored.PTUserId, default));
-        Assert.False(stopped.IsAcceptingNewMembers);
-        Assert.Equal(0, stopped.ContractsNotified);
-        Assert.Equal(today, (await fixture.Db.TrainerProfiles.AsNoTracking().SingleAsync()).NotAcceptingSince);
     }
 
     [SqlTrainerFact]
@@ -270,20 +323,101 @@ public class TrainerWorkflowTests
         var oldId = Assert.Single(before.Certificates).Id;
         var request = TrainerTestDatabase.Request with
         {
-            ApplicationType = "ProfileUpdate", Certificates = [], CertificateUrls = null,
+            ApplicationType = "ProfileUpdate",
+            Certificates = [],
+            CertificateUrls = null,
             CertificateLinks = [new("https://certificates.example.test/revised", oldId),
                 new("https://certificates.example.test/additional")]
         };
+        // UC 3.3: a replacement must target one distinct published certificate.
+        Assert.Equal("TRAINER_CERTIFICATE_TARGET_INVALID", (await service.Submit(request with
+        {
+            CertificateLinks = [new("https://certificates.example.test/revised", "not-published")]
+        }, userId, default)).ErrorCode);
         TrainerTestDatabase.Success(await service.Submit(request, userId, default));
         var application = await fixture.Db.TrainerApplications.SingleAsync(x => x.ApplicationType == "ProfileUpdate");
         Assert.DoesNotContain(TrainerTestDatabase.Success(await service.Public(before.Profile.Id, default)).Certificates,
             certificate => certificate.IsExternalLink);
+        // The Manager sees which published certificate each link replaces.
+        var pending = TrainerTestDatabase.Success(await service.Application(application.Id, "manager", default)).Certificates;
+        Assert.Equal(before.Certificates[0].FileName,
+            pending.Single(c => c.DownloadUrl.EndsWith("/revised")).Replaces);
+        Assert.Null(pending.Single(c => c.DownloadUrl.EndsWith("/additional")).Replaces);
         TrainerTestDatabase.Success(await service.Review(application.Id, new("Approve", "Verified links"), "manager", default));
         var certificates = TrainerTestDatabase.Success(await service.Public(before.Profile.Id, default)).Certificates;
         Assert.Equal(2, certificates.Count);
         Assert.DoesNotContain(certificates, certificate => certificate.Id == oldId);
         Assert.Contains(certificates, certificate => certificate.DownloadUrl == "https://certificates.example.test/revised");
         Assert.Contains(certificates, certificate => certificate.DownloadUrl == "https://certificates.example.test/additional");
+    }
+
+    [SqlTrainerFact]
+    public async Task Yoga_recruitment_hires_a_yoga_instructor_who_manages_the_profile_but_not_PT_features()
+    {
+        await using var fixture = new TrainerTestDatabase();
+        await fixture.Initialize();
+        var db = fixture.Db; var service = fixture.Service;
+        var yoga = TrainerTestDatabase.Request with { TrainerRole = "Yoga", Specialty = "Hatha yoga" };
+        TrainerTestDatabase.Success(await service.Submit(yoga, null, default));
+        var application = await db.TrainerApplications.SingleAsync();
+        Assert.Equal("Yoga", TrainerTestDatabase.Success(await service.Application(application.Id, "manager", default)).TrainerRole);
+        Assert.Single(TrainerTestDatabase.Success(await service.Applications(new(TrainerRole: "Yoga"), "manager", default)).Items);
+        Assert.Empty(TrainerTestDatabase.Success(await service.Applications(new(TrainerRole: "PT"), "manager", default)).Items);
+
+        TrainerTestDatabase.Success(await service.Review(application.Id, new("Interview", "Interview completed"), "manager", default));
+        TrainerTestDatabase.Success(await service.Review(application.Id, new("Hire", "Verified", "Junior", null, true), "manager", default));
+        db.ChangeTracker.Clear();
+        var profile = await db.TrainerProfiles.Include(p => p.TrainerRole).SingleAsync();
+        Assert.Equal("Yoga", profile.TrainerRole!.RoleName);
+        Assert.Equal("Hatha yoga", profile.Specialty);
+        // UC 3.2 step 7: Trainer Role Yoga grants the YogaInstructor login role, not PT.
+        Assert.Equal(["YogaInstructor"], await db.ApplicationUserRoles.Where(x => x.UserId == profile.PTUserId)
+            .Select(x => x.Role.RoleName).ToListAsync());
+        TrainerTestDatabase.Success(await service.Setup(new(await fixture.SetupToken(application.Id), "TestPassword1!"), default));
+
+        // UC 3.3: a Yoga trainer manages the shared profile; accepting status (UC 4.12) stays PT-only.
+        Assert.Equal("Yoga", TrainerTestDatabase.Success(await service.Mine(profile.PTUserId, default)).Profile.TrainerRole);
+        TrainerTestDatabase.Success(await service.Update(new("Yoga coach biography"), profile.PTUserId, default));
+        Assert.Equal(403, (await service.SetReadiness(false, profile.PTUserId, default)).StatusCode);
+
+        // UC 3.4: the directory lists the Yoga trainer and filters by Trainer Role.
+        Assert.Single(TrainerTestDatabase.Success(await service.Search(new(TrainerRole: "Yoga"), default)).Items);
+        Assert.Empty(TrainerTestDatabase.Success(await service.Search(new(TrainerRole: "PT"), default)).Items);
+        Assert.Single(TrainerTestDatabase.Success(await service.Search(new(Search: "Hatha"), default)).Items);
+
+        // GBR-101: an active Yoga trainer cannot submit another recruitment, signed in or not.
+        Assert.Equal("TRAINER_NOT_ELIGIBLE", (await service.Submit(yoga with { TrainerRole = "PT", CitizenId = "000000000077" }, null, default)).ErrorCode);
+        Assert.Equal("TRAINER_NOT_ELIGIBLE", (await service.Submit(yoga with { Email = "other@example.test", CitizenId = "000000000078" },
+            profile.PTUserId, default)).ErrorCode);
+    }
+
+    [SqlTrainerFact]
+    public async Task Signed_in_member_without_customer_role_can_apply()
+    {
+        await using var fixture = new TrainerTestDatabase();
+        await fixture.Initialize();
+        var db = fixture.Db;
+        var memberRole = await db.ApplicationRoles.SingleOrDefaultAsync(r => r.RoleName == "Member") ?? new ApplicationRole { RoleName = "Member" };
+        var member = new ApplicationUser
+        {
+            UserId = "member-only",
+            GymId = await db.Gyms.Select(x => x.Id).SingleAsync(),
+            FullName = "Member Only",
+            Email = "member.only@example.test",
+            PhoneNumber = "0900000099",
+            PasswordHash = new PasswordHasher().Hash("OriginalPassword1!"),
+            AccountStatus = AccountStatus.Active
+        };
+        db.AddRange(memberRole, member); await db.SaveChangesAsync();
+        db.Add(new ApplicationUserRole { UserId = member.UserId, RoleId = memberRole.Id }); await db.SaveChangesAsync();
+
+        var receipt = TrainerTestDatabase.Success(await fixture.Service.Submit(TrainerTestDatabase.Request with
+        {
+            Email = member.Email,
+            PhoneNumber = member.PhoneNumber,
+            CitizenId = "000000000099"
+        }, member.UserId, default));
+        Assert.Equal("Pending", receipt.Status);
     }
 
     [SqlTrainerFact]
@@ -324,13 +458,21 @@ public class TrainerWorkflowTests
         var gymId = await db.Gyms.Select(g => g.Id).SingleAsync();
         var emailMatch = new ApplicationUser
         {
-            UserId = "email-match", GymId = gymId, Email = request.Email, PhoneNumber = "0900000020",
-            FullName = "Email Match", AccountStatus = AccountStatus.Active
+            UserId = "email-match",
+            GymId = gymId,
+            Email = request.Email,
+            PhoneNumber = "0900000020",
+            FullName = "Email Match",
+            AccountStatus = AccountStatus.Active
         };
         var phoneMatch = new ApplicationUser
         {
-            UserId = "phone-match", GymId = gymId, Email = "phone@example.test", PhoneNumber = request.PhoneNumber,
-            FullName = "Phone Match", AccountStatus = AccountStatus.Active
+            UserId = "phone-match",
+            GymId = gymId,
+            Email = "phone@example.test",
+            PhoneNumber = request.PhoneNumber,
+            FullName = "Phone Match",
+            AccountStatus = AccountStatus.Active
         };
         db.AddRange(emailMatch, phoneMatch);
         await db.SaveChangesAsync();
@@ -356,6 +498,8 @@ public class TrainerWorkflowTests
                 Assert.False(match.EmailMatches);
                 Assert.True(match.PhoneMatches);
             });
+        // UC 3.2 step 7: each eligible candidate carries the PT contract and Gym/locker checks.
+        Assert.All(ambiguous.Matches!, match => Assert.False(match.HasUnfinishedPTContract));
         var blocked = await service.Review(application.Id, new("Hire", "Verified", "Senior", IdentityVerified: true), "manager", default);
         Assert.Equal("TRAINER_IDENTITY_CONFLICT", blocked.ErrorCode);
 
@@ -403,8 +547,12 @@ public class TrainerWorkflowTests
         var gymId = await db.Gyms.Select(gym => gym.Id).SingleAsync();
         db.Add(new ApplicationUser
         {
-            UserId = "gmail-existing", GymId = gymId, Email = request.Email, PhoneNumber = "0900000020",
-            FullName = "Existing applicant", AccountStatus = AccountStatus.Active
+            UserId = "gmail-existing",
+            GymId = gymId,
+            Email = request.Email,
+            PhoneNumber = "0900000020",
+            FullName = "Existing applicant",
+            AccountStatus = AccountStatus.Active
         });
         await db.SaveChangesAsync();
 
@@ -450,7 +598,8 @@ public class TrainerWorkflowTests
         Assert.Equal(2, await db.ApplicationUsers.CountAsync()); Assert.Equal(1, await db.TrainerProfiles.CountAsync());
         Assert.Empty(TrainerTestDatabase.Success(await service.Search(new(), default)).Items);
         var initialUser = await db.ApplicationUsers.SingleAsync(x => x.Email == TrainerTestDatabase.Request.Email);
-        Assert.InRange(initialUser.PasswordSetupExpiresAt!.Value, DateTime.UtcNow.AddHours(47), DateTime.UtcNow.AddHours(49));
+        // GBR-04: the link has no expiry, and so cannot be used, until it is sent.
+        Assert.Null(initialUser.PasswordSetupExpiresAt);
         var originalToken = await fixture.SetupToken(app.Id);
         TrainerTestDatabase.Success(await service.ResendSetup(app.Id, "manager", default));
         var replacementToken = await fixture.SetupToken(app.Id); Assert.NotEqual(originalToken, replacementToken);
@@ -489,7 +638,7 @@ public class TrainerWorkflowTests
         await using var fixture = new TrainerTestDatabase(); await fixture.Initialize();
         var db = fixture.Db; var service = fixture.Service; var app = await fixture.Hire();
         var reviewed = TrainerTestDatabase.Success(await service.Application(app.Id, "manager", default));
-        Assert.Equal("Interview completed", reviewed.InterviewNote);
+        Assert.Matches(@"^\[\d{2}/\d{2}/\d{4} \d{2}:\d{2}\] Interview completed$", reviewed.InterviewNote);
         Assert.NotEqual(reviewed.InterviewNote, reviewed.ReviewNote);
         TrainerTestDatabase.Success(await service.Setup(new(await fixture.SetupToken(app.Id), "TestPassword1!"), default));
         var profile = await db.TrainerProfiles.SingleAsync(); var userId = profile.PTUserId;
@@ -497,22 +646,26 @@ public class TrainerWorkflowTests
         var rolesBefore = await db.ApplicationUserRoles.OrderBy(x => x.Id).Select(x => new { x.Id, x.UserId, x.RoleId }).ToListAsync();
         var oldDetail = TrainerTestDatabase.Success(await service.Public(profile.Id, default));
         var oldFile = oldDetail.Certificates.Single();
-        var update = TrainerTestDatabase.Request with { ApplicationType = "ProfileUpdate", Specialty = "Yoga", Bio = "Requested biography", Certificates = [new("yoga.pdf", "%PDF-1.7 yoga"u8.ToArray())] };
+        var update = TrainerTestDatabase.Request with { ApplicationType = "ProfileUpdate", Specialty = "Mobility coaching", Bio = "Requested biography", Certificates = [new("yoga.pdf", "%PDF-1.7 yoga"u8.ToArray())] };
         Assert.Equal(403, (await service.Submit(update, null, default)).StatusCode);
         TrainerTestDatabase.Success(await service.Submit(update, userId, default));
         Assert.Equal("TRAINER_CHANGE_PENDING", (await service.Submit(update, userId, default)).ErrorCode);
         var pending = await db.TrainerApplications.SingleAsync(x => x.ApplicationType == "ProfileUpdate");
         var pendingFile = JsonSerializer.Deserialize<List<TrainerStoredFile>>(pending.CertificatesJson)!.Single();
         var stillPublic = TrainerTestDatabase.Success(await service.Public(profile.Id, default));
-        Assert.Equal("PT", stillPublic.Profile.Specialty); Assert.Equal(oldFile.Id, stillPublic.Certificates.Single().Id);
-        Assert.Single(TrainerTestDatabase.Success(await service.Search(new(Specialty: "PT"), default)).Items);
+        Assert.Equal("Strength training", stillPublic.Profile.Specialty); Assert.Equal(oldFile.Id, stillPublic.Certificates.Single().Id);
+        Assert.Equal("PT", stillPublic.Profile.TrainerRole);
+        Assert.Single(TrainerTestDatabase.Success(await service.Search(new(TrainerRole: "PT"), default)).Items);
+        Assert.Empty(TrainerTestDatabase.Success(await service.Search(new(TrainerRole: "Yoga"), default)).Items);
+        Assert.Single(TrainerTestDatabase.Success(await service.Search(new(Search: "Strength"), default)).Items);
         Assert.Equal(404, (await service.Document(profile.Id, pendingFile.Id, null, default)).StatusCode);
         Assert.Equal(404, (await service.ApplicationDocument(pending.Id, pendingFile.Id, null, default)).StatusCode);
         TrainerTestDatabase.Success(await service.ApplicationDocument(pending.Id, pendingFile.Id, userId, default));
         Assert.Equal(403, (await service.Review(pending.Id, new("Approve", "Self approval"), userId, default)).StatusCode);
         TrainerTestDatabase.Success(await service.Review(pending.Id, new("Approve", "Verified credentials"), "manager", default));
         var approved = TrainerTestDatabase.Success(await service.Public(profile.Id, default));
-        Assert.Equal("Yoga", approved.Profile.Specialty);
+        Assert.Equal("Mobility coaching", approved.Profile.Specialty);
+        Assert.Equal("PT", approved.Profile.TrainerRole);
         Assert.Contains(approved.Certificates, file => file.Id == pendingFile.Id);
         Assert.Contains(approved.Certificates, file => file.Id == oldFile.Id);
         Assert.Equal(oldDetail.Profile.Bio, approved.Profile.Bio);
@@ -523,7 +676,7 @@ public class TrainerWorkflowTests
         pending = await db.TrainerApplications.SingleAsync(x => x.Id == pending.Id);
         pending.SubmittedAt = DateTime.UtcNow.AddMinutes(-11);
         await db.SaveChangesAsync();
-        TrainerTestDatabase.Success(await service.Submit(update with { Specialty = "PT" }, userId, default));
+        TrainerTestDatabase.Success(await service.Submit(update with { Specialty = "Strength training" }, userId, default));
         var rejected = await db.TrainerApplications.SingleAsync(x => x.ApplicationType == "ProfileUpdate" && x.ApplicationStatus == TrainerApplicationStatus.Pending);
         var profileBeforeReject = await db.TrainerProfiles.AsNoTracking().Select(x => new { x.Specialty, x.CertificatesJson, x.Bio, x.AvatarJson, x.Level, x.CommissionTier }).SingleAsync();
         TrainerTestDatabase.Success(await service.Review(rejected.Id, new("Reject", "Certificate not verified"), "manager", default));
@@ -559,8 +712,12 @@ public class TrainerWorkflowTests
     {
         var user = new ApplicationUser
         {
-            UserId = id, GymId = await db.Gyms.Select(g => g.Id).SingleAsync(), FullName = id,
-            Email = email, PhoneNumber = phone, AccountStatus = AccountStatus.Active
+            UserId = id,
+            GymId = await db.Gyms.Select(g => g.Id).SingleAsync(),
+            FullName = id,
+            Email = email,
+            PhoneNumber = phone,
+            AccountStatus = AccountStatus.Active
         };
         db.Add(user);
         if (role != null)
@@ -626,6 +783,179 @@ public class TrainerWorkflowTests
         Assert.Equal(3, await db.ApplicationUsers.CountAsync());
     }
 
+    // UC 3.2 step 8.3: a member with an unfinished PT contract cannot be hired, and nothing changes.
+    [SqlTrainerFact]
+    public async Task Hire_is_blocked_while_the_matching_member_still_has_a_PT_contract()
+    {
+        await using var fixture = new TrainerTestDatabase(); await fixture.Initialize();
+        var db = fixture.Db; var service = fixture.Service; var request = TrainerTestDatabase.Request;
+        TrainerTestDatabase.Success(await service.Submit(request, null, default));
+        var application = await db.TrainerApplications.SingleAsync();
+        TrainerTestDatabase.Success(await service.Review(application.Id, new("Interview", "Interview completed"), "manager", default));
+        var member = await AddUser(db, "member-pt", request.Email, "0900000030", "Member");
+        // Only the contract row matters for the check; skip the membership/package graph.
+        await db.Database.ExecuteSqlRawAsync("ALTER TABLE [PTPurchases] NOCHECK CONSTRAINT ALL");
+        db.Add(new PTPurchase
+        {
+            MemberUserId = member.UserId, PTUserId = "manager", Status = PTPurchaseStatus.Active,
+            EndDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(30)
+        });
+        await db.SaveChangesAsync();
+        var users = await db.ApplicationUsers.CountAsync();
+
+        var blocked = await service.Review(application.Id, new("Hire", "Verified", "Senior", member.UserId, true), "manager", default);
+        Assert.Equal("TRAINER_MEMBER_PT_CONTRACT", blocked.ErrorCode);
+        db.ChangeTracker.Clear();
+        Assert.Equal(users, await db.ApplicationUsers.CountAsync());
+        Assert.Empty(await db.TrainerProfiles.ToListAsync());
+        Assert.Equal(["Member"], await db.ApplicationUserRoles.Where(x => x.UserId == member.UserId).Select(x => x.Role.RoleName).ToListAsync());
+        Assert.Equal(TrainerApplicationStatus.Interviewing, (await db.TrainerApplications.SingleAsync()).ApplicationStatus);
+    }
+
+    // UC 3.2 steps 3 and 5: date filter; a second interview keeps the first interview's notes.
+    [SqlTrainerFact]
+    public async Task Repeat_interview_keeps_earlier_notes_and_the_list_filters_by_date()
+    {
+        await using var fixture = new TrainerTestDatabase(); await fixture.Initialize();
+        var db = fixture.Db; var service = fixture.Service;
+        TrainerTestDatabase.Success(await service.Submit(TrainerTestDatabase.Request, null, default));
+        var application = await db.TrainerApplications.SingleAsync();
+        TrainerTestDatabase.Success(await service.Review(application.Id, new("Interview", "First round"), "manager", default));
+        TrainerTestDatabase.Success(await service.Review(application.Id, new("Interview", "Second round"), "manager", default));
+        var notes = TrainerTestDatabase.Success(await service.Application(application.Id, "manager", default)).InterviewNote!;
+        Assert.Contains("First round", notes);
+        Assert.Contains("Second round", notes);
+        Assert.True(notes.IndexOf("First round", StringComparison.Ordinal) < notes.IndexOf("Second round", StringComparison.Ordinal));
+        Assert.Equal("TRAINER_VALIDATION", (await service.Review(application.Id,
+            new("Interview", new string('x', 1990)), "manager", default)).ErrorCode);
+
+        var now = DateTime.UtcNow;
+        Assert.Single(TrainerTestDatabase.Success(await service.Applications(new(From: now.AddHours(-1), To: now.AddHours(1)), "manager", default)).Items);
+        Assert.Empty(TrainerTestDatabase.Success(await service.Applications(new(From: now.AddHours(1)), "manager", default)).Items);
+        Assert.Empty(TrainerTestDatabase.Success(await service.Applications(new(To: now.AddHours(-1)), "manager", default)).Items);
+    }
+
+    // UC 3.4 step 3: gender and minimum-rating filters; the rating counts only PT contract reviews (UC 4.10, GBR-102).
+    [SqlTrainerFact]
+    public async Task Directory_filters_by_gender_and_by_average_PT_review_rating()
+    {
+        await using var fixture = new TrainerTestDatabase(); await fixture.Initialize();
+        var db = fixture.Db; var service = fixture.Service;
+        var hired = await fixture.Hire();
+        TrainerTestDatabase.Success(await service.Setup(new(await fixture.SetupToken(hired.Id), "TestPassword1!"), default));
+        var coachA = await db.TrainerProfiles.SingleAsync();
+        coachA.Gender = "Male";
+        var userB = await AddUser(db, "coach-b", "coach-b@example.test", "0900000070", "PT");
+        var coachB = new TrainerProfile
+        {
+            PTUserId = userB.UserId, Gender = "Female", Specialty = "Mobility", TrainerRoleId = coachA.TrainerRoleId,
+            Level = TrainerLevel.Junior, IsActive = true, AcceptingNewMembers = true
+        };
+        db.Add(coachB);
+        var member = await AddUser(db, "member", "member@example.test", "0900000060", "Member");
+        await db.Database.ExecuteSqlRawAsync("ALTER TABLE [PTPurchases] NOCHECK CONSTRAINT ALL");
+        PTPurchase Contract(string trainer) => new() { MemberUserId = member.UserId, PTUserId = trainer, Status = PTPurchaseStatus.Expired };
+        var contracts = new[] { Contract(coachA.PTUserId), Contract(coachA.PTUserId), Contract(userB.UserId) };
+        db.AddRange(contracts);
+        await db.SaveChangesAsync();
+        TrainerReview Review(string trainer, int? contract, int rating) => new()
+        {
+            PTPurchaseId = contract, TrainerUserId = trainer, MemberUserId = member.UserId, Rating = rating,
+            Comment = "Review", ReviewStatus = TrainerReviewStatus.Approved, IsVisible = true
+        };
+        db.AddRange(Review(coachA.PTUserId, contracts[0].Id, 5), Review(coachA.PTUserId, contracts[1].Id, 4),
+            Review(userB.UserId, contracts[2].Id, 3),
+            // Gym feedback without a PT contract must not lower coach A's rating.
+            Review(coachA.PTUserId, null, 1));
+        await db.SaveChangesAsync();
+
+        async Task<string[]> Find(TrainerSearch search) =>
+            TrainerTestDatabase.Success(await service.Search(search, default)).Items.Select(x => x.UserId).Order().ToArray();
+        var all = TrainerTestDatabase.Success(await service.Search(new(), default)).Items;
+        Assert.Equal(4.5m, all.Single(x => x.UserId == coachA.PTUserId).AverageRating);
+        Assert.Equal(3m, all.Single(x => x.UserId == userB.UserId).AverageRating);
+        Assert.Equal([coachA.PTUserId], await Find(new(Gender: "Male")));
+        Assert.Equal([userB.UserId], await Find(new(Gender: "Female")));
+        Assert.Empty(await Find(new(Gender: "Other")));
+        Assert.Equal([coachA.PTUserId], await Find(new(MinimumRating: 4)));
+        Assert.Equal(new[] { coachA.PTUserId, userB.UserId }.Order().ToArray(), await Find(new(MinimumRating: 3)));
+        Assert.Empty(await Find(new(MinimumRating: 5)));
+        Assert.Empty(await Find(new(Gender: "Female", MinimumRating: 4)));
+        Assert.Equal([userB.UserId], await Find(new(Gender: "Female", MinimumRating: 3)));
+    }
+
+    // UC 3.4 step 7: a frozen contract still shows 'View My PT Schedule'.
+    [SqlTrainerFact]
+    public async Task Member_with_a_frozen_contract_still_reaches_the_PT_schedule()
+    {
+        await using var fixture = new TrainerTestDatabase(); await fixture.Initialize();
+        var db = fixture.Db; var service = fixture.Service;
+        var hired = await fixture.Hire();
+        TrainerTestDatabase.Success(await service.Setup(new(await fixture.SetupToken(hired.Id), "TestPassword1!"), default));
+        var profile = await db.TrainerProfiles.SingleAsync();
+        var member = await AddUser(db, "member", "member@example.test", "0900000060", "Member");
+        await db.Database.ExecuteSqlRawAsync("ALTER TABLE [PTPurchases] NOCHECK CONSTRAINT ALL");
+        var contract = new PTPurchase
+        {
+            MemberUserId = member.UserId, PTUserId = profile.PTUserId, Status = PTPurchaseStatus.Frozen,
+            EndDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(30)
+        };
+        db.Add(contract);
+        await db.SaveChangesAsync();
+        Assert.True(TrainerTestDatabase.Success(await service.Public(profile.Id, default, member.UserId)).HasActivePTContract);
+        contract.Status = PTPurchaseStatus.Expired;
+        await db.SaveChangesAsync();
+        Assert.False(TrainerTestDatabase.Success(await service.Public(profile.Id, default, member.UserId)).HasActivePTContract);
+    }
+
+    // UC 3.1 step 11 / UC 3.2 step 10.1: a failed send keeps the data and queues a retry.
+    [SqlTrainerFact]
+    public async Task Failed_email_stays_queued_for_retry_without_touching_the_application()
+    {
+        await using var fixture = new TrainerTestDatabase(); await fixture.Initialize();
+        TrainerTestDatabase.Success(await fixture.Service.Submit(TrainerTestDatabase.Request, null, default));
+        var application = await fixture.Db.TrainerApplications.SingleAsync();
+        var services = new ServiceCollection();
+        services.AddDbContext<VfmsDbContext>(options => options.UseSqlServer(fixture.Db.Database.GetConnectionString()));
+        services.AddSingleton<IDataProtectionProvider>(fixture.Protection);
+        services.AddSingleton<IEmailService>(new FailingTrainerEmail());
+        await using var provider = services.BuildServiceProvider();
+        using var worker = new TrainerEmailWorker(provider.GetRequiredService<IServiceScopeFactory>(),
+            fixture.Configuration, NullLogger<TrainerEmailWorker>.Instance);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await worker.StartAsync(default);
+        try
+        {
+            while (true)
+            {
+                var json = await fixture.Db.TrainerApplications.AsNoTracking().Where(x => x.Id == application.Id)
+                    .Select(x => x.EmailQueueJson).SingleAsync(timeout.Token);
+                var receipt = JsonSerializer.Deserialize<List<TrainerQueuedEmail>>(json)!.Single();
+                if (receipt.Attempts > 0)
+                {
+                    Assert.Null(receipt.SentAt);
+                    Assert.NotEmpty(receipt.ProtectedBody);
+                    Assert.True(receipt.NextAttemptAt > DateTime.UtcNow);
+                    break;
+                }
+                await Task.Delay(50, timeout.Token);
+            }
+        }
+        finally
+        {
+            await worker.StopAsync(default);
+        }
+        var stored = await fixture.Db.TrainerApplications.AsNoTracking().SingleAsync();
+        Assert.Equal((TrainerApplicationStatus.Pending, application.TrackingCode), (stored.ApplicationStatus, stored.TrackingCode));
+    }
+
+    private sealed class FailingTrainerEmail : IEmailService
+    {
+        public bool IsConfigured => true;
+        public Task SendAsync(string recipient, string subject, string textBody, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Gateway offline");
+    }
+
     [SqlTrainerFact]
     public async Task Expired_setup_link_notifies_managers_once_per_link()
     {
@@ -651,15 +981,47 @@ public class TrainerWorkflowTests
         var profile = await db.TrainerProfiles.SingleAsync();
         db.Add(new BannedWordList { Word = "scam", CreatedByUserId = "manager" });
         var member = await AddUser(db, "member", "member@example.test", "0900000060", "Member");
-        db.Add(new TrainerReview { TrainerUserId = profile.PTUserId, MemberUserId = member.UserId, Rating = 5, Comment = "Great coach",
-            ReviewStatus = TrainerReviewStatus.Approved, IsVisible = true });
+        // The membership graph is irrelevant here; the review only needs a PT contract row (GBR-102).
+        await db.Database.ExecuteSqlRawAsync("ALTER TABLE [PTPurchases] NOCHECK CONSTRAINT ALL");
+        var contract = new PTPurchase { MemberUserId = member.UserId, PTUserId = profile.PTUserId, Status = PTPurchaseStatus.Expired };
+        db.Add(contract);
+        await db.SaveChangesAsync();
+        db.Add(new TrainerReview
+        {
+            PTPurchaseId = contract.Id,
+            TrainerUserId = profile.PTUserId,
+            MemberUserId = member.UserId,
+            Rating = 5,
+            Comment = "Great coach",
+            ReviewStatus = TrainerReviewStatus.Approved,
+            IsVisible = true
+        });
+        // Gym feedback (no PT contract) that once landed on a trainer must not count for that trainer.
+        db.Add(new TrainerReview
+        {
+            TrainerUserId = profile.PTUserId,
+            MemberUserId = member.UserId,
+            Rating = 1,
+            Comment = "Gym feedback",
+            ReviewStatus = TrainerReviewStatus.Approved,
+            IsVisible = true
+        });
         await db.SaveChangesAsync();
 
         var rejected = await service.Update(new("Not a SCAM coach"), profile.PTUserId, default);
         Assert.Equal(TrainerContentRules.RejectedCode, rejected.ErrorCode);
         Assert.Equal(["scam"], TrainerContentRules.ProhibitedWords(rejected.ErrorCode, rejected.ErrorMessage));
 
-        var review = Assert.Single(TrainerTestDatabase.Success(await service.Public(profile.Id, default)).Reviews);
+        var detail = TrainerTestDatabase.Success(await service.Public(profile.Id, default));
+        var review = Assert.Single(detail.Reviews);
         Assert.Equal("member", review.MemberName);
+        Assert.Equal(5, detail.Profile.AverageRating);
+
+        // GBR-66: a recruitment application is screened when submitted, not first at Hire.
+        var applications = await db.TrainerApplications.CountAsync();
+        var banned = await service.Submit(TrainerTestDatabase.Request with
+        { Email = "other@example.test", PhoneNumber = "0900000061", CitizenId = "000000000061", Specialty = "Scam coaching" }, null, default);
+        Assert.Equal(["scam"], TrainerContentRules.ProhibitedWords(banned.ErrorCode, banned.ErrorMessage));
+        Assert.Equal(applications, await db.TrainerApplications.CountAsync());
     }
 }

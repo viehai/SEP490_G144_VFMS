@@ -49,7 +49,7 @@ public class TrainerValidationTests
     [Fact]
     public void Application_requires_consent_and_certificate()
     {
-        var r = new SubmitTrainerApplicationRequest("Test Applicant", "applicant@example.test", "0900000000", "000000000001", new DateOnly(2000, 1, 1), "Other", "PT", 3, "Coach", false, []);
+        var r = new SubmitTrainerApplicationRequest("Test Applicant", "applicant@example.test", "0900000000", "000000000001", new DateOnly(2000, 1, 1), "Other", "Strength", 3, "Coach", false, [], TrainerRole: "PT");
         var v = new SubmitTrainerApplicationValidator(); Assert.False(v.Validate(r).IsValid);
         Assert.True(v.Validate(r with { Consent = true, Certificates = [new("proof.pdf", "%PDF-1.7"u8.ToArray())] }).IsValid);
     }
@@ -63,22 +63,30 @@ public class TrainerValidationTests
         var validator = new SubmitTrainerApplicationValidator();
         Assert.True(validator.Validate(request).IsValid);
         Assert.False(validator.Validate(request with { CertificateLinks = [new("http://insecure.test/proof")] }).IsValid);
-        Assert.False(validator.Validate(request with { CertificateLinks = [new("https://certificates.example.test/new", "same"),
-            new("https://certificates.example.test/revised", "same")] }).IsValid);
+        Assert.False(validator.Validate(request with
+        {
+            CertificateLinks = [new("https://certificates.example.test/new", "same"),
+            new("https://certificates.example.test/revised", "same")]
+        }).IsValid);
     }
 
+    // UC 3.1: Recruitment picks the Trainer Role PT or Yoga and a free-text specialization;
+    // a ProfileUpdate ignores the Trainer Role and may leave the specialization empty (UC 3.3).
     [Theory]
-    [InlineData("Recruitment", "PT", true)]
-    [InlineData("Recruitment", "Yoga", true)]
-    [InlineData("Recruitment", "Strength", false)]
-    [InlineData("ProfileUpdate", "Yoga", true)]
-    [InlineData("ProfileUpdate", "Pilates", false)]
-    public void Specialty_is_PT_or_Yoga_for_every_application_type(string type, string specialty, bool valid)
+    [InlineData("Recruitment", "PT", "Strength training", true)]
+    [InlineData("Recruitment", "Yoga", "Hatha yoga", true)]
+    [InlineData("Recruitment", null, "Strength training", false)]
+    [InlineData("Recruitment", "Boxing", "Strength training", false)]
+    [InlineData("Recruitment", "PT", "", false)]
+    [InlineData("ProfileUpdate", null, "Pilates", true)]
+    [InlineData("ProfileUpdate", null, "", true)]
+    public void Recruitment_needs_a_trainer_role_and_free_text_specialization(string type, string? role, string specialty, bool valid)
     {
         var request = new SubmitTrainerApplicationRequest("Test Applicant", "applicant@example.test", "0900000000",
             "000000000001", new(2000, 1, 1), "Other", specialty, 3, "Coach", true,
-            [new("proof.pdf", "%PDF-1.7"u8.ToArray())], type);
+            [new("proof.pdf", "%PDF-1.7"u8.ToArray())], type, TrainerRole: role);
         Assert.Equal(valid, new SubmitTrainerApplicationValidator().Validate(request).IsValid);
+        Assert.False(new SubmitTrainerApplicationValidator().Validate(request with { Specialty = new string('x', 201) }).IsValid);
     }
 
     [Fact]
@@ -97,8 +105,14 @@ public class TrainerValidationTests
         config.Scan(typeof(VFMS.Application.Mappings.TrainerMapping).Assembly);
         var application = new VFMS.Domain.Entities.TrainerApplication
         {
-            Id = 7, TrackingCode = "TR-1", FullName = "Applicant", Email = "a@example.test", PhoneNumber = "0900000000",
-            CitizenId = "000000000001", Specialty = "PT", InterviewNote = "private",
+            Id = 7,
+            TrackingCode = "TR-1",
+            FullName = "Applicant",
+            Email = "a@example.test",
+            PhoneNumber = "0900000000",
+            CitizenId = "000000000001",
+            Specialty = "PT",
+            InterviewNote = "private",
             ApplicationStatus = VFMS.Domain.Enums.TrainerApplicationStatus.Interviewing,
             CertificatesJson = """[{"Id":"f1","FileName":"proof.pdf","ContentType":"application/pdf"}]"""
         };
@@ -112,14 +126,16 @@ public class TrainerValidationTests
         Assert.Null(response.InterviewNote);
         Assert.Null(response.SubmissionHistory);
         Assert.Null(response.AccountMatch);
+        Assert.Null(response.TrainerRole);
     }
 
     [Fact]
-    public void Directory_and_application_filters_accept_only_known_specialties()
+    public void Directory_and_application_filters_accept_only_known_trainer_roles()
     {
-        Assert.True(new TrainerSearchValidator().Validate(new TrainerSearch(Specialty: "Yoga")).IsValid);
-        Assert.False(new TrainerSearchValidator().Validate(new TrainerSearch(Specialty: "Boxing")).IsValid);
-        Assert.False(new TrainerApplicationFilterValidator().Validate(new TrainerApplicationFilter(Specialty: "Boxing")).IsValid);
+        Assert.True(new TrainerSearchValidator().Validate(new TrainerSearch(TrainerRole: "Yoga")).IsValid);
+        Assert.False(new TrainerSearchValidator().Validate(new TrainerSearch(TrainerRole: "Boxing")).IsValid);
+        Assert.True(new TrainerApplicationFilterValidator().Validate(new TrainerApplicationFilter(TrainerRole: "PT")).IsValid);
+        Assert.False(new TrainerApplicationFilterValidator().Validate(new TrainerApplicationFilter(TrainerRole: "Boxing")).IsValid);
     }
     [Fact]
     public void Public_list_filters_are_bounded()
@@ -133,23 +149,39 @@ public class TrainerValidationTests
     [InlineData("ProfileUpdate", true)]
     [InlineData("CredentialChange", false)]
     [InlineData("", false)]
-    public void Application_type_is_explicit_and_profile_update_requires_the_full_application(string type, bool valid)
+    public void Application_type_is_explicit_and_profile_update_needs_only_certificates_and_consent(string type, bool valid)
     {
         var request = new SubmitTrainerApplicationRequest("Test Applicant", "applicant@example.test", "0900000000", "000000000001",
-            new(2000, 1, 1), "Other", "PT", 3, "Coach", true, [new("proof.pdf", "%PDF-1.7"u8.ToArray())], type);
+            new(2000, 1, 1), "Other", "Strength", 3, "Coach", true, [new("proof.pdf", "%PDF-1.7"u8.ToArray())], type,
+            TrainerRole: "PT");
         var validator = new SubmitTrainerApplicationValidator();
         Assert.Equal(valid, validator.Validate(request).IsValid);
         Assert.False(validator.Validate(request with { ApplicationType = "ProfileUpdate", Consent = false }).IsValid);
         Assert.False(validator.Validate(request with { ApplicationType = "ProfileUpdate", Certificates = [] }).IsValid);
-        Assert.False(validator.Validate(request with { ApplicationType = "ProfileUpdate", CitizenId = "" }).IsValid);
+        // UC 3.3: personal details come from the account and TrainerProfile, so a ProfileUpdate may omit them.
+        Assert.True(validator.Validate(request with
+        {
+            ApplicationType = "ProfileUpdate",
+            CitizenId = "",
+            PhoneNumber = "",
+            FullName = "",
+            Bio = "",
+            DateOfBirth = default,
+            Gender = "",
+            Specialty = ""
+        }).IsValid);
+        Assert.False(validator.Validate(request with { ApplicationType = "Recruitment", CitizenId = "" }).IsValid);
     }
 
     [Fact]
-    public void Profile_approval_requires_a_note_but_not_new_hire_fields()
+    public void Only_interview_and_reject_require_a_note()
     {
         var validator = new ReviewTrainerApplicationValidator();
         Assert.True(validator.Validate(new ReviewTrainerApplicationRequest("Approve", "Verified certificates")).IsValid);
-        Assert.False(validator.Validate(new ReviewTrainerApplicationRequest("Approve", "")).IsValid);
+        Assert.True(validator.Validate(new ReviewTrainerApplicationRequest("Approve", "")).IsValid);
+        Assert.True(validator.Validate(new ReviewTrainerApplicationRequest("Hire", null, "Junior", IdentityVerified: true)).IsValid);
+        Assert.False(validator.Validate(new ReviewTrainerApplicationRequest("Reject", " ")).IsValid);
+        Assert.False(validator.Validate(new ReviewTrainerApplicationRequest("Interview", "")).IsValid);
     }
 
     [Fact]

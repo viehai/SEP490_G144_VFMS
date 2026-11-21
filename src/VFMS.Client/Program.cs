@@ -10,6 +10,7 @@ builder.RootComponents.Add<App>("#app");
 builder.RootComponents.Add<HeadOutlet>("head::after");
 
 builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
+builder.Services.AddScoped<ToastService>();
 builder.Services.AddAuthorizationCore();
 builder.Services.AddScoped(_ => new AuthApiClient(CreateApiHttpClient()));
 builder.Services.AddScoped<AuthSession>();

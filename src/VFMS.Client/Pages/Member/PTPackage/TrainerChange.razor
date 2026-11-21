@@ -75,7 +75,13 @@
 
     private Task ConfirmAsync() => RunAsync(async () =>
     {
-        await Api.ChangeTrainerAsync(ContractId, Request);
+        try { await Api.ChangeTrainerAsync(ContractId, Request); }
+        catch (AuthApiException ex) when (ex.ErrorCode == "PT_TRAINER_SLOT_UNAVAILABLE")
+        {
+            // UC 4.13 Step 4 (MSG-30): a slot was taken meanwhile; reload the schedule so the taken slots show and confirm hides.
+            _preview = await Api.PreviewTrainerChangeAsync(ContractId, Request);
+            throw;
+        }
         Navigation.NavigateTo($"/my-pt-packages?contract={ContractId}");
     });
 
