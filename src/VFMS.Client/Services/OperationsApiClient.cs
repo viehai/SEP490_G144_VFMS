@@ -30,6 +30,13 @@ public sealed class OperationsApiClient(HttpClient http, AuthSession session) : 
             ("brand", request.Brand), ("sort", request.Sort),
             ("page", Number(request.Page)), ("pageSize", Number(request.PageSize))), ct);
 
+    /// <summary>UC-70: public, so it works signed out too.</summary>
+    public async Task<GymDetailsResponse> GetGymDetailsAsync(CancellationToken ct = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "api/gym-details");
+        return await AuthApiClient.SendAsync<GymDetailsResponse>(http, request, ct);
+    }
+
     public Task<EquipmentIssueSummaryResponse> GetEquipmentIssueSummaryAsync(int id, CancellationToken ct = default) =>
         SendAsync<EquipmentIssueSummaryResponse>(HttpMethod.Get, $"{EquipmentPath}/{id}/issue-summary", ct);
 
