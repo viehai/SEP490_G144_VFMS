@@ -5,6 +5,7 @@
 @using VFMS.Client.Services
 @inject TrainerApiClient Api
 @inject IJSRuntime Js
+@inject ToastService Toasts
 <PageTitle>Xét tuyển huấn luyện viên | Victor Fitness</PageTitle>
 
 <section class="workspace-page trainer-page trainer-stack">
@@ -55,7 +56,7 @@
 
         <div class="trainer-stack">
         <div class="trainer-panel trainer-stack">
-            <TrainerFeedback Error="@_error" Message="@_message" />
+            <TrainerFeedback Error="@_error" />
             @if (_opening) { <p role="status">Đang tải chi tiết…</p> }
             else if (_selected is null) { <p>Chọn một hồ sơ để xem chi tiết.</p> }
             else
@@ -120,7 +121,7 @@
                 {
                     <div class="trainer-stack">
                         <h3>Tài khoản khớp với hồ sơ</h3>
-                        <p class="trainer-muted">Email hoặc số điện thoại khớp nhiều tài khoản. Xác minh danh tính ứng viên rồi chọn đúng tài khoản để liên kết khi tuyển.</p>
+                        <p class="trainer-muted">Hồ sơ khớp nhiều tài khoản hoặc chỉ trùng số điện thoại. Xác minh danh tính ứng viên rồi chọn đúng tài khoản để liên kết khi tuyển.</p>
                         <ul class="trainer-list">
                             @foreach (var match in matches)
                             {
@@ -166,7 +167,7 @@
                                 }
                                 else if (app.AccountMatch is { Status: "Matched" } match)
                                 {
-                                    <label>Tài khoản khớp theo email hoặc số điện thoại
+                                    <label>Tài khoản khớp theo email
                                         <input class="trainer-input" value="@match.FullName" readonly />
                                     </label>
                                     <p class="trainer-muted trainer-copy">ID tài khoản: @match.UserId</p>
@@ -212,7 +213,7 @@
     private DateOnly? _from, _to;
     private bool _verified, _loading, _opening, _saving;
     private TrainerRecruitmentStatus? _recruitmentStatus;
-    private string? _listError, _error, _message;
+    private string? _listError, _error;
     private bool Busy => _loading || _opening || _saving;
 
     protected override async Task OnInitializedAsync()
@@ -227,7 +228,11 @@
         if (Busy || _recruitmentStatus is null) return;
         _saving = true;
         _listError = null;
-        try { _recruitmentStatus = await Api.SetRecruitmentStatusAsync(!_recruitmentStatus.IsAcceptingApplications); }
+        try
+        {
+            _recruitmentStatus = await Api.SetRecruitmentStatusAsync(!_recruitmentStatus.IsAcceptingApplications);
+            Toasts.Show("Đã cập nhật trạng thái nhận hồ sơ thành công."); // MSG-03
+        }
         catch (AuthApiException ex) { _listError = ex.Message; }
         finally { _saving = false; }
     }
@@ -264,7 +269,7 @@
         _opening = true;
         _selected = null;
         _attemptPage = 1;
-        _error = _message = null;
+        _error = null;
         ResetDecision();
         try { _selected = await Api.ApplicationAsync(id); }
         catch (AuthApiException ex) { _error = ex.Message; }
@@ -274,7 +279,7 @@
     private async Task ReviewAsync()
     {
         if (Busy || _selected is not { } app || !Actions(app).Contains(_action)) return;
-        _error = _message = null;
+        _error = null;
         var hire = _action == "Hire";
         if (hire && AccountMatchError(app) is { } matchError)
         {
@@ -294,9 +299,17 @@
         {
             var reviewed = await Api.ReviewAsync(app.Id, request);
             _selected = reviewed with { SubmissionHistory = app.SubmissionHistory };
-            _message = hire
-                ? "Đã tuyển. Hệ thống tự gửi email cho ứng viên qua hàng chờ."
-                : "Đã lưu quyết định.";
+            if (hire)
+            {
+                Toasts.Show("Đã tạo tài khoản huấn luyện viên thành công."); // MSG-04
+                Toasts.Show($"Email xác nhận sẽ được gửi tới {app.Email}."); // MSG-05, delivered by the mail queue
+            }
+            else
+            {
+                Toasts.Show("Đã cập nhật hồ sơ ứng tuyển thành công."); // MSG-03
+                if (request.Action == "Reject" && app.ApplicationType == "Recruitment")
+                    Toasts.Show($"Email thông báo sẽ được gửi tới {app.Email}."); // MSG-05
+            }
             ResetDecision();
             await LoadAsync(_list?.Page ?? 1);
             try { _selected = await Api.ApplicationAsync(app.Id); }
@@ -313,9 +326,9 @@
     private async Task ResendAsync()
     {
         if (Busy || _selected is not { } app) return;
-        _error = _message = null;
+        _error = null;
         _saving = true;
-        try { await Api.ResendAsync(app.Id); _message = "Đã đưa email vào hàng chờ gửi."; }
+        try { await Api.ResendAsync(app.Id); Toasts.Show($"Email thiết lập mật khẩu sẽ được gửi tới {app.Email}."); } // MSG-05
         catch (AuthApiException ex) { _error = ErrorText(ex); }
         finally { _saving = false; }
     }
@@ -363,7 +376,7 @@
         "Ambiguous" when ChosenCandidate(app) is { HasUnfinishedPTContract: true } =>
             "Ứng viên còn hợp đồng PT với tư cách hội viên. Chỉ tuyển được sau khi hợp đồng đó kết thúc.",
         "Ambiguous" when _chosenAccount is not null => null,
-        "Ambiguous" => "Hồ sơ khớp nhiều tài khoản. Xác minh danh tính rồi chọn một tài khoản đủ điều kiện ở danh sách trên.",
+        "Ambiguous" => "Hồ sơ khớp nhiều tài khoản hoặc chỉ trùng số điện thoại. Xác minh danh tính rồi chọn tài khoản đủ điều kiện ở danh sách trên.",
         "Ineligible" => "Tài khoản khớp không phải tài khoản Customer/Member đang hoạt động nên không thể liên kết.",
         _ => "Chưa xác định được tài khoản. Mở lại hồ sơ để tải kết quả mới nhất."
     };

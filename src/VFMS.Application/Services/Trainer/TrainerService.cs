@@ -430,19 +430,23 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
         return gym > locker || locker is null ? gym : locker;
     }
 
+    private static bool EmailMatches(ApplicationUser user, TrainerApplication application) =>
+        string.Equals(user.Email, application.Email, StringComparison.OrdinalIgnoreCase) ||
+        application.Email.EndsWith(GmailSuffix, StringComparison.OrdinalIgnoreCase) &&
+        user.Email.EndsWith(GmailSuffix, StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(user.Email.Replace(".", ""), application.Email.Replace(".", ""), StringComparison.OrdinalIgnoreCase);
+
+    // UC 3.2 step 8.2: only an email match is automatic; a phone-only match needs the Manager to verify and pick it.
     private static TrainerAccountMatch DescribeAccountMatch(IReadOnlyList<ApplicationUser> matches,
         IReadOnlySet<string> ineligible, TrainerApplication application) => matches.Count switch
         {
             0 => new("None"),
-            1 when !ineligible.Contains(matches[0].UserId) => new("Matched", matches[0].UserId, matches[0].FullName),
-            1 => new("Ineligible"),
+            1 when ineligible.Contains(matches[0].UserId) => new("Ineligible"),
+            1 when EmailMatches(matches[0], application) => new("Matched", matches[0].UserId, matches[0].FullName),
             _ => new("Ambiguous", Matches: matches.OrderBy(user => user.UserId).Select(user =>
                 new TrainerAccountCandidate(user.UserId, user.FullName, user.Email, user.PhoneNumber,
-                    string.Equals(user.Email, application.Email, StringComparison.OrdinalIgnoreCase) ||
-                    application.Email.EndsWith(GmailSuffix, StringComparison.OrdinalIgnoreCase) &&
-                    user.Email.EndsWith(GmailSuffix, StringComparison.OrdinalIgnoreCase) &&
-                    string.Equals(user.Email.Replace(".", ""), application.Email.Replace(".", ""), StringComparison.OrdinalIgnoreCase),
-                    user.PhoneNumber == application.PhoneNumber, !ineligible.Contains(user.UserId))).ToArray())
+                    EmailMatches(user, application), user.PhoneNumber == application.PhoneNumber,
+                    !ineligible.Contains(user.UserId))).ToArray())
         };
 
     public Task<Result<TrainerApplicationResponse>> Review(int id, ReviewTrainerApplicationRequest r, string actor, CancellationToken ct) => store.Write(async () =>
@@ -602,7 +606,14 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
             if (r.Action == "Reject") Mail(a, a.Email, "Trainer application decision", $"Application {a.TrackingCode} was rejected. Contact the gym for details.");
         }
         if (r.Action == "Interview")
-            a.InterviewNote = Note(r);
+        {
+            // UC 3.2 step 5: a later interview adds to the notes instead of replacing them.
+            var entry = $"[{DateTime.UtcNow.AddHours(7):dd/MM/yyyy HH:mm}] {Note(r)}";
+            var notes = string.IsNullOrEmpty(a.InterviewNote) ? entry : a.InterviewNote + "\n" + entry;
+            if (notes.Length > 2000)
+                return Error<TrainerApplicationResponse>("TRAINER_VALIDATION", "Interview notes cannot exceed 2,000 characters in total.", 400);
+            a.InterviewNote = notes;
+        }
         else
             a.ReviewNote = Note(r);
         a.ReviewedByUserId = actor;
@@ -614,7 +625,8 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
     {
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         user.PasswordSetupTokenHash = Hash(token);
-        user.PasswordSetupExpiresAt = DateTime.UtcNow.AddHours(48);
+        // GBR-04: the 48 hours start when TrainerEmailWorker sends the link; until then the link cannot be used.
+        user.PasswordSetupExpiresAt = null;
         Mail(application, user.Email, "Set up your trainer account", "SETUP:" + token);
     }
     public Task<Result<bool>> ResendSetup(int applicationId, string actor, CancellationToken ct) => store.Write(async () =>
@@ -746,12 +758,11 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
         var certificates = Docs(stored!.CertificatesJson, $"/api/trainers/{id}", true);
         if (Records<TrainerStoredFile>(stored.CertificatesJson).Count == 0 && !string.IsNullOrWhiteSpace(stored.CertificateUrl))
             certificates = [new TrainerDocumentResponse("legacy", "Certificate", "application/octet-stream", stored.CertificateUrl)];
+        // UC 3.4 step 7: a frozen contract is still the member's package, so its schedule stays reachable.
         var hasActiveContract = await HasRole(actor, "Member", ct) &&
             await store.Count(store.Query<PTPurchase>().Where(x => x.MemberUserId == actor && x.PTUserId == p.UserId &&
-                x.Status == PTPurchaseStatus.Active && !x.IsCompleted && x.EndDate >= today &&
-                !x.PTFreezes.Any(f => (f.RequestStatus == PTFreezeRequestStatus.Approved ||
-                    f.RequestStatus == PTFreezeRequestStatus.Active || f.RequestStatus == PTFreezeRequestStatus.Completed) &&
-                    f.ActualStartDate <= today && f.ActualEndDate > today)), ct) > 0;
+                (x.Status == PTPurchaseStatus.Active || x.Status == PTPurchaseStatus.Frozen) &&
+                !x.IsCompleted && x.EndDate >= today), ct) > 0;
         const int pageSize = 20;
         // GBR-102: only PT contract reviews (UC 4.10) belong to a trainer; gym feedback has no PTPurchaseId.
         var reviews = store.Query<TrainerReview>().Where(x => x.TrainerUserId == p.UserId && x.PTPurchaseId != null &&

@@ -5,12 +5,13 @@
 @using VFMS.Contracts.Common
 @using VFMS.Client.Components.Operations
 @inject TrainerApiClient Api
+@inject ToastService Toasts
 <PageTitle>Hồ sơ của tôi | Victor Fitness</PageTitle>
 
 <section class="workspace-page trainer-page trainer-stack">
     <PageHeader Overline="VFMS / HUẤN LUYỆN VIÊN" Title="Hồ sơ của tôi"
                 Description="Cập nhật giới thiệu, ảnh đại diện và chứng chỉ; PT quản lý thêm trạng thái nhận học viên." />
-    <TrainerFeedback Error="@_error" Message="@_message" />
+    <TrainerFeedback Error="@_error" />
     @if (_loading) { <p role="status">Đang tải hồ sơ…</p> }
     else if (_profile is { } detail)
     {
@@ -124,7 +125,7 @@
     private IReadOnlyList<string> _bannedWords = [];
     private int _avatarVersion;
     private bool _loading = true, _saving, _historyLoading;
-    private string? _error, _message, _historyError;
+    private string? _error, _historyError;
 
     protected override async Task OnInitializedAsync()
     {
@@ -167,7 +168,7 @@
     private async Task AvatarAsync(InputFileChangeEventArgs args)
     {
         _saving = true;
-        _error = _message = null;
+        _error = null;
         _avatar = null;
         try
         {
@@ -194,7 +195,7 @@
     private async Task SaveAsync()
     {
         if (_saving || _profile is not { } profile) return;
-        _error = _message = null;
+        _error = null;
         var bio = _bio.Trim();
         var request = new UpdateTrainerProfileRequest(bio == (profile.Profile.Bio ?? "") ? null : bio, _avatar);
         if (!new TrainerProfileValidator().Validate(request).IsValid)
@@ -208,7 +209,7 @@
         {
             await Api.UpdateAsync(request);
             _avatar = null;
-            _message = "Đã lưu hồ sơ.";
+            Toasts.Show("Đã cập nhật hồ sơ huấn luyện viên thành công."); // MSG-03
             await LoadProfileAsync();
         }
         catch (AuthApiException ex)
@@ -223,15 +224,15 @@
     {
         if (_saving || _profile is not { } detail) return;
         _saving = true;
-        _error = _message = null;
+        _error = null;
         try
         {
             var status = await Api.SetReadinessAsync(!detail.Profile.IsAcceptingNewMembers);
             await LoadProfileAsync();
-            _message = status.IsAcceptingNewMembers ? "Đã chuyển sang nhận học viên mới."
+            Toasts.Show(status.IsAcceptingNewMembers ? "Đã chuyển sang nhận học viên mới."
                 : status.ContractsNotified > 0
                     ? $"Đã ngừng nhận học viên mới. {status.ContractsNotified} hội viên chưa bắt đầu tập được mời đổi huấn luyện viên trong 1 tuần."
-                    : "Đã ngừng nhận học viên mới.";
+                    : "Đã ngừng nhận học viên mới.");
         }
         catch (AuthApiException ex) { _error = ex.Message; }
         finally { _saving = false; }

@@ -1,4 +1,5 @@
 @inject TrainerApiClient Api
+@inject ToastService Toasts
 
 @if (_receipt is { } receipt)
 {
@@ -229,6 +230,9 @@ else
         try
         {
             _receipt = await Api.SubmitAsync(request);
+            // MSG-04
+            Toasts.Show(IsUpdate ? "Đã tạo yêu cầu cập nhật chứng chỉ thành công. Chứng chỉ đang chờ Manager duyệt."
+                : "Đã tạo hồ sơ ứng tuyển thành công.");
             _files.Clear();
             _links.Clear();
             _consent = false;
