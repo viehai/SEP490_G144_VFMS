@@ -16,7 +16,6 @@ public sealed partial class PersonalTrainingService
     private static readonly TimeSpan ProceedWindow = TimeSpan.FromMinutes(10);
     // Counter (cash) orders hold the slots as long as a membership cash order (NewScope: UC 4.4).
     private static readonly TimeSpan CounterHold = TimeSpan.FromHours(24);
-    private const string DemoGateway = "PTDemo";
     private static DateTime PaymentDeadline(Order order) =>
         order.CreatedAt.Add(order.Channel == OrderChannel.Counter ? CounterHold : PaymentDuration);
     private sealed record Booking(PTBookingPreview Preview, Package Package, TrainerProfile Trainer,
@@ -118,7 +117,10 @@ public sealed partial class PersonalTrainingService
     private async Task<bool> HasMemberBookingConflict(string actor, IReadOnlyList<PTCalendarSlot> slots, DateTime now, CancellationToken ct)
     {
         var dates = slots.Select(s => s.Date).Distinct().ToArray();
-        if (await Occupied(now).AnyAsync(store, s => s.MemberUserId == actor && dates.Contains(s.SessionDate), ct))
+        var pt = await Occupied(now).Where(s => s.MemberUserId == actor && dates.Contains(s.SessionDate))
+            .Select(s => new { s.SessionDate, s.StartTime, s.EndTime }).ToListAsync(store, ct);
+        if (slots.Any(slot => pt.Any(s => s.SessionDate == slot.Date &&
+                PersonalTrainingRules.Overlaps(slot.StartTime, slot.EndTime, s.StartTime, s.EndTime))))
             return true;
         var yoga = await Yoga(string.Empty, actor, dates.Min(), dates.Max())
             .Select(s => new { s.ScheduledDate, s.StartTime, s.EndTime }).ToListAsync(store, ct);
@@ -316,40 +318,6 @@ public sealed partial class PersonalTrainingService
             return Result<PTCheckoutResponse>.Success(CheckoutResponse(purchase, order, qr, now));
         }, ct);
 
-    public Task<Result<PTCheckoutResponse>> ConfirmDemoPayment(string actor, string orderNumber, CancellationToken ct) =>
-        Write(async () =>
-        {
-            if (await User(actor, UserRole.Member, ct) is null)
-                return Forbidden<PTCheckoutResponse>();
-            var order = await payments.FindOrderAsync(orderNumber, actor, forUpdate: true, ct);
-            if (order is null)
-                return Missing<PTCheckoutResponse>();
-            var contract = await store.Query<PTPurchase>().Including(store, "Sessions")
-                .SingleOrDefaultAsync(store, p => p.OrderId == order.Id && p.MemberUserId == actor, ct);
-            if (contract is null)
-                return Missing<PTCheckoutResponse>();
-
-            var now = clock.GetUtcNow();
-            if (!CanSimulatePayment(contract, order, now.UtcDateTime))
-                return Conflict<PTCheckoutResponse>("Đơn đã hết hạn, đã tạo VietQR hoặc đã được xử lý.");
-            if (!await HeldSlotsStillValid(contract, now.UtcDateTime, ct))
-                return Conflict<PTCheckoutResponse>("Lịch PT không còn hợp lệ.");
-
-            order.PaymentTransaction = new PaymentTransaction
-            {
-                UserId = actor,
-                GatewayName = DemoGateway,
-                PaymentMethod = PaymentMethod.BankTransfer,
-                AmountDue = contract.PurchasePrice,
-                RawGatewayStatus = "DEMO"
-            };
-            MembershipPurchaseService.RecordPaidOrder(order, contract.PurchasePrice, now, null, now);
-            ActivatePTContract(contract);
-            Audit(actor, nameof(PTPurchase), contract.Id, "DemoPaymentConfirmed");
-            await store.Save(ct);
-            return Result<PTCheckoutResponse>.Success(CheckoutResponse(contract, order, null, now.UtcDateTime));
-        }, ct);
-
     public Task<Result<PTCheckoutResponse>> ConfirmCash(string staffId, string orderNumber, decimal amount, CancellationToken ct) =>
         Write(async () =>
         {
@@ -404,12 +372,7 @@ public sealed partial class PersonalTrainingService
             !await HasConflict(contract.PTUserId, contract.MemberUserId, slots, now, ct, ignorePurchase: contract.Id);
     }
 
-    private static bool CanSimulatePayment(PTPurchase contract, Order order, DateTime now) =>
-        contract.Status == PTPurchaseStatus.PendingPayment && contract.HoldExpiresAt > now &&
-        order.OrderStatus == OrderStatus.Pending && order.PaymentTransaction is null && PaymentDeadline(order) > now;
-
-    public async Task<Result<PTCheckoutResponse>> CheckoutStatus(string actor, string orderNumber, CancellationToken ct,
-        bool demoPaymentEnabled = false)
+    public async Task<Result<PTCheckoutResponse>> CheckoutStatus(string actor, string orderNumber, CancellationToken ct)
     {
         if (await User(actor, UserRole.Member, ct) is null)
             return Forbidden<PTCheckoutResponse>();
@@ -420,10 +383,7 @@ public sealed partial class PersonalTrainingService
         var now = Now;
         var qr = order.OrderStatus == OrderStatus.Pending && PaymentDeadline(order) > now &&
             order.PaymentTransaction is { } payment ? gateway.CreateVietQr(order.OrderNumber, payment.AmountDue) : null;
-        var response = CheckoutResponse(purchase, order, qr, now) with
-        {
-            CanSimulatePayment = demoPaymentEnabled && CanSimulatePayment(purchase, order, now)
-        };
+        var response = CheckoutResponse(purchase, order, qr, now);
         if (order.PaymentTransaction is not { } original)
             return Result<PTCheckoutResponse>.Success(response);
         var refunds = await store.Query<PaymentTransaction>().AsNoTracking(store)
@@ -454,7 +414,6 @@ public sealed partial class PersonalTrainingService
             order.PaymentTransaction?.AmountDue ?? purchase.PurchasePrice,
             DateTime.SpecifyKind(PaymentDeadline(order), DateTimeKind.Utc),
             qr, order.PaymentTransaction?.Invoice?.InvoiceNumber, DateTime.SpecifyKind(purchase.HoldExpiresAt!.Value, DateTimeKind.Utc),
-            IsDemoPayment: order.PaymentTransaction?.GatewayName == DemoGateway,
             ProceedBefore: DateTime.SpecifyKind(order.CreatedAt.Add(ProceedWindow), DateTimeKind.Utc),
             PayAtCounter: order.Channel == OrderChannel.Counter);
 

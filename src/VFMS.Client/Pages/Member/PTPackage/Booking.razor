@@ -54,7 +54,9 @@
                 {
                     <p class="trainer-feedback" role="status">Huấn luyện viên hoặc bạn đã có lịch vào @string.Join(", ", preview.Skipped.Select(s => $"{Date(s.Date)} {s.StartTime:HH:mm}")); các buổi này được dời ra sau buổi cuối.</p>
                 }
-                <PTPreviewCalendar @key="preview" Slots="preview.Sessions" StartDate="booking.StartDate" />
+                @* GBR-12: each busy date adds one session after the original end, so the last Skipped.Count sessions are the moved ones. *@
+                <PTPreviewCalendar @key="preview" Slots="preview.Sessions" StartDate="booking.StartDate"
+                                   Moved="preview.Sessions.TakeLast(preview.Skipped.Count).ToArray()" />
                 <button class="trainer-button trainer-primary" disabled="@(_busy || !CanPreview || preview.Sessions.Count == 0)"
                         @onclick="() => HoldAsync(booking)">Giữ lịch và tiếp tục</button>
                 @if (_holdError is not null)

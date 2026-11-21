@@ -208,7 +208,7 @@ public sealed partial class PersonalTrainingService
             return false;
         // GBR-10: Gym access matters only when attendance is recorded, so a new date may fall after the membership ends.
         return !await HasConflict(p.PTUserId, p.MemberUserId, [new(0, date, start, end, "Available")],
-            now, ct, ignoreSession: s.Id, allowSecondMemberSession: true);
+            now, ct, ignoreSession: s.Id);
     }
 
     // GBR-14: requests are sent at least 12 hours ahead and answered no later than 4 hours before the start.

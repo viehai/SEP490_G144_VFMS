@@ -3,12 +3,13 @@
 @attribute [Authorize(Roles = "PT")]
 @using VFMS.Client.Components.Operations
 @inject PersonalTrainingApiClient Api
+@inject ToastService Toasts
 <PageTitle>Lịch tuần PT | Victor Fitness</PageTitle>
 
 <section class="workspace-page trainer-page trainer-stack">
     <PageHeader Overline="VFMS / PT" Title="Lịch tuần PT"
                 Description="Mở hoặc đóng các ca lặp hằng tuần để hội viên chọn khi mua gói." />
-    <TrainerFeedback Error="@_error" Message="@_message" />
+    <TrainerFeedback Error="@_error" />
     @if (_loading)
     {
         <p role="status">Đang tải lịch…</p>
@@ -87,7 +88,7 @@
     private PTOperatingHours? _hours;
     private bool _loading, _saving, _afternoon;
     private IEnumerable<TimeOnly> VisibleRows => _rows.Where(start => (start.Hour >= 12) == _afternoon);
-    private string? _error, _message;
+    private string? _error;
 
     protected override Task OnInitializedAsync() => LoadAsync();
 
@@ -121,7 +122,7 @@
     private void Toggle(PTSlotInput slot, bool selected)
     {
         if (_saving) return;
-        _message = _error = null;
+        _error = null;
         if (!selected) _slots.Remove(slot);
         else if (_standardHours.Contains(slot.StartTime) && !OverlapsSelected(slot)) _slots.Add(slot);
     }
@@ -130,13 +131,15 @@
     {
         if (_saving || _slots.SetEquals(_published)) return;
         _saving = true;
-        _error = _message = null;
+        _error = null;
+        var addsSlots = !_slots.IsSubsetOf(_published);
         try
         {
             await Api.PublishAsync(new(_slots.OrderBy(slot => DayIndex(slot.DayOfWeek)).ThenBy(slot => slot.StartTime).ToArray()));
             _published = new(_slots);
             _rows = _standardHours.Concat(_published.Select(slot => slot.StartTime)).Distinct().Order().ToArray();
-            _message = "Đã công bố lịch tuần.";
+            // UC 4.1: publishing new slots is MSG-04; only deactivating slots is MSG-03.
+            Toasts.Show(addsSlots ? "Đã tạo lịch tuần PT thành công." : "Đã cập nhật lịch tuần PT thành công.");
         }
         catch (AuthApiException ex) { _error = ex.Message; }
         finally { _saving = false; }

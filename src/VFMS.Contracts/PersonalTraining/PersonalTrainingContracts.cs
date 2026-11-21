@@ -33,7 +33,7 @@ public sealed record PTBookingPreview(int PackageId, string TrainerId, DateOnly 
 }
 public sealed record PTCheckoutResponse(int ContractId, string OrderNumber, string Status, decimal AmountDue,
     DateTime ExpiresAt, VietQrPaymentResponse? VietQr, string? InvoiceNumber, DateTime HoldExpiresAt = default,
-    IReadOnlyList<CheckoutRefundView>? Refunds = null, bool CanSimulatePayment = false, bool IsDemoPayment = false,
+    IReadOnlyList<CheckoutRefundView>? Refunds = null,
     DateTime? ProceedBefore = null, bool PayAtCounter = false);
 public sealed record PTProposalRequest(DateOnly Date, TimeOnly StartTime, string Type);
 public sealed record PTProposalResponse(DateOnly Date, TimeOnly StartTime, TimeOnly EndTime,

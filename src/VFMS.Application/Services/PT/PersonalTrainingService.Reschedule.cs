@@ -32,7 +32,7 @@ public sealed partial class PersonalTrainingService
             .Select(x => new PTCalendarSlot(x.Slot.Id, x.Date, x.Slot.StartTime, x.Slot.StartTime.Add(duration), "Available"))
             .Where(s => s.EndTime > s.StartTime).ToArray();
         var conflicts = await ConflictingSlots(contract.PTUserId, contract.MemberUserId, candidates, now, ct,
-            ignoreSession: id, allowSecondMemberSession: true);
+            ignoreSession: id);
         var bookings = await Occupied(now).Where(s => s.PTUserId == contract.PTUserId &&
                 s.SessionDate >= start && s.SessionDate <= through)
             .Select(s => new PTRescheduleSlot(s.SessionDate, s.StartTime, s.EndTime, "Busy")).ToListAsync(store, ct);
@@ -174,7 +174,7 @@ public sealed partial class PersonalTrainingService
         var template = await Templates(contract.PTUserId).Where(t => t.DayOfWeek == date.DayOfWeek && t.StartTime == start)
             .Select(t => (int?)t.Id).FirstOrDefaultAsync(store, ct);
         if (template is null || await HasConflict(contract.PTUserId, contract.MemberUserId,
-            [new(template.Value, date, start, end, "Available")], now, ct, ignoreSession: session.Id, allowSecondMemberSession: true))
+            [new(template.Value, date, start, end, "Available")], now, ct, ignoreSession: session.Id))
             return null;
         return template;
     }

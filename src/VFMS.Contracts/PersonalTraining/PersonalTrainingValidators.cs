@@ -22,16 +22,16 @@ public sealed class PTPackageRequestValidator : AbstractValidator<PTPackageReque
 
     public PTPackageRequestValidator()
     {
-        RuleFor(x => x.Name).NotEmpty().WithMessage("Nhập tên gói.").MaximumLength(256);
+        RuleFor(x => x.Name).NotEmpty().WithMessage("Tên gói là bắt buộc.").MaximumLength(256);
         RuleFor(x => x.Description).MaximumLength(500);
-        RuleFor(x => x.Credits).InclusiveBetween(1, MaxSessions).WithMessage($"Số buổi phải từ 1 đến {MaxSessions}.");
+        RuleFor(x => x.Credits).InclusiveBetween(1, MaxSessions).WithMessage($"Vui lòng nhập số buổi từ 1 đến {MaxSessions}.");
         RuleFor(x => x.Price).GreaterThan(0).Must(price => decimal.Truncate(price) == price)
-            .WithMessage("Giá phải là số nguyên dương (VND).");
+            .WithMessage("Vui lòng nhập giá là số nguyên lớn hơn 0 (VND).");
         RuleFor(x => x.TrainerLevel).Must(level => level is "Junior" or "Senior" or "Master")
             .WithMessage("Chọn cấp PT Junior, Senior hoặc Master.");
-        RuleFor(x => x.FreezeMinimumDays).GreaterThan(0).WithMessage("Số ngày bảo lưu tối thiểu phải lớn hơn 0.");
+        RuleFor(x => x.FreezeMinimumDays).GreaterThan(0).WithMessage("Vui lòng nhập số ngày bảo lưu tối thiểu lớn hơn 0.");
         RuleFor(x => x.FreezeMaxTotalDays).GreaterThanOrEqualTo(x => x.FreezeMinimumDays)
-            .WithMessage("Số ngày bảo lưu tối đa phải lớn hơn hoặc bằng số ngày tối thiểu.");
+            .WithMessage("Vui lòng nhập số ngày bảo lưu tối đa từ số ngày tối thiểu trở lên.");
     }
 }
 

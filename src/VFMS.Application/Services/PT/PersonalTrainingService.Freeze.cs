@@ -503,7 +503,7 @@ public sealed partial class PersonalTrainingService
                     Utc(original.SessionDate, original.StartTime) <= now ||
                     await HasConflict(p.PTUserId, p.MemberUserId,
                         [new(0, original.SessionDate, original.StartTime, original.EndTime, "Available")], now, ct,
-                        ignoreSession: replacement.Id, allowSecondMemberSession: true))
+                        ignoreSession: replacement.Id))
                     continue;
                 original.SessionStatus = PTSessionStatus.Scheduled;
                 original.CancelledAt = null;

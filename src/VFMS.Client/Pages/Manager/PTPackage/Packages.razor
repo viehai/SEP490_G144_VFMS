@@ -3,6 +3,7 @@
 @attribute [Authorize(Roles = "Manager")]
 @inject PersonalTrainingApiClient Api
 @inject IJSRuntime JS
+@inject ToastService Toasts
 
 <PageTitle>Quản lý gói PT | Victor Fitness</PageTitle>
 
@@ -15,28 +16,28 @@
         <button type="button" class="@PrimaryButton" disabled="@ListDisabled" @onclick="() => Edit(null)">Thêm gói mới</button>
     </header>
 
-    <TrainerFeedback Error="@_error" Message="@_message" />
+    <TrainerFeedback Error="@_error" />
     @if (_draft is { } draft)
     {
         <section class="rounded-xl border border-[#D8D1CD] bg-white p-5 shadow-sm sm:p-6" aria-labelledby="pt-package-editor">
             <h2 id="pt-package-editor" class="border-b border-[#D8D1CD] pb-3 text-base font-bold text-[#242424]" tabindex="-1" @ref="_panelHeading">@(_selected is null ? "Thêm gói PT" : "Chỉnh sửa gói PT")</h2>
-            <form @key="draft" class="mt-4" @onsubmit="SaveAsync" @onsubmit:preventDefault>
+            <form @key="draft" class="mt-4" novalidate @onsubmit="SaveAsync" @onsubmit:preventDefault>
                 <fieldset disabled="@_working" class="grid gap-4 text-sm font-semibold text-[#242424] sm:grid-cols-2">
-                    <label>Tên gói<input class="@Field" @bind="draft.Name" required maxlength="256" /></label>
+                    <label>Tên gói<input class="@Field" @bind="draft.Name" required maxlength="256" aria-invalid="@Invalid("Name")" />@FieldError("Name")</label>
                     <label>Cấp PT
-                        <select class="@Field" @bind="draft.Level"><option>Junior</option><option>Senior</option><option>Master</option></select>
+                        <select class="@Field" @bind="draft.Level"><option>Junior</option><option>Senior</option><option>Master</option></select>@FieldError("TrainerLevel")
                     </label>
-                    <label>Số buổi<input class="@Field" type="number" min="1" max="@PTPackageRequestValidator.MaxSessions" @bind="draft.Credits" required /></label>
-                    <label>Giá (₫)<input class="@Field" type="number" min="1" step="1" max="9999999999999999" @bind="draft.Price" required /></label>
-                    <label>Số ngày bảo lưu tối thiểu<input class="@Field" type="number" min="1" @bind="draft.Minimum" required /></label>
-                    <label>Tổng hạn mức bảo lưu (ngày)<input class="@Field" type="number" min="1" @bind="draft.Cap" required /></label>
+                    <label>Số buổi<input class="@Field" type="number" min="1" max="@PTPackageRequestValidator.MaxSessions" @bind="draft.Credits" required aria-invalid="@Invalid("Credits")" />@FieldError("Credits")</label>
+                    <label>Giá (₫)<input class="@Field" type="number" min="1" step="1" max="9999999999999999" @bind="draft.Price" required aria-invalid="@Invalid("Price")" />@FieldError("Price")</label>
+                    <label>Số ngày bảo lưu tối thiểu<input class="@Field" type="number" min="1" @bind="draft.Minimum" required aria-invalid="@Invalid("FreezeMinimumDays")" />@FieldError("FreezeMinimumDays")</label>
+                    <label>Số ngày bảo lưu tối đa<input class="@Field" type="number" min="1" @bind="draft.Cap" required aria-invalid="@Invalid("FreezeMaxTotalDays")" />@FieldError("FreezeMaxTotalDays")</label>
                     <label>Trạng thái
                         <select class="@Field" @bind="draft.Active">
                             <option value="true">Đang mở bán</option>
                             <option value="false">Ngừng bán</option>
                         </select>
                     </label>
-                    <label class="sm:col-span-2">Mô tả<textarea class="@Field" rows="3" maxlength="500" @bind="draft.Description"></textarea></label>
+                    <label class="sm:col-span-2">Mô tả<textarea class="@Field" rows="3" maxlength="500" @bind="draft.Description"></textarea>@FieldError("Description")</label>
                     <div class="flex flex-wrap gap-3 pt-2 sm:col-span-2">
                         <button type="submit" class="@PrimaryButton">@(_working ? "Đang lưu..." : "Lưu gói PT")</button>
                         <button type="button" class="@Button" @onclick="ClosePanel">Hủy</button>
@@ -54,7 +55,7 @@
                 <div><dt class="font-semibold text-[#6F6966]">Cấp PT</dt><dd>@package.TrainerLevel</dd></div>
                 <div><dt class="font-semibold text-[#6F6966]">Số buổi</dt><dd>@package.Credits buổi</dd></div>
                 <div><dt class="font-semibold text-[#6F6966]">Giá</dt><dd>@Money(package.Price)</dd></div>
-                <div><dt class="font-semibold text-[#6F6966]">Bảo lưu tối thiểu / hạn mức</dt><dd>@package.FreezeMinimumDays / @package.FreezeMaxTotalDays ngày</dd></div>
+                <div><dt class="font-semibold text-[#6F6966]">Bảo lưu tối thiểu / tối đa</dt><dd>@package.FreezeMinimumDays / @package.FreezeMaxTotalDays ngày</dd></div>
                 <div><dt class="font-semibold text-[#6F6966]">Lượt đăng ký đang hoạt động</dt><dd>@(package.SubscriberCount ?? 0)</dd></div>
                 <div><dt class="font-semibold text-[#6F6966]">Trạng thái</dt><dd>@SaleStatus(package.IsActive)</dd></div>
                 <div class="sm:col-span-2"><dt class="font-semibold text-[#6F6966]">Mô tả</dt><dd class="whitespace-pre-wrap break-words">@(package.Description ?? "—")</dd></div>
@@ -104,7 +105,7 @@
             <div class="overflow-x-auto">
                 <table class="workspace-table min-w-[960px]">
                     <thead>
-                        <tr><th scope="col">Tên gói</th><th scope="col">Số buổi</th><th scope="col">Giá</th><th scope="col">Cấp PT</th><th scope="col">Bảo lưu tối thiểu / hạn mức</th><th scope="col">Lượt đăng ký</th><th scope="col">Trạng thái</th><th scope="col">Thao tác</th></tr>
+                        <tr><th scope="col">Tên gói</th><th scope="col">Số buổi</th><th scope="col">Giá</th><th scope="col">Cấp PT</th><th scope="col">Bảo lưu tối thiểu / tối đa</th><th scope="col">Lượt đăng ký</th><th scope="col">Trạng thái</th><th scope="col">Thao tác</th></tr>
                     </thead>
                     <tbody>
                         @foreach (var row in _filtered.Skip((_page - 1) * PageSize).Take(PageSize))
@@ -154,7 +155,8 @@
     private string _searchInput = "", _statusInput = "";
     private string _search = "", _status = "";
     private bool _loading, _working, _focusPanel;
-    private string? _error, _message;
+    private string? _error;
+    private Dictionary<string, string> _fieldErrors = [];
     private ElementReference _panelHeading;
 
     private int PageCount => Math.Max(1, (_filtered.Length + PageSize - 1) / PageSize);
@@ -206,14 +208,15 @@
 
     private void View(PTPackageResponse item)
     {
-        _message = _error = null;
+        _error = null;
         _selected = item;
         _focusPanel = true;
     }
 
     private void Edit(PTPackageResponse? item)
     {
-        _message = _error = null;
+        _error = null;
+        _fieldErrors = [];
         _selected = item;
         _draft = item is null ? new() : new()
         {
@@ -233,18 +236,19 @@
     private async Task SaveAsync()
     {
         if (_working || _draft is not { } draft) return;
-        if (string.IsNullOrWhiteSpace(draft.Name) || draft.Minimum < 1 || draft.Cap < draft.Minimum)
-        {
-            _error = "Nhập tên gói và hạn mức bảo lưu hợp lệ.";
-            return;
-        }
+        var request = new PTPackageRequest(draft.Name.Trim(), draft.Description?.Trim(), draft.Credits,
+            draft.Price, draft.Level, draft.Minimum, draft.Cap, draft.Active);
+        // UC 4.3 Step 6: MSG-02 / MSG-07 under each field, same rules as the API.
+        _fieldErrors = new PTPackageRequestValidator().Validate(request).Errors
+            .GroupBy(error => error.PropertyName).ToDictionary(group => group.Key, group => group.First().ErrorMessage);
+        if (_fieldErrors.Count > 0) return;
 
+        var creating = _selected is null;
         await RunActionAsync(async () =>
         {
-            await Api.SavePackageAsync(_selected?.Id, new(draft.Name.Trim(), draft.Description?.Trim(), draft.Credits,
-                draft.Price, draft.Level, draft.Minimum, draft.Cap, draft.Active));
+            await Api.SavePackageAsync(_selected?.Id, request);
             ClosePanel();
-            _message = "Đã lưu gói PT.";
+            Toasts.Show(creating ? "Đã tạo gói PT thành công." : "Đã cập nhật gói PT thành công."); // MSG-04 / MSG-03
             await LoadAsync();
         });
     }
@@ -252,7 +256,7 @@
     private Task ChangeStatusAsync(PTPackageResponse item) => RunActionAsync(async () =>
     {
         await Api.SetPackageSaleStatusAsync(item.Id, !item.IsActive);
-        _message = item.IsActive ? "Đã ngừng bán gói PT." : "Đã mở bán gói PT.";
+        Toasts.Show(item.IsActive ? "Đã ngừng bán gói PT." : "Đã mở bán gói PT.");
         await LoadAsync();
     });
 
@@ -263,9 +267,9 @@
             return;
 
         var result = await Api.DeletePackageAsync(item.Id);
-        _message = result.KeptHistory
+        Toasts.Show(result.KeptHistory
             ? "Gói PT đã được chuyển sang Ngừng bán. Lịch sử đơn hàng và hợp đồng vẫn được lưu."
-            : "Đã xóa gói PT.";
+            : "Đã xóa gói PT.");
         await LoadAsync();
     });
 
@@ -273,11 +277,17 @@
     {
         if (_working) return;
         _working = true;
-        _message = _error = null;
+        _error = null;
         try { await action(); }
         catch (AuthApiException ex) { _error = ex.Message; }
         finally { _working = false; }
     }
+
+    private string? Invalid(string field) => _fieldErrors.ContainsKey(field) ? "true" : null;
+
+    private RenderFragment? FieldError(string field) => _fieldErrors.TryGetValue(field, out var message)
+        ? @<span class="mt-1 block text-xs font-normal text-red-700" role="alert">@message</span>
+        : null;
 
     private static string SaleStatus(bool active) => active ? "Đang mở bán" : "Ngừng bán";
 

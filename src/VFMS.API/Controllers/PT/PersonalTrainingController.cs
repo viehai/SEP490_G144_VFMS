@@ -12,12 +12,8 @@ namespace VFMS.API.Controllers;
 [Route("api/pt")]
 [Authorize]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
-public sealed class PersonalTrainingController(PersonalTrainingService service, IWebHostEnvironment environment,
-    IConfiguration configuration) : ControllerBase
+public sealed class PersonalTrainingController(PersonalTrainingService service) : ControllerBase
 {
-    private bool DemoPaymentEnabled =>
-        environment.IsDevelopment() && configuration.GetValue<bool>("PersonalTraining:EnableDemoPayment");
-
     private Task<IActionResult> AsUser<T>(Func<string, Task<Result<T>>> action) =>
         User.GetUserId() is { } actor ? Reply(action(actor)) : Task.FromResult<IActionResult>(Unauthorized());
 
@@ -100,17 +96,10 @@ public sealed class PersonalTrainingController(PersonalTrainingService service, 
     public Task<IActionResult> ConfirmCash(string orderNumber, PTCashConfirmationRequest request, CancellationToken ct) =>
         AsUser(actor => service.ConfirmCash(actor, orderNumber.Trim().ToUpperInvariant(), request.AmountReceived, ct));
 
-    [HttpPost("purchases/{orderNumber}/demo-payment")]
-    [Authorize(Roles = "Member")]
-    public Task<IActionResult> ConfirmDemoPayment(string orderNumber, CancellationToken ct) =>
-        DemoPaymentEnabled
-            ? AsUser(actor => service.ConfirmDemoPayment(actor, orderNumber, ct))
-            : Task.FromResult<IActionResult>(NotFound());
-
     [HttpGet("purchases/{orderNumber}")]
     [Authorize(Roles = "Member")]
     public Task<IActionResult> CheckoutStatus(string orderNumber, CancellationToken ct) =>
-        AsUser(actor => service.CheckoutStatus(actor, orderNumber, ct, DemoPaymentEnabled));
+        AsUser(actor => service.CheckoutStatus(actor, orderNumber, ct));
 
     [HttpGet("contracts")]
     [Authorize(Roles = "Member,PT")]

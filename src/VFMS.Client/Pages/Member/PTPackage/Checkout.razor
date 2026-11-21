@@ -5,6 +5,7 @@
 @using VFMS.Contracts.Memberships
 @using VFMS.Client.Components.Operations
 @inject PersonalTrainingApiClient Api
+@inject ToastService Toasts
 <PageTitle>Thanh toán gói PT | Victor Fitness</PageTitle>
 
 <section class="trainer-page trainer-public trainer-narrow trainer-stack">
@@ -57,18 +58,11 @@
                 {
                     <p>Đã hết thời gian chuyển khoản. Hệ thống đang chờ xác nhận giao dịch đã thực hiện đúng hạn (đến @LocalTime(order.HoldExpiresAt)).</p>
                 }
-                @if (order.CanSimulatePayment)
-                {
-                    <div class="trainer-stack">
-                        <button type="button" class="trainer-button" disabled="@_busy" @onclick="ConfirmDemoPaymentAsync">Mô phỏng đã thanh toán (demo)</button>
-                        <small class="trainer-muted">Chỉ dùng trong môi trường phát triển. Không cần chuyển khoản.</small>
-                    </div>
-                }
             }
             else if (order.Status == "Paid")
             {
-                <p>@(order.IsDemoPayment ? "Đã mô phỏng thanh toán và xác nhận lịch tập." : "Đã xác nhận lịch tập.")</p>
-                @if (!order.IsDemoPayment && order.InvoiceNumber is { } invoice)
+                <p>Đã xác nhận lịch tập.</p>
+                @if (order.InvoiceNumber is { } invoice)
                 {
                     <p>Hóa đơn @invoice</p>
                 }
@@ -135,7 +129,7 @@
         try
         {
             var order = await Api.CheckoutAsync(OrderNumber, ct);
-            if (!ct.IsCancellationRequested) { _order = order; _error = null; }
+            if (!ct.IsCancellationRequested) { SetOrder(order); _error = null; }
         }
         catch (AuthApiException ex) when (!ct.IsCancellationRequested) { _error = ex.Message; }
         catch (Exception ex) when (ct.IsCancellationRequested && ex is OperationCanceledException or AuthApiException) { }
@@ -152,26 +146,18 @@
         {
             var updated = await Api.StartPaymentAsync(order.OrderNumber,
                 new(string.IsNullOrWhiteSpace(_voucher) ? null : _voucher.Trim(), method));
-            if (!ct.IsCancellationRequested) _order = updated;
+            if (!ct.IsCancellationRequested) SetOrder(updated);
         }
         catch (AuthApiException ex) { if (!ct.IsCancellationRequested) _error = ex.Message; }
         finally { if (!ct.IsCancellationRequested) _busy = false; }
     }
 
-    private async Task ConfirmDemoPaymentAsync()
+    // MSG-23: toast once, when this page sees the order become paid (not when opening an already paid order).
+    private void SetOrder(PTCheckoutResponse order)
     {
-        if (_busy || _lifetime is null || _order is not { CanSimulatePayment: true } order) return;
-        var ct = _lifetime.Token;
-        _busy = true;
-        _error = null;
-        try
-        {
-            var updated = await Api.ConfirmDemoPaymentAsync(order.OrderNumber, ct);
-            if (!ct.IsCancellationRequested) _order = updated;
-        }
-        catch (AuthApiException ex) when (!ct.IsCancellationRequested) { _error = ex.Message; }
-        catch (Exception ex) when (ct.IsCancellationRequested && ex is OperationCanceledException or AuthApiException) { }
-        finally { if (!ct.IsCancellationRequested) _busy = false; }
+        if (_order is { Status: not "Paid" } && order.Status == "Paid")
+            Toasts.Show($"Thanh toán thành công cho hóa đơn #{order.InvoiceNumber}.");
+        _order = order;
     }
 
     private async Task PollAsync(CancellationToken ct)

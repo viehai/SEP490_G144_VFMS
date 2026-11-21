@@ -65,5 +65,5 @@ public sealed class PersonalTrainingStore(VfmsDbContext db) : IPersonalTrainingS
         CheckoutRefunds.RecordExtraTransfer(db, payment, transfer, now);
 
     public void RecordUnappliedTransfer(PaymentTransaction payment, SepayTransfer transfer, DateTime now) =>
-        CheckoutRefunds.RecordUnappliedTransfer(db, payment, transfer, now);
+        CheckoutRefunds.RecordUnappliedTransfer(db, payment, transfer, now, notify: false);
 }

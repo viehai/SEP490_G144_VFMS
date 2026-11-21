@@ -12,32 +12,24 @@ namespace VFMS.IntegrationTests;
 public sealed partial class MembershipPurchaseApiTests
 {
     [Fact]
-    public async Task DemoPTPaymentIsDevelopmentOnlyAndConfirmsTheOwnersHeldSessions()
+    public async Task PendingPTOrderIsListedAndPaidSessionsReachTheTeachingSchedule()
     {
         var booking = await PreparePTCheckout();
         using var member = Client("member", "Member");
         using var hold = await member.PostAsJsonAsync("/api/pt/purchases", booking);
         Assert.Equal(HttpStatusCode.Created, hold.StatusCode);
         var order = (await hold.Content.ReadFromJsonAsync<PTCheckoutResponse>())!;
-        var path = $"/api/pt/purchases/{order.OrderNumber}/demo-payment";
         var contractPath = $"/api/pt/contracts/{order.ContractId}";
         var pending = Assert.Single((await member.GetFromJsonAsync<System.Text.Json.JsonElement[]>(contractPath))!);
         Assert.Equal(order.OrderNumber, pending.GetProperty("orderNumber").GetString());
+        using var removedDemo = await member.PostAsync($"/api/pt/purchases/{order.OrderNumber}/demo-payment", null);
+        Assert.Equal(HttpStatusCode.NotFound, removedDemo.StatusCode);
 
-        _app.Configuration["PersonalTraining:EnableDemoPayment"] = "true";
-        using var disabled = await member.PostAsync(path, null);
-        Assert.Equal(HttpStatusCode.NotFound, disabled.StatusCode);
-
-        _app.Environment.EnvironmentName = "Development";
-        Assert.True((await member.GetFromJsonAsync<PTCheckoutResponse>($"/api/pt/purchases/{order.OrderNumber}"))!.CanSimulatePayment);
-        using var otherMember = Client("buyer", "Member");
-        using var rejected = await otherMember.PostAsync(path, null);
-        Assert.True(rejected.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Forbidden);
-        using var demo = await member.PostAsync(path, null);
-        Assert.True(demo.IsSuccessStatusCode, await demo.Content.ReadAsStringAsync());
-        Assert.True((await demo.Content.ReadFromJsonAsync<PTCheckoutResponse>())!.IsDemoPayment);
-        using var retry = await member.PostAsync(path, null);
-        Assert.Equal(HttpStatusCode.Conflict, retry.StatusCode);
+        var checkout = await IssueQr(member, order);
+        var transferAt = new DateTimeOffset(checkout.ExpiresAt.ToUniversalTime()).AddMinutes(-14);
+        _clock.Now = transferAt.AddSeconds(1);
+        using var paid = await NotifyTransferAsync(checkout.VietQr!.TransferContent, checkout.AmountDue, 77, transferAt);
+        Assert.Equal(HttpStatusCode.OK, paid.StatusCode);
         var contract = Assert.Single((await member.GetFromJsonAsync<PTContractResponse[]>(contractPath))!);
         Assert.Equal("Active", contract.Status);
         Assert.All(contract.Sessions, session => Assert.Equal("Scheduled", session.Status));
@@ -50,7 +42,8 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.All(teaching, slot => Assert.False(string.IsNullOrWhiteSpace(slot.GetProperty("memberName").GetString())));
         await using var scope = _app.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
-        Assert.Equal("PTDemo", (await db.PaymentTransactions.SingleAsync()).GatewayName);
+        var notices = await db.Notifications.Where(n => n.RecipientUserId == "member").Select(n => n.Title).ToListAsync();
+        Assert.Contains("Đã thanh toán gói PT", notices);
     }
 
     [Fact]
@@ -807,6 +800,28 @@ public sealed partial class MembershipPurchaseApiTests
         using var cleared = await trainer.PutAsJsonAsync(path, new PTPublishRequest([]));
         Assert.Equal(HttpStatusCode.OK, cleared.StatusCode);
         Assert.Empty((await trainer.GetFromJsonAsync<PTSlotInput[]>(path))!);
+    }
+
+    [Fact]
+    public async Task MemberCanHoldSeveralPTSessionsADayButNotAtTheSameTime()
+    {
+        var evening = await PreparePTCheckout();
+        using var member = Client("member", "Member");
+        using var first = await member.PostAsJsonAsync("/api/pt/purchases", evening);
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+
+        var template = (await member.GetFromJsonAsync<PTWeeklySlot[]>("/api/pt/trainers/buyer/weekly-template"))!;
+        var morning = evening with
+        {
+            TemplateIds = template.Where(s => s.StartTime.Hour == 9 &&
+                s.DayOfWeek is DayOfWeek.Monday or DayOfWeek.Wednesday or DayOfWeek.Friday).Select(s => s.TemplateId).ToArray()
+        };
+        using var sameDays = await member.PostAsJsonAsync("/api/pt/purchases", morning);
+        Assert.True(sameDays.StatusCode == HttpStatusCode.Created, await sameDays.Content.ReadAsStringAsync());
+
+        using var sameTime = await member.PostAsJsonAsync("/api/pt/purchases", evening);
+        Assert.Equal(HttpStatusCode.Conflict, sameTime.StatusCode);
+        Assert.Contains("PT_MEMBER_SCHEDULE_CONFLICT", await sameTime.Content.ReadAsStringAsync());
     }
 
     private async Task<PTBookingRequest> PreparePTCheckout(int credits = 12, int minimum = 7, int maximum = 15)

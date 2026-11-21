@@ -53,13 +53,12 @@ public sealed partial class PersonalTrainingService(IPersonalTrainingStore store
 
     private async Task<bool> HasConflict(string trainerId, string memberId,
         IReadOnlyList<PTCalendarSlot> dates, DateTime now, CancellationToken ct, int? ignoreSession = null,
-        int? ignorePurchase = null, bool allowSecondMemberSession = false) =>
-        (await ConflictingSlots(trainerId, memberId, dates, now, ct, ignoreSession, ignorePurchase,
-            allowSecondMemberSession)).Count != 0;
+        int? ignorePurchase = null) =>
+        (await ConflictingSlots(trainerId, memberId, dates, now, ct, ignoreSession, ignorePurchase)).Count != 0;
 
     private async Task<HashSet<PTCalendarSlot>> ConflictingSlots(string trainerId, string memberId,
         IReadOnlyList<PTCalendarSlot> dates, DateTime now, CancellationToken ct, int? ignoreSession = null,
-        int? ignorePurchase = null, bool allowSecondMemberSession = false)
+        int? ignorePurchase = null)
     {
         if (dates.Count == 0)
             return [];
@@ -69,12 +68,12 @@ public sealed partial class PersonalTrainingService(IPersonalTrainingStore store
             (s.PTUserId == trainerId || s.MemberUserId == memberId) &&
             (ignoreSession == null || s.Id != ignoreSession) &&
             (ignorePurchase == null || s.PTPurchaseId != ignorePurchase))
-            .Select(s => new { s.SessionDate, s.StartTime, s.EndTime, s.MemberUserId }).ToListAsync(store, ct);
+            .Select(s => new { s.SessionDate, s.StartTime, s.EndTime }).ToListAsync(store, ct);
         var yoga = await Yoga(trainerId, memberId, from, through)
             .Select(s => new { s.ScheduledDate, s.StartTime, s.EndTime }).ToListAsync(store, ct);
+        // A Member may train several PT sessions a day, never two at the same time.
         return dates.Where(d => pt.Any(s => s.SessionDate == d.Date &&
-            (!allowSecondMemberSession && s.MemberUserId == memberId ||
-             PersonalTrainingRules.Overlaps(d.StartTime, d.EndTime, s.StartTime, s.EndTime))) ||
+             PersonalTrainingRules.Overlaps(d.StartTime, d.EndTime, s.StartTime, s.EndTime)) ||
             yoga.Any(s => s.ScheduledDate == d.Date &&
              PersonalTrainingRules.Overlaps(d.StartTime, d.EndTime, s.StartTime, s.EndTime))).ToHashSet();
     }
