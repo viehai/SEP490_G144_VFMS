@@ -150,7 +150,7 @@ public sealed partial class PersonalTrainingService
         if (scheduledEnd)
             expiresOn = ScheduledEnd(purchase, projectedSessions.Select(s => s.Date));
         var preview = new PTEarlyResumePreview(currentResume, resumeDate, expiresOn,
-            resumeDate.DayNumber - start.DayNumber, RemainingFreezeDays(purchase) + removedDays,
+            resumeDate.DayNumber - start.DayNumber, RemainingFreezeDays(purchase),
             replacements.Select(r => new PTEarlyResumeMove(r.Original.Id, r.Slot.Date, r.Slot.StartTime)).ToArray(),
             projectedSessions, needsNewSlot.Order().ToArray(), unavailableOriginals);
         return Result<EarlyResumePlan>.Success(new(purchase, freeze, preview, replacements));

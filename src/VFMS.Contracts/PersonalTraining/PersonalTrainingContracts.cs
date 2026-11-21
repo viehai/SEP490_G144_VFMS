@@ -111,7 +111,12 @@ public sealed record PTFreezeResponse(int Id, int ContractId, string MemberId, s
     /// <summary>Freeze policy saved in the contract (UC 4.9).</summary>
     public int MinimumDays { get; init; }
     public int MaximumDays { get; init; }
+    /// <summary>Manager list (UC 4.9 step 2): held post-freeze slots and the replacement trainer, if any.</summary>
+    public string? ReplacementTrainerName { get; init; }
+    public IReadOnlyList<PTCalendarSlot> ProposedSlots { get; init; } = [];
 }
+/// <summary>UC 4.8 step 8.4: new slots for held sessions of a pending freeze, keyed by the frozen session id.</summary>
+public sealed record PTFreezeSlotChange(PTEarlyResumeMove[] Moves);
 /// <summary>GymCoverageWarning: the Gym Membership ends before the last proposed session; approval is still allowed (UC 4.9).</summary>
 public sealed record PTFreezePreview(DateOnly ExpiresOn, IReadOnlyList<PTCalendarSlot> Replacements,
     bool GymCoverageWarning = false, string? ReplacementTrainerName = null);

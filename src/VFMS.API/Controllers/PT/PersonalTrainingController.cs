@@ -189,6 +189,16 @@ public sealed class PersonalTrainingController(PersonalTrainingService service) 
     public Task<IActionResult> WithdrawFreeze(int id, CancellationToken ct) =>
         AsUser(actor => service.WithdrawFreeze(actor, id, ct));
 
+    [HttpGet("freezes/{id:int}/slots")]
+    [Authorize(Roles = "Member")]
+    public Task<IActionResult> FreezeSlots(int id, CancellationToken ct) =>
+        AsUser(actor => service.FreezeSlots(actor, id, ct));
+
+    [HttpPut("freezes/{id:int}/slots")]
+    [Authorize(Roles = "Member")]
+    public Task<IActionResult> ChangeFreezeSlots(int id, PTFreezeSlotChange request, CancellationToken ct) =>
+        AsUser(actor => service.ChangeFreezeSlots(actor, id, request, ct));
+
     [HttpGet("contracts/{id:int}/replacement-trainers")]
     [Authorize(Roles = "Member")]
     public Task<IActionResult> ReplacementTrainers(int id, CancellationToken ct) =>

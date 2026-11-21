@@ -130,6 +130,13 @@ public sealed class PTTrainerChangeRequestValidator : AbstractValidator<PTTraine
     }
 }
 
+public sealed class PTFreezeSlotChangeValidator : AbstractValidator<PTFreezeSlotChange>
+{
+    public PTFreezeSlotChangeValidator() => RuleFor(x => x.Moves).Must(moves => moves is { Length: > 0 } &&
+            moves.All(m => m is not null) && moves.Select(m => m.SessionId).Distinct().Count() == moves.Length)
+        .WithMessage("Chọn ca mới cho ít nhất một buổi, mỗi buổi một ca.");
+}
+
 public sealed class PTFreezeDecisionValidator : AbstractValidator<PTFreezeDecision>
 {
     public PTFreezeDecisionValidator()

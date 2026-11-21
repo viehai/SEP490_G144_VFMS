@@ -553,7 +553,7 @@ public sealed partial class MembershipPurchaseApiTests
         var after = (await member.GetFromJsonAsync<PTContractResponse[]>(contractPath))!.Single();
         Assert.Equal(after.Sessions.Where(s => s.Status == "Scheduled").Max(s => s.Date), after.EndDate);
         Assert.Equal(13, after.ReservedCredits);
-        Assert.Equal(13, after.RemainingFreezeDays);
+        Assert.Equal(0, after.RemainingFreezeDays); // GBR-15: the single freeze is used
         Assert.Equal(0, after.UsedCredits);
         Assert.Equal(3, after.Sessions.Count(s => s.Status == "Cancelled"));
         Assert.Equal(13, after.Sessions.Count(s => s.Status == "Scheduled"));
@@ -656,7 +656,7 @@ public sealed partial class MembershipPurchaseApiTests
         var updated = (await confirm.Content.ReadFromJsonAsync<PTContractResponse>())!;
         Assert.Equal("Frozen", updated.Status);
         Assert.Equal(updated.Sessions.Where(s => s.Status == "Scheduled").Max(s => s.Date), updated.EndDate);
-        Assert.Equal(original.RemainingFreezeDays - days, updated.RemainingFreezeDays);
+        Assert.Equal(0, updated.RemainingFreezeDays); // an early unfreeze gives no new freeze
         Assert.Equal(original.ReservedCredits, updated.ReservedCredits);
         Assert.Equal(original.UsedCredits, updated.UsedCredits);
         Assert.Contains(updated.Sessions, s => s.Id == alternate.SessionId && s.Date == newResumeDate && s.StartTime == alternate.StartTime);
