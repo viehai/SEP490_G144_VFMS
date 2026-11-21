@@ -29,6 +29,8 @@ public class PTSession : BaseEntity
     public DateTime? ProposalEmailSentAt { get; set; }
     public DateTime? ProposalEmailRetryAt { get; set; }
     public DateTime? NoteUpdatedAt { get; set; }
+    /// <summary>The PT who wrote the coaching note (UC 4.6 step 9).</summary>
+    public string? NoteAuthorUserId { get; set; }
     public int? ReplacementForSessionId { get; set; }
     public string? TrainerAbsenceReason { get; set; }
     public DateTime? TrainerAbsenceReportedAt { get; set; }

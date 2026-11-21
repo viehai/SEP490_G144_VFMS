@@ -67,26 +67,92 @@ public sealed partial class MembershipPurchaseApiTests
         var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
         var stored = await db.PTPurchases.Include(p => p.Sessions).SingleAsync(p => p.Id == id);
         stored.EndDate = Today.AddDays(-5);
-        var taught = stored.Sessions.OrderBy(s => s.SessionDate).First();
+        var ordered = stored.Sessions.OrderBy(s => s.SessionDate).ToArray();
+        var taught = ordered[0];
         taught.SessionStatus = PTSessionStatus.AutoCompleted;
+        var unit = ordered[1];
+        unit.SessionStatus = PTSessionStatus.Cancelled;
+        unit.CancelledAt = _clock.Now.UtcDateTime;
         var profile = await db.TrainerProfiles.SingleAsync(p => p.PTUserId == "buyer");
         profile.AcceptingNewMembers = false;
         profile.NotAcceptingSince = Today.AddDays(-90);
         await db.SaveChangesAsync();
+        const string currentPath = "/api/pt/assigned-members/page?historical=false";
+        const string endedPath = "/api/pt/assigned-members/page?historical=true";
 
-        // UC 4.6: still 'Currently Assigned' inside the 14-day make-up period; the last training counts auto-completed sessions.
-        var current = (await trainer.GetFromJsonAsync<PagedResponse<PTAssignedMember>>(
-            "/api/pt/assigned-members/page?historical=false"))!.Items;
+        // UC 4.6: with a make-up unit left, still 'Currently Assigned' inside the 14-day make-up period;
+        // the last training counts auto-completed sessions.
+        var current = (await trainer.GetFromJsonAsync<PagedResponse<PTAssignedMember>>(currentPath))!.Items;
         Assert.Equal(taught.SessionDate, Assert.Single(current, row => row.ContractId == id).LastTrainedOn);
 
-        // GBR-98: the PT role is kept until the make-up period has also ended.
+        // GBR-98: the PT role is kept while the contract still has make-up to use.
         var service = scope.ServiceProvider.GetRequiredService<PersonalTrainingService>();
         await service.ExpireInactiveTrainers(Today, default);
         Assert.True((await db.TrainerProfiles.AsNoTracking().SingleAsync(p => p.PTUserId == "buyer")).IsActive);
-        stored.EndDate = Today.AddDays(-15);
+
+        // Without make-up left, the ended contract moves to 'Ended' and no longer keeps the PT role.
+        unit.IsCreditForfeited = true;
         await db.SaveChangesAsync();
+        Assert.DoesNotContain((await trainer.GetFromJsonAsync<PagedResponse<PTAssignedMember>>(currentPath))!.Items,
+            row => row.ContractId == id);
+        Assert.Contains((await trainer.GetFromJsonAsync<PagedResponse<PTAssignedMember>>(endedPath))!.Items,
+            row => row.ContractId == id);
         await service.ExpireInactiveTrainers(Today, default);
         Assert.False((await db.TrainerProfiles.AsNoTracking().SingleAsync(p => p.PTUserId == "buyer")).IsActive);
+    }
+
+    [Fact]
+    public async Task PTCanProposeAnyFreeWholeHourAndConflictsNameTheBusyParty()
+    {
+        using var member = Client("member", "Member");
+        using var trainer = Client("buyer", "PT");
+        var (id, contract) = await ActivatedPTContract(member);
+        var session = contract.Sessions[0];
+        await using var scope = _app.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+        var published = await db.PTAvailabilities.Where(a => a.PTUserId == "buyer" && a.DayOfWeek == session.Date.DayOfWeek)
+            .Select(a => a.StartTime).ToListAsync();
+        var optionsPath = $"/api/pt/sessions/{session.Id}/reschedule-options?from={session.Date:yyyy-MM-dd}";
+
+        // UC 4.7 step 3: the PT sees every whole hour of the day within gym hours, not only published slots.
+        var options = (await trainer.GetFromJsonAsync<PTRescheduleSlot[]>(optionsPath))!;
+        var free = options.Where(s => s.Status == "Available" && !published.Contains(s.StartTime))
+            .Select(s => s.StartTime).ToArray();
+        Assert.True(free.Length >= 2);
+
+        // The Member trains with another PT at the first free hour: MSG-32, and the PT sees it as Busy.
+        var gym = await db.Gyms.SingleAsync(g => g.GymName == "VFMS");
+        var roles = await db.ApplicationRoles.ToDictionaryAsync(role => role.RoleName);
+        db.ApplicationUsers.Add(User("other-pt", gym, roles["PT"]));
+        db.PTPurchases.Add(new PTPurchase
+        {
+            MemberUserId = "member",
+            PTUserId = "other-pt",
+            MemberMembershipId = (await db.MemberMemberships.FirstAsync()).Id,
+            StartDate = contract.StartDate,
+            EndDate = contract.EndDate,
+            Sessions = [new PTSession { MemberUserId = "member", PTUserId = "other-pt", SessionDate = session.Date,
+                StartTime = free[0], EndTime = free[0].AddHours(1) }]
+        });
+        await db.SaveChangesAsync();
+        var proposalPath = $"/api/pt/sessions/{session.Id}/proposal";
+        using var memberBusy = await trainer.PostAsJsonAsync(proposalPath, new PTProposalRequest(session.Date, free[0], "Reschedule"));
+        Assert.Equal(HttpStatusCode.Conflict, memberBusy.StatusCode);
+        Assert.Contains("PT_MEMBER_SCHEDULE_CONFLICT", await memberBusy.Content.ReadAsStringAsync());
+        Assert.Contains((await trainer.GetFromJsonAsync<PTRescheduleSlot[]>(optionsPath))!,
+            slot => slot.StartTime == free[0] && slot.Status == "Busy");
+
+        // An unpublished free hour: the Member accepts and the session moves without using a credit.
+        using var proposed = await trainer.PostAsJsonAsync(proposalPath, new PTProposalRequest(session.Date, free[1], "Reschedule"));
+        Assert.True(proposed.StatusCode == HttpStatusCode.OK, await proposed.Content.ReadAsStringAsync());
+        var pending = (await proposed.Content.ReadFromJsonAsync<PTSessionResponse>())!;
+        using var accepted = await member.PostAsJsonAsync($"/api/pt/sessions/{session.Id}/proposal/decision",
+            new PTProposalDecision(true, pending.Proposal!.ExpiresAt));
+        Assert.True(accepted.StatusCode == HttpStatusCode.OK, await accepted.Content.ReadAsStringAsync());
+        var after = await ContractOf(member, id);
+        var moved = Assert.Single(after.Sessions, s => s.Id == session.Id);
+        Assert.Equal((free[1], "Scheduled"), (moved.StartTime, moved.Status));
+        Assert.Equal(0, after.UsedCredits);
     }
 
     [Fact]

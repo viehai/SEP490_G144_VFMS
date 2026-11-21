@@ -83,6 +83,9 @@ public sealed partial class MembershipPurchaseApiTests
             new PTCashConfirmationRequest(counter.AmountDue));
         Assert.Equal(HttpStatusCode.Conflict, late.StatusCode);
         Assert.Equal("Expired", (await member.GetFromJsonAsync<PTCheckoutResponse>($"/api/pt/purchases/{hold.OrderNumber}"))!.Status);
+        // UC 4.5: an expired unpaid checkout is not listed under "My PT Packages".
+        Assert.Empty((await member.GetFromJsonAsync<VFMS.Contracts.Common.PagedResponse<PTContractResponse>>(
+            "/api/pt/contracts/page?page=1"))!.Items);
 
         // A day later the original start week may be past its Friday cutoff (GBR-12), so hold the following week.
         var second = await HoldPT(member, booking with { StartDate = booking.StartDate.AddDays(7) });

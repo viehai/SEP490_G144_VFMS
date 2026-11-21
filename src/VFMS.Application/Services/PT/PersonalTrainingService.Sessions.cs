@@ -43,7 +43,7 @@ public sealed partial class PersonalTrainingService
         if (p.PTFreezes.Any(f => Approved(f) && f.ActualStartDate <= Today && Today < f.ActualEndDate))
             return PTPurchaseStatus.Frozen;
         // GBR-14: after the end date the contract stays usable only for make-up units, for 14 more days.
-        if (Today <= p.EndDate || Today <= PersonalTrainingRules.MakeUpDeadline(p.EndDate) && MakeUpUnits(p).Count > 0)
+        if (PersonalTrainingRules.IsStillRunning(p, Today))
             return PTPurchaseStatus.Active;
         return PTPurchaseStatus.Expired;
     }
@@ -125,9 +125,15 @@ public sealed partial class PersonalTrainingService
         (await store.Query<TrainerReview>().Where(r => r.MemberUserId == memberId && r.PTPurchaseId != null)
             .Select(r => r.PTPurchaseId!.Value).ToListAsync(store, ct)).ToHashSet();
 
-    private IQueryable<PTPurchase> VisibleContracts(string actor) => ContractsWithSessions.AsNoTracking(store).Including(store, "Order")
-        .Where(p => p.MemberUserId == actor || p.PTUserId == actor && p.Status != PTPurchaseStatus.PendingPayment &&
-            (p.OrderId == null || p.Order!.OrderStatus == OrderStatus.Paid));
+    // UC 4.5: an unpaid checkout is listed only while its hold is live; once it expires it is not a contract.
+    private IQueryable<PTPurchase> VisibleContracts(string actor)
+    {
+        var now = Now;
+        return ContractsWithSessions.AsNoTracking(store).Including(store, "Order")
+            .Where(p => p.OrderId == null || p.Order!.OrderStatus == OrderStatus.Paid ||
+                p.MemberUserId == actor && p.Status == PTPurchaseStatus.PendingPayment && p.HoldExpiresAt > now)
+            .Where(p => p.MemberUserId == actor || p.PTUserId == actor && p.Status != PTPurchaseStatus.PendingPayment);
+    }
 
     public async Task<Result<PagedResponse<PTContractResponse>>> ContractPage(string actor, int page, string? trainerId,
         CancellationToken ct)
@@ -151,15 +157,13 @@ public sealed partial class PersonalTrainingService
 
     private IQueryable<PTPurchase> AssignedContracts(string actor, string? search, bool historical)
     {
-        // UC 4.6 / GBR-14: a contract stays 'Currently Assigned' until its 14-day make-up period ends.
-        var makeUpFrom = Today.AddDays(-PersonalTrainingRules.MakeUpGraceDays);
+        // UC 4.6 / GBR-14: a contract stays 'Currently Assigned' until its end date, and through the 14-day
+        // make-up period only while it still has make-up to use.
+        var running = PersonalTrainingRules.StillRunning(Today);
         var query = VisibleContracts(actor).Where(p => p.PTUserId == actor &&
             (p.Status == PTPurchaseStatus.Active || p.Status == PTPurchaseStatus.Frozen ||
              p.Status == PTPurchaseStatus.Completed || p.Status == PTPurchaseStatus.Expired));
-        query = historical
-            ? query.Where(p => p.EndDate < makeUpFrom || p.IsCompleted || p.Status == PTPurchaseStatus.Completed || p.Status == PTPurchaseStatus.Expired)
-            : query.Where(p => p.EndDate >= makeUpFrom && !p.IsCompleted &&
-                (p.Status == PTPurchaseStatus.Active || p.Status == PTPurchaseStatus.Frozen));
+        query = query.Where(historical ? PersonalTrainingRules.Not(running) : running);
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(p => p.Member.FullName.Contains(search));
         return query.OrderBy(p => p.Member.FullName).ThenByDescending(p => p.Id);
@@ -196,6 +200,10 @@ public sealed partial class PersonalTrainingService
     }
 
     private async Task<bool> CanAdjust(PTPurchase p, PTSession s, DateOnly date, TimeOnly start, TimeOnly end,
+        DateTime now, CancellationToken ct, bool isMakeUp = false) =>
+        await AdjustError<bool>(p, s, date, start, end, now, ct, isMakeUp) is null;
+
+    private async Task<Result<T>?> AdjustError<T>(PTPurchase p, PTSession s, DateOnly date, TimeOnly start, TimeOnly end,
         DateTime now, CancellationToken ct, bool isMakeUp = false)
     {
         var (used, reserved) = PersonalTrainingRules.Credits(p.Sessions);
@@ -205,10 +213,23 @@ public sealed partial class PersonalTrainingService
             p.TotalSessions - used - reserved < (isMakeUp ? s.CreditUnits : 0) ||
             p.PTFreezes.Any(f => (Approved(f) || f.RequestStatus == PTFreezeRequestStatus.Pending) &&
                 f.RequestedStartDate <= date && date < (f.ActualEndDate ?? f.RequestedEndDate)))
-            return false;
+            return Conflict<T>(isMakeUp
+                ? "Lịch ngoài giờ gym, ngoài hạn tập bù, trong thời gian bảo lưu hoặc không đủ số buổi."
+                : "Lịch ngoài giờ gym, sau ngày kết thúc hợp đồng hoặc trong thời gian bảo lưu.");
         // GBR-10: Gym access matters only when attendance is recorded, so a new date may fall after the membership ends.
-        return !await HasConflict(p.PTUserId, p.MemberUserId, [new(0, date, start, end, "Available")],
-            now, ct, ignoreSession: s.Id);
+        return await ScheduleConflict<T>(p, s.Id, date, start, end, now, ct);
+    }
+
+    // UC 4.7: MSG-32 when the Member has another PT/Yoga session, MSG-30 when the trainer is busy.
+    private async Task<Result<T>?> ScheduleConflict<T>(PTPurchase p, int sessionId, DateOnly date, TimeOnly start,
+        TimeOnly end, DateTime now, CancellationToken ct)
+    {
+        PTCalendarSlot[] slot = [new(0, date, start, end, "Available")];
+        if (!await HasConflict(p.PTUserId, p.MemberUserId, slot, now, ct, ignoreSession: sessionId))
+            return null;
+        return await HasMemberBookingConflict(p.MemberUserId, slot, now, ct, sessionId)
+            ? Result<T>.Failure("Hội viên đã có buổi PT hoặc lớp Yoga khác trong khung giờ này.", "PT_MEMBER_SCHEDULE_CONFLICT", 409)
+            : Result<T>.Failure("Huấn luyện viên đã có lịch hoặc không rảnh trong khung giờ này.", "PT_TRAINER_SLOT_UNAVAILABLE", 409);
     }
 
     // GBR-14: requests are sent at least 12 hours ahead and answered no later than 4 hours before the start.
@@ -249,9 +270,11 @@ public sealed partial class PersonalTrainingService
                 SessionStatus = asTrainer ? PTSessionStatus.MakeUpPending : PTSessionStatus.MakeUpRequested,
                 ReplacementForSessionId = id
             };
-            if (!await CanAdjust(contract, session, session.SessionDate, session.StartTime, session.EndTime,
-                now, ct, isMakeUp: true))
-                return Conflict<PTSessionResponse>("Lịch không khả dụng, ngoài hạn tập bù hoặc không đủ số buổi.");
+            if (!IsWholeHour(request.StartTime))
+                return Invalid<PTSessionResponse>("Buổi bù phải bắt đầu vào giờ tròn.");
+            if (await AdjustError<PTSessionResponse>(contract, session, session.SessionDate, session.StartTime,
+                    session.EndTime, now, ct, isMakeUp: true) is { } error)
+                return error;
 
             session.ProposalExpiresAt = new[] { now.AddHours(24), Utc(session.SessionDate, session.StartTime) }.Min();
             contract.Sessions.Add(session);
@@ -287,8 +310,8 @@ public sealed partial class PersonalTrainingService
         if (IsOriginalTime(s, request.Date, request.StartTime) || !IsWholeHour(request.StartTime))
             return Invalid<PTSessionResponse>("Chọn giờ bắt đầu tròn giờ, khác lịch hiện tại.");
         var end = request.StartTime.Add(s.EndTime - s.StartTime);
-        if (!await CanAdjust(p, s, request.Date, request.StartTime, end, now, ct))
-            return Conflict<PTSessionResponse>("Lịch không khả dụng hoặc không đủ số buổi.");
+        if (await AdjustError<PTSessionResponse>(p, s, request.Date, request.StartTime, end, now, ct) is { } error)
+            return error;
         s.ProposedDate = request.Date;
         s.ProposedStartTime = request.StartTime;
         s.ProposedEndTime = end;
@@ -699,6 +722,7 @@ public sealed partial class PersonalTrainingService
             return Invalid<PTSessionResponse>("Chỉ ghi chú cho buổi đã hoàn thành.");
         session.Note = request.Note.Trim();
         session.NoteUpdatedAt = Now;
+        session.NoteAuthorUserId = actor;
         Audit(actor, nameof(PTSession), session.Id, "CoachingNoteUpdated");
         await store.Save(ct);
         return Result<PTSessionResponse>.Success(SessionResponse(session, Now));

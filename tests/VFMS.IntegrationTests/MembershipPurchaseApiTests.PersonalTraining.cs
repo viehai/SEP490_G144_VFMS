@@ -333,6 +333,10 @@ public sealed partial class MembershipPurchaseApiTests
 
         var route = $"/api/pt/sessions/{old.Id}/make-up";
         var makeUp = new PTMakeUpRequest(old.Date, new TimeOnly(15, 0));
+        // UC 4.7 step 1.1: a make-up starts on a whole hour.
+        using var halfHour = await member.PostAsJsonAsync(route, makeUp with { StartTime = new TimeOnly(15, 30) });
+        Assert.Equal(HttpStatusCode.BadRequest, halfHour.StatusCode);
+        Assert.Contains("PT_VALIDATION", await halfHour.Content.ReadAsStringAsync());
         // Member-proposed make-up: the PT decides (UC 4.7); declining keeps the make-up unit.
         using var requested = await member.PostAsJsonAsync(route, makeUp);
         Assert.True(requested.StatusCode == HttpStatusCode.Created, await requested.Content.ReadAsStringAsync());
@@ -430,6 +434,7 @@ public sealed partial class MembershipPurchaseApiTests
         using var trainerRequest = await trainer.PostAsJsonAsync($"{sessionPath}/proposal",
             new PTProposalRequest(session.Date, busyTime, "Reschedule"));
         Assert.Equal(HttpStatusCode.Conflict, trainerRequest.StatusCode);
+        Assert.Contains("PT_TRAINER_SLOT_UNAVAILABLE", await trainerRequest.Content.ReadAsStringAsync());
         // The double session was removed from UC 4.7.
         using var doubleSession = await trainer.PostAsJsonAsync($"{sessionPath}/proposal",
             new PTProposalRequest(session.Date, session.StartTime, "DoubleSession"));
@@ -439,6 +444,8 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Equal(HttpStatusCode.NotFound, wrongMember.StatusCode);
         using var busy = await member.PostAsJsonAsync(requestPath, new PTRescheduleRequest(session.Date, busyTime));
         Assert.Equal(HttpStatusCode.Conflict, busy.StatusCode);
+        // UC 4.7, MSG-30: the trainer is the busy party.
+        Assert.Contains("PT_TRAINER_SLOT_UNAVAILABLE", await busy.Content.ReadAsStringAsync());
         using var proposed = await member.PostAsJsonAsync(requestPath, new PTRescheduleRequest(session.Date, newTime));
         Assert.True(proposed.StatusCode == HttpStatusCode.OK, await proposed.Content.ReadAsStringAsync());
         var pending = (await proposed.Content.ReadFromJsonAsync<PTSessionResponse>())!;

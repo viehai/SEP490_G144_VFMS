@@ -120,9 +120,8 @@ public sealed partial class PersonalTrainingService(IPersonalTrainingStore store
         foreach (var profile in profiles)
         {
             if (!TrainerReadinessRules.HasExpired(profile.NotAcceptingSince, today) ||
-                await store.Query<PTPurchase>().AnyAsync(store, p => p.PTUserId == profile.PTUserId && !p.IsCompleted &&
-                    (p.Status == PTPurchaseStatus.Active || p.Status == PTPurchaseStatus.Frozen) &&
-                    p.EndDate >= today.AddDays(-PersonalTrainingRules.MakeUpGraceDays), ct))
+                await store.Query<PTPurchase>().Where(p => p.PTUserId == profile.PTUserId)
+                    .Where(PersonalTrainingRules.StillRunning(today)).AnyAsync(store, ct))
                 continue;
             profile.IsActive = false;
             if (ptRoleId is { } roleId)

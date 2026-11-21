@@ -25,18 +25,23 @@ public sealed partial class PersonalTrainingService
         var start = from ?? Today;
         if (start < Today || start.DayNumber > DateOnly.MaxValue.DayNumber - 13)
             return Invalid<IReadOnlyList<PTRescheduleSlot>>("Ngày xem lịch không hợp lệ.");
-        var through = start.AddDays(13);
-        var templates = await Templates(contract.PTUserId).AsNoTracking(store).ToListAsync(store, ct);
         var duration = session.EndTime - session.StartTime;
-        var candidates = PersonalTrainingRules.Occurrences(start, through, templates, int.MaxValue)
-            .Select(x => new PTCalendarSlot(x.Slot.Id, x.Date, x.Slot.StartTime, x.Slot.StartTime.Add(duration), "Available"))
-            .Where(s => s.EndTime > s.StartTime).ToArray();
+        // UC 4.7: the Member picks the trainer's published slots over two weeks; the PT may use any whole hour
+        // of the chosen day within gym hours, and sees the Member's busy times too.
+        var through = asTrainer ? start : start.AddDays(13);
+        var candidates = asTrainer
+            ? WholeHours(contract.PTUser.Gym, start, duration)
+            : PersonalTrainingRules.Occurrences(start, through,
+                    await Templates(contract.PTUserId).AsNoTracking(store).ToListAsync(store, ct), int.MaxValue)
+                .Select(x => new PTCalendarSlot(x.Slot.Id, x.Date, x.Slot.StartTime, x.Slot.StartTime.Add(duration), "Available"))
+                .Where(s => s.EndTime > s.StartTime).ToArray();
         var conflicts = await ConflictingSlots(contract.PTUserId, contract.MemberUserId, candidates, now, ct,
             ignoreSession: id);
-        var bookings = await Occupied(now).Where(s => s.PTUserId == contract.PTUserId &&
+        var bookings = await Occupied(now).Where(s => (s.PTUserId == contract.PTUserId ||
+                    asTrainer && s.MemberUserId == contract.MemberUserId) &&
                 s.SessionDate >= start && s.SessionDate <= through)
             .Select(s => new PTRescheduleSlot(s.SessionDate, s.StartTime, s.EndTime, "Busy")).ToListAsync(store, ct);
-        bookings.AddRange(await Yoga(contract.PTUserId, null, start, through)
+        bookings.AddRange(await Yoga(contract.PTUserId, asTrainer ? contract.MemberUserId : null, start, through)
             .Select(s => new PTRescheduleSlot(s.ScheduledDate, s.StartTime, s.EndTime, "Busy")).ToListAsync(store, ct));
 
         var slots = candidates.Select(slot =>
@@ -73,7 +78,8 @@ public sealed partial class PersonalTrainingService
 
         var end = request.StartTime.Add(session.EndTime - session.StartTime);
         if (await FindRescheduleTemplate(contract, session, request.Date, request.StartTime, end, now, ct) is null)
-            return Conflict<PTSessionResponse>("Khung giờ đã chọn không khả dụng hoặc không đủ điều kiện đổi lịch.");
+            return await ScheduleConflict<PTSessionResponse>(contract, id, request.Date, request.StartTime, end, now, ct) ??
+                Conflict<PTSessionResponse>("Khung giờ đã chọn không khả dụng hoặc không đủ điều kiện đổi lịch.");
 
         session.ProposedDate = request.Date;
         session.ProposedStartTime = request.StartTime;
@@ -152,6 +158,16 @@ public sealed partial class PersonalTrainingService
         ClearProposal(session);
         Audit(actor, nameof(PTSession), session.Id, outcome);
         Notify(session.MemberUserId, "Yêu cầu đổi lịch PT", message, nameof(PTSession), session.Id);
+    }
+
+    private static PTCalendarSlot[] WholeHours(Gym gym, DateOnly date, TimeSpan duration)
+    {
+        if (gym.OpenTime is not { } open || gym.CloseTime is not { } close)
+            return [];
+        var first = open.Minute == 0 && open.Second == 0 ? open.Hour : open.Hour + 1;
+        return Enumerable.Range(first, Math.Max(0, 24 - first)).Select(hour => new TimeOnly(hour, 0))
+            .Where(start => start.ToTimeSpan() + duration <= close.ToTimeSpan())
+            .Select(start => new PTCalendarSlot(0, date, start, start.Add(duration), "Available")).ToArray();
     }
 
     private static bool IsOriginalTime(PTSession session, DateOnly date, TimeOnly start) =>

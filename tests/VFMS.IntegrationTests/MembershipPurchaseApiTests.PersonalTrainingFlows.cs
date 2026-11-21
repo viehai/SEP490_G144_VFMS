@@ -95,6 +95,15 @@ public sealed partial class MembershipPurchaseApiTests
         var after = await ContractOf(member, id);
         Assert.Equal("AutoCompleted", after.Sessions.Single(s => s.Id == session.Id).Status);
         Assert.Equal(1, after.UsedCredits);
+
+        // UC 4.6 step 9: the coaching note keeps its time and its author.
+        using var noted = await trainer.PutAsJsonAsync($"/api/pt/sessions/{session.Id}/note", new PTNoteRequest("Giữ nhịp thở tốt."));
+        Assert.True(noted.StatusCode == HttpStatusCode.OK, await noted.Content.ReadAsStringAsync());
+        await using var check = _app.Services.CreateAsyncScope();
+        var stored = await check.ServiceProvider.GetRequiredService<VfmsDbContext>().PTSessions.AsNoTracking()
+            .SingleAsync(s => s.Id == session.Id);
+        Assert.Equal(("buyer", "Giữ nhịp thở tốt."), (stored.NoteAuthorUserId, stored.Note));
+        Assert.NotNull(stored.NoteUpdatedAt);
     }
 
     [Fact]

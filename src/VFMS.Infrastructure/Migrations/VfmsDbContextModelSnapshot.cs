@@ -2085,6 +2085,10 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<string>("Note")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("NoteAuthorUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
                     b.Property<DateTime?>("NoteUpdatedAt")
                         .HasColumnType("datetime2");
 

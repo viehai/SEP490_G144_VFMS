@@ -114,10 +114,12 @@ public sealed partial class PersonalTrainingService
         return Result<MemberMembership>.Success(membership);
     }
 
-    private async Task<bool> HasMemberBookingConflict(string actor, IReadOnlyList<PTCalendarSlot> slots, DateTime now, CancellationToken ct)
+    private async Task<bool> HasMemberBookingConflict(string actor, IReadOnlyList<PTCalendarSlot> slots, DateTime now,
+        CancellationToken ct, int? ignoreSession = null)
     {
         var dates = slots.Select(s => s.Date).Distinct().ToArray();
-        var pt = await Occupied(now).Where(s => s.MemberUserId == actor && dates.Contains(s.SessionDate))
+        var pt = await Occupied(now).Where(s => s.MemberUserId == actor && dates.Contains(s.SessionDate) &&
+                (ignoreSession == null || s.Id != ignoreSession))
             .Select(s => new { s.SessionDate, s.StartTime, s.EndTime }).ToListAsync(store, ct);
         if (slots.Any(slot => pt.Any(s => s.SessionDate == slot.Date &&
                 PersonalTrainingRules.Overlaps(slot.StartTime, slot.EndTime, s.StartTime, s.EndTime))))

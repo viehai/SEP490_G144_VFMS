@@ -149,7 +149,8 @@
                 {
                     <div class="trainer-stack">
                         <p class="trainer-muted">Lịch cũ vẫn được giữ cho đến khi @(IsTrainer ? "hội viên" : "PT") chấp nhận. Các ca bận chỉ hiển thị thời gian.</p>
-                        <label>Xem lịch từ ngày<input class="trainer-input" type="date" min="@Today.ToString("yyyy-MM-dd")"
+                        @if (IsTrainer) { <p class="trainer-muted">Chọn một giờ tròn trong giờ mở cửa. Giờ bận của bạn và của hội viên hiện là "Bận".</p> }
+                        <label>@(IsTrainer ? "Ngày tập mới" : "Xem lịch từ ngày")<input class="trainer-input" type="date" min="@Today.ToString("yyyy-MM-dd")"
                                @bind="_from" @bind:after="LoadOptionsAsync" disabled="@_busy" /></label>
                         @if (_options is { Length: 0 }) { <p>Không có ca trong khoảng đã chọn.</p> }
                         <div class="pt-options">
@@ -229,9 +230,11 @@
         .Where(s => _history || !IsTrainer || IsFuture(s.Date, s.EndTime) || s.IsMakeUpUnit);
     private PTCalendarSlot[] CalendarSlots => Visible.Select(s => new PTCalendarSlot(s.Id, s.Date, s.StartTime, s.EndTime, s.Status)).ToArray();
     // UC 4.7: a 60-minute make-up starts on a whole hour and ends by gym closing time.
-    private IEnumerable<int> MakeUpHours => Contract is { GymOpenTime: { } open, GymCloseTime: { } close } && open < close
-        ? Enumerable.Range(open.Hour + (open.Minute > 0 ? 1 : 0), Math.Max(0, close.Hour - open.Hour - (open.Minute > 0 ? 1 : 0)))
-        : Enumerable.Range(5, 18);
+    private IEnumerable<int> MakeUpHours => MakeUpStartHours(Contract);
+    public static IEnumerable<int> MakeUpStartHours(PTContractResponse? contract) =>
+        contract is { GymOpenTime: { } open, GymCloseTime: { } close } && open < close
+            ? Enumerable.Range(open.Hour + (open.Minute > 0 ? 1 : 0), Math.Max(0, close.Hour - open.Hour - (open.Minute > 0 ? 1 : 0)))
+            : Enumerable.Range(5, 18);
     // UC 4.10: a contract is reviewed once, also after the page reloads.
     private bool CanOfferReview => !_reviewed && !Contract.HasReview && Contract.Status == "Completed" &&
         Contract.Sessions.LastOrDefault(s => s.Status is not ("Cancelled" or "MakeUpPending" or "MakeUpRequested"))?.Status
