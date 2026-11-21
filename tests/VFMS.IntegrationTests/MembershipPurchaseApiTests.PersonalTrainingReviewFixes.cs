@@ -150,8 +150,13 @@ public sealed partial class MembershipPurchaseApiTests
             var gym = await db.Gyms.SingleAsync(g => g.GymName == "VFMS");
             var ptRole = await db.ApplicationRoles.SingleAsync(r => r.RoleName == "PT");
             db.ApplicationUsers.Add(User("yoga-pt", gym, ptRole));
-            db.TrainerProfiles.Add(new TrainerProfile { PTUserId = "yoga-pt", Level = TrainerLevel.Senior, AcceptingNewMembers = true,
-                TrainerRoleId = _yogaTrainerRole });
+            db.TrainerProfiles.Add(new TrainerProfile
+            {
+                PTUserId = "yoga-pt",
+                Level = TrainerLevel.Senior,
+                AcceptingNewMembers = true,
+                TrainerRoleId = _yogaTrainerRole
+            });
             (await db.PTPurchases.SingleAsync(p => p.Id == id)).TrainerChangeDeadline = _clock.Now.UtcDateTime.AddDays(7);
             await db.SaveChangesAsync();
         }
@@ -183,9 +188,17 @@ public sealed partial class MembershipPurchaseApiTests
             user.PhoneNumber = "0911222333"; // seeded users share a phone number; keep the match unambiguous
             var application = new TrainerApplication
             {
-                FullName = user.FullName, Email = user.Email, PhoneNumber = user.PhoneNumber, CitizenId = "079200000123",
-                Gender = "Other", Specialty = "PT", ExperienceYears = 2, Bio = "Strength coach", TrackingCode = "TR-MEMBER",
-                ApplicationStatus = TrainerApplicationStatus.Interviewing, SubmittedAt = DateTime.UtcNow
+                FullName = user.FullName,
+                Email = user.Email,
+                PhoneNumber = user.PhoneNumber,
+                CitizenId = "079200000123",
+                Gender = "Other",
+                Specialty = "PT",
+                ExperienceYears = 2,
+                Bio = "Strength coach",
+                TrackingCode = "TR-MEMBER",
+                ApplicationStatus = TrainerApplicationStatus.Interviewing,
+                SubmittedAt = DateTime.UtcNow
             };
             db.TrainerApplications.Add(application);
             await db.SaveChangesAsync();

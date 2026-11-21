@@ -49,11 +49,14 @@ public sealed partial class PersonalTrainingService
             : f.PTPurchase.MemberUserId == actor && f.PTPurchaseId == contractId);
         return await PageOf(query.OrderByDescending(f => f.Id).Select(f => new
         {
-            Freeze = f, Contract = f.PTPurchase, MemberName = f.PTPurchase.Member.FullName,
+            Freeze = f,
+            Contract = f.PTPurchase,
+            MemberName = f.PTPurchase.Member.FullName,
             TrainerName = f.PTPurchase.PTUser.FullName
         }), page, row => FreezeResponse(row.Freeze, row.Contract) with
         {
-            MemberName = row.MemberName, TrainerName = row.TrainerName
+            MemberName = row.MemberName,
+            TrainerName = row.TrainerName
         }, ct);
     }
 
@@ -349,9 +352,14 @@ public sealed partial class PersonalTrainingService
                     {
                         var hold = new PTSession
                         {
-                            PTUserId = purchase.PTUserId, MemberUserId = purchase.MemberUserId, SessionDate = r.Slot.Date,
-                            StartTime = r.Slot.StartTime, EndTime = r.Slot.EndTime, CreditUnits = r.Original.CreditUnits,
-                            SessionStatus = PTSessionStatus.FreezeHold, ReplacementForSessionId = r.Original.Id,
+                            PTUserId = purchase.PTUserId,
+                            MemberUserId = purchase.MemberUserId,
+                            SessionDate = r.Slot.Date,
+                            StartTime = r.Slot.StartTime,
+                            EndTime = r.Slot.EndTime,
+                            CreditUnits = r.Original.CreditUnits,
+                            SessionStatus = PTSessionStatus.FreezeHold,
+                            ReplacementForSessionId = r.Original.Id,
                             PTFreezeId = f.Id
                         };
                         purchase.Sessions.Add(hold);

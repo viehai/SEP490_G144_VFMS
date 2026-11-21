@@ -60,7 +60,7 @@ public sealed partial class PersonalTrainingService
         if (dates.Length < count || count <= 0)
             return Invalid<Booking>("Không thể xếp đủ số buổi từ ngày bắt đầu đã chọn.");
         return Result<Booking>.Success(new(new(package.Id, request.TrainerId, dates[^1].Date, package.Price, dates)
-            { Skipped = skipped }, package, profile, trainer, pattern));
+        { Skipped = skipped }, package, profile, trainer, pattern));
     }
 
     // UC 4.2 / GBR-12: a slot busy in the start week cannot be used (another schedule holds it). A later busy date is

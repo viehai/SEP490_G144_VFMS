@@ -295,7 +295,9 @@ public class TrainerWorkflowTests
         var oldId = Assert.Single(before.Certificates).Id;
         var request = TrainerTestDatabase.Request with
         {
-            ApplicationType = "ProfileUpdate", Certificates = [], CertificateUrls = null,
+            ApplicationType = "ProfileUpdate",
+            Certificates = [],
+            CertificateUrls = null,
             CertificateLinks = [new("https://certificates.example.test/revised", oldId),
                 new("https://certificates.example.test/additional")]
         };
@@ -365,16 +367,22 @@ public class TrainerWorkflowTests
         var memberRole = await db.ApplicationRoles.SingleOrDefaultAsync(r => r.RoleName == "Member") ?? new ApplicationRole { RoleName = "Member" };
         var member = new ApplicationUser
         {
-            UserId = "member-only", GymId = await db.Gyms.Select(x => x.Id).SingleAsync(), FullName = "Member Only",
-            Email = "member.only@example.test", PhoneNumber = "0900000099",
-            PasswordHash = new PasswordHasher().Hash("OriginalPassword1!"), AccountStatus = AccountStatus.Active
+            UserId = "member-only",
+            GymId = await db.Gyms.Select(x => x.Id).SingleAsync(),
+            FullName = "Member Only",
+            Email = "member.only@example.test",
+            PhoneNumber = "0900000099",
+            PasswordHash = new PasswordHasher().Hash("OriginalPassword1!"),
+            AccountStatus = AccountStatus.Active
         };
         db.AddRange(memberRole, member); await db.SaveChangesAsync();
         db.Add(new ApplicationUserRole { UserId = member.UserId, RoleId = memberRole.Id }); await db.SaveChangesAsync();
 
         var receipt = TrainerTestDatabase.Success(await fixture.Service.Submit(TrainerTestDatabase.Request with
         {
-            Email = member.Email, PhoneNumber = member.PhoneNumber, CitizenId = "000000000099"
+            Email = member.Email,
+            PhoneNumber = member.PhoneNumber,
+            CitizenId = "000000000099"
         }, member.UserId, default));
         Assert.Equal("Pending", receipt.Status);
     }
@@ -417,13 +425,21 @@ public class TrainerWorkflowTests
         var gymId = await db.Gyms.Select(g => g.Id).SingleAsync();
         var emailMatch = new ApplicationUser
         {
-            UserId = "email-match", GymId = gymId, Email = request.Email, PhoneNumber = "0900000020",
-            FullName = "Email Match", AccountStatus = AccountStatus.Active
+            UserId = "email-match",
+            GymId = gymId,
+            Email = request.Email,
+            PhoneNumber = "0900000020",
+            FullName = "Email Match",
+            AccountStatus = AccountStatus.Active
         };
         var phoneMatch = new ApplicationUser
         {
-            UserId = "phone-match", GymId = gymId, Email = "phone@example.test", PhoneNumber = request.PhoneNumber,
-            FullName = "Phone Match", AccountStatus = AccountStatus.Active
+            UserId = "phone-match",
+            GymId = gymId,
+            Email = "phone@example.test",
+            PhoneNumber = request.PhoneNumber,
+            FullName = "Phone Match",
+            AccountStatus = AccountStatus.Active
         };
         db.AddRange(emailMatch, phoneMatch);
         await db.SaveChangesAsync();
@@ -498,8 +514,12 @@ public class TrainerWorkflowTests
         var gymId = await db.Gyms.Select(gym => gym.Id).SingleAsync();
         db.Add(new ApplicationUser
         {
-            UserId = "gmail-existing", GymId = gymId, Email = request.Email, PhoneNumber = "0900000020",
-            FullName = "Existing applicant", AccountStatus = AccountStatus.Active
+            UserId = "gmail-existing",
+            GymId = gymId,
+            Email = request.Email,
+            PhoneNumber = "0900000020",
+            FullName = "Existing applicant",
+            AccountStatus = AccountStatus.Active
         });
         await db.SaveChangesAsync();
 
@@ -658,8 +678,12 @@ public class TrainerWorkflowTests
     {
         var user = new ApplicationUser
         {
-            UserId = id, GymId = await db.Gyms.Select(g => g.Id).SingleAsync(), FullName = id,
-            Email = email, PhoneNumber = phone, AccountStatus = AccountStatus.Active
+            UserId = id,
+            GymId = await db.Gyms.Select(g => g.Id).SingleAsync(),
+            FullName = id,
+            Email = email,
+            PhoneNumber = phone,
+            AccountStatus = AccountStatus.Active
         };
         db.Add(user);
         if (role != null)
@@ -750,21 +774,46 @@ public class TrainerWorkflowTests
         var profile = await db.TrainerProfiles.SingleAsync();
         db.Add(new BannedWordList { Word = "scam", CreatedByUserId = "manager" });
         var member = await AddUser(db, "member", "member@example.test", "0900000060", "Member");
-        db.Add(new TrainerReview { TrainerUserId = profile.PTUserId, MemberUserId = member.UserId, Rating = 5, Comment = "Great coach",
-            ReviewStatus = TrainerReviewStatus.Approved, IsVisible = true });
+        // The membership graph is irrelevant here; the review only needs a PT contract row (GBR-102).
+        await db.Database.ExecuteSqlRawAsync("ALTER TABLE [PTPurchases] NOCHECK CONSTRAINT ALL");
+        var contract = new PTPurchase { MemberUserId = member.UserId, PTUserId = profile.PTUserId, Status = PTPurchaseStatus.Expired };
+        db.Add(contract);
+        await db.SaveChangesAsync();
+        db.Add(new TrainerReview
+        {
+            PTPurchaseId = contract.Id,
+            TrainerUserId = profile.PTUserId,
+            MemberUserId = member.UserId,
+            Rating = 5,
+            Comment = "Great coach",
+            ReviewStatus = TrainerReviewStatus.Approved,
+            IsVisible = true
+        });
+        // Gym feedback (no PT contract) that once landed on a trainer must not count for that trainer.
+        db.Add(new TrainerReview
+        {
+            TrainerUserId = profile.PTUserId,
+            MemberUserId = member.UserId,
+            Rating = 1,
+            Comment = "Gym feedback",
+            ReviewStatus = TrainerReviewStatus.Approved,
+            IsVisible = true
+        });
         await db.SaveChangesAsync();
 
         var rejected = await service.Update(new("Not a SCAM coach"), profile.PTUserId, default);
         Assert.Equal(TrainerContentRules.RejectedCode, rejected.ErrorCode);
         Assert.Equal(["scam"], TrainerContentRules.ProhibitedWords(rejected.ErrorCode, rejected.ErrorMessage));
 
-        var review = Assert.Single(TrainerTestDatabase.Success(await service.Public(profile.Id, default)).Reviews);
+        var detail = TrainerTestDatabase.Success(await service.Public(profile.Id, default));
+        var review = Assert.Single(detail.Reviews);
         Assert.Equal("member", review.MemberName);
+        Assert.Equal(5, detail.Profile.AverageRating);
 
         // GBR-66: a recruitment application is screened when submitted, not first at Hire.
         var applications = await db.TrainerApplications.CountAsync();
         var banned = await service.Submit(TrainerTestDatabase.Request with
-            { Email = "other@example.test", PhoneNumber = "0900000061", CitizenId = "000000000061", Specialty = "Scam coaching" }, null, default);
+        { Email = "other@example.test", PhoneNumber = "0900000061", CitizenId = "000000000061", Specialty = "Scam coaching" }, null, default);
         Assert.Equal(["scam"], TrainerContentRules.ProhibitedWords(banned.ErrorCode, banned.ErrorMessage));
         Assert.Equal(applications, await db.TrainerApplications.CountAsync());
     }

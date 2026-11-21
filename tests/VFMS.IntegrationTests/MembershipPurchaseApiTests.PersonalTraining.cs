@@ -266,9 +266,15 @@ public sealed partial class MembershipPurchaseApiTests
         {
             db.PTPurchases.Add(new PTPurchase
             {
-                MemberMembershipId = gym.Id, MemberUserId = "member", PTUserId = request.TrainerId,
-                TotalSessions = 1, RemainingSessions = 1, StartDate = Today.AddDays(-2),
-                EndDate = Today.AddDays(-1), PurchaseDate = Today.AddDays(-3), Status = PTPurchaseStatus.Expired
+                MemberMembershipId = gym.Id,
+                MemberUserId = "member",
+                PTUserId = request.TrainerId,
+                TotalSessions = 1,
+                RemainingSessions = 1,
+                StartDate = Today.AddDays(-2),
+                EndDate = Today.AddDays(-1),
+                PurchaseDate = Today.AddDays(-3),
+                Status = PTPurchaseStatus.Expired
             });
         }
         await db.SaveChangesAsync();
@@ -828,8 +834,13 @@ public sealed partial class MembershipPurchaseApiTests
                 }]
             };
             db.Orders.Add(order);
-            db.TrainerProfiles.Add(new TrainerProfile { PTUserId = "buyer", Level = TrainerLevel.Senior, AcceptingNewMembers = true,
-                TrainerRoleId = _ptTrainerRole });
+            db.TrainerProfiles.Add(new TrainerProfile
+            {
+                PTUserId = "buyer",
+                Level = TrainerLevel.Senior,
+                AcceptingNewMembers = true,
+                TrainerRoleId = _ptTrainerRole
+            });
             db.Vouchers.Add(new Voucher
             {
                 Code = "PT-OFF",

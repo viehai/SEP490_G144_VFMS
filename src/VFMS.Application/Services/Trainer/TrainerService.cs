@@ -170,8 +170,11 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
             citizen = profile.CitizenId;
             r = r with
             {
-                FullName = owner.FullName, PhoneNumber = owner.PhoneNumber, Gender = profile.Gender,
-                ExperienceYears = profile.ExperienceYears, Bio = profile.Bio ?? ""
+                FullName = owner.FullName,
+                PhoneNumber = owner.PhoneNumber,
+                Gender = profile.Gender,
+                ExperienceYears = profile.ExperienceYears,
+                Bio = profile.Bio ?? ""
             };
             var replacements = r.Certificates.Select(file => file.ReplacesCertificateId)
                 .Concat((r.CertificateLinks ?? []).Select(link => link.ReplacesCertificateId)).OfType<string>().ToArray();
@@ -429,18 +432,18 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
 
     private static TrainerAccountMatch DescribeAccountMatch(IReadOnlyList<ApplicationUser> matches,
         IReadOnlySet<string> ineligible, TrainerApplication application) => matches.Count switch
-    {
-        0 => new("None"),
-        1 when !ineligible.Contains(matches[0].UserId) => new("Matched", matches[0].UserId, matches[0].FullName),
-        1 => new("Ineligible"),
-        _ => new("Ambiguous", Matches: matches.OrderBy(user => user.UserId).Select(user =>
-            new TrainerAccountCandidate(user.UserId, user.FullName, user.Email, user.PhoneNumber,
-                string.Equals(user.Email, application.Email, StringComparison.OrdinalIgnoreCase) ||
-                application.Email.EndsWith(GmailSuffix, StringComparison.OrdinalIgnoreCase) &&
-                user.Email.EndsWith(GmailSuffix, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(user.Email.Replace(".", ""), application.Email.Replace(".", ""), StringComparison.OrdinalIgnoreCase),
-                user.PhoneNumber == application.PhoneNumber, !ineligible.Contains(user.UserId))).ToArray())
-    };
+        {
+            0 => new("None"),
+            1 when !ineligible.Contains(matches[0].UserId) => new("Matched", matches[0].UserId, matches[0].FullName),
+            1 => new("Ineligible"),
+            _ => new("Ambiguous", Matches: matches.OrderBy(user => user.UserId).Select(user =>
+                new TrainerAccountCandidate(user.UserId, user.FullName, user.Email, user.PhoneNumber,
+                    string.Equals(user.Email, application.Email, StringComparison.OrdinalIgnoreCase) ||
+                    application.Email.EndsWith(GmailSuffix, StringComparison.OrdinalIgnoreCase) &&
+                    user.Email.EndsWith(GmailSuffix, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(user.Email.Replace(".", ""), application.Email.Replace(".", ""), StringComparison.OrdinalIgnoreCase),
+                    user.PhoneNumber == application.PhoneNumber, !ineligible.Contains(user.UserId))).ToArray())
+        };
 
     public Task<Result<TrainerApplicationResponse>> Review(int id, ReviewTrainerApplicationRequest r, string actor, CancellationToken ct) => store.Write(async () =>
     {
@@ -645,30 +648,30 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
     // UC 3.4: the directory lists active PT and Yoga trainers; Yoga trainers teaching classes stay visible.
     private IQueryable<TrainerProfileResponse> PublicProfiles() =>
         from profile in store.Query<TrainerProfile>()
-               join user in store.Query<ApplicationUser>() on profile.PTUserId equals user.UserId
-               where profile.IsActive && user.AccountStatus == AccountStatus.Active && !user.IsBanned
-               select new TrainerProfileResponse
-               {
-                   Id = profile.Id,
-                   UserId = profile.PTUserId,
-                   FullName = user.FullName,
-                   Level = profile.Level.ToString(),
-                   Specialty = profile.Specialty,
-                   Gender = profile.Gender,
-                   ExperienceYears = profile.ExperienceYears,
-                   Bio = profile.Bio,
-                   AvatarUrl = profile.AvatarJson != null && profile.AvatarJson != ""
-                       ? "/api/trainers/" + profile.Id + "/avatar"
-                       : profile.AvatarUrl,
-                   AverageRating = store.Query<TrainerReview>()
-                       .Where(r => r.TrainerUserId == profile.PTUserId && r.IsVisible &&
-                           r.ReviewStatus == TrainerReviewStatus.Approved)
-                       .Select(r => (decimal?)r.Rating)
-                       .Average() ?? 0,
-                   IsAcceptingNewMembers = profile.AcceptingNewMembers,
-                   NotAcceptingSince = profile.NotAcceptingSince,
-                   TrainerRole = profile.TrainerRole != null ? profile.TrainerRole.RoleName : ""
-               };
+        join user in store.Query<ApplicationUser>() on profile.PTUserId equals user.UserId
+        where profile.IsActive && user.AccountStatus == AccountStatus.Active && !user.IsBanned
+        select new TrainerProfileResponse
+        {
+            Id = profile.Id,
+            UserId = profile.PTUserId,
+            FullName = user.FullName,
+            Level = profile.Level.ToString(),
+            Specialty = profile.Specialty,
+            Gender = profile.Gender,
+            ExperienceYears = profile.ExperienceYears,
+            Bio = profile.Bio,
+            AvatarUrl = profile.AvatarJson != null && profile.AvatarJson != ""
+                ? "/api/trainers/" + profile.Id + "/avatar"
+                : profile.AvatarUrl,
+            AverageRating = store.Query<TrainerReview>()
+                .Where(r => r.TrainerUserId == profile.PTUserId && r.PTPurchaseId != null && r.IsVisible &&
+                    r.ReviewStatus == TrainerReviewStatus.Approved)
+                .Select(r => (decimal?)r.Rating)
+                .Average() ?? 0,
+            IsAcceptingNewMembers = profile.AcceptingNewMembers,
+            NotAcceptingSince = profile.NotAcceptingSince,
+            TrainerRole = profile.TrainerRole != null ? profile.TrainerRole.RoleName : ""
+        };
 
     /// <summary>UC 4.12 / GBR-98: the change applies immediately; members of untouched contracts get one week to change trainer.</summary>
     public Task<Result<TrainerReadinessStatus>> SetReadiness(bool accepting, string actor, CancellationToken ct) =>
@@ -705,10 +708,14 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
             contract.TrainerChangeDeadline = now.AddDays(7);
             store.Add(new Notification
             {
-                RecipientUserId = contract.MemberUserId, SenderUserId = trainerId, NotificationType = "PersonalTraining",
+                RecipientUserId = contract.MemberUserId,
+                SenderUserId = trainerId,
+                NotificationType = "PersonalTraining",
                 Title = "Bạn có thể đổi huấn luyện viên",
                 Message = "Huấn luyện viên của bạn tạm ngừng nhận học viên mới. Bạn có 1 tuần để chọn huấn luyện viên khác cho các buổi còn lại.",
-                EntityType = nameof(PTPurchase), EntityId = contract.Id, NotifiedAt = now
+                EntityType = nameof(PTPurchase),
+                EntityId = contract.Id,
+                NotifiedAt = now
             });
         }
         return untouched.Count;
@@ -746,7 +753,8 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
                     f.RequestStatus == PTFreezeRequestStatus.Active || f.RequestStatus == PTFreezeRequestStatus.Completed) &&
                     f.ActualStartDate <= today && f.ActualEndDate > today)), ct) > 0;
         const int pageSize = 20;
-        var reviews = store.Query<TrainerReview>().Where(x => x.TrainerUserId == p.UserId &&
+        // GBR-102: only PT contract reviews (UC 4.10) belong to a trainer; gym feedback has no PTPurchaseId.
+        var reviews = store.Query<TrainerReview>().Where(x => x.TrainerUserId == p.UserId && x.PTPurchaseId != null &&
             x.IsVisible && x.ReviewStatus == TrainerReviewStatus.Approved);
         var reviewTotal = await store.Count(reviews, ct);
         reviewPage = Math.Clamp(reviewPage, 1, Math.Max(1, (int)Math.Ceiling((double)reviewTotal / pageSize)));
@@ -813,7 +821,8 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
             return Result<int>.Success(0);
         var managers = await store.List((from ur in store.Query<ApplicationUserRole>()
                                          join role in store.Query<ApplicationRole>() on ur.RoleId equals role.Id
-                                         where role.RoleName == "Manager" select ur.UserId).Distinct(), ct);
+                                         where role.RoleName == "Manager"
+                                         select ur.UserId).Distinct(), ct);
         foreach (var application in expired)
             foreach (var manager in managers)
                 Notify(manager, null, application, SetupExpiredType, "Trainer setup link expired",

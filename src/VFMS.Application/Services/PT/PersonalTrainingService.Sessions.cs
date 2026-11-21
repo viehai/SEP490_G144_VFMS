@@ -196,14 +196,13 @@ public sealed partial class PersonalTrainingService
     }
 
     private async Task<bool> CanAdjust(PTPurchase p, PTSession s, DateOnly date, TimeOnly start, TimeOnly end,
-        PTAdjustmentType type, DateTime now, CancellationToken ct, bool isMakeUp = false)
+        DateTime now, CancellationToken ct, bool isMakeUp = false)
     {
-        var units = s.CreditUnits;
         var (used, reserved) = PersonalTrainingRules.Credits(p.Sessions);
         var lastDay = isMakeUp ? PersonalTrainingRules.MakeUpDeadline(p.EndDate) : p.EndDate;
         if (EffectiveStatus(p) != PTPurchaseStatus.Active || date < p.StartDate || date > lastDay ||
             Utc(date, start) <= now || !InHours(p.PTUser.Gym, start, end) ||
-            p.TotalSessions - used - reserved < (isMakeUp ? units : units - s.CreditUnits) ||
+            p.TotalSessions - used - reserved < (isMakeUp ? s.CreditUnits : 0) ||
             p.PTFreezes.Any(f => (Approved(f) || f.RequestStatus == PTFreezeRequestStatus.Pending) &&
                 f.RequestedStartDate <= date && date < (f.ActualEndDate ?? f.RequestedEndDate)))
             return false;
@@ -251,7 +250,7 @@ public sealed partial class PersonalTrainingService
                 ReplacementForSessionId = id
             };
             if (!await CanAdjust(contract, session, session.SessionDate, session.StartTime, session.EndTime,
-                PTAdjustmentType.Reschedule, now, ct, isMakeUp: true))
+                now, ct, isMakeUp: true))
                 return Conflict<PTSessionResponse>("Lịch không khả dụng, ngoài hạn tập bù hoặc không đủ số buổi.");
 
             session.ProposalExpiresAt = new[] { now.AddHours(24), Utc(session.SessionDate, session.StartTime) }.Min();
@@ -288,7 +287,7 @@ public sealed partial class PersonalTrainingService
         if (IsOriginalTime(s, request.Date, request.StartTime) || !IsWholeHour(request.StartTime))
             return Invalid<PTSessionResponse>("Chọn giờ bắt đầu tròn giờ, khác lịch hiện tại.");
         var end = request.StartTime.Add(s.EndTime - s.StartTime);
-        if (!await CanAdjust(p, s, request.Date, request.StartTime, end, type, now, ct))
+        if (!await CanAdjust(p, s, request.Date, request.StartTime, end, now, ct))
             return Conflict<PTSessionResponse>("Lịch không khả dụng hoặc không đủ số buổi.");
         s.ProposedDate = request.Date;
         s.ProposedStartTime = request.StartTime;
@@ -372,7 +371,7 @@ public sealed partial class PersonalTrainingService
         if (request.Accept && valid)
         {
             valid = await CanAdjust(p, s, s.ProposedDate!.Value, s.ProposedStartTime!.Value,
-                s.ProposedEndTime!.Value, type, now, ct);
+                s.ProposedEndTime!.Value, now, ct);
             if (valid)
             {
                 s.SessionDate = s.ProposedDate.Value;
@@ -418,7 +417,7 @@ public sealed partial class PersonalTrainingService
         var valid = session.ProposalExpiresAt > now;
         if (valid && accept)
             valid = await CanAdjust(contract, session, session.SessionDate, session.StartTime, session.EndTime,
-                PTAdjustmentType.Reschedule, now, ct, isMakeUp: true);
+                now, ct, isMakeUp: true);
 
         ClearProposal(session);
         if (!valid || !accept)

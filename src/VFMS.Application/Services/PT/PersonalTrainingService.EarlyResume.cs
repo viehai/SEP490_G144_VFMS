@@ -53,7 +53,7 @@ public sealed partial class PersonalTrainingService
     {
         if (await User(actor, UserRole.Member, ct) is null)
             return Forbidden<EarlyResumePlan>();
-        var purchase = await ContractsWithSessions.SingleOrDefaultAsync(store, 
+        var purchase = await ContractsWithSessions.SingleOrDefaultAsync(store,
             p => p.MemberUserId == actor && p.PTFreezes.Any(f => f.Id == id), ct);
         if (purchase is null)
             return Missing<EarlyResumePlan>();

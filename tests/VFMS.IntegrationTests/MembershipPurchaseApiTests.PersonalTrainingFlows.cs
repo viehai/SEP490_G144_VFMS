@@ -178,8 +178,13 @@ public sealed partial class MembershipPurchaseApiTests
             var gym = await db.Gyms.SingleAsync(g => g.GymName == "VFMS");
             var ptRole = await db.ApplicationRoles.SingleAsync(r => r.RoleName == "PT");
             db.ApplicationUsers.Add(User("pt2", gym, ptRole));
-            db.TrainerProfiles.Add(new TrainerProfile { PTUserId = "pt2", Level = TrainerLevel.Senior, AcceptingNewMembers = true,
-                TrainerRoleId = _ptTrainerRole });
+            db.TrainerProfiles.Add(new TrainerProfile
+            {
+                PTUserId = "pt2",
+                Level = TrainerLevel.Senior,
+                AcceptingNewMembers = true,
+                TrainerRoleId = _ptTrainerRole
+            });
             await db.SaveChangesAsync();
         }
         using var newTrainer = Client("pt2", "PT");

@@ -63,8 +63,11 @@ public class TrainerValidationTests
         var validator = new SubmitTrainerApplicationValidator();
         Assert.True(validator.Validate(request).IsValid);
         Assert.False(validator.Validate(request with { CertificateLinks = [new("http://insecure.test/proof")] }).IsValid);
-        Assert.False(validator.Validate(request with { CertificateLinks = [new("https://certificates.example.test/new", "same"),
-            new("https://certificates.example.test/revised", "same")] }).IsValid);
+        Assert.False(validator.Validate(request with
+        {
+            CertificateLinks = [new("https://certificates.example.test/new", "same"),
+            new("https://certificates.example.test/revised", "same")]
+        }).IsValid);
     }
 
     // UC 3.1: Recruitment picks the Trainer Role PT or Yoga and a free-text specialization;
@@ -102,8 +105,14 @@ public class TrainerValidationTests
         config.Scan(typeof(VFMS.Application.Mappings.TrainerMapping).Assembly);
         var application = new VFMS.Domain.Entities.TrainerApplication
         {
-            Id = 7, TrackingCode = "TR-1", FullName = "Applicant", Email = "a@example.test", PhoneNumber = "0900000000",
-            CitizenId = "000000000001", Specialty = "PT", InterviewNote = "private",
+            Id = 7,
+            TrackingCode = "TR-1",
+            FullName = "Applicant",
+            Email = "a@example.test",
+            PhoneNumber = "0900000000",
+            CitizenId = "000000000001",
+            Specialty = "PT",
+            InterviewNote = "private",
             ApplicationStatus = VFMS.Domain.Enums.TrainerApplicationStatus.Interviewing,
             CertificatesJson = """[{"Id":"f1","FileName":"proof.pdf","ContentType":"application/pdf"}]"""
         };
@@ -150,8 +159,17 @@ public class TrainerValidationTests
         Assert.False(validator.Validate(request with { ApplicationType = "ProfileUpdate", Consent = false }).IsValid);
         Assert.False(validator.Validate(request with { ApplicationType = "ProfileUpdate", Certificates = [] }).IsValid);
         // UC 3.3: personal details come from the account and TrainerProfile, so a ProfileUpdate may omit them.
-        Assert.True(validator.Validate(request with { ApplicationType = "ProfileUpdate", CitizenId = "", PhoneNumber = "",
-            FullName = "", Bio = "", DateOfBirth = default, Gender = "", Specialty = "" }).IsValid);
+        Assert.True(validator.Validate(request with
+        {
+            ApplicationType = "ProfileUpdate",
+            CitizenId = "",
+            PhoneNumber = "",
+            FullName = "",
+            Bio = "",
+            DateOfBirth = default,
+            Gender = "",
+            Specialty = ""
+        }).IsValid);
         Assert.False(validator.Validate(request with { ApplicationType = "Recruitment", CitizenId = "" }).IsValid);
     }
 

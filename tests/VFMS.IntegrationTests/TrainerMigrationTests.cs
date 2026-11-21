@@ -20,8 +20,16 @@ public class TrainerMigrationTests
         var pt = await db.TrainerRoles.Where(t => t.RoleName == TrainerRole.PT).Select(t => t.Id).SingleAsync();
         TrainerApplication App(string code, string specialty, TrainerApplicationStatus status) => new()
         {
-            TrackingCode = code, FullName = code, Email = code + "@example.test", PhoneNumber = "0900000000",
-            CitizenId = "", Specialty = specialty, Gender = "Other", Bio = "Bio", ApplicationStatus = status, SubmittedAt = DateTime.UtcNow,
+            TrackingCode = code,
+            FullName = code,
+            Email = code + "@example.test",
+            PhoneNumber = "0900000000",
+            CitizenId = "",
+            Specialty = specialty,
+            Gender = "Other",
+            Bio = "Bio",
+            ApplicationStatus = status,
+            SubmittedAt = DateTime.UtcNow,
             TrainerRoleId = pt
         };
         db.TrainerApplications.AddRange(App("open-yoga", "Yoga", TrainerApplicationStatus.Interviewing),
