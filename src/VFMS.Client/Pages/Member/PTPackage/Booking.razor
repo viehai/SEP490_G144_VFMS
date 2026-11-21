@@ -32,10 +32,11 @@
                                step="7" @bind="_start" @bind:after="ChangeScheduleAsync" aria-invalid="@(!ValidStart)" />
                         @if (!ValidStart)
                         {
-                            <span role="alert">Chọn thứ Hai chưa qua.</span>
+                            <span role="alert">Chọn thứ Hai từ @Date(FirstMonday) trở đi.</span>
                         }
                     </label>
                 </fieldset>
+                <p class="trainer-muted">Tuần bắt đầu là thứ Hai từ tuần sau; cần giữ lịch muộn nhất vào thứ Sáu trước đó. Ca bận trong tuần bắt đầu không chọn được; ngày bận ở các tuần sau được dời ra sau buổi cuối.</p>
                 <PTWeeklyGrid Slots="_slots" SelectedIds="_selected.Values" SlotSelected="SelectSlot" Disabled="@(_busy || !ValidStart)" />
                 <div class="trainer-row">
                     <span>@_selected.Count ngày lặp đã chọn</span>
@@ -49,6 +50,10 @@
                 <h2>Lịch dự kiến</h2>
                 <strong>@trainer.Profile.FullName</strong>
                 <p>@preview.Sessions.Count buổi · Buổi cuối @Date(preview.ExpiresOn) · @Money(preview.Price)</p>
+                @if (preview.Skipped.Count > 0)
+                {
+                    <p class="trainer-feedback" role="status">Huấn luyện viên hoặc bạn đã có lịch vào @string.Join(", ", preview.Skipped.Select(s => $"{Date(s.Date)} {s.StartTime:HH:mm}")); các buổi này được dời ra sau buổi cuối.</p>
+                }
                 <PTPreviewCalendar @key="preview" Slots="preview.Sessions" StartDate="booking.StartDate" />
                 <button class="trainer-button trainer-primary" disabled="@(_busy || !CanPreview || preview.Sessions.Count == 0)"
                         @onclick="() => HoldAsync(booking)">Giữ lịch và tiếp tục</button>
@@ -74,12 +79,13 @@
     private readonly Dictionary<DayOfWeek, int> _selected = [];
     private PTBookingPreview? _preview;
     private PTBookingRequest? _booking;
+    // GBR-12: the first Monday that can still be held today (the hold is due by the Friday before it).
     private static DateOnly FirstMonday
     {
         get
         {
-            var today = Today;
-            return today.AddDays((7 - DayIndex(today.DayOfWeek)) % 7);
+            var earliest = Today.AddDays(3);
+            return earliest.AddDays((7 - DayIndex(earliest.DayOfWeek)) % 7);
         }
     }
     private DateOnly _start = FirstMonday;

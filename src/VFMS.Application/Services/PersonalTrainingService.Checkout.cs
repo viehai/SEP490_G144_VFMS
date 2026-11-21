@@ -54,7 +54,7 @@ public sealed partial class PersonalTrainingService
         var count = terms.SessionCount.GetValueOrDefault();
         var candidates = Candidates(request.StartDate, pattern, count);
         var (dates, skipped) = Schedule(candidates, await ConflictingSlots(request.TrainerId, actor, candidates, now, ct), count);
-        // Too many busy dates to move: keep the plain schedule so the hold reports the conflict (MSG-30).
+        // Busy in the start week (or too often to move): keep the plain schedule so the hold reports the conflict (MSG-30).
         if (dates.Length == 0)
             dates = candidates.Take(count).ToArray();
         if (dates.Length < count || count <= 0)
@@ -63,17 +63,18 @@ public sealed partial class PersonalTrainingService
             { Skipped = skipped }, package, profile, trainer, pattern));
     }
 
-    // UC 4.2 / GBR-12: a date on which the trainer or the Member is busy is skipped and the session moves to the
-    // next free occurrence of the pattern after the last session.
-    // At most one week of sessions is moved; a slot busy more often than that is taken by another schedule.
+    // UC 4.2 / GBR-12: a slot busy in the start week cannot be used (another schedule holds it). A later busy date is
+    // skipped and the session moves to the next free occurrence of the pattern after the last session.
+    // shortcut: looks ahead at most twice the session count; a pattern busy more often than that cannot be booked.
     private static PTCalendarSlot[] Candidates(DateOnly start, PTAvailability[] pattern, int count) =>
-        count <= 0 ? [] : ProposedDates(start, pattern, count + pattern.Length);
+        count <= 0 ? [] : ProposedDates(start, pattern, count * 2);
 
     private static (PTCalendarSlot[] Dates, PTCalendarSlot[] Skipped) Schedule(PTCalendarSlot[] candidates,
         IReadOnlySet<PTCalendarSlot> busy, int count)
     {
         var dates = candidates.Where(slot => !busy.Contains(slot)).Take(count).ToArray();
-        if (count <= 0 || dates.Length < count)
+        var startWeekEnds = candidates.Length == 0 ? DateOnly.MinValue : candidates[0].Date.AddDays(7);
+        if (count <= 0 || dates.Length < count || candidates.Any(slot => slot.Date < startWeekEnds && busy.Contains(slot)))
             return ([], []);
         return (dates, candidates.Where(slot => busy.Contains(slot) && slot.Date <= dates[^1].Date).ToArray());
     }

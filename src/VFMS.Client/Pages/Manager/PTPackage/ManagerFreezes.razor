@@ -51,7 +51,8 @@
     {
         <section class="trainer-panel trainer-stack">
             <h2>Yêu cầu #@selected.Id · Hợp đồng #@selected.ContractId</h2>
-            <p>@Date(selected.StartDate) đến trước @Date(selected.ResumeDate)</p>
+            <p>@Date(selected.StartDate) đến trước @Date(selected.ResumeDate) · @(selected.ResumeDate.DayNumber - selected.StartDate.DayNumber) ngày</p>
+            <p class="trainer-muted">Chính sách bảo lưu của hợp đồng: tối thiểu @selected.MinimumDays ngày, tối đa @selected.MaximumDays ngày, một lần cho mỗi hợp đồng.</p>
             <p class="trainer-copy">@selected.Reason</p>
             @if (_preview is { } preview)
             {

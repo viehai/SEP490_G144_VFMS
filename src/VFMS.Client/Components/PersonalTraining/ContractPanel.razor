@@ -175,7 +175,7 @@
                             <label>Ngày tập bù<input class="trainer-input" type="date" min="@Today.ToString("yyyy-MM-dd")" @bind="_makeUpDate" /></label>
                             <label>Giờ bắt đầu
                                 <select class="trainer-input" @bind="_makeUpHour">
-                                    @for (var hour = 5; hour <= 22; hour++) { <option value="@hour">@($"{hour:00}:00")</option> }
+                                    @foreach (var hour in MakeUpHours) { <option value="@hour">@($"{hour:00}:00 – {hour + 1:00}:00")</option> }
                                 </select>
                             </label>
                         </fieldset>
@@ -228,7 +228,12 @@
         : s.Status != "Cancelled" || s.IsMakeUpUnit || s.TrainerAbsenceReportedAt is not null)
         .Where(s => _history || !IsTrainer || IsFuture(s.Date, s.EndTime) || s.IsMakeUpUnit);
     private PTCalendarSlot[] CalendarSlots => Visible.Select(s => new PTCalendarSlot(s.Id, s.Date, s.StartTime, s.EndTime, s.Status)).ToArray();
-    private bool CanOfferReview => !_reviewed && Contract.Status == "Completed" &&
+    // UC 4.7: a 60-minute make-up starts on a whole hour and ends by gym closing time.
+    private IEnumerable<int> MakeUpHours => Contract is { GymOpenTime: { } open, GymCloseTime: { } close } && open < close
+        ? Enumerable.Range(open.Hour + (open.Minute > 0 ? 1 : 0), Math.Max(0, close.Hour - open.Hour - (open.Minute > 0 ? 1 : 0)))
+        : Enumerable.Range(5, 18);
+    // UC 4.10: a contract is reviewed once, also after the page reloads.
+    private bool CanOfferReview => !_reviewed && !Contract.HasReview && Contract.Status == "Completed" &&
         Contract.Sessions.LastOrDefault(s => s.Status is not ("Cancelled" or "MakeUpPending" or "MakeUpRequested"))?.Status
             is "Completed" or "AutoCompleted";
     private static DateTime LocalNow => DateTime.UtcNow.AddHours(7);
@@ -273,7 +278,12 @@
 
     private void CloseEditor() { _editor = null; _sessionId = null; }
     private void OpenEditor(PTSessionResponse item, string editor) { _sessionId = item.Id; _editor = editor; _absenceReason = ""; }
-    private void OpenMakeUp(PTSessionResponse item) { OpenEditor(item, MakeUp); _makeUpDate = Today.AddDays(1); }
+    private void OpenMakeUp(PTSessionResponse item)
+    {
+        OpenEditor(item, MakeUp);
+        _makeUpDate = Today.AddDays(1);
+        if (!MakeUpHours.Contains(_makeUpHour)) _makeUpHour = MakeUpHours.FirstOrDefault(9);
+    }
 
     private Task SendAbsenceAsync() => _sessionId is { } id
         ? RunAsync(async () =>

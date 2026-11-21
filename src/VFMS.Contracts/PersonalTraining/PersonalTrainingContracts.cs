@@ -106,7 +106,12 @@ public sealed record PTReplacementTrainer(string UserId, int ProfileId, string F
 public sealed record PTFreezeDecision(bool Approve, string? Reason);
 public sealed record PTFreezeResponse(int Id, int ContractId, string MemberId, string TrainerId, DateOnly StartDate,
     DateOnly ResumeDate, string Status, string? Reason, string? ReviewNote,
-    DateTime? ReviewedAt, string? MemberName = null, string? TrainerName = null, string? ReplacementTrainerId = null);
+    DateTime? ReviewedAt, string? MemberName = null, string? TrainerName = null, string? ReplacementTrainerId = null)
+{
+    /// <summary>Freeze policy saved in the contract (UC 4.9).</summary>
+    public int MinimumDays { get; init; }
+    public int MaximumDays { get; init; }
+}
 /// <summary>GymCoverageWarning: the Gym Membership ends before the last proposed session; approval is still allowed (UC 4.9).</summary>
 public sealed record PTFreezePreview(DateOnly ExpiresOn, IReadOnlyList<PTCalendarSlot> Replacements,
     bool GymCoverageWarning = false, string? ReplacementTrainerName = null);

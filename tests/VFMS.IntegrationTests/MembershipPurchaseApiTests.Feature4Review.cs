@@ -24,6 +24,9 @@ public sealed partial class MembershipPurchaseApiTests
         using var requested = await member.PostAsJsonAsync($"/api/pt/contracts/{id}/freezes",
             new PTFreezeRequest(contract.StartDate, contract.StartDate.AddDays(7), "Travel"));
         Assert.True(requested.StatusCode == HttpStatusCode.Created, await requested.Content.ReadAsStringAsync());
+        // UC 4.9: the request carries the contract's freeze policy for the Manager.
+        var freeze = (await requested.Content.ReadFromJsonAsync<PTFreezeResponse>())!;
+        Assert.Equal((7, 15), (freeze.MinimumDays, freeze.MaximumDays));
 
         _clock.Now = LocalTime(first.Date, first.EndTime).AddMinutes(5);
         using var present = await trainer.PostAsJsonAsync($"/api/pt/sessions/{first.Id}/attendance", true);
@@ -109,22 +112,10 @@ public sealed partial class MembershipPurchaseApiTests
         var plain = (await (await member.PostAsJsonAsync("/api/pt/schedule/preview", request))
             .Content.ReadFromJsonAsync<PTBookingPreview>())!;
         Assert.Empty(plain.Skipped);
-        var busy = plain.Sessions[1];
-        await using (var scope = _app.Services.CreateAsyncScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
-            var membership = await db.MemberMemberships.SingleAsync();
-            db.PTPurchases.Add(new PTPurchase
-            {
-                MemberUserId = "gift", PTUserId = "buyer", MemberMembershipId = membership.Id,
-                StartDate = busy.Date, EndDate = busy.Date, Status = PTPurchaseStatus.Active,
-                Sessions = [new PTSession { MemberUserId = "gift", PTUserId = "buyer", SessionDate = busy.Date,
-                    StartTime = busy.StartTime, EndTime = busy.EndTime }]
-            });
-            await db.SaveChangesAsync();
-        }
+        var busy = plain.Sessions.First(s => s.Date >= request.StartDate.AddDays(7));
+        await AddOtherMemberSession(busy);
 
-        // GBR-12: the busy date (for example another Member's make-up) is skipped and one session moves to the end.
+        // GBR-12: a busy date after the start week (for example another Member's make-up) moves to the end.
         using var response = await member.PostAsJsonAsync("/api/pt/schedule/preview", request);
         Assert.True(response.StatusCode == HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
         var moved = (await response.Content.ReadFromJsonAsync<PTBookingPreview>())!;
@@ -132,7 +123,29 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Equal(plain.Sessions.Count, moved.Sessions.Count);
         Assert.DoesNotContain(moved.Sessions, s => s.Date == busy.Date);
         Assert.True(moved.ExpiresOn > plain.ExpiresOn);
-        using var held = await member.PostAsJsonAsync("/api/pt/purchases", request);
-        Assert.True(held.StatusCode == HttpStatusCode.Created, await held.Content.ReadAsStringAsync());
+
+        // A slot busy in the start week is held by another schedule: it is blocked, not moved.
+        await AddOtherMemberSession(plain.Sessions[0]);
+        using var blocked = await member.PostAsJsonAsync("/api/pt/purchases", request);
+        Assert.Equal(HttpStatusCode.Conflict, blocked.StatusCode);
+        var options = (await (await member.PostAsJsonAsync("/api/pt/schedule/booking-slots",
+            new PTBookingSlotsRequest(request.TrainerId, request.PackageId, request.StartDate, request.TemplateIds)))
+            .Content.ReadFromJsonAsync<PTWeeklySlot[]>())!;
+        Assert.NotNull(options.Single(slot => slot.TemplateId == plain.Sessions[0].TemplateId).BlockedReason);
+    }
+
+    private async Task AddOtherMemberSession(PTCalendarSlot slot)
+    {
+        await using var scope = _app.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+        var membership = await db.MemberMemberships.SingleAsync();
+        db.PTPurchases.Add(new PTPurchase
+        {
+            MemberUserId = "gift", PTUserId = "buyer", MemberMembershipId = membership.Id,
+            StartDate = slot.Date, EndDate = slot.Date, Status = PTPurchaseStatus.Active,
+            Sessions = [new PTSession { MemberUserId = "gift", PTUserId = "buyer", SessionDate = slot.Date,
+                StartTime = slot.StartTime, EndTime = slot.EndTime }]
+        });
+        await db.SaveChangesAsync();
     }
 }

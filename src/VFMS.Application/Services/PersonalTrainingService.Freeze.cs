@@ -30,7 +30,12 @@ public sealed partial class PersonalTrainingService
                 Today >= f.ActualStartDate ? PTFreezeRequestStatus.Active : PTFreezeRequestStatus.Approved;
         return new(f.Id, p.Id, p.MemberUserId, p.PTUserId, f.RequestedStartDate,
             f.ActualEndDate ?? f.RequestedEndDate, state.ToString(), f.Reason,
-            f.ReviewNote, f.ReviewedAt, ReplacementTrainerId: f.ReplacementTrainerId);
+            f.ReviewNote, f.ReviewedAt, ReplacementTrainerId: f.ReplacementTrainerId)
+        {
+            // UC 4.9: the freeze policy snapshot the Manager reviews against.
+            MinimumDays = f.MinimumDaysSnapshot ?? p.FreezeMinimumDaysSnapshot,
+            MaximumDays = f.MaxDaysSnapshot ?? p.FreezeMaxTotalDaysSnapshot
+        };
     }
 
     public async Task<Result<PagedResponse<PTFreezeResponse>>> FreezePage(string actor, bool managerView, bool processed,
