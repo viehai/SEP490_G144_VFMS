@@ -56,7 +56,8 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
         application.EmailQueueJson = JsonSerializer.Serialize(queue);
     }
 
-    private static string Hash(string token) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
+    private static string HashSetupToken(string token) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"VFMS:trainer-setup:v1:{token}")));
 
     private const string GmailSuffix = "@gmail.com";
 
@@ -136,7 +137,9 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
         if (!update && actor != null && !pt && !await HasRole(actor, "Customer", ct))
             return Error<TrainerApplicationReceipt>("TRAINER_FORBIDDEN", "Customer role required.", 403);
 
-        var email = r.Email.Trim().ToLowerInvariant();
+        var email = UserIdentityRules.NormalizeEmail(r.Email);
+        if (!UserIdentityRules.TryNormalizePhone(r.PhoneNumber, out var phoneNumber))
+            return Error<TrainerApplicationReceipt>("TRAINER_VALIDATION", "Invalid phone number format.", 400);
         var citizen = r.CitizenId.Trim();
         var now = DateTime.UtcNow;
         if (!update && (pt || await IsEmployee(email, citizen, ct)))
@@ -185,7 +188,7 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
                     .Concat(r.CertificateLinks ?? []), ct),
             FullName = r.FullName.Trim(),
             Email = email,
-            PhoneNumber = r.PhoneNumber,
+            PhoneNumber = phoneNumber,
             CitizenId = citizen,
             DateOfBirth = r.DateOfBirth,
             Gender = r.Gender,
@@ -309,11 +312,12 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
 
     private Task<List<ApplicationUser>> FindMatchingAccounts(TrainerApplication application, CancellationToken ct)
     {
-        var email = application.Email.Trim().ToLowerInvariant();
+        var email = UserIdentityRules.NormalizeEmail(application.Email);
+        var hasPhone = UserIdentityRules.TryNormalizePhone(application.PhoneNumber, out var phoneNumber);
         var isGmail = email.EndsWith(GmailSuffix, StringComparison.Ordinal);
         var identity = email.Replace(".", "");
         return store.List(store.Query<ApplicationUser>()
-            .Where(user => user.Email.ToLower() == email || user.PhoneNumber == application.PhoneNumber ||
+            .Where(user => user.Email == email || (hasPhone && user.PhoneNumber == phoneNumber) ||
                 (isGmail && user.Email.ToLower().EndsWith(GmailSuffix) && user.Email.ToLower().Replace(".", "") == identity)), ct);
     }
 
@@ -341,7 +345,8 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
                 application.Email.EndsWith(GmailSuffix, StringComparison.OrdinalIgnoreCase) &&
                 user.Email.EndsWith(GmailSuffix, StringComparison.OrdinalIgnoreCase) &&
                 string.Equals(user.Email.Replace(".", ""), application.Email.Replace(".", ""), StringComparison.OrdinalIgnoreCase),
-                user.PhoneNumber == application.PhoneNumber, !ineligible.Contains(user.UserId))).ToArray())
+                UserIdentityRules.TryNormalizePhone(application.PhoneNumber, out var phoneNumber) &&
+                user.PhoneNumber == phoneNumber, !ineligible.Contains(user.UserId))).ToArray())
     };
 
     public Task<Result<TrainerApplicationResponse>> Review(int id, ReviewTrainerApplicationRequest r, string actor, CancellationToken ct) => store.Write(async () =>
@@ -425,13 +430,17 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
             var isNew = user == null;
             if (isNew)
             {
+                var email = UserIdentityRules.NormalizeEmail(a.Email);
+                if (!UserIdentityRules.IsValidEmail(email) || !UserIdentityRules.TryNormalizePhone(a.PhoneNumber, out var phoneNumber))
+                    return Error<TrainerApplicationResponse>("TRAINER_IDENTITY_CONFLICT", "The application has an invalid email address or phone number.");
+
                 user = new ApplicationUser
                 {
                     UserId = Guid.NewGuid().ToString(),
                     GymId = gym.Id,
                     FullName = a.FullName,
-                    Email = a.Email,
-                    PhoneNumber = a.PhoneNumber,
+                    Email = email,
+                    PhoneNumber = phoneNumber,
                     AccountStatus = AccountStatus.PendingVerification,
                     PasswordHash = passwords.Hash(Convert.ToHexString(RandomNumberGenerator.GetBytes(32)))
                 };
@@ -491,38 +500,48 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
     private void QueueSetup(ApplicationUser user, TrainerApplication application)
     {
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
-        user.PasswordSetupTokenHash = Hash(token);
+        user.PasswordSetupTokenHash = HashSetupToken(token);
         user.PasswordSetupExpiresAt = DateTime.UtcNow.AddHours(48);
         Mail(application, user.Email, "Set up your trainer account", "SETUP:" + token);
     }
     public Task<Result<bool>> ResendSetup(int applicationId, string actor, CancellationToken ct) => store.Write(async () =>
     {
         if (!await HasRole(actor, "Manager", ct)) return Error<bool>("TRAINER_FORBIDDEN", "Manager role required.", 403);
-        var a = await store.First(store.Query<TrainerApplication>().Where(x => x.Id == applicationId && x.ApplicationStatus == TrainerApplicationStatus.Hired), ct);
-        var u = a == null ? null : await store.First(store.Query<ApplicationUser>().Where(x => x.UserId == a.HiredUserId), ct);
-        if (u == null || u.AccountStatus != AccountStatus.PendingVerification) return Error<bool>("TRAINER_INVALID_STATE", "Only pending hired accounts can receive a setup link.");
+        var a = await store.First(store.Query<TrainerApplication>().Where(x => x.Id == applicationId &&
+            x.ApplicationType == "Recruitment" && x.ApplicationStatus == TrainerApplicationStatus.Hired), ct);
+        var u = a == null ? null : await store.First(store.Query<ApplicationUser>().Where(x => x.UserId == a.HiredUserId &&
+            x.AccountStatus == AccountStatus.PendingVerification && !x.IsBanned &&
+            x.UserRoles.Any(userRole => userRole.Role.RoleName == nameof(UserRole.PT)) &&
+            !x.UserRoles.Any(userRole => userRole.Role.RoleName != nameof(UserRole.PT))), ct);
+        if (u == null) return Error<bool>("TRAINER_INVALID_STATE", "Only pending hired accounts can receive a setup link.");
         await ClearSetupEmails(u, ct);
         QueueSetup(u, a!);
         var status = a!.ApplicationStatus.ToString();
         Audit(actor, nameof(TrainerApplication), applicationId, "ResendSetup", status, status);
         return Result<bool>.Success(true);
     }, ct);
-    public Task<Result<bool>> Setup(TrainerSetupRequest r, CancellationToken ct) => store.Write(async () =>
+    public async Task<Result<bool>> Setup(TrainerSetupRequest r, CancellationToken ct)
     {
         if (!(await new TrainerSetupValidator().ValidateAsync(r, ct)).IsValid) return Error<bool>("TRAINER_VALIDATION", "Invalid token/password format.", 400);
-        var hash = Hash(r.Token);
-        var now = DateTime.UtcNow;
-        var u = await store.First(store.Query<ApplicationUser>().Where(x => x.PasswordSetupTokenHash == hash && x.PasswordSetupExpiresAt > now), ct);
-        if (u == null || u.AccountStatus != AccountStatus.PendingVerification || u.IsBanned) return Error<bool>("TRAINER_SETUP_INVALID", "Setup link is invalid or expired.", 400);
-        u.PasswordHash = passwords.Hash(r.Password);
-        u.AccountStatus = AccountStatus.Active;
-        u.PasswordSetupTokenHash = null;
-        u.PasswordSetupExpiresAt = null;
-        await ClearSetupEmails(u, ct);
-        Audit(u.UserId, nameof(ApplicationUser), u.Id, "TrainerPasswordSetup",
-            nameof(AccountStatus.PendingVerification), nameof(AccountStatus.Active));
-        return Result<bool>.Success(true);
-    }, ct);
+        var tokenHash = HashSetupToken(r.Token);
+        var user = await store.FindEligiblePasswordSetupAsync(tokenHash, DateTime.UtcNow, ct);
+        if (user is null)
+            return InvalidSetupToken();
+
+        var passwordHash = passwords.Hash(r.Password);
+        return await store.Write(async () =>
+        {
+            if (!await store.TryCompletePasswordSetupAsync(user.UserId, tokenHash, passwordHash, DateTime.UtcNow, ct))
+                return InvalidSetupToken();
+
+            await ClearSetupEmails(user, ct);
+            Audit(user.UserId, nameof(ApplicationUser), user.Id, "TrainerPasswordSetup",
+                nameof(AccountStatus.PendingVerification), nameof(AccountStatus.Active));
+            return Result<bool>.Success(true);
+        }, ct);
+    }
+
+    private static Result<bool> InvalidSetupToken() => Error<bool>("TRAINER_SETUP_INVALID", "Setup link is invalid or expired.", 400);
     private IQueryable<TrainerProfileResponse> PublicProfiles()
     {
         var yogaAssignments = ActiveYogaAssignments;

@@ -1,0 +1,15 @@
+@page "/staff/customers/create"
+@layout StaffPTLayout
+@using Microsoft.AspNetCore.Authorization
+@using VFMS.Client.Components.Operations
+@using VFMS.Client.Components.Users
+@attribute [Authorize(Roles = "Staff,Manager")]
+
+<PageTitle>Tạo tài khoản khách hàng | Victor Fitness</PageTitle>
+
+<div class="workspace-page space-y-6 font-['Inter',sans-serif] text-[#242424]">
+    <PageHeader Overline="VFMS / FRONT DESK"
+                Title="Tạo tài khoản khách hàng"
+                Description="Tạo nhanh tài khoản Customer cho khách hàng tại quầy lễ tân và gửi liên kết thiết lập mật khẩu 48 giờ qua email." />
+    <CreateCustomerAccountForm DashboardRoute="/staff/dashboard" />
+</div>

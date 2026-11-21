@@ -1,3 +1,4 @@
+using VFMS.Contracts.Auth;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Users;
 
@@ -7,6 +8,20 @@ public interface IUserAdministrationService
 {
     Task<Result<WalkInCustomerResponse>> CreateWalkInCustomerAsync(
         WalkInCustomerRequest request,
+        string actorUserId,
+        string? ipAddress,
+        CancellationToken cancellationToken = default);
+    Task<Result<ResendSetupEmailResponse>> ResendCustomerSetupEmailAsync(
+        string userId,
+        string actorUserId,
+        string? ipAddress,
+        CancellationToken cancellationToken = default);
+    Task<Result<WalkInCustomerResponse>> FindPendingCustomerAsync(
+        FindPendingCustomerRequest request,
+        CancellationToken cancellationToken = default);
+    Task<Result<SetupPasswordResponse>> SetupCustomerPasswordAsync(
+        SetupPasswordRequest request,
+        string? ipAddress,
         CancellationToken cancellationToken = default);
     Task<Result<UserProfileResponse>> GetMyProfileAsync(
         string userId,

@@ -1,4 +1,5 @@
 using FluentValidation;
+using VFMS.Contracts.Common;
 
 namespace VFMS.Contracts.Trainers;
 
@@ -47,8 +48,8 @@ public sealed class SubmitTrainerApplicationValidator : AbstractValidator<Submit
     {
         RuleFor(x => x.ApplicationType).Must(x => x is "Recruitment" or "ProfileUpdate");
         RuleFor(x => x.FullName).NotEmpty().MaximumLength(256);
-        RuleFor(x => x.Email).NotEmpty().EmailAddress().MaximumLength(256);
-        RuleFor(x => x.PhoneNumber).NotEmpty().Matches(@"^\+?[0-9]{9,15}$");
+        RuleFor(x => x.Email).NotEmpty().Must(UserIdentityRules.IsValidEmail);
+        RuleFor(x => x.PhoneNumber).NotEmpty().Must(UserIdentityRules.IsValidPhone);
         RuleFor(x => x.CitizenId).NotEmpty().Matches(@"^[0-9]{12}$");
         RuleFor(x => x.DateOfBirth).Must(d => d < DateOnly.FromDateTime(DateTime.UtcNow) && d.Year >= 1900);
         RuleFor(x => x.Gender).Must(x => x is "Male" or "Female" or "Other");
@@ -99,7 +100,7 @@ public sealed class TrainerSetupValidator : AbstractValidator<TrainerSetupReques
 {
     public TrainerSetupValidator()
     {
-        RuleFor(x => x.Token).NotEmpty().MaximumLength(100);
+        PasswordPolicyRules.ApplyHexToken(RuleFor(x => x.Token), "The password setup token is invalid.");
         RuleFor(x => x.Password).NotEmpty().Length(8, 32).Matches("[A-Z]").Matches("[a-z]").Matches("[0-9]").Matches("[^a-zA-Z0-9]");
     }
 }

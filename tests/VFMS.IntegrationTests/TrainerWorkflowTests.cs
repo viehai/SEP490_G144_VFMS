@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Mapster;
 using MapsterMapper;
@@ -50,9 +52,17 @@ internal sealed class TrainerTestDatabase : IAsyncDisposable
             ["JwtSettings:Issuer"] = "vfms-tests",
             ["JwtSettings:Audience"] = "vfms-tests"
         }).Build();
+        Service = CreateService(Db);
+    }
+
+    public VfmsDbContext CreateContext() => new(new DbContextOptionsBuilder<VfmsDbContext>()
+        .UseSqlServer(Db.Database.GetConnectionString()).Options);
+
+    public TrainerService CreateService(VfmsDbContext db, IPasswordHasher? passwords = null)
+    {
         var mapping = new TypeAdapterConfig();
         mapping.Scan(typeof(TrainerMapping).Assembly);
-        Service = new(new TrainerStore(Db, Protection, Configuration), new PasswordHasher(), new Mapper(mapping));
+        return new(new TrainerStore(db, Protection, Configuration), passwords ?? new PasswordHasher(), new Mapper(mapping));
     }
     public async Task Initialize()
     {
@@ -106,6 +116,120 @@ internal sealed class TrainerTestDatabase : IAsyncDisposable
 
 public class TrainerWorkflowTests
 {
+    [SqlTrainerFact]
+    public async Task ConcurrentTrainerSetupHasExactlyOneWinner()
+    {
+        await using var fixture = new TrainerTestDatabase();
+        await fixture.Initialize();
+        var application = await fixture.Hire();
+        var token = await fixture.SetupToken(application.Id);
+        using var bothValidated = new Barrier(2);
+        var synchronizedHasher = new BeforeHashPasswordHasher(() =>
+            Assert.True(bothValidated.SignalAndWait(TimeSpan.FromSeconds(15))));
+        await using var firstDb = fixture.CreateContext();
+        await using var secondDb = fixture.CreateContext();
+        var first = fixture.CreateService(firstDb, synchronizedHasher);
+        var second = fixture.CreateService(secondDb, synchronizedHasher);
+
+        var results = await Task.WhenAll(
+            Task.Run(() => first.Setup(new(token, "FirstPassword1!"), default)),
+            Task.Run(() => second.Setup(new(token, "SecondPassword1!"), default)));
+
+        Assert.Single(results, result => result.IsSuccess);
+        Assert.Single(results, result => result.ErrorCode == "TRAINER_SETUP_INVALID");
+        var user = await fixture.Db.ApplicationUsers.AsNoTracking().SingleAsync(x => x.UserId == application.HiredUserId);
+        Assert.Equal(AccountStatus.Active, user.AccountStatus);
+        Assert.Null(user.PasswordSetupTokenHash);
+        Assert.Null(user.PasswordSetupExpiresAt);
+        var winningPassword = results[0].IsSuccess ? "FirstPassword1!" : "SecondPassword1!";
+        Assert.True(new PasswordHasher().Verify(winningPassword, user.PasswordHash));
+        Assert.Equal(1, await fixture.Db.AuditLogs.CountAsync(log => log.ActorUserId == user.UserId &&
+            log.AuditEntity == nameof(ApplicationUser) && log.NewValue!.Contains("TrainerPasswordSetup")));
+    }
+
+    [SqlTrainerFact]
+    public async Task TrainerSetupRechecksRoleWhenConsumingToken()
+    {
+        await using var fixture = new TrainerTestDatabase();
+        await fixture.Initialize();
+        var application = await fixture.Hire();
+        var token = await fixture.SetupToken(application.Id);
+        await using var setupDb = fixture.CreateContext();
+        using var rolesDb = fixture.CreateContext();
+        var managerRoleId = await rolesDb.ApplicationRoles.Where(role => role.RoleName == nameof(UserRole.Manager))
+            .Select(role => role.Id).SingleAsync();
+        var service = fixture.CreateService(setupDb, new BeforeHashPasswordHasher(() =>
+            rolesDb.ApplicationUserRoles.Where(role => role.UserId == application.HiredUserId)
+                .ExecuteUpdate(update => update.SetProperty(role => role.RoleId, managerRoleId))));
+
+        var result = await service.Setup(new(token, "TrainerPassword1!"), default);
+
+        Assert.Equal("TRAINER_SETUP_INVALID", result.ErrorCode);
+        var user = await fixture.Db.ApplicationUsers.AsNoTracking().SingleAsync(x => x.UserId == application.HiredUserId);
+        Assert.Equal(AccountStatus.PendingVerification, user.AccountStatus);
+        Assert.NotNull(user.PasswordSetupTokenHash);
+    }
+
+    [SqlTrainerFact]
+    public async Task CustomerPurposeDigestDoesNotAuthorizeTrainerSetup()
+    {
+        await using var fixture = new TrainerTestDatabase();
+        await fixture.Initialize();
+        var application = await fixture.Hire();
+        var token = await fixture.SetupToken(application.Id);
+        var customerHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"VFMS:customer-password-setup:v1:{token}")));
+        await fixture.Db.ApplicationUsers.Where(x => x.UserId == application.HiredUserId)
+            .ExecuteUpdateAsync(update => update.SetProperty(x => x.PasswordSetupTokenHash, customerHash));
+
+        var result = await fixture.Service.Setup(new(token, "TrainerPassword1!"), default);
+
+        Assert.Equal("TRAINER_SETUP_INVALID", result.ErrorCode);
+        var user = await fixture.Db.ApplicationUsers.AsNoTracking().SingleAsync(x => x.UserId == application.HiredUserId);
+        Assert.Equal(AccountStatus.PendingVerification, user.AccountStatus);
+        Assert.Equal(customerHash, user.PasswordSetupTokenHash);
+    }
+
+    [SqlTrainerFact]
+    public async Task LegacyTrainerTokenRequiresReissueAndReplacementRequiresHiredApplication()
+    {
+        await using var fixture = new TrainerTestDatabase();
+        await fixture.Initialize();
+        var application = await fixture.Hire();
+        var token = await fixture.SetupToken(application.Id);
+        var legacyHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
+        await fixture.Db.ApplicationUsers.Where(x => x.UserId == application.HiredUserId)
+            .ExecuteUpdateAsync(update => update.SetProperty(x => x.PasswordSetupTokenHash, legacyHash));
+        var legacy = await fixture.Service.Setup(new(token, "TrainerPassword1!"), default);
+        Assert.Equal("TRAINER_SETUP_INVALID", legacy.ErrorCode);
+
+        TrainerTestDatabase.Success(await fixture.Service.ResendSetup(application.Id, "manager", default));
+        var replacementToken = await fixture.SetupToken(application.Id);
+        Assert.NotEqual(token, replacementToken);
+        await fixture.Db.TrainerApplications.Where(x => x.Id == application.Id)
+            .ExecuteUpdateAsync(update => update.SetProperty(x => x.HiredUserId, (string?)null));
+
+        var unlinked = await fixture.Service.Setup(new(replacementToken, "TrainerPassword1!"), default);
+
+        Assert.Equal("TRAINER_SETUP_INVALID", unlinked.ErrorCode);
+        fixture.Db.ChangeTracker.Clear();
+        await fixture.Db.TrainerApplications.Where(x => x.Id == application.Id)
+            .ExecuteUpdateAsync(update => update.SetProperty(x => x.HiredUserId, application.HiredUserId));
+        TrainerTestDatabase.Success(await fixture.Service.Setup(new(replacementToken, "TrainerPassword1!"), default));
+    }
+
+    private sealed class BeforeHashPasswordHasher(Action beforeHash) : IPasswordHasher
+    {
+        private readonly PasswordHasher _hasher = new();
+
+        public string Hash(string password)
+        {
+            beforeHash();
+            return _hasher.Hash(password);
+        }
+
+        public bool Verify(string password, string hash) => _hasher.Verify(password, hash);
+    }
+
     [SqlTrainerFact]
     public async Task TrainerSetupEmailUsesSharedEmailServiceAndFrontendUrl()
     {

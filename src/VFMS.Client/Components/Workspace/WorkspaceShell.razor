@@ -19,6 +19,7 @@
             @if (Variant == "manager")
             {
                 <AuthorizeView Roles="Manager">
+                    <NavLink href="/manager/customers/create" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">◼</span> Tạo tài khoản khách hàng <span aria-hidden="true">↗</span></NavLink>
                     <NavLink href="/manager/membership-plans" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">05</span> Gói hội viên <span aria-hidden="true">↗</span></NavLink>
                     <NavLink href="/manager/membership-freeze-policy" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">06</span> Chính sách bảo lưu <span aria-hidden="true">↗</span></NavLink>
                     <NavLink href="/manager/general-policies" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">07</span> Chính sách chung <span aria-hidden="true">↗</span></NavLink>
@@ -57,9 +58,10 @@
             @if (Variant == "staff")
             {
                 <AuthorizeView Roles="Staff">
-                    <NavLink href="/staff/equipment-issues" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">05</span> Sự cố thiết bị <span aria-hidden="true">↗</span></NavLink>
-                    <NavLink href="/staff/purchase-proposals" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">06</span> Đề xuất mua sắm <span aria-hidden="true">↗</span></NavLink>
-                    <NavLink href="/staff/supplement-orders" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">07</span> Đơn bổ sung <span aria-hidden="true">↗</span></NavLink>
+                    <NavLink href="/staff/customers/create" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">05</span> Tạo tài khoản khách hàng <span aria-hidden="true">↗</span></NavLink>
+                    <NavLink href="/staff/equipment-issues" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">06</span> Sự cố thiết bị <span aria-hidden="true">↗</span></NavLink>
+                    <NavLink href="/staff/purchase-proposals" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">07</span> Đề xuất mua sắm <span aria-hidden="true">↗</span></NavLink>
+                    <NavLink href="/staff/supplement-orders" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">08</span> Đơn bổ sung <span aria-hidden="true">↗</span></NavLink>
                 </AuthorizeView>
             }
             @if (Variant == "admin")

@@ -5,7 +5,7 @@
 
 @code {
     private string Variant => Navigation.ToBaseRelativePath(Navigation.Uri).StartsWith("pt/", StringComparison.OrdinalIgnoreCase) ? "pt" : "staff";
-    private static readonly string[] LivePages = ["staff/equipment-issues", "staff/purchase-proposals", "staff/supplement-orders",
+    private static readonly string[] LivePages = ["staff/customers/create", "staff/equipment-issues", "staff/purchase-proposals", "staff/supplement-orders",
         "pt/trainer-profile", "pt/availability", "pt/assigned-members", "pt/teaching-schedule"];
 
     private bool IsPreview => !LivePages.Contains(Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].TrimEnd('/'),

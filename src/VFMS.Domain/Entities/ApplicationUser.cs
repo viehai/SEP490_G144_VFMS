@@ -22,6 +22,7 @@ public class ApplicationUser : BaseEntity
     public DateTime? ResetTokenExpiresAt { get; set; }
     public string? AvatarUrl { get; set; }
     public AccountStatus AccountStatus { get; set; } = AccountStatus.PendingVerification;
+    public AccountStatus? AccountStatusBeforeLock { get; set; }
     public DateTime? LastLoginAt { get; set; }
     public bool IsBanned { get; set; } = false;
 

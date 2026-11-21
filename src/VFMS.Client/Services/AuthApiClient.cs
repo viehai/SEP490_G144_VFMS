@@ -14,6 +14,9 @@ public sealed class AuthApiClient(HttpClient http) : IDisposable
     public Task<RegisterResponse> RegisterAsync(RegisterRequest request, CancellationToken cancellationToken = default) =>
         PostAsync<RegisterRequest, RegisterResponse>("api/auth/register", request, cancellationToken);
 
+    public Task<SetupPasswordResponse> SetupPasswordAsync(SetupPasswordRequest request, CancellationToken cancellationToken = default) =>
+        PostAsync<SetupPasswordRequest, SetupPasswordResponse>("api/auth/setup-password", request, cancellationToken);
+
     public Task<LoginResponse> RefreshAsync(string refreshToken, CancellationToken cancellationToken = default) =>
         PostAsync<RefreshTokenRequest, LoginResponse>("api/auth/refresh", new(refreshToken), cancellationToken);
 
@@ -74,6 +77,8 @@ public sealed class AuthApiClient(HttpClient http) : IDisposable
                     "AUTH_ACCOUNT_INACTIVE" or "AUTH_ACCOUNT_NOT_ACTIVE" => "Tài khoản chưa hoạt động. Vui lòng liên hệ lễ tân.",
                     "AUTH_PENDING_VERIFICATION" => "Tài khoản đang chờ xác minh. Vui lòng liên hệ lễ tân.",
                     "AUTH_INVALID_REFRESH_TOKEN" => "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại. (MSG-11)",
+                    "AUTH_INVALID_SETUP_TOKEN" => "Liên kết thiết lập mật khẩu không hợp lệ, đã hết hạn hoặc đã được sử dụng.",
+                    "AUTH_INVALID_SETUP_REQUEST" => "Vui lòng kiểm tra lại liên kết và yêu cầu độ mạnh mật khẩu.",
                     "PAYMENT_UNAVAILABLE" => "VietQR hiện chưa khả dụng. Bạn có thể chọn thanh toán tại quầy.",
                     _ when (int)response.StatusCode >= 500 => "Hệ thống tạm thời chưa sẵn sàng. Vui lòng thử lại sau.",
                     _ => root.TryGetProperty("errorMessage", out var detail) ? detail.GetString() ?? message

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using VFMS.Application.Interfaces;
+using VFMS.Contracts.Common;
 using VFMS.Domain.Entities;
 using VFMS.Infrastructure.Data;
 
@@ -21,27 +22,26 @@ public sealed class AuthRepository : IAuthRepository
         string emailOrPhone,
         CancellationToken cancellationToken = default)
     {
-        var userByEmail = await _context.ApplicationUsers
+        var users = _context.ApplicationUsers
             .Include(u => u.UserRoles)
-            .ThenInclude(ur => ur.Role)
-            .FirstOrDefaultAsync(u => u.Email == emailOrPhone, cancellationToken);
-        if (userByEmail is not null)
-            return userByEmail;
+            .ThenInclude(ur => ur.Role);
 
-        var usersByPhone = await _context.ApplicationUsers
-            .Include(u => u.UserRoles)
-            .ThenInclude(ur => ur.Role)
-            .Where(u => u.PhoneNumber == emailOrPhone)
-            .Take(2)
-            .ToListAsync(cancellationToken);
+        var identifier = UserIdentityRules.NormalizeEmail(emailOrPhone);
+        var matches = UserIdentityRules.TryNormalizePhone(emailOrPhone, out var phoneNumber)
+            ? users.Where(user => user.PhoneNumber == phoneNumber)
+            : users.Where(user => user.Email == identifier);
 
-        return usersByPhone.Count == 1 ? usersByPhone[0] : null;
+        var candidates = await matches.Take(2).ToListAsync(cancellationToken);
+        return candidates.Count == 1 ? candidates[0] : null;
     }
 
     public async Task<bool> EmailExistsAsync(string email, CancellationToken cancellationToken = default)
     {
         return await _context.ApplicationUsers.AnyAsync(u => u.Email == email, cancellationToken);
     }
+
+    public Task<bool> PhoneNumberExistsAsync(string phoneNumber, CancellationToken cancellationToken = default) =>
+        _context.ApplicationUsers.AnyAsync(u => u.PhoneNumber == phoneNumber, cancellationToken);
 
     public async Task<ApplicationRole?> GetRoleByNameAsync(string roleName, CancellationToken cancellationToken = default)
     {
@@ -53,17 +53,29 @@ public sealed class AuthRepository : IAuthRepository
         return await _context.Gyms.FirstOrDefaultAsync(cancellationToken);
     }
 
-    public async Task CreateUserAsync(ApplicationUser user, int roleId, CancellationToken cancellationToken = default)
+    public async Task<Result<bool>> CreateUserAsync(ApplicationUser user, int roleId, CancellationToken cancellationToken = default)
     {
         _context.ApplicationUsers.Add(user);
-        await _context.SaveChangesAsync(cancellationToken);
-
         _context.ApplicationUserRoles.Add(new ApplicationUserRole
         {
             UserId = user.UserId,
             RoleId = roleId
         });
-        await _context.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+            return Result<bool>.Success(true);
+        }
+        catch (DbUpdateException exception) when (AccountIdentityConflict.GetField(exception) is { } field)
+        {
+            _context.ChangeTracker.Clear();
+            return AccountIdentityConflict.ResultFor<bool>(field);
+        }
+        catch (Exception exception) when (AccountIdentityConflict.SqlErrorNumber(exception) == 1205)
+        {
+            _context.ChangeTracker.Clear();
+            return AccountIdentityConflict.WriteConflict<bool>();
+        }
     }
 
     public async Task UpdateLastLoginAsync(string userId, CancellationToken cancellationToken = default)

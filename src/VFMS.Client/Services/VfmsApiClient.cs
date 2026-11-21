@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using VFMS.Client.Auth;
+using VFMS.Contracts.Users;
 
 namespace VFMS.Client.Services;
 
@@ -12,6 +13,19 @@ namespace VFMS.Client.Services;
 /// </summary>
 public sealed class VfmsApiClient(HttpClient http, AuthSession session)
 {
+    public Task<WalkInCustomerResponse> CreateWalkInCustomerAsync(
+        WalkInCustomerRequest request, CancellationToken cancellationToken = default) =>
+        PostAsync<WalkInCustomerResponse>("api/users/walk-in-customer", request, cancellationToken);
+
+    public Task<WalkInCustomerResponse> FindPendingCustomerAsync(
+        FindPendingCustomerRequest request, CancellationToken cancellationToken = default) =>
+        PostAsync<WalkInCustomerResponse>("api/users/find-pending-customer", request, cancellationToken);
+
+    public Task<ResendSetupEmailResponse> ResendCustomerSetupEmailAsync(
+        string userId, CancellationToken cancellationToken = default) =>
+        PostAsync<ResendSetupEmailResponse>(
+            $"api/users/{Uri.EscapeDataString(userId)}/resend-setup-email", null, cancellationToken);
+
     public Task<T> GetAsync<T>(string path, CancellationToken cancellationToken = default) =>
         SendAsync<T>(HttpMethod.Get, path, null, cancellationToken);
 
@@ -60,6 +74,7 @@ public sealed class VfmsApiClient(HttpClient http, AuthSession session)
         {
             HttpStatusCode.Unauthorized => "Your session has expired. Please sign in again to continue. (MSG-11)",
             HttpStatusCode.Forbidden => "Bạn không có quyền thực hiện thao tác này.",
+            HttpStatusCode.TooManyRequests => "Bạn đã thao tác quá nhiều lần. Vui lòng đợi một lát rồi thử lại.",
             >= HttpStatusCode.InternalServerError => "Hệ thống tạm thời chưa sẵn sàng. Vui lòng thử lại sau.",
             _ => "Không thể hoàn tất yêu cầu. Vui lòng thử lại."
         };
@@ -71,7 +86,8 @@ public sealed class VfmsApiClient(HttpClient http, AuthSession session)
             var root = document.RootElement;
             if (root.ValueKind == JsonValueKind.Object)
             {
-                code = root.TryGetProperty("errorCode", out var c) ? c.GetString() : null;
+                code = root.TryGetProperty("errorCode", out var c) ? c.GetString()
+                    : root.TryGetProperty("code", out var problemCode) ? problemCode.GetString() : null;
                 if (root.TryGetProperty("errorMessage", out var m) && m.GetString() is { Length: > 0 } text)
                     message = text;
                 else if (root.TryGetProperty("detail", out m) && m.GetString() is { Length: > 0 } detail)
