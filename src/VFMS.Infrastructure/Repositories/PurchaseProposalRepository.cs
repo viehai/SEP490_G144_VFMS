@@ -10,6 +10,15 @@ public sealed class PurchaseProposalRepository : AuditedRepositoryBase, IPurchas
 {
     public PurchaseProposalRepository(VfmsDbContext context) : base(context) { }
 
+    public async Task<IReadOnlyDictionary<PurchaseProposalStatus, int>> CountByStatusAsync(
+        string? proposedByUserId, bool excludeDrafts, CancellationToken cancellationToken = default) =>
+        await Context.PurchaseProposals.AsNoTracking()
+            .Where(p => proposedByUserId == null || p.ProposedByUserId == proposedByUserId)
+            .Where(p => !excludeDrafts || p.ProposalStatus != PurchaseProposalStatus.Draft)
+            .GroupBy(p => p.ProposalStatus)
+            .Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Key, x => x.Count, cancellationToken);
+
     public async Task<(IReadOnlyList<PurchaseProposal> Items, int TotalCount)> SearchAsync(
         string? proposedByUserId, PurchaseProposalStatus? status, bool excludeDrafts, string? search,
         int page, int pageSize, CancellationToken cancellationToken = default)

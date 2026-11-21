@@ -11,7 +11,8 @@ public sealed record MembershipPlanReadModel(
     int? DurationMonths,
     decimal Price,
     PackageStatus Status,
-    int SubscriberCount);
+    int SubscriberCount,
+    ComponentType ServiceType = ComponentType.GYM);
 
 /// <summary>
 /// Read model cho public package catalog — phản ánh đúng các field trong PackageComponent.
@@ -40,10 +41,12 @@ public sealed record PackageCatalogReadModel(
 public interface IMembershipPlanRepository : IAuditedRepository
 {
     Task<(IReadOnlyList<MembershipPlanReadModel> Items, int TotalCount)> SearchAsync(
-        string? search, PackageStatus? status, int page, int pageSize, CancellationToken cancellationToken = default);
+        string? search, PackageStatus? status, int page, int pageSize, CancellationToken cancellationToken = default,
+        ComponentType? serviceType = null, DateTime? sellableAtUtc = null);
 
+    /// <param name="sellableAtUtc">Set for the public catalog: hides yoga-only plans while no yoga class can be booked.</param>
     Task<MembershipPlanReadModel?> GetDetailsAsync(
-        int id, PackageStatus? requiredStatus, CancellationToken cancellationToken = default);
+        int id, PackageStatus? requiredStatus, CancellationToken cancellationToken = default, DateTime? sellableAtUtc = null);
 
     Task<Package?> GetForUpdateAsync(int id, CancellationToken cancellationToken = default);
     Task<bool> HasUsageAsync(int id, CancellationToken cancellationToken = default);

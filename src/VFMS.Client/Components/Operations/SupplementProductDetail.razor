@@ -35,7 +35,14 @@
                 <dt class="text-vfms-text-secondary">Loại</dt><dd class="font-semibold text-vfms-text">@(Product.Category ?? "Khác")</dd>
                 <dt class="text-vfms-text-secondary">Quy cách</dt><dd class="font-semibold text-vfms-text">@(Product.Size ?? "—")</dd>
                 <dt class="text-vfms-text-secondary">Hương vị</dt><dd class="font-semibold text-vfms-text">@(Product.Flavour ?? "—")</dd>
-                <dt class="text-vfms-text-secondary">Tình trạng</dt><dd><span class="@OperationsText.Badge(Product.Status)">@OperationsText.Label(Product.Status)</span></dd>
+                <dt class="text-vfms-text-secondary">Tình trạng</dt>
+                <dd class="flex flex-wrap items-center gap-2">
+                    <span class="@OperationsText.Badge(Product.Status)">@OperationsText.Label(Product.Status)</span>
+                    @if (Product.CanOrder && Product.StockQuantity is { } left)
+                    {
+                        <span class="text-xs font-bold text-[#D97706]">Chỉ còn @left sản phẩm</span>
+                    }
+                </dd>
             </dl>
 
             @if (!string.IsNullOrWhiteSpace(Product.Description))
@@ -68,7 +75,8 @@
 </div>
 
 @code {
-    private const int MaxQuantity = 999;
+    // The stock left when the store shows it (only when low), otherwise 999.
+    private int MaxQuantity => SupplementCartStorage.MaxFor(Product);
 
     [Parameter, EditorRequired] public SupplementProductResponse Product { get; set; } = default!;
     [Parameter] public EventCallback OnClose { get; set; }

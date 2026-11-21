@@ -1,12 +1,14 @@
 @inject PersonalTrainingApiClient Api
+@inject ToastService Toasts
 @using VFMS.Contracts.Common
 @using VFMS.Client.Components.Operations
 
 <section class="pt-session trainer-stack">
     <h3>Bảo lưu gói PT</h3>
-    <TrainerFeedback Error="@_error" Message="@_message" />
+    <TrainerFeedback Error="@_error" />
     @if (_busy) { <p role="status">Đang xử lý…</p> }
-    <p>Tối thiểu @Contract.FreezeMinimumDays ngày mỗi yêu cầu · Còn @Contract.RemainingFreezeDays / @Contract.FreezeMaxTotalDays ngày</p>
+    <p>@(Contract.FreezeUsed ? "Hợp đồng đã dùng lượt bảo lưu duy nhất." : Contract.HasPendingOrApprovedFreeze ? "Hợp đồng đang có yêu cầu bảo lưu." :
+        $"Một lần bảo lưu cho mỗi hợp đồng, từ {Contract.FreezeMinimumDays} đến {Contract.FreezeMaxTotalDays} ngày.")</p>
     @if (_freezes is null && !_busy)
     {
         <button class="trainer-button" @onclick="LoadAsync">Tải lịch sử bảo lưu</button>
@@ -18,16 +20,17 @@
         {
             <form class="trainer-stack" @onsubmit="RequestAsync" @onsubmit:preventDefault>
                 <fieldset class="trainer-grid" disabled="@_busy">
-                    <label>Ngày bắt đầu bảo lưu<input type="date" class="trainer-input" min="@Today.ToString("yyyy-MM-dd")" @bind="_start" @bind:after="ClearProposal" /></label>
-                    <label>Ngày tập lại<input type="date" class="trainer-input" @bind="_resume" @bind:after="ClearProposal" /></label>
+                    <label>Ngày bắt đầu bảo lưu<input type="date" class="trainer-input" min="@Today.ToString("yyyy-MM-dd")" @bind="_start" @bind:after="ClearProposal" aria-invalid="@Invalid("StartDate")" />@FieldError("StartDate")</label>
+                    <label>Ngày tập lại<input type="date" class="trainer-input" @bind="_resume" @bind:after="ClearProposal" aria-invalid="@Invalid("ResumeDate")" />@FieldError("ResumeDate")</label>
                 </fieldset>
                 <p class="trainer-muted">Số ngày bảo lưu: @Math.Max(0, _resume.DayNumber - _start.DayNumber). Ngày tập lại không tính vào kỳ bảo lưu.</p>
-                <label>Lý do<textarea class="trainer-input" rows="3" maxlength="1000" @bind="_reason" required disabled="@_busy"></textarea></label>
+                <label>Lý do<textarea class="trainer-input" rows="3" maxlength="1000" @bind="_reason" required disabled="@_busy" aria-invalid="@Invalid("Reason")"></textarea>@FieldError("Reason")</label>
                 <label class="trainer-row"><input type="checkbox" @bind="_changeTrainer" @bind:after="ClearProposal" disabled="@_busy" />
                     Đổi huấn luyện viên cho các buổi còn lại (không phát sinh thanh toán)</label>
                 @if (_changeTrainer)
                 {
                     <ReplacementTrainerPicker ContractId="Contract.Id" Disabled="_busy" Changed="TrainerChosen" />
+                    @FieldError("ReplacementTrainerId")
                 }
                 <div class="trainer-row">
                     <button type="button" class="trainer-button" disabled="@_busy" @onclick="PreviewRequestAsync">Xem lịch sau bảo lưu</button>
@@ -80,11 +83,37 @@
                     {
                         <button class="trainer-button" disabled="@_busy" @onclick="() => OpenEarlyResume(freeze)">Tập lại sớm</button>
                     }
-                    @if (freeze.Status == "Pending" || freeze.Status == "Approved" && freeze.StartDate > Today && freeze.ReplacementTrainerId is null)
+                    @if (freeze.Status == "Pending")
+                    {
+                        <button class="trainer-button" disabled="@_busy" @onclick="() => OpenSlotsAsync(freeze)">Đổi ca sau bảo lưu</button>
+                    }
+                    @if (freeze.StartDate > Today && (freeze.Status == "Pending" || freeze.Status == "Approved" && freeze.ReplacementTrainerId is null))
                     {
                         <button class="trainer-button" disabled="@_busy" @onclick="() => WithdrawAsync(freeze)">Rút yêu cầu</button>
                     }
                 </div>
+                @if (_slotsFor?.Id == freeze.Id && _slots is { } held)
+                {
+                    <form class="trainer-stack" @onsubmit="SaveSlotsAsync" @onsubmit:preventDefault>
+                        @if (held.SessionsNeedingSlot.Count > 0)
+                        {
+                            <p class="trainer-feedback trainer-error" role="alert">Có @held.SessionsNeedingSlot.Count ca không còn khả dụng. Chọn ca khác cho các buổi đó.</p>
+                        }
+                        @foreach (var session in held.Sessions)
+                        {
+                            var draft = _slotDrafts[session.OriginalSessionId];
+                            <fieldset class="trainer-row" disabled="@_busy" @key="session.OriginalSessionId">
+                                <legend>Ca giữ @Date(session.Date) · @Time(session.StartTime)@(held.SessionsNeedingSlot.Contains(session.OriginalSessionId) ? " · cần chọn ca" : "")</legend>
+                                <label>Ngày<input class="trainer-input" type="date" min="@freeze.ResumeDate.ToString("yyyy-MM-dd")" @bind="draft.Date" /></label>
+                                <label>Giờ<input class="trainer-input" type="time" step="3600" @bind="draft.Start" /></label>
+                            </fieldset>
+                        }
+                        <div class="trainer-row">
+                            <button class="trainer-button trainer-primary" disabled="@_busy">Lưu ca mới</button>
+                            <button type="button" class="trainer-button" disabled="@_busy" @onclick="CloseSlots">Đóng</button>
+                        </div>
+                    </form>
+                }
             </article>
         }
         @if (freezes.TotalCount > freezes.PageSize)
@@ -105,7 +134,7 @@
         </form>
         @if (_preview is { } preview)
         {
-            <p>Hạn gói dự kiến @Date(preview.ExpiresOn) · Đã bảo lưu @preview.ActualFrozenDays ngày · Còn @preview.RemainingFreezeDays ngày</p>
+            <p>Hạn gói dự kiến @Date(preview.ExpiresOn) · Đã bảo lưu @preview.ActualFrozenDays ngày</p>
             @if (preview.UnavailableOriginalSlots.Count > 0) { <p>Có ca cũ không còn trống. Kiểm tra các buổi cần chọn ca mới.</p> }
             <SlotList Slots="@preview.Sessions.Select(s => new PTCalendarSlot(0, s.Date, s.StartTime, s.EndTime, s.Status)).ToArray()" />
             @foreach (var id in preview.SessionsNeedingNewSlot)
@@ -144,7 +173,11 @@
     private DateOnly _start = Today, _resume = Today.AddDays(1), _earlyDate = Today;
     private bool _busy, _showRequest;
     private string _reason = "";
-    private string? _error, _message;
+    private string? _error;
+    private Dictionary<string, string> _fieldErrors = [];
+    private PTFreezeResponse? _slotsFor;
+    private PTFreezeProposal? _slots;
+    private readonly Dictionary<int, MoveDraft> _slotDrafts = [];
     private bool CanRequest => Contract.Status == "Active" && Contract.RemainingFreezeDays >= Contract.FreezeMinimumDays &&
         Contract.FreezeMinimumDays > 0 && _freezes is not null && !_hasLiveRequest && !Contract.HasPendingOrApprovedFreeze;
 
@@ -167,16 +200,28 @@
     private void MarkEdited() => _edited = true;
     private void TrainerChosen((string TrainerId, int[] TemplateIds) choice) { _replacement = choice; ClearProposal(); }
 
-    private string? RequestError()
+    /// <summary>UC 4.8 steps 3-4: field errors shown under each field (MSG-02, MSG-07).</summary>
+    private bool Validate()
     {
+        _fieldErrors = [];
         var days = _resume.DayNumber - _start.DayNumber;
-        if (_start < Today || _start < Contract.StartDate || _start > Contract.EndDate ||
-            days < Contract.FreezeMinimumDays || days > Contract.RemainingFreezeDays || string.IsNullOrWhiteSpace(_reason))
-            return $"Kiểm tra lại ngày (từ {Contract.FreezeMinimumDays} đến {Contract.RemainingFreezeDays} ngày) và lý do bảo lưu.";
+        var first = Today > Contract.StartDate ? Today : Contract.StartDate;
+        if (_start < first || _start > Contract.EndDate)
+            _fieldErrors["StartDate"] = $"Chọn ngày bắt đầu từ {Date(first)} đến {Date(Contract.EndDate)}.";
+        if (days < Contract.FreezeMinimumDays || days > Contract.FreezeMaxTotalDays)
+            _fieldErrors["ResumeDate"] = $"Số ngày bảo lưu phải từ {Contract.FreezeMinimumDays} đến {Contract.FreezeMaxTotalDays}.";
+        if (string.IsNullOrWhiteSpace(_reason))
+            _fieldErrors["Reason"] = "Vui lòng nhập lý do bảo lưu.";
         if (_changeTrainer && (_replacement.TrainerId.Length == 0 || _replacement.TemplateIds.Length == 0))
-            return "Chọn huấn luyện viên mới và ít nhất một ca trong tuần.";
-        return null;
+            _fieldErrors["ReplacementTrainerId"] = "Chọn huấn luyện viên mới và ít nhất một ca trong tuần.";
+        return _fieldErrors.Count == 0;
     }
+
+    private string? Invalid(string field) => _fieldErrors.ContainsKey(field) ? "true" : null;
+
+    private RenderFragment? FieldError(string field) => _fieldErrors.TryGetValue(field, out var message)
+        ? @<span class="mt-1 block text-xs font-normal text-red-700" role="alert">@message</span>
+        : null;
 
     private PTFreezeRequest BuildRequest() => _changeTrainer
         ? new(_start, _resume, _reason.Trim(), null, _replacement.TrainerId, _replacement.TemplateIds)
@@ -185,7 +230,7 @@
 
     private Task PreviewRequestAsync() => RunAsync(async () =>
     {
-        if (RequestError() is { } problem) { _error = problem; return; }
+        if (!Validate()) return;
         _proposal = await Api.PreviewFreezeRequestAsync(Contract.Id, BuildRequest());
         _edited = false;
         _moves.Clear();
@@ -201,15 +246,16 @@
         await Api.WithdrawFreezeAsync(freeze.Id);
         _hasLiveRequest = false;
         await LoadHistoryAsync();
-        _message = "Đã rút yêu cầu bảo lưu. Lượt bảo lưu chưa bị tính.";
+        Toasts.Show("Đã rút yêu cầu bảo lưu. Lượt bảo lưu chưa bị tính.");
         await Changed.InvokeAsync();
     });
 
     private Task RequestAsync() => RunAsync(async () =>
     {
-        if (!CanRequest || RequestError() is not null || _proposal is null || _edited || _proposal.SessionsNeedingSlot.Count > 0)
+        if (!Validate()) return;
+        if (!CanRequest || _proposal is null || _edited || _proposal.SessionsNeedingSlot.Count > 0)
         {
-            _error = RequestError() ?? "Xem và kiểm tra lịch sau bảo lưu trước khi gửi.";
+            _error = "Xem và kiểm tra lịch sau bảo lưu trước khi gửi.";
             return;
         }
         await Api.RequestFreezeAsync(Contract.Id, BuildRequest());
@@ -218,16 +264,42 @@
         await LoadHistoryAsync();
         _reason = "";
         _showRequest = false;
-        _message = "Đã gửi yêu cầu bảo lưu.";
+        Toasts.Show("Đã gửi yêu cầu bảo lưu.");
         await Changed.InvokeAsync();
     });
+
+    /// <summary>UC 4.8 step 8.4: choose other slots for the held sessions of a pending request.</summary>
+    private Task OpenSlotsAsync(PTFreezeResponse freeze) => RunAsync(async () =>
+    {
+        _slots = await Api.FreezeSlotsAsync(freeze.Id);
+        _slotsFor = freeze;
+        _slotDrafts.Clear();
+        foreach (var session in _slots.Sessions)
+            _slotDrafts[session.OriginalSessionId] = new() { Date = session.Date, Start = session.StartTime };
+    });
+
+    private void CloseSlots() { _slotsFor = null; _slots = null; _slotDrafts.Clear(); }
+
+    private Task SaveSlotsAsync() => _slotsFor is { } freeze && _slots is { } held
+        ? RunAsync(async () =>
+        {
+            var moves = held.Sessions.Select(s => (s, d: _slotDrafts[s.OriginalSessionId]))
+                .Where(x => x.d.Date is not null && x.d.Start is not null && (x.d.Date != x.s.Date || x.d.Start != x.s.StartTime))
+                .Select(x => new PTEarlyResumeMove(x.s.OriginalSessionId, x.d.Date!.Value, x.d.Start!.Value)).ToArray();
+            if (moves.Length == 0) { _error = "Chọn ngày giờ mới cho ít nhất một buổi."; return; }
+            await Api.ChangeFreezeSlotsAsync(freeze.Id, new(moves));
+            CloseSlots();
+            Toasts.Show("Đã cập nhật lịch sau bảo lưu.");
+            await LoadHistoryAsync();
+        })
+        : Task.CompletedTask;
 
     private void OpenEarlyResume(PTFreezeResponse freeze)
     {
         _early = freeze;
         _earlyDate = Today;
         ClearPreview();
-        _error = _message = null;
+        _error = null;
     }
 
     private void CloseEarlyResume() { _early = null; ClearPreview(); }
@@ -260,7 +332,7 @@
         {
             await Api.ConfirmResumeAsync(early.Id, new(preview.ResumeDate, preview.CurrentResumeDate, preview.Moves.ToArray()));
             CloseEarlyResume();
-            _message = "Đã xác nhận tập lại sớm.";
+            Toasts.Show("Đã xác nhận tập lại sớm.");
             await Changed.InvokeAsync();
             await LoadHistoryAsync();
         })
@@ -270,7 +342,7 @@
     {
         if (_busy) return;
         _busy = true;
-        _message = _error = null;
+        _error = null;
         try { await action(); }
         catch (AuthApiException ex) { _error = ex.Message; }
         finally { _busy = false; }

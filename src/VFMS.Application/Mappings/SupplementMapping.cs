@@ -13,7 +13,8 @@ public sealed class SupplementMapping : IRegister
             .Map(d => d.Name, s => s.ProductName)
             .Map(d => d.Category, s => s.CatalogCategory)
             .Map(d => d.Status, s => s.ProductStatus.ToString())
-            .Map(d => d.CanOrder, s => s.ProductStatus == SupplementProductStatus.Active);
+            .Map(d => d.CanOrder, s => s.ProductStatus == SupplementProductStatus.Active)
+            .Map(d => d.LowStock, s => s.StockQuantity != null && s.StockQuantity <= SupplementStock.LowStockThreshold);
 
         config.NewConfig<SupplementOrderItem, SupplementOrderItemResponse>()
             .Map(d => d.ProductId, s => s.SupplementProductId)

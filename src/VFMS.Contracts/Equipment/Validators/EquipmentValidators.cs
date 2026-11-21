@@ -7,6 +7,8 @@ internal static class EquipmentRules
     public static readonly string[] EquipmentStatuses = ["Operational", "UnderMaintenance", "Damaged", "Retired"];
     public static readonly string[] IncidentTypes = ["Malfunction", "Damage", "Safety", "Other"];
     public static readonly string[] IssueStatuses = ["Reported", "InProgress", "Escalated", "Resolved", "MarkedSafe"];
+    public static readonly string[] EquipmentSorts = ["name", "code", "newest", "purchase_date"];
+    public static readonly string[] IssueSorts = ["newest", "severity"];
 
     public static bool IsOneOf(string? value, string[] allowed) =>
         value is not null && allowed.Contains(value.Trim(), StringComparer.OrdinalIgnoreCase);
@@ -77,9 +79,13 @@ public sealed class EquipmentListRequestValidator : AbstractValidator<EquipmentL
     public EquipmentListRequestValidator()
     {
         RuleFor(x => x.Search).MaximumLength(100);
+        RuleFor(x => x.Brand).MaximumLength(100);
         RuleFor(x => x.Status)
             .Must(status => string.IsNullOrWhiteSpace(status) || EquipmentRules.IsOneOf(status, EquipmentRules.EquipmentStatuses))
             .WithMessage("Status filter is invalid.");
+        RuleFor(x => x.Sort)
+            .Must(sort => string.IsNullOrWhiteSpace(sort) || EquipmentRules.IsOneOf(sort, EquipmentRules.EquipmentSorts))
+            .WithMessage("Sort must be name, code, newest or purchase_date.");
         RuleFor(x => x.Page).InclusiveBetween(1, 1_000_000);
         RuleFor(x => x.PageSize).InclusiveBetween(1, 100);
     }
@@ -109,6 +115,10 @@ public sealed class EquipmentIssueListRequestValidator : AbstractValidator<Equip
         RuleFor(x => x.Status)
             .Must(status => string.IsNullOrWhiteSpace(status) || EquipmentRules.IsOneOf(status, EquipmentRules.IssueStatuses))
             .WithMessage("Status filter is invalid.");
+        RuleFor(x => x.Search).MaximumLength(100);
+        RuleFor(x => x.Sort)
+            .Must(sort => string.IsNullOrWhiteSpace(sort) || EquipmentRules.IsOneOf(sort, EquipmentRules.IssueSorts))
+            .WithMessage("Sort must be newest or severity.");
         RuleFor(x => x.Page).InclusiveBetween(1, 1_000_000);
         RuleFor(x => x.PageSize).InclusiveBetween(1, 100);
     }

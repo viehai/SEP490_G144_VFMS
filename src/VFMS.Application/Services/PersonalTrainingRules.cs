@@ -33,6 +33,36 @@ public static class PersonalTrainingRules
     /// <summary>GBR-14: make-up units can be used until 14 days after the contract end date.</summary>
     public static DateOnly MakeUpDeadline(DateOnly endDate) => endDate.AddDays(MakeUpGraceDays);
 
+    /// <summary>GBR-14 / UC 4.6: an open contract is still running until its end date, and for 14 more days only while
+    /// a make-up unit is unused or its make-up session has not been held yet.</summary>
+    public static Expression<Func<PTPurchase, bool>> StillRunning(DateOnly today)
+    {
+        var graceFrom = today.AddDays(-MakeUpGraceDays);
+        return p => !p.IsCompleted && (p.Status == PTPurchaseStatus.Active || p.Status == PTPurchaseStatus.Frozen) &&
+            (p.EndDate >= today || p.EndDate >= graceFrom && p.Sessions.Any(s =>
+            s.SessionStatus == PTSessionStatus.Cancelled && s.CancelledAt != null && !s.IsCreditForfeited &&
+            !p.Sessions.Any(r => r.ReplacementForSessionId == s.Id && r.SessionStatus != PTSessionStatus.Cancelled &&
+                r.SessionStatus != PTSessionStatus.MakeUpPending && r.SessionStatus != PTSessionStatus.MakeUpRequested) ||
+            s.ReplacementForSessionId != null && (s.SessionStatus == PTSessionStatus.Scheduled ||
+                s.SessionStatus == PTSessionStatus.ReschedulePending || s.SessionStatus == PTSessionStatus.RescheduleRequested ||
+                s.SessionStatus == PTSessionStatus.PendingFreeze || s.SessionStatus == PTSessionStatus.Disputed)));
+    }
+
+    private sealed record RunningCheck(DateOnly Day, Func<PTPurchase, bool> Check);
+    private static RunningCheck? running;
+
+    /// <summary>In-memory <see cref="StillRunning"/>, compiled once per day.</summary>
+    public static bool IsStillRunning(PTPurchase p, DateOnly today)
+    {
+        var cached = running;
+        if (cached is null || cached.Day != today)
+            running = cached = new(today, StillRunning(today).Compile());
+        return cached.Check(p);
+    }
+
+    public static Expression<Func<T, bool>> Not<T>(Expression<Func<T, bool>> predicate) =>
+        Expression.Lambda<Func<T, bool>>(Expression.Not(predicate.Body), predicate.Parameters);
+
     public static bool Reserved(PTSessionStatus status) =>
         status is PTSessionStatus.Scheduled or PTSessionStatus.ReschedulePending or PTSessionStatus.RescheduleRequested
             or PTSessionStatus.PendingFreeze or PTSessionStatus.Disputed;

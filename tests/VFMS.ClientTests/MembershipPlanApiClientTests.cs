@@ -31,6 +31,22 @@ public sealed partial class MembershipPlanApiClientTests
     }
 
     [Fact]
+    public async Task Catalog_SignedOutLoadsThePublicPriceListWithoutAToken()
+    {
+        using var api = CreateClient(request =>
+        {
+            Assert.Null(request.Headers.Authorization);
+            Assert.Equal("/api/membership-plans", request.RequestUri!.AbsolutePath);
+            Assert.Equal("?page=1&pageSize=9&serviceType=YOGA", request.RequestUri.Query);
+            return Task.FromResult(Json(new PagedResponse<MembershipPlanCatalogItemResponse>(1, 9, 0, [])));
+        }, authenticated: false);
+
+        var page = await api.ListCatalogAsync(1, serviceType: MembershipPlanServiceTypes.Yoga);
+
+        Assert.Empty(page.Items);
+    }
+
+    [Fact]
     public async Task Status_SendsTargetStatusUsingPatch()
     {
         using var api = CreateClient(async request =>

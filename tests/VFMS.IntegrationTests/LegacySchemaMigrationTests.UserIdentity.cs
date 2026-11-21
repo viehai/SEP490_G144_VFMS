@@ -1,15 +1,72 @@
+using System.Text.RegularExpressions;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using VFMS.Domain.Entities;
+using VFMS.Domain.Enums;
 
 namespace VFMS.IntegrationTests;
 
 public sealed partial class LegacySchemaMigrationTests
 {
-    private const string BeforeUserIdentity = "20261117074615_AddSupplementProductBrandSizeFlavour";
+    private const string BeforeUserIdentity = "20261121132212_AddTrainerInactivityAndDisputeReviewer";
     private const string UserIdentity = "20261121210000_EnforceApplicationUserIdentity";
+
+    [SqlServerMigrationFact]
+    public async Task ApplicationUserIdentityAppliedBeforeIncomingMigrationsStillUpgrades()
+    {
+        await using var database = await DisposableMigrationDatabase.CreateAsync();
+        await using var context = database.Context();
+        var migrator = context.GetService<IMigrator>();
+        await migrator.MigrateAsync("20261118155730_ConsolidateMySqlSchemaChanges");
+
+        // Reproduce a developer database that applied UC-06 before merging the intervening main migrations.
+        var script = migrator.GenerateScript(BeforeUserIdentity, UserIdentity);
+        await using (var connection = new SqlConnection(database.ConnectionString))
+        {
+            await connection.OpenAsync();
+            foreach (var batch in Regex.Split(script, @"^[ \t]*GO[ \t]*\r?$", RegexOptions.Multiline))
+            {
+                if (string.IsNullOrWhiteSpace(batch))
+                    continue;
+
+                await using var command = connection.CreateCommand();
+                command.CommandText = batch;
+                await command.ExecuteNonQueryAsync();
+            }
+        }
+
+        Assert.Contains(UserIdentity, await context.Database.GetAppliedMigrationsAsync());
+        Assert.Contains(BeforeUserIdentity, await context.Database.GetPendingMigrationsAsync());
+
+        const string userId = "out-of-order-identity";
+        context.ApplicationUsers.Add(new ApplicationUser
+        {
+            UserId = userId,
+            Gym = new Gym { GymName = "Out-of-order migration fixture" },
+            FullName = "Migration test",
+            Email = "out-of-order-identity@example.test",
+            PhoneNumber = "0900000103",
+            PasswordHash = "test-only",
+            AccountStatus = AccountStatus.Locked,
+            AccountStatusBeforeLock = AccountStatus.Active
+        });
+        await context.SaveChangesAsync();
+
+        await migrator.MigrateAsync();
+
+        Assert.Empty(await context.Database.GetPendingMigrationsAsync());
+        var account = await context.ApplicationUsers.AsNoTracking().SingleAsync(user => user.UserId == userId);
+        Assert.Equal(AccountStatus.Active, account.AccountStatusBeforeLock);
+        Assert.Equal("0900000103", account.PhoneNumber);
+        Assert.Equal(2, await database.ScalarAsync<int>("""
+            SELECT COUNT(*) FROM sys.indexes
+            WHERE object_id = OBJECT_ID(N'dbo.ApplicationUsers')
+              AND name IN (N'IX_ApplicationUsers_Email', N'IX_ApplicationUsers_PhoneNumber')
+              AND is_unique = 1 AND has_filter = 1
+            """));
+    }
 
     [SqlServerMigrationFact]
     public async Task ApplicationUserIdentityMigrationGuardsDuplicatesAndSupportsReconciledUpgradeAndDowngrade()

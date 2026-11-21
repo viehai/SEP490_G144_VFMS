@@ -5,6 +5,8 @@ using System.Net.Http.Json;
 using VFMS.Client.Auth;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.SystemAdministration;
+using VFMS.Contracts.Feedback;
+using VFMS.Contracts.Consultations;
 
 namespace VFMS.Client.Services;
 
@@ -15,6 +17,8 @@ public sealed class SystemAdministrationApiClient(HttpClient http, AuthSession s
     private const string ReportsPath = "api/business-reports";
     private const string BannedWordsPath = "api/admin/banned-words";
     private const string AuditLogsPath = "api/admin/audit-logs";
+    private const string FeedbackPath = "api/feedback";
+    private const string ConsultationsPath = "api/consultations";
 
     public Task<GymSettingsResponse> GetGymSettingsAsync(CancellationToken cancellationToken = default) =>
         SendAsync<GymSettingsResponse>(HttpMethod.Get, GymSettingsPath, cancellationToken);
@@ -28,6 +32,10 @@ public sealed class SystemAdministrationApiClient(HttpClient http, AuthSession s
 
     public Task<BusinessReportResponse> GetReportAsync(int id, CancellationToken cancellationToken = default) =>
         SendAsync<BusinessReportResponse>(HttpMethod.Get, $"{ReportsPath}/{id}", cancellationToken);
+
+    public Task<BusinessReportTrendResponse> GetReportTrendAsync(BusinessReportTrendRequest request, CancellationToken cancellationToken = default) =>
+        SendAsync<BusinessReportTrendResponse>(HttpMethod.Get, WithQuery($"{ReportsPath}/trend",
+            ("periodType", request.PeriodType), ("date", Date(request.Date)), ("count", Number(request.Count))), cancellationToken);
 
     public Task<BusinessReportResponse> GenerateReportAsync(GenerateBusinessReportRequest request, CancellationToken cancellationToken = default) =>
         SendAsync<BusinessReportResponse>(HttpMethod.Post, ReportsPath, cancellationToken, JsonContent.Create(request));
@@ -55,6 +63,80 @@ public sealed class SystemAdministrationApiClient(HttpClient http, AuthSession s
 
     public Task<AuditLogResponse> GetAuditLogAsync(int id, CancellationToken cancellationToken = default) =>
         SendAsync<AuditLogResponse>(HttpMethod.Get, $"{AuditLogsPath}/{id}", cancellationToken);
+
+    public Task<PagedResponse<FeedbackResponse>> GetFeedbackAsync(
+        FeedbackListRequest request, CancellationToken cancellationToken = default) =>
+        SendAsync<PagedResponse<FeedbackResponse>>(HttpMethod.Get,
+            WithQuery($"{FeedbackPath}/manager",
+                ("search", request.Search), ("status", request.Status),
+                ("rating", request.Rating?.ToString(CultureInfo.InvariantCulture)),
+                ("page", Number(request.Page)), ("pageSize", Number(request.PageSize))),
+            cancellationToken);
+
+    public Task<FeedbackResponse> SubmitFeedbackAsync(
+        FeedbackSubmitRequest request, CancellationToken cancellationToken = default) =>
+        SendAsync<FeedbackResponse>(HttpMethod.Post, FeedbackPath, cancellationToken,
+            JsonContent.Create(request));
+
+    public Task<IReadOnlyList<FeedbackTrainerResponse>> GetFeedbackTrainersAsync(
+        CancellationToken cancellationToken = default) =>
+        SendAsync<IReadOnlyList<FeedbackTrainerResponse>>(HttpMethod.Get,
+            $"{FeedbackPath}/trainers", cancellationToken);
+
+    public Task<PagedResponse<FeedbackResponse>> GetMyFeedbackAsync(
+        FeedbackListRequest request, CancellationToken cancellationToken = default) =>
+        SendAsync<PagedResponse<FeedbackResponse>>(HttpMethod.Get,
+            WithQuery($"{FeedbackPath}/mine",
+                ("status", request.Status), ("rating", request.Rating?.ToString(CultureInfo.InvariantCulture)),
+                ("page", Number(request.Page)), ("pageSize", Number(request.PageSize))),
+            cancellationToken);
+
+    public Task<FeedbackResponse> ApproveFeedbackAsync(int id, CancellationToken cancellationToken = default) =>
+        SendAsync<FeedbackResponse>(HttpMethod.Post, $"{FeedbackPath}/manager/{id}/approve", cancellationToken);
+
+    public Task<FeedbackResponse> RejectFeedbackAsync(
+        int id, FeedbackReplyRequest request, CancellationToken cancellationToken = default) =>
+        SendAsync<FeedbackResponse>(HttpMethod.Post, $"{FeedbackPath}/manager/{id}/reject", cancellationToken,
+            JsonContent.Create(request));
+
+    public Task<FeedbackResponse> ReplyFeedbackAsync(
+        int id, FeedbackReplyRequest request, CancellationToken cancellationToken = default) =>
+        SendAsync<FeedbackResponse>(HttpMethod.Post, $"{FeedbackPath}/manager/{id}/reply", cancellationToken,
+            JsonContent.Create(request));
+
+    public Task<FeedbackResponse> SetFeedbackVisibilityAsync(
+        int id, bool isVisible, CancellationToken cancellationToken = default) =>
+        SendAsync<FeedbackResponse>(HttpMethod.Patch,
+            $"{FeedbackPath}/manager/{id}/visibility?visible={isVisible.ToString().ToLowerInvariant()}",
+            cancellationToken);
+
+    public Task<PagedResponse<ConsultationConversationResponse>> GetConsultationsAsync(
+        ConsultationListRequest request, CancellationToken cancellationToken = default) =>
+        SendAsync<PagedResponse<ConsultationConversationResponse>>(HttpMethod.Get,
+            WithQuery(ConsultationsPath,
+                ("search", request.Search), ("status", request.Status),
+                ("page", Number(request.Page)), ("pageSize", Number(request.PageSize))),
+            cancellationToken);
+
+    public Task<ConsultationConversationResponse> GetConsultationAsync(
+        int id, CancellationToken cancellationToken = default) =>
+        SendAsync<ConsultationConversationResponse>(HttpMethod.Get,
+            $"{ConsultationsPath}/{id}", cancellationToken);
+
+    public Task<ConsultationConversationResponse> CreateConsultationAsync(
+        ConsultationCreateRequest request, CancellationToken cancellationToken = default) =>
+        SendAsync<ConsultationConversationResponse>(HttpMethod.Post,
+            ConsultationsPath, cancellationToken, JsonContent.Create(request));
+
+    public Task<ConsultationConversationResponse> SendConsultationMessageAsync(
+        int id, ConsultationSendRequest request, CancellationToken cancellationToken = default) =>
+        SendAsync<ConsultationConversationResponse>(HttpMethod.Post,
+            $"{ConsultationsPath}/{id}/messages", cancellationToken, JsonContent.Create(request));
+
+    public Task<ConsultationConversationResponse> CloseConsultationAsync(
+        int id, CancellationToken cancellationToken = default) =>
+        SendAsync<ConsultationConversationResponse>(HttpMethod.Post,
+            $"{ConsultationsPath}/{id}/close", cancellationToken);
 
     private static string? Date(DateOnly? value) => value?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
     private static string Number(int value) => value.ToString(CultureInfo.InvariantCulture);

@@ -9,8 +9,9 @@ namespace VFMS.Application.Services;
 
 /// <summary>
 /// UC-77 View Supplement Products (Customer, Member) and UC-83 Manage Supplement Products (Manager).
-/// GBR-69: no stock tracking, OutOfStock is set manually. GBR-70: Inactive products are hidden from the store.
-/// Products are never deleted; hiding a product means setting it Inactive.
+/// GBR-69: stock is tracked when a product has a stock quantity; a tracked product is Active while it has stock and
+/// OutOfStock at 0, an untracked product is set OutOfStock by hand. GBR-70: Inactive products are hidden from the store.
+/// The store only sees the stock quantity when it is low. Products are never deleted; hiding one means setting it Inactive.
 /// </summary>
 public sealed class SupplementProductService : ISupplementProductService
 {
@@ -43,7 +44,7 @@ public sealed class SupplementProductService : ISupplementProductService
         var product = await _repository.GetProductAsync(id, cancellationToken);
         if (product is null || storeView && !StoreStatuses.Contains(product.ProductStatus))
             return NotFound();
-        return Result<SupplementProductResponse>.Success(_mapper.Map<SupplementProductResponse>(product));
+        return Result<SupplementProductResponse>.Success(ToResponse(product, storeView));
     }
 
     public async Task<Result<IReadOnlyList<string>>> GetCategoriesAsync(bool storeView, CancellationToken cancellationToken = default) =>
@@ -63,7 +64,9 @@ public sealed class SupplementProductService : ISupplementProductService
         if (!EquipmentService.TryParse(request.Status, out SupplementProductStatus status))
             return InvalidStatus();
 
-        var product = new SupplementProduct();
+        var product = new SupplementProduct { StockQuantity = request.StockQuantity };
+        if (product.StockQuantity == 0 && status == SupplementProductStatus.Active)
+            status = SupplementProductStatus.OutOfStock; // a tracked product with nothing in stock cannot be sold
         Apply(product, request, name, status);
         var audit = AuditedWriter.Audit(managerUserId, AuditActionType.Create, Entity, ipAddress, newValue: Describe(product));
         await AuditedWriter.SaveNewAsync(_repository, product, audit, null, cancellationToken);
@@ -82,6 +85,8 @@ public sealed class SupplementProductService : ISupplementProductService
             return NameExists();
         if (!EquipmentService.TryParse(request.Status, out SupplementProductStatus status))
             return InvalidStatus();
+        if (status == SupplementProductStatus.Active && product.StockQuantity == 0)
+            return NoStock();
 
         var before = Describe(product);
         Apply(product, request, name, status);
@@ -102,6 +107,8 @@ public sealed class SupplementProductService : ISupplementProductService
             return Result<SupplementProductResponse>.Failure(
                 $"The product is already {newStatus}.", "SUPPLEMENT_PRODUCT_STATUS_UNCHANGED", 409);
 
+        if (newStatus == SupplementProductStatus.Active && product.StockQuantity == 0)
+            return NoStock();
         var before = product.ProductStatus;
         product.ProductStatus = newStatus;
         var audit = AuditedWriter.Audit(managerUserId, AuditActionType.Update, Entity, ipAddress,
@@ -110,7 +117,47 @@ public sealed class SupplementProductService : ISupplementProductService
         return Result<SupplementProductResponse>.Success(_mapper.Map<SupplementProductResponse>(product));
     }
 
+    /// <summary>
+    /// Restock (Add), stock count (Set) or stop tracking. The change is applied in the database in one step so an
+    /// order placed at the same moment is never lost; Active/OutOfStock follows the new stock (Inactive stays).
+    /// </summary>
+    public async Task<Result<SupplementProductResponse>> AdjustStockAsync(
+        int id, SupplementStockRequest request, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default)
+    {
+        if (!EquipmentService.TryParse(request.Action, out SupplementStockAction action))
+            return Result<SupplementProductResponse>.Failure("Action must be Add, Set or StopTracking.", "SUPPLEMENT_STOCK_INVALID_ACTION");
+        var quantity = action == SupplementStockAction.StopTracking ? 0 : request.Quantity;
+        var (min, max) = action == SupplementStockAction.Add ? (1, SupplementStock.MaxQuantity) : (0, SupplementStock.MaxQuantity);
+        if (quantity < min || quantity > max)
+            return Result<SupplementProductResponse>.Failure(
+                $"Quantity must be between {min} and {max}.", "SUPPLEMENT_STOCK_INVALID_QUANTITY");
+        if (await _repository.GetProductSnapshotAsync(id, cancellationToken) is null)
+            return NotFound();
+
+        SupplementProduct? after = null;
+        await _repository.ExecuteInTransactionAsync(async () =>
+        {
+            var (before, now) = await _repository.AdjustStockAsync(id, action, quantity, cancellationToken);
+            var audit = AuditedWriter.Audit(managerUserId, AuditActionType.Update, Entity, ipAddress,
+                $"Stock={Show(before)}", $"Stock={Show(now)}; Action={action}" + (EquipmentService.Clean(request.Note) is { } note ? $"; Note={note}" : ""));
+            audit.EntityId = id;
+            _repository.Add(audit);
+            await _repository.SaveChangesAsync(cancellationToken);
+            after = await _repository.GetProductSnapshotAsync(id, cancellationToken);
+        }, cancellationToken);
+        return Result<SupplementProductResponse>.Success(ToResponse(after!, storeView: false));
+    }
+
+    private static string Show(int? stock) => stock?.ToString() ?? "not tracked";
+
     // ── Helpers ──────────────────────────────────────────────────
+
+    /// <summary>The store sees the stock quantity only when it is low ("Chỉ còn 3"); the Manager always sees it.</summary>
+    private SupplementProductResponse ToResponse(SupplementProduct product, bool storeView)
+    {
+        var response = _mapper.Map<SupplementProductResponse>(product);
+        return storeView && !response.LowStock ? response with { StockQuantity = null } : response;
+    }
 
     private async Task<Result<PagedResponse<SupplementProductResponse>>> SearchAsync(
         SupplementProductListRequest request, bool storeView, CancellationToken cancellationToken)
@@ -135,10 +182,11 @@ public sealed class SupplementProductService : ISupplementProductService
             ParseSort(request.Sort),
             AvailableFirst: storeView,
             request.Page,
-            request.PageSize);
+            request.PageSize,
+            LowStockOnly: !storeView && request.LowStock);
         var (items, total) = await _repository.SearchProductsAsync(query, cancellationToken);
         return Result<PagedResponse<SupplementProductResponse>>.Success(new PagedResponse<SupplementProductResponse>(
-            request.Page, request.PageSize, total, items.Select(_mapper.Map<SupplementProductResponse>).ToArray()));
+            request.Page, request.PageSize, total, items.Select(p => ToResponse(p, storeView)).ToArray()));
     }
 
     private static void Apply(SupplementProduct product, SupplementProductRequest request, string name, SupplementProductStatus status)
@@ -166,7 +214,7 @@ public sealed class SupplementProductService : ISupplementProductService
     private static string CleanName(string name) => string.Join(' ', name.Split(' ', StringSplitOptions.RemoveEmptyEntries));
 
     private static string Describe(SupplementProduct p) =>
-        $"Name={p.ProductName}; Brand={p.Brand}; Category={p.CatalogCategory}; Size={p.Size}; Flavour={p.Flavour}; Price={p.UnitPrice}; Status={p.ProductStatus}";
+        $"Name={p.ProductName}; Brand={p.Brand}; Category={p.CatalogCategory}; Size={p.Size}; Flavour={p.Flavour}; Price={p.UnitPrice}; Status={p.ProductStatus}; Stock={Show(p.StockQuantity)}";
 
     private static Result<SupplementProductResponse> NotFound() =>
         Result<SupplementProductResponse>.Failure("Supplement product was not found.", "SUPPLEMENT_PRODUCT_NOT_FOUND", 404);
@@ -174,6 +222,10 @@ public sealed class SupplementProductService : ISupplementProductService
     private static Result<SupplementProductResponse> NameExists() =>
         Result<SupplementProductResponse>.Failure(
             "A product with this name already exists.", "SUPPLEMENT_PRODUCT_NAME_EXISTS", 409);
+
+    private static Result<SupplementProductResponse> NoStock() =>
+        Result<SupplementProductResponse>.Failure(
+            "The product has no stock left. Add stock before setting it Active.", "SUPPLEMENT_PRODUCT_NO_STOCK", 409);
 
     private static Result<SupplementProductResponse> InvalidStatus() =>
         Result<SupplementProductResponse>.Failure(

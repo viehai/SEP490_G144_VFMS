@@ -193,6 +193,7 @@ public enum PTPurchaseStatus
 public enum PTAdjustmentType
 {
     Reschedule,
+    // No longer offered (UC 4.7); kept so stored values and their order stay valid.
     DoubleSession,
     Cancellation
 }

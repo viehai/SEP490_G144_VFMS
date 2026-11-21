@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using VFMS.Application.Interfaces;
+using VFMS.Application.Services;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
 using VFMS.Infrastructure.Data;
@@ -9,6 +10,9 @@ namespace VFMS.Infrastructure.Repositories;
 public sealed class YogaBookingRepository : AuditedRepositoryBase, IYogaBookingRepository
 {
     public YogaBookingRepository(VfmsDbContext context) : base(context) { }
+
+    public Task<bool> IsActiveInstructorAsync(string userId, CancellationToken cancellationToken = default) =>
+        Context.ApplicationUsers.Where(YogaClassRules.ActiveInstructor).AnyAsync(u => u.UserId == userId, cancellationToken);
 
     public Task<YogaClass?> GetClassAsync(int classId, CancellationToken cancellationToken = default) =>
         Context.YogaClasses

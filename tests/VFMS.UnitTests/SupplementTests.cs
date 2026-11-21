@@ -344,6 +344,210 @@ public sealed class SupplementTests
 
     // ── Helpers ──────────────────────────────────────────────────
 
+    [Fact]
+    public async Task OrderCountsListEveryStatus()
+    {
+        var repo = new Repo();
+        var whey = repo.SeedProduct("Whey", 100m);
+        var orders = OrderService(repo);
+        await orders.PlaceOrderAsync(Pickup(L(whey, 1)), Customer, null);
+        var second = (await orders.PlaceOrderAsync(Pickup(L(whey, 1)), Customer, null)).Data!;
+        await orders.CancelAsync(second.Id, Customer, null);
+
+        var counts = (await orders.GetCountsAsync()).Data!;
+
+        Assert.Equal(6, counts.Counts.Count);
+        Assert.Equal(1, counts.Counts["Pending"]);
+        Assert.Equal(1, counts.Counts["Cancelled"]);
+        Assert.Equal(0, counts.Counts["Completed"]);
+        Assert.Equal(2, counts.Total);
+    }
+
+    // ── Stock (GBR-69) ───────────────────────────────────────────
+
+    [Fact]
+    public async Task OrderTakesTrackedStockAndLeavesUntrackedAlone()
+    {
+        var repo = new Repo();
+        var whey = repo.SeedProduct("Whey", 1_000_000m, stock: 10);
+        var bar = repo.SeedProduct("Bar", 50_000m);
+
+        var result = await OrderService(repo).PlaceOrderAsync(Pickup(L(whey, 3), L(bar, 4)), Customer, null);
+
+        Assert.Equal(201, result.StatusCode);
+        Assert.Equal(7, repo.Products.Single(p => p.Id == whey).StockQuantity);
+        Assert.Null(repo.Products.Single(p => p.Id == bar).StockQuantity);
+    }
+
+    [Fact]
+    public async Task OrderLargerThanTheStockIsRefusedAndNothingIsSaved()
+    {
+        var repo = new Repo();
+        var whey = repo.SeedProduct("Whey", 1_000_000m, stock: 2);
+        var creatine = repo.SeedProduct("Creatine", 400_000m, stock: 10);
+
+        var result = await OrderService(repo).PlaceOrderAsync(Pickup(L(creatine, 1), L(whey, 3)), Customer, null);
+
+        Assert.Equal("SUPPLEMENT_PRODUCT_INSUFFICIENT_STOCK", result.ErrorCode);
+        Assert.Equal(409, result.StatusCode);
+        Assert.Contains("Whey (2 left)", result.ErrorMessage);
+        Assert.Empty(repo.Orders);
+        Assert.Equal(10, repo.Products.Single(p => p.Id == creatine).StockQuantity);
+    }
+
+    [Fact]
+    public async Task SellingTheLastUnitsMakesTheProductOutOfStock()
+    {
+        var repo = new Repo();
+        var whey = repo.SeedProduct("Whey", 1_000_000m, stock: 2);
+
+        await OrderService(repo).PlaceOrderAsync(Pickup(L(whey, 2)), Customer, null);
+
+        var product = repo.Products.Single(p => p.Id == whey);
+        Assert.Equal(0, product.StockQuantity);
+        Assert.Equal(SupplementProductStatus.OutOfStock, product.ProductStatus);
+    }
+
+    [Fact]
+    public async Task CancellingPutsTheStockBackAndSellsAgain()
+    {
+        var repo = new Repo();
+        var whey = repo.SeedProduct("Whey", 1_000_000m, stock: 1);
+        var orders = OrderService(repo);
+        var order = (await orders.PlaceOrderAsync(Pickup(L(whey, 1)), Customer, null)).Data!;
+
+        await orders.CancelAsync(order.Id, Customer, null);
+
+        var product = repo.Products.Single(p => p.Id == whey);
+        Assert.Equal(1, product.StockQuantity);
+        Assert.Equal(SupplementProductStatus.Active, product.ProductStatus);
+    }
+
+    [Fact]
+    public async Task StoreSeesTheStockOnlyWhenItIsLow()
+    {
+        var repo = new Repo();
+        var low = repo.SeedProduct("Low", 100m, stock: 3);
+        var plenty = repo.SeedProduct("Plenty", 100m, stock: 40);
+        var service = ProductService(repo);
+
+        var store = (await service.GetStoreProductsAsync(new())).Data!.Items;
+        var manager = (await service.GetAllProductsAsync(new())).Data!.Items;
+
+        Assert.Equal(3, store.Single(p => p.Id == low).StockQuantity);
+        Assert.True(store.Single(p => p.Id == low).LowStock);
+        Assert.Null(store.Single(p => p.Id == plenty).StockQuantity);
+        Assert.Equal(40, manager.Single(p => p.Id == plenty).StockQuantity);
+        Assert.Null((await service.GetProductAsync(plenty, storeView: true)).Data!.StockQuantity);
+    }
+
+    [Fact]
+    public async Task LowStockFilterIsForTheManagerOnly()
+    {
+        var repo = new Repo();
+        var service = ProductService(repo);
+
+        await service.GetAllProductsAsync(new(LowStock: true));
+        Assert.True(repo.LastQuery!.LowStockOnly);
+        await service.GetStoreProductsAsync(new(LowStock: true));
+        Assert.False(repo.LastQuery!.LowStockOnly);
+    }
+
+    [Fact]
+    public async Task RestockStartsTrackingAndReopensSales()
+    {
+        var repo = new Repo();
+        var untracked = repo.SeedProduct("Whey", 100m);
+        var empty = repo.SeedProduct("Creatine", 100m, SupplementProductStatus.OutOfStock, stock: 0);
+        var service = ProductService(repo);
+
+        var added = (await service.AdjustStockAsync(untracked, new("Add", 12, "Delivery 19/11"), Manager, null)).Data!;
+        var refilled = (await service.AdjustStockAsync(empty, new("add", 5), Manager, null)).Data!;
+
+        Assert.Equal(12, added.StockQuantity);
+        Assert.Equal(5, refilled.StockQuantity);
+        Assert.Equal("Active", refilled.Status);
+        Assert.Contains(repo.Audits, a => a.OldValue == "Stock=not tracked" && a.NewValue == "Stock=12; Action=Add; Note=Delivery 19/11");
+    }
+
+    [Fact]
+    public async Task StockCountAndStopTracking()
+    {
+        var repo = new Repo();
+        var whey = repo.SeedProduct("Whey", 100m, stock: 9);
+        var service = ProductService(repo);
+
+        var counted = (await service.AdjustStockAsync(whey, new("Set", 0), Manager, null)).Data!;
+        Assert.Equal(0, counted.StockQuantity);
+        Assert.Equal("OutOfStock", counted.Status);
+
+        var stopped = (await service.AdjustStockAsync(whey, new("StopTracking"), Manager, null)).Data!;
+        Assert.Null(stopped.StockQuantity);
+        Assert.Equal("OutOfStock", stopped.Status); // an untracked product keeps the status set by hand
+    }
+
+    [Fact]
+    public async Task InactiveProductStaysInactiveWhenRestocked()
+    {
+        var repo = new Repo();
+        var hidden = repo.SeedProduct("Old whey", 100m, SupplementProductStatus.Inactive, stock: 0);
+
+        var result = (await ProductService(repo).AdjustStockAsync(hidden, new("Add", 3), Manager, null)).Data!;
+
+        Assert.Equal("Inactive", result.Status);
+    }
+
+    [Fact]
+    public async Task BadStockRequestsAreRejected()
+    {
+        var repo = new Repo();
+        var whey = repo.SeedProduct("Whey", 100m, stock: 1);
+        var service = ProductService(repo);
+
+        Assert.Equal("SUPPLEMENT_STOCK_INVALID_QUANTITY", (await service.AdjustStockAsync(whey, new("Add", 0), Manager, null)).ErrorCode);
+        Assert.Equal("SUPPLEMENT_STOCK_INVALID_QUANTITY", (await service.AdjustStockAsync(whey, new("Set", -1), Manager, null)).ErrorCode);
+        Assert.Equal("SUPPLEMENT_STOCK_INVALID_ACTION", (await service.AdjustStockAsync(whey, new("Remove", 1), Manager, null)).ErrorCode);
+        Assert.Equal("SUPPLEMENT_PRODUCT_NOT_FOUND", (await service.AdjustStockAsync(99, new("Add", 1), Manager, null)).ErrorCode);
+    }
+
+    [Fact]
+    public async Task AProductWithNoStockCannotBeSetActive()
+    {
+        var repo = new Repo();
+        var empty = repo.SeedProduct("Whey", 100m, SupplementProductStatus.OutOfStock, stock: 0);
+        var service = ProductService(repo);
+
+        Assert.Equal("SUPPLEMENT_PRODUCT_NO_STOCK", (await service.ChangeStatusAsync(empty, "Active", Manager, null)).ErrorCode);
+        Assert.Equal("SUPPLEMENT_PRODUCT_NO_STOCK", (await service.UpdateAsync(empty, Product("Whey"), Manager, null)).ErrorCode);
+    }
+
+    [Fact]
+    public async Task NewProductWithZeroStockStartsOutOfStock()
+    {
+        var created = (await ProductService(new Repo()).CreateAsync(Product() with { StockQuantity = 0 }, Manager, null)).Data!;
+
+        Assert.Equal("OutOfStock", created.Status);
+        Assert.Equal(0, created.StockQuantity);
+    }
+
+    [Theory]
+    [InlineData("Add", 5, true)]
+    [InlineData("Add", 0, false)]
+    [InlineData("Set", 0, true)]
+    [InlineData("Set", 100_001, false)]
+    [InlineData("StopTracking", 0, true)]
+    [InlineData("Take", 1, false)]
+    public void StockValidatorChecksActionAndQuantity(string action, int quantity, bool valid) =>
+        Assert.Equal(valid, new SupplementStockRequestValidator().Validate(new SupplementStockRequest(action, quantity)).IsValid);
+
+    [Fact]
+    public void ProductValidatorChecksTheStartingStock()
+    {
+        var v = new SupplementProductRequestValidator();
+        Assert.True(v.Validate(Product() with { StockQuantity = 0 }).IsValid);
+        Assert.False(v.Validate(Product() with { StockQuantity = -1 }).IsValid);
+    }
+
     private static IMapper Mapper()
     {
         var config = new TypeAdapterConfig();
@@ -373,9 +577,12 @@ public sealed class SupplementTests
             [OtherCustomer] = new ApplicationUser { UserId = OtherCustomer, FullName = "Customer Two", PhoneNumber = "0900000002" }
         };
 
-        public int SeedProduct(string name, decimal price, SupplementProductStatus status = SupplementProductStatus.Active)
+        public int SeedProduct(string name, decimal price, SupplementProductStatus status = SupplementProductStatus.Active, int? stock = null)
         {
-            var product = new SupplementProduct { Id = _nextId++, ProductName = name, UnitPrice = price, ProductStatus = status };
+            var product = new SupplementProduct
+            {
+                Id = _nextId++, ProductName = name, UnitPrice = price, ProductStatus = status, StockQuantity = stock
+            };
             Products.Add(product);
             return product.Id;
         }
@@ -435,6 +642,70 @@ public sealed class SupplementTests
 
         public Task<IReadOnlyList<SupplementProduct>> GetProductsAsync(IReadOnlyCollection<int> ids, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<SupplementProduct>>(Products.Where(p => ids.Contains(p.Id)).ToList());
+
+        public Task<IReadOnlyDictionary<SupplementOrderStatus, int>> CountOrdersByStatusAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyDictionary<SupplementOrderStatus, int>>(Orders
+                .GroupBy(o => o.OrderStatus).ToDictionary(g => g.Key, g => g.Count()));
+
+        public Task<SupplementProduct?> GetProductSnapshotAsync(int id, CancellationToken cancellationToken = default) =>
+            Task.FromResult(Products.FirstOrDefault(p => p.Id == id));
+
+        public Task<IReadOnlyList<StockShortage>> ReserveStockAsync(
+            IReadOnlyCollection<(int ProductId, int Quantity)> lines, CancellationToken cancellationToken = default)
+        {
+            var shortages = lines
+                .Select(l => (Line: l, Product: Products.Single(p => p.Id == l.ProductId)))
+                .Where(x => x.Product.StockQuantity is { } stock && stock < x.Line.Quantity)
+                .Select(x => new StockShortage(x.Product.Id, x.Product.ProductName, x.Product.StockQuantity!.Value))
+                .ToList();
+            if (shortages.Count == 0)
+            {
+                foreach (var (productId, quantity) in lines)
+                {
+                    var product = Products.Single(p => p.Id == productId);
+                    if (product.StockQuantity is not null) product.StockQuantity -= quantity;
+                }
+                Sync(lines.Select(l => l.ProductId));
+            }
+            return Task.FromResult<IReadOnlyList<StockShortage>>(shortages);
+        }
+
+        public Task ReleaseStockAsync(IReadOnlyCollection<(int ProductId, int Quantity)> lines, CancellationToken cancellationToken = default)
+        {
+            foreach (var (productId, quantity) in lines)
+            {
+                var product = Products.Single(p => p.Id == productId);
+                if (product.StockQuantity is not null) product.StockQuantity += quantity;
+            }
+            Sync(lines.Select(l => l.ProductId));
+            return Task.CompletedTask;
+        }
+
+        public Task<(int? Before, int? After)> AdjustStockAsync(
+            int productId, SupplementStockAction action, int quantity, CancellationToken cancellationToken = default)
+        {
+            var product = Products.Single(p => p.Id == productId);
+            var before = product.StockQuantity;
+            product.StockQuantity = action switch
+            {
+                SupplementStockAction.Add => (product.StockQuantity ?? 0) + quantity,
+                SupplementStockAction.Set => quantity,
+                _ => null,
+            };
+            Sync([productId]);
+            return Task.FromResult((before, product.StockQuantity));
+        }
+
+        private void Sync(IEnumerable<int> ids)
+        {
+            foreach (var product in Products.Where(p => ids.Contains(p.Id)))
+            {
+                if (product.StockQuantity == 0 && product.ProductStatus == SupplementProductStatus.Active)
+                    product.ProductStatus = SupplementProductStatus.OutOfStock;
+                else if (product.StockQuantity > 0 && product.ProductStatus == SupplementProductStatus.OutOfStock)
+                    product.ProductStatus = SupplementProductStatus.Active;
+            }
+        }
 
         public Task<(IReadOnlyList<SupplementOrder> Items, int TotalCount)> SearchOrdersAsync(
             string? customerUserId, IReadOnlyCollection<SupplementOrderStatus>? statuses, SupplementDeliveryType? deliveryType,

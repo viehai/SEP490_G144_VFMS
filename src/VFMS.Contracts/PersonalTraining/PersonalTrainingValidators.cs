@@ -1,4 +1,5 @@
 using FluentValidation;
+using VFMS.Contracts.Memberships;
 
 namespace VFMS.Contracts.PersonalTraining;
 
@@ -16,18 +17,21 @@ public sealed class PTPublishRequestValidator : AbstractValidator<PTPublishReque
 
 public sealed class PTPackageRequestValidator : AbstractValidator<PTPackageRequest>
 {
+    /// <summary>UC 4.3: a package has 1 to 50 sessions.</summary>
+    public const int MaxSessions = 50;
+
     public PTPackageRequestValidator()
     {
-        RuleFor(x => x.Name).NotEmpty().WithMessage("Nhập tên gói.").MaximumLength(256);
+        RuleFor(x => x.Name).NotEmpty().WithMessage("Tên gói là bắt buộc.").MaximumLength(256);
         RuleFor(x => x.Description).MaximumLength(500);
-        RuleFor(x => x.Credits).GreaterThan(0).WithMessage("Số buổi phải lớn hơn 0.");
+        RuleFor(x => x.Credits).InclusiveBetween(1, MaxSessions).WithMessage($"Vui lòng nhập số buổi từ 1 đến {MaxSessions}.");
         RuleFor(x => x.Price).GreaterThan(0).Must(price => decimal.Truncate(price) == price)
-            .WithMessage("Giá phải là số nguyên dương (VND).");
+            .WithMessage("Vui lòng nhập giá là số nguyên lớn hơn 0 (VND).");
         RuleFor(x => x.TrainerLevel).Must(level => level is "Junior" or "Senior" or "Master")
             .WithMessage("Chọn cấp PT Junior, Senior hoặc Master.");
-        RuleFor(x => x.FreezeMinimumDays).GreaterThan(0).WithMessage("Số ngày bảo lưu tối thiểu phải lớn hơn 0.");
+        RuleFor(x => x.FreezeMinimumDays).GreaterThan(0).WithMessage("Vui lòng nhập số ngày bảo lưu tối thiểu lớn hơn 0.");
         RuleFor(x => x.FreezeMaxTotalDays).GreaterThanOrEqualTo(x => x.FreezeMinimumDays)
-            .WithMessage("Số ngày bảo lưu tối đa phải lớn hơn hoặc bằng số ngày tối thiểu.");
+            .WithMessage("Vui lòng nhập số ngày bảo lưu tối đa từ số ngày tối thiểu trở lên.");
     }
 }
 
@@ -60,7 +64,17 @@ public sealed class PTBookingSlotsRequestValidator : AbstractValidator<PTBooking
 
 public sealed class PTPaymentRequestValidator : AbstractValidator<PTPaymentRequest>
 {
-    public PTPaymentRequestValidator() => RuleFor(x => x.VoucherCode).MaximumLength(80);
+    public PTPaymentRequestValidator()
+    {
+        RuleFor(x => x.VoucherCode).MaximumLength(80);
+        RuleFor(x => x.PaymentMethod).Must(m => m is null or MembershipPaymentMethods.VietQr or MembershipPaymentMethods.Cash)
+            .WithMessage("Chọn VietQR hoặc thanh toán tại quầy.");
+    }
+}
+
+public sealed class PTCashConfirmationRequestValidator : AbstractValidator<PTCashConfirmationRequest>
+{
+    public PTCashConfirmationRequestValidator() => RuleFor(x => x.AmountReceived).GreaterThan(0);
 }
 
 public sealed class PTProposalRequestValidator : AbstractValidator<PTProposalRequest>
@@ -114,6 +128,13 @@ public sealed class PTTrainerChangeRequestValidator : AbstractValidator<PTTraine
         RuleFor(x => x.TemplateIds).NotNull().Must(ids => ids.Length is >= 1 and <= 7 && ids.Distinct().Count() == ids.Length)
             .WithMessage("Chọn từ 1 đến 7 ca khác nhau của huấn luyện viên mới.");
     }
+}
+
+public sealed class PTFreezeSlotChangeValidator : AbstractValidator<PTFreezeSlotChange>
+{
+    public PTFreezeSlotChangeValidator() => RuleFor(x => x.Moves).Must(moves => moves is { Length: > 0 } &&
+            moves.All(m => m is not null) && moves.Select(m => m.SessionId).Distinct().Count() == moves.Length)
+        .WithMessage("Chọn ca mới cho ít nhất một buổi, mỗi buổi một ca.");
 }
 
 public sealed class PTFreezeDecisionValidator : AbstractValidator<PTFreezeDecision>

@@ -43,6 +43,15 @@
                         Tên gói
                         <InputText id="plan-name" class="@Field" @bind-Value="form.Name" maxlength="256" required />
                     </label>
+                    <label class="text-sm font-semibold text-[#242424]" for="plan-service">
+                        Loại dịch vụ
+                        <InputSelect id="plan-service" class="@Field" @bind-Value="form.ServiceType" disabled="@(_selected is not null)"
+                                     aria-describedby="plan-service-hint">
+                            <option value="@MembershipPlanServiceTypes.Gym">Gym</option>
+                            <option value="@MembershipPlanServiceTypes.Yoga">Yoga</option>
+                        </InputSelect>
+                        <span id="plan-service-hint" class="mt-1 block text-xs font-normal text-[#6F6966]">@(_selected is null ? "Gói Yoga cho phép đặt mọi lớp yoga. Không đổi được sau khi tạo." : "Không đổi được loại dịch vụ của gói đã tạo.")</span>
+                    </label>
                     <label class="text-sm font-semibold text-[#242424]" for="plan-status">
                         Trạng thái
                         <InputSelect id="plan-status" class="@Field" @bind-Value="form.Status">
@@ -80,6 +89,7 @@
         <section class="rounded-xl border border-[#D8D1CD] bg-[#F8F5F2] p-5 sm:p-6 shadow-sm" aria-labelledby="membership-plan-details">
             <h2 id="membership-plan-details" class="break-words text-base font-bold text-[#242424] border-b border-[#D8D1CD] pb-3" tabindex="-1" @ref="_panelHeading">@plan.Name</h2>
             <dl class="mt-4 grid gap-4 text-sm sm:grid-cols-2">
+                <div><dt class="font-semibold text-[#6F6966]">Loại dịch vụ</dt><dd class="font-bold text-[#242424]">@ServiceLabel(plan.ServiceType)</dd></div>
                 <div><dt class="font-semibold text-[#6F6966]">Thời hạn</dt><dd class="font-bold text-[#242424]">@Duration(plan)</dd></div>
                 <div><dt class="font-semibold text-[#6F6966]">Giá</dt><dd class="font-bold text-[#B83A3A]">@Money(plan.Price)</dd></div>
                 <div><dt class="font-semibold text-[#6F6966]">Trạng thái</dt><dd class="font-semibold text-[#242424]">@StatusLabel(plan.Status)</dd></div>
@@ -101,6 +111,14 @@
                     <label class="w-full text-xs font-semibold text-[#242424] sm:w-64" for="plan-search">
                         Tìm theo tên
                         <input id="plan-search" type="search" @bind="_searchInput" class="@Field" maxlength="256" />
+                    </label>
+                    <label class="text-xs font-semibold text-[#242424]" for="plan-filter-service">
+                        Loại dịch vụ
+                        <select id="plan-filter-service" @bind="_serviceInput" class="@Field">
+                            <option value="">Tất cả</option>
+                            <option value="@MembershipPlanServiceTypes.Gym">Gym</option>
+                            <option value="@MembershipPlanServiceTypes.Yoga">Yoga</option>
+                        </select>
                     </label>
                     <label class="text-xs font-semibold text-[#242424]" for="plan-filter-status">
                         Trạng thái
@@ -134,13 +152,14 @@
             <div class="overflow-x-auto">
                 <table class="workspace-table min-w-[780px]">
                     <thead>
-                        <tr><th scope="col">Tên gói</th><th scope="col">Thời hạn</th><th scope="col">Giá</th><th scope="col">Lượt đăng ký</th><th scope="col">Trạng thái</th><th scope="col">Thao tác</th></tr>
+                        <tr><th scope="col">Tên gói</th><th scope="col">Dịch vụ</th><th scope="col">Thời hạn</th><th scope="col">Giá</th><th scope="col">Lượt đăng ký</th><th scope="col">Trạng thái</th><th scope="col">Thao tác</th></tr>
                     </thead>
                     <tbody>
                         @foreach (var row in list.Items)
                         {
                             <tr @key="row.Id">
                                 <th scope="row" class="max-w-56 break-words">@row.Name</th>
+                                <td>@ServiceLabel(row.ServiceType)</td>
                                 <td>@Duration(row)</td>
                                 <td class="whitespace-nowrap font-semibold text-[#B83A3A]">@Money(row.Price)</td>
                                 <td>@row.SubscriberCount</td>
@@ -190,6 +209,7 @@
     private ElementReference _panelHeading;
     private string _searchInput = string.Empty;
     private string _statusInput = string.Empty;
+    private string _serviceInput = string.Empty;
     private string? _actionError;
     private string? _listError;
     private string? _notice;
@@ -232,6 +252,7 @@
         if (ListDisabled) return Task.CompletedTask;
         _query.Search = _searchInput.Trim();
         _query.Status = _statusInput;
+        _query.ServiceType = _serviceInput;
         return ChangePageAsync(1);
     }
 
@@ -263,7 +284,8 @@
             Description = plan.Description,
             DurationInDays = plan.DurationInDays,
             Price = plan.Price,
-            Status = IsActive(plan.Status) ? Active : Inactive
+            Status = IsActive(plan.Status) ? Active : Inactive,
+            ServiceType = plan.ServiceType
         };
         _focusPanel = true;
     }
@@ -333,6 +355,8 @@
     private static int PageCount(PagedResponse<MembershipPlanResponse> page) => Math.Max(1, (int)Math.Ceiling((double)page.TotalCount / page.PageSize));
     private static bool IsActive(string status) => string.Equals(status, Active, StringComparison.OrdinalIgnoreCase);
     private static string StatusLabel(string status) => IsActive(status) ? "Đang mở bán" : "Ngừng bán";
+    private static string ServiceLabel(string type) =>
+        string.Equals(type, MembershipPlanServiceTypes.Yoga, StringComparison.OrdinalIgnoreCase) ? "Yoga" : "Gym";
     private static string Money(decimal value) => $"{value.ToString("#,##0.##", CurrencyFormat)} ₫";
     private static string Duration(MembershipPlanResponse plan) => plan.DurationInMonths is > 0 ? $"{plan.DurationInMonths} tháng"
         : plan.DurationInDays is { } days ? $"{days} ngày" : "—";

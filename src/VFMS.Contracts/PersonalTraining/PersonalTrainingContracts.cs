@@ -23,13 +23,18 @@ public sealed record PTBookingRequest(string TrainerId, int PackageId,
     DateOnly StartDate, int[] TemplateIds);
 public sealed record PTBookingSlotsRequest(string TrainerId, int PackageId,
     DateOnly StartDate, int[] TemplateIds);
-public sealed record PTPaymentRequest(string? VoucherCode = null);
+public sealed record PTPaymentRequest(string? VoucherCode = null, string? PaymentMethod = null);
+public sealed record PTCashConfirmationRequest(decimal AmountReceived);
 public sealed record PTBookingPreview(int PackageId, string TrainerId, DateOnly ExpiresOn,
-    decimal Price, IReadOnlyList<PTCalendarSlot> Sessions);
+    decimal Price, IReadOnlyList<PTCalendarSlot> Sessions)
+{
+    /// <summary>GBR-12: busy dates that were skipped; their sessions moved to the end of the schedule.</summary>
+    public IReadOnlyList<PTCalendarSlot> Skipped { get; init; } = [];
+}
 public sealed record PTCheckoutResponse(int ContractId, string OrderNumber, string Status, decimal AmountDue,
     DateTime ExpiresAt, VietQrPaymentResponse? VietQr, string? InvoiceNumber, DateTime HoldExpiresAt = default,
-    IReadOnlyList<CheckoutRefundView>? Refunds = null, bool CanSimulatePayment = false, bool IsDemoPayment = false,
-    DateTime? ProceedBefore = null);
+    IReadOnlyList<CheckoutRefundView>? Refunds = null,
+    DateTime? ProceedBefore = null, bool PayAtCounter = false);
 public sealed record PTProposalRequest(DateOnly Date, TimeOnly StartTime, string Type);
 public sealed record PTProposalResponse(DateOnly Date, TimeOnly StartTime, TimeOnly EndTime,
     string Type, DateTime ExpiresAt);
@@ -52,7 +57,7 @@ public static class PTDisputeDecisions
 public sealed record PTAttendanceDisputeDecision(string Decision, string Note);
 public sealed record PTAttendanceDispute(int SessionId, int ContractId, string MemberName, string TrainerName,
     DateOnly Date, TimeOnly StartTime, TimeOnly EndTime, string? MemberNote, DateTime ReportedAt, string Status,
-    string? Decision, string? ReviewNote);
+    string? Decision, string? ReviewNote, string? ReviewerName = null);
 public sealed record PTSessionResponse(int Id, DateOnly Date, TimeOnly StartTime, TimeOnly EndTime,
     string Status, int CreditUnits, string? Note, DateTime? NoteUpdatedAt, PTProposalResponse? Proposal,
     DateTime? TrainerAbsenceReportedAt = null, bool? TrainerAbsenceApproved = null,
@@ -75,6 +80,15 @@ public sealed record PTContractResponse(int Id, string TrainerId, string MemberI
     public bool FreezeUsed { get; init; }
     /// <summary>Open one-week window to choose another trainer (GBR-98).</summary>
     public DateTime? TrainerChangeDeadline { get; init; }
+    /// <summary>UC 4.10: the Member already reviewed this contract.</summary>
+    public bool HasReview { get; init; }
+    /// <summary>UC 4.10: completed and its final session was held, so it can be reviewed once.</summary>
+    public bool CanReview { get; init; }
+    /// <summary>The package's trainer level (tier), shown in the review modal (UC 4.10 step 2).</summary>
+    public string? TrainerLevel { get; init; }
+    /// <summary>Gym operating hours, for choosing a make-up hour (UC 4.7).</summary>
+    public TimeOnly? GymOpenTime { get; init; }
+    public TimeOnly? GymCloseTime { get; init; }
 }
 public sealed record PTAssignedMember(int ContractId, string MemberId, string FullName, string? AvatarUrl,
     string Email, string Phone, int TotalCredits, int RemainingCredits, DateOnly ExpiresOn, DateOnly? LastTrainedOn);
@@ -96,7 +110,17 @@ public sealed record PTReplacementTrainer(string UserId, int ProfileId, string F
 public sealed record PTFreezeDecision(bool Approve, string? Reason);
 public sealed record PTFreezeResponse(int Id, int ContractId, string MemberId, string TrainerId, DateOnly StartDate,
     DateOnly ResumeDate, string Status, string? Reason, string? ReviewNote,
-    DateTime? ReviewedAt, string? MemberName = null, string? TrainerName = null, string? ReplacementTrainerId = null);
+    DateTime? ReviewedAt, string? MemberName = null, string? TrainerName = null, string? ReplacementTrainerId = null)
+{
+    /// <summary>Freeze policy saved in the contract (UC 4.9).</summary>
+    public int MinimumDays { get; init; }
+    public int MaximumDays { get; init; }
+    /// <summary>Manager list (UC 4.9 step 2): held post-freeze slots and the replacement trainer, if any.</summary>
+    public string? ReplacementTrainerName { get; init; }
+    public IReadOnlyList<PTCalendarSlot> ProposedSlots { get; init; } = [];
+}
+/// <summary>UC 4.8 step 8.4: new slots for held sessions of a pending freeze, keyed by the frozen session id.</summary>
+public sealed record PTFreezeSlotChange(PTEarlyResumeMove[] Moves);
 /// <summary>GymCoverageWarning: the Gym Membership ends before the last proposed session; approval is still allowed (UC 4.9).</summary>
 public sealed record PTFreezePreview(DateOnly ExpiresOn, IReadOnlyList<PTCalendarSlot> Replacements,
     bool GymCoverageWarning = false, string? ReplacementTrainerName = null);

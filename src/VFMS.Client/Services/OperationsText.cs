@@ -76,6 +76,15 @@ public static class OperationsText
             _ => "border-[#D8D1CD] bg-[#ECE8E4] text-[#6B7280]"
         };
 
+    /// <summary>A status filter option with its count, e.g. "Mới báo (3)"; "Tất cả (12)" when <paramref name="status"/> is empty.</summary>
+    public static string CountLabel(string? status, VFMS.Contracts.Operations.StatusCountsResponse? counts)
+    {
+        var label = string.IsNullOrEmpty(status) ? "Tất cả" : Label(status);
+        if (counts is null) return label;
+        var count = string.IsNullOrEmpty(status) ? counts.Total : counts.Counts.GetValueOrDefault(status);
+        return $"{label} ({count})";
+    }
+
     /// <summary>Vietnamese text for an API error code, or null to keep the server's message.</summary>
     public static string? ErrorMessage(string? code) => code switch
     {
@@ -107,6 +116,10 @@ public static class OperationsText
         "SUPPLEMENT_PRODUCT_NAME_EXISTS" => "Tên sản phẩm đã tồn tại.",
         "SUPPLEMENT_PRODUCT_STATUS_UNCHANGED" => "Sản phẩm đã ở trạng thái này.",
         "SUPPLEMENT_PRODUCT_UNAVAILABLE" => "Có sản phẩm trong giỏ đã ngừng bán hoặc hết hàng.",
+        "SUPPLEMENT_PRODUCT_INSUFFICIENT_STOCK" => "Không đủ hàng cho một số sản phẩm trong giỏ.",
+        "SUPPLEMENT_PRODUCT_NO_STOCK" => "Sản phẩm đã hết hàng trong kho. Hãy nhập thêm hàng trước khi mở bán.",
+        "SUPPLEMENT_STOCK_INVALID_ACTION" => "Thao tác kho không hợp lệ.",
+        "SUPPLEMENT_STOCK_INVALID_QUANTITY" => "Số lượng không hợp lệ.",
         "SUPPLEMENT_ORDER_INVALID_FULFILLMENT" => "Hình thức nhận hàng không hợp lệ.",
         "SUPPLEMENT_ORDER_DELIVERY_REQUIRED" => "Giao tận nơi cần tên người nhận và địa chỉ.",
         "SUPPLEMENT_ORDER_QUANTITY_INVALID" => "Số lượng mỗi sản phẩm từ 1 đến 999.",

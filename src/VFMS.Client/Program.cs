@@ -10,15 +10,18 @@ builder.RootComponents.Add<App>("#app");
 builder.RootComponents.Add<HeadOutlet>("head::after");
 
 builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
+builder.Services.AddScoped<ToastService>();
 builder.Services.AddAuthorizationCore();
 builder.Services.AddScoped(_ => new AuthApiClient(CreateApiHttpClient()));
 builder.Services.AddScoped<AuthSession>();
 builder.Services.AddScoped<AuthenticationStateProvider>(sp => sp.GetRequiredService<AuthSession>());
 builder.Services.AddScoped(sp => new MembershipPlanApiClient(CreateApiHttpClient(), sp.GetRequiredService<AuthSession>()));
 // 40 s: AI workout plan generation can take longer than the 30 s default.
-builder.Services.AddScoped(sp => new VfmsApiClient(CreateApiHttpClient(40), sp.GetRequiredService<AuthSession>()));
+builder.Services.AddScoped(sp => new VfmsApiClient(CreateApiHttpClient(40), sp.GetRequiredService<AuthSession>(),
+    sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<VfmsApiClient>>()));
 builder.Services.AddScoped(sp => new SystemAdministrationApiClient(CreateApiHttpClient(), sp.GetRequiredService<AuthSession>()));
 builder.Services.AddScoped(sp => new OperationsApiClient(CreateApiHttpClient(), sp.GetRequiredService<AuthSession>()));
+builder.Services.AddScoped(sp => new CompetitionApiClient(CreateApiHttpClient(), sp.GetRequiredService<AuthSession>()));
 builder.Services.AddScoped(sp => new PromotionApiClient(CreateApiHttpClient(), sp.GetRequiredService<AuthSession>()));
 
 builder.Services.AddScoped(sp => new TrainerApiClient(CreateApiHttpClient(), sp.GetRequiredService<AuthSession>()));

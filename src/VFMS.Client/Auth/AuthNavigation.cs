@@ -14,7 +14,8 @@ public static class AuthNavigation
 {
     // Navigation preference for accounts with multiple roles, not an authorization hierarchy.
     private static readonly Type[] Dashboards =
-        [typeof(AdminDashboard), typeof(ManagerDashboard), typeof(StaffDashboard), typeof(PTDashboard)];
+        [typeof(AdminDashboard), typeof(ManagerDashboard), typeof(StaffDashboard), typeof(PTDashboard),
+            typeof(MyTrainerProfile)]; // Yoga trainers have no dashboard; they land on their trainer profile.
     private static readonly (string Template, Type Page)[] Pages = typeof(App).Assembly.GetExportedTypes()
         .SelectMany(page => page.GetCustomAttributes<RouteAttribute>()
             .Select(route => (route.Template, page))).ToArray();

@@ -26,11 +26,25 @@ public sealed class EquipmentController : ControllerBase
     public async Task<IActionResult> GetList([FromQuery] EquipmentListRequest request, CancellationToken cancellationToken) =>
         this.ToActionResult(await _service.GetEquipmentListAsync(request, cancellationToken));
 
+    /// <summary>Brands used by the equipment, for the brand filter.</summary>
+    [HttpGet("brands")]
+    [ProducesResponseType(typeof(IReadOnlyList<string>), 200)]
+    public async Task<IActionResult> GetBrands(CancellationToken cancellationToken) =>
+        this.ToActionResult(await _service.GetBrandsAsync(cancellationToken));
+
     [HttpGet("{id:int}")]
     [ProducesResponseType(typeof(EquipmentResponse), 200)]
     [ProducesResponseType(404)]
     public async Task<IActionResult> Get(int id, CancellationToken cancellationToken) =>
         this.ToActionResult(await _service.GetEquipmentAsync(id, cancellationToken));
+
+    /// <summary>Issue counts of one piece of equipment, for the equipment history panel.</summary>
+    [HttpGet("{id:int}/issue-summary")]
+    [Authorize(Roles = "Staff,Manager")]
+    [ProducesResponseType(typeof(EquipmentIssueSummaryResponse), 200)]
+    [ProducesResponseType(404)]
+    public async Task<IActionResult> GetIssueSummary(int id, CancellationToken cancellationToken) =>
+        this.ToActionResult(await _service.GetIssueSummaryAsync(id, cancellationToken));
 
     [HttpPost]
     [Authorize(Roles = "Manager")]

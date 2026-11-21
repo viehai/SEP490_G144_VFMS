@@ -33,8 +33,8 @@ public sealed class PersonalTrainingApiClient(HttpClient http, AuthSession sessi
         Send<PTCheckoutResponse>(HttpMethod.Post, "purchases", request);
     public Task<PTCheckoutResponse> StartPaymentAsync(string order, PTPaymentRequest request) =>
         Send<PTCheckoutResponse>(HttpMethod.Post, $"purchases/{Uri.EscapeDataString(order)}/payment", request);
-    public Task<PTCheckoutResponse> ConfirmDemoPaymentAsync(string order, CancellationToken ct) =>
-        Send<PTCheckoutResponse>(HttpMethod.Post, $"purchases/{Uri.EscapeDataString(order)}/demo-payment", ct: ct);
+    public Task<PTCheckoutResponse> ConfirmCashAsync(string order, PTCashConfirmationRequest request, CancellationToken ct) =>
+        Send<PTCheckoutResponse>(HttpMethod.Post, $"purchases/{Uri.EscapeDataString(order)}/cash-confirmation", request, ct: ct);
     public Task<PTCheckoutResponse> CheckoutAsync(string order, CancellationToken ct = default) =>
         Send<PTCheckoutResponse>(HttpMethod.Get, $"purchases/{Uri.EscapeDataString(order)}", ct: ct);
 
@@ -43,9 +43,10 @@ public sealed class PersonalTrainingApiClient(HttpClient http, AuthSession sessi
     public Task<PagedResponse<PTAssignedMember>> AssignedPageAsync(string search, bool historical, int page) =>
         Send<PagedResponse<PTAssignedMember>>(HttpMethod.Get,
             $"assigned-members/page?search={Uri.EscapeDataString(search)}&historical={(historical ? "true" : "false")}&page={page}");
-    public Task<PagedResponse<PTContractResponse>> ContractPageAsync(int page, string? trainerId) =>
+    public Task<PagedResponse<PTContractResponse>> ContractPageAsync(int page, string? trainerId, bool? completed = null) =>
         Send<PagedResponse<PTContractResponse>>(HttpMethod.Get,
-            $"contracts/page?page={page}" + (trainerId is null ? "" : $"&trainerId={Uri.EscapeDataString(trainerId)}"));
+            $"contracts/page?page={page}" + (trainerId is null ? "" : $"&trainerId={Uri.EscapeDataString(trainerId)}") +
+            (completed is { } done ? $"&completed={(done ? "true" : "false")}" : ""));
     public Task<PTTeachingSlot[]> TeachingScheduleAsync(DateOnly monday, CancellationToken ct = default) =>
         Send<PTTeachingSlot[]>(HttpMethod.Get, $"teaching-schedule?from={monday:yyyy-MM-dd}", ct: ct);
     public Task<PTRescheduleSlot[]> RescheduleOptionsAsync(int id, DateOnly from) =>
@@ -87,6 +88,10 @@ public sealed class PersonalTrainingApiClient(HttpClient http, AuthSession sessi
         Send<PTFreezeResponse>(HttpMethod.Post, $"contracts/{id}/freezes", request);
     public Task<PTFreezeProposal> PreviewFreezeRequestAsync(int id, PTFreezeRequest request) =>
         Send<PTFreezeProposal>(HttpMethod.Post, $"contracts/{id}/freezes/preview", request);
+    public Task<PTFreezeProposal> FreezeSlotsAsync(int id) =>
+        Send<PTFreezeProposal>(HttpMethod.Get, $"freezes/{id}/slots");
+    public Task<PTFreezeResponse> ChangeFreezeSlotsAsync(int id, PTFreezeSlotChange request) =>
+        Send<PTFreezeResponse>(HttpMethod.Put, $"freezes/{id}/slots", request);
     public Task<PTFreezeResponse> WithdrawFreezeAsync(int id) =>
         Send<PTFreezeResponse>(HttpMethod.Post, $"freezes/{id}/withdraw");
     public Task<PTReplacementTrainer[]> ReplacementTrainersAsync(int contract) =>

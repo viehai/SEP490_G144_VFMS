@@ -392,6 +392,7 @@ public sealed class MembershipVoucherTests
         public void Add(AuditLog audit) => Audits.Add(audit);
         public void Add(Order order) => throw new NotSupportedException();
         public Task<List<Package>> LoadPlansAsync(int[] ids, CancellationToken ct) => throw new NotSupportedException();
+        public Task<bool> AnyBookableYogaClassAsync(DateTime nowUtc, CancellationToken ct) => throw new NotSupportedException();
         public Task<List<OwnedMembership>> ListOwnedMembershipsAsync(string memberId, CancellationToken ct) => throw new NotSupportedException();
         public Task<OwnedMembershipDetail?> FindOwnedMembershipAsync(string memberId, int membershipId, CancellationToken ct) => throw new NotSupportedException();
         public Task<Gym?> GetRenewalPolicyGymAsync(CancellationToken ct) => throw new NotSupportedException();

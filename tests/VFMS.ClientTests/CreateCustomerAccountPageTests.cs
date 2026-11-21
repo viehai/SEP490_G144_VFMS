@@ -468,6 +468,7 @@ public sealed class CreateCustomerAccountPageTests
             .AddSingleton<AuthenticationStateProvider>(session)
             .AddSingleton<IJSRuntime>(storage)
             .AddSingleton(api)
+            .AddSingleton(new ToastService())
             .AddSingleton<NavigationManager>(navigation)
             .AddSingleton<INavigationInterception>(new NoNavigationInterception())
             .AddSingleton<IScrollToLocationHash>(new NoScrollToLocationHash())

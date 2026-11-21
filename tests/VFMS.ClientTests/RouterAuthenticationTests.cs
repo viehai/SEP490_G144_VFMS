@@ -14,6 +14,9 @@ using VFMS.Client.Auth;
 using VFMS.Client.Components.Auth;
 using VFMS.Client.Services;
 using VFMS.Contracts.Auth;
+using VFMS.Contracts.CheckIn;
+using VFMS.Contracts.Common;
+using VFMS.Contracts.Memberships;
 using Xunit;
 
 namespace VFMS.ClientTests;
@@ -35,6 +38,25 @@ public sealed class RouterAuthenticationTests
         var logoutCalls = 0;
         using var http = new HttpClient(new Handler(request =>
         {
+            if (request.RequestUri!.AbsolutePath == "/api/membership-plans")   // the home page's public price list
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(new PagedResponse<MembershipPlanCatalogItemResponse>(1, 9, 0, []))
+                };
+            if (request.RequestUri!.AbsolutePath == "/api/yoga/schedule")   // the home page's yoga classes
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(Array.Empty<object>()) };
+            if (request.RequestUri!.AbsolutePath == "/api/check-ins/active")   // the staff dashboard's figures
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(new ActiveCheckInsResponse(0, 0, []))
+                };
+            if (request.RequestUri!.AbsolutePath is "/api/equipment-issues" or "/api/consultations"   // dashboard counts and lists
+                or "/api/business-reports" or "/api/manager/membership-freeze-requests" or "/api/purchase-proposals"
+                or "/api/feedback/manager" or "/api/admin/users" or "/api/admin/audit-logs")
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(new PagedResponse<object>(1, 1, 0, []))
+                };
             Assert.Equal("/api/auth/logout", request.RequestUri!.AbsolutePath);
             logoutCalls++;
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new { Message = "Logged out." }) };
@@ -44,6 +66,9 @@ public sealed class RouterAuthenticationTests
         var components = new CapturingActivator();
         var registrations = new ServiceCollection().AddLogging().AddAuthorizationCore()
             .AddSingleton(session).AddSingleton<AuthenticationStateProvider>(session)
+            .AddSingleton(new MembershipPlanApiClient(http, session))
+            .AddSingleton(new VfmsApiClient(http, session))
+            .AddSingleton(new ToastService())
             .AddSingleton<IJSRuntime>(storage).AddSingleton<NavigationManager>(navigation)
             .AddSingleton<IComponentActivator>(components)
             .AddSingleton<INavigationInterception>(new NoNavigationInterception())
@@ -80,7 +105,11 @@ public sealed class RouterAuthenticationTests
             navigation.NavigateTo(dashboard);
             return WebUtility.HtmlDecode(rendered.ToHtmlString());
         });
-        Assert.Contains("Vui lòng đăng nhập", denied);
+        // Signed out, a protected route goes straight to the login page and comes back after sign-in.
+        var login = new Uri(navigation.Uri);
+        Assert.Equal("/auth/login", login.AbsolutePath);
+        Assert.Equal($"?returnUrl={Uri.EscapeDataString(dashboard)}", login.Query);
+        Assert.Contains("auth-shell", denied);
         Assert.DoesNotContain("workspace-shell--", denied);
     }
 

@@ -1,63 +1,65 @@
 @page "/manager/yoga"
 @layout ManagerAdminLayout
+@attribute [Authorize(Roles = "Manager")]
+@using Microsoft.AspNetCore.Authorization
 @using VFMS.Contracts.Yoga
 @inject VfmsApiClient Api
 
 <PageTitle>Quản lý Yoga | Victor Fitness</PageTitle>
 
-<div class="workspace-page space-y-8 font-['Inter',sans-serif] text-[#252525]">
-    <header class="border-b-2 border-black pb-7">
-        <p class="workspace-heading mb-3 text-[10px] font-bold tracking-[.18em] text-[#71717A]">VFMS / YOGA &amp; GROUP CLASSES</p>
-        <h1 class="workspace-heading text-3xl font-extrabold uppercase tracking-tight sm:text-4xl">Quản lý Yoga<span class="text-[#6366F1]">.</span></h1>
-        <p class="mt-3 max-w-2xl text-sm leading-6 text-[#545454]">Phòng tập, loại lớp, lớp học và thời khóa biểu từng buổi.</p>
+<div class="workspace-page space-y-8 font-['Inter',sans-serif] text-[#242424]">
+    <header class="border-b border-[#D8D1CD] pb-7">
+        <p class="workspace-heading mb-3 text-[10px] font-bold tracking-[.18em] text-[#B83A3A]">VFMS / YOGA &amp; GROUP CLASSES</p>
+        <h1 class="workspace-heading text-3xl font-extrabold uppercase tracking-tight sm:text-4xl">Quản lý Yoga<span class="text-[#B83A3A]">.</span></h1>
+        <p class="mt-3 max-w-2xl text-sm leading-6 text-[#6F6966]">Phòng tập, loại lớp, lớp học và thời khóa biểu từng buổi.</p>
     </header>
 
     <nav class="flex flex-wrap gap-2" aria-label="Mục quản lý yoga">
         @foreach (var (id, label) in Tabs)
         {
             <button type="button" @onclick="() => SelectTab(id)" aria-pressed="@(_tab == id ? "true" : "false")"
-                    class="workspace-heading border-2 border-black px-5 py-3 text-xs font-extrabold uppercase tracking-wider rounded-none @(_tab == id ? "bg-black text-white" : "bg-white hover:bg-[#F7F7F7]")">@label</button>
+                    class="workspace-heading border border-[#D8D1CD] px-5 py-3 text-xs font-extrabold uppercase tracking-wider rounded-lg @(_tab == id ? "bg-[#B83A3A] text-white border-[#B83A3A]" : "bg-[#F8F5F2] hover:bg-[#F3EDEA]")">@label</button>
         }
     </nav>
 
     @if (_message is not null)
     {
-        <p role="status" class="border-2 px-4 py-3 text-sm rounded-none @(_isError ? "border-[#EF4444] bg-red-50 text-[#B91C1C]" : "border-[#10B981] bg-emerald-50 text-[#047857]")">@_message</p>
+        <p role="status" class="border px-4 py-3 text-sm rounded-lg @(_isError ? "border-[#EF4444] bg-red-50 text-[#B91C1C]" : "border-[#10B981] bg-emerald-50 text-[#047857]")">@_message</p>
     }
 
     @if (_loading)
     {
-        <p class="text-sm text-[#545454]">Đang tải…</p>
+        <p class="text-sm text-[#6F6966]">Đang tải…</p>
     }
     else if (_tab == "studios")
     {
         <section class="grid gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
-            <form class="space-y-4 border-2 border-black bg-white p-6 rounded-none" @onsubmit="SaveStudio">
+            <form class="space-y-4 border border-[#D8D1CD] bg-[#F8F5F2] p-6 rounded-xl" @onsubmit="SaveStudio">
                 <h2 class="workspace-heading text-sm font-extrabold uppercase tracking-wider">@(_studioEditId is null ? "Thêm phòng tập" : "Sửa phòng tập")</h2>
-                <label class="block text-xs font-semibold">Tên phòng<input class="mt-1 w-full border border-[#CFCFCF] px-3 py-2 text-sm rounded-none" @bind="_studio.Name" maxlength="200" required /></label>
+                <label class="block text-xs font-semibold">Tên phòng<input class="mt-1 w-full border border-[#D8D1CD] px-3 py-2 text-sm rounded-lg bg-[#F8F5F2] focus:border-[#B83A3A] focus:ring-2 focus:ring-[#B83A3A]/20 outline-none" @bind="_studio.Name" maxlength="200" required /></label>
                 <div class="grid grid-cols-2 gap-3">
-                    <label class="block text-xs font-semibold">Tầng<input type="number" class="mt-1 w-full border border-[#CFCFCF] px-3 py-2 text-sm rounded-none" @bind="_studio.Floor" /></label>
-                    <label class="block text-xs font-semibold">Số thảm<input type="number" min="1" class="mt-1 w-full border border-[#CFCFCF] px-3 py-2 text-sm rounded-none" @bind="_studio.Capacity" /></label>
+                    <label class="block text-xs font-semibold">Tầng<input type="number" class="mt-1 w-full border border-[#D8D1CD] px-3 py-2 text-sm rounded-lg bg-[#F8F5F2] focus:border-[#B83A3A] focus:ring-2 focus:ring-[#B83A3A]/20 outline-none" @bind="_studio.Floor" /></label>
+                    <label class="block text-xs font-semibold">Số thảm<input type="number" min="1" class="mt-1 w-full border border-[#D8D1CD] px-3 py-2 text-sm rounded-lg bg-[#F8F5F2] focus:border-[#B83A3A] focus:ring-2 focus:ring-[#B83A3A]/20 outline-none" @bind="_studio.Capacity" /></label>
                 </div>
                 <div class="flex gap-2">
-                    <button type="submit" disabled="@_busy" class="workspace-heading bg-black px-6 py-3 text-xs font-bold uppercase text-white rounded-none disabled:opacity-50">Lưu</button>
+                    <button type="submit" disabled="@_busy" class="workspace-heading bg-[#B83A3A] hover:bg-[#9F3030] px-6 py-3 text-xs font-bold uppercase text-white rounded-lg disabled:opacity-50">Lưu</button>
                     @if (_studioEditId is not null)
                     {
-                        <button type="button" class="border border-black px-6 py-3 text-xs font-bold uppercase rounded-none" @onclick="ResetStudio">Hủy</button>
+                        <button type="button" class="border border-[#C9C0BB] px-6 py-3 text-xs font-bold uppercase rounded-lg" @onclick="ResetStudio">Hủy</button>
                     }
                 </div>
             </form>
-            <div class="overflow-x-auto border-2 border-black bg-white rounded-none">
+            <div class="overflow-x-auto border border-[#D8D1CD] bg-[#F8F5F2] rounded-lg">
                 <table class="w-full min-w-[560px] text-left text-sm">
-                    <thead class="workspace-heading bg-[#F7F7F7] text-[10px] uppercase tracking-wider"><tr><th class="px-5 py-3">Phòng</th><th class="px-5 py-3">Tầng</th><th class="px-5 py-3">Số thảm</th><th class="px-5 py-3">Trạng thái</th><th class="px-5 py-3"></th></tr></thead>
+                    <thead class="workspace-heading bg-[#ECE8E4] text-[10px] uppercase tracking-wider"><tr><th class="px-5 py-3">Phòng</th><th class="px-5 py-3">Tầng</th><th class="px-5 py-3">Số thảm</th><th class="px-5 py-3">Trạng thái</th><th class="px-5 py-3"></th></tr></thead>
                     <tbody>
                         @if (_studios.Count == 0)
                         {
-                            <tr><td colspan="5" class="px-5 py-6 text-[#545454]">No matching records found.</td></tr>
+                            <tr><td colspan="5" class="px-5 py-6 text-[#6F6966]">No matching records found.</td></tr>
                         }
                         @foreach (var s in _studios)
                         {
-                            <tr class="border-t border-[#CFCFCF]">
+                            <tr class="border-t border-[#D8D1CD]">
                                 <td class="px-5 py-4 font-semibold">@s.StudioName</td><td class="px-5 py-4">@s.FloorNumber</td><td class="px-5 py-4">@s.Capacity</td>
                                 <td class="px-5 py-4"><StatusBadge Status="@(s.IsActive ? "Active" : "Inactive")" /></td>
                                 <td class="px-5 py-4 text-right whitespace-nowrap">
@@ -74,21 +76,21 @@
     else if (_tab == "types")
     {
         <section class="grid gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
-            <form class="space-y-4 border-2 border-black bg-white p-6 rounded-none" @onsubmit="SaveType">
+            <form class="space-y-4 border border-[#D8D1CD] bg-[#F8F5F2] p-6 rounded-xl" @onsubmit="SaveType">
                 <h2 class="workspace-heading text-sm font-extrabold uppercase tracking-wider">@(_typeEditId is null ? "Thêm loại lớp" : "Sửa loại lớp")</h2>
-                <label class="block text-xs font-semibold">Tên loại (Hatha, Vinyasa…)<input class="mt-1 w-full border border-[#CFCFCF] px-3 py-2 text-sm rounded-none" @bind="_typeName" maxlength="100" required /></label>
-                <label class="block text-xs font-semibold">Mô tả<textarea class="mt-1 w-full border border-[#CFCFCF] px-3 py-2 text-sm rounded-none" rows="3" @bind="_typeDescription" maxlength="500"></textarea></label>
-                <button type="submit" disabled="@_busy" class="workspace-heading bg-black px-6 py-3 text-xs font-bold uppercase text-white rounded-none disabled:opacity-50">Lưu</button>
+                <label class="block text-xs font-semibold">Tên loại (Hatha, Vinyasa…)<input class="mt-1 w-full border border-[#D8D1CD] px-3 py-2 text-sm rounded-lg bg-[#F8F5F2] focus:border-[#B83A3A] focus:ring-2 focus:ring-[#B83A3A]/20 outline-none" @bind="_typeName" maxlength="100" required /></label>
+                <label class="block text-xs font-semibold">Mô tả<textarea class="mt-1 w-full border border-[#D8D1CD] px-3 py-2 text-sm rounded-lg bg-[#F8F5F2] focus:border-[#B83A3A] focus:ring-2 focus:ring-[#B83A3A]/20 outline-none" rows="3" @bind="_typeDescription" maxlength="500"></textarea></label>
+                <button type="submit" disabled="@_busy" class="workspace-heading bg-[#B83A3A] hover:bg-[#9F3030] px-6 py-3 text-xs font-bold uppercase text-white rounded-lg disabled:opacity-50">Lưu</button>
             </form>
-            <ul class="divide-y divide-[#CFCFCF] border-2 border-black bg-white rounded-none">
+            <ul class="divide-y divide-[#D8D1CD] border border-[#D8D1CD] bg-[#F8F5F2] rounded-lg">
                 @if (_types.Count == 0)
                 {
-                    <li class="px-5 py-6 text-sm text-[#545454]">No matching records found.</li>
+                    <li class="px-5 py-6 text-sm text-[#6F6966]">No matching records found.</li>
                 }
                 @foreach (var t in _types)
                 {
                     <li class="flex items-start justify-between gap-4 px-5 py-4">
-                        <div><p class="font-semibold">@t.TypeName</p><p class="text-xs text-[#545454]">@t.Description</p></div>
+                        <div><p class="font-semibold">@t.TypeName</p><p class="text-xs text-[#6F6966]">@t.Description</p></div>
                         <button type="button" class="text-xs font-bold underline" @onclick="() => { _typeEditId = t.Id; _typeName = t.TypeName; _typeDescription = t.Description; }">Sửa</button>
                     </li>
                 }
@@ -98,48 +100,48 @@
     else if (_tab == "classes")
     {
         <section class="grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
-            <form class="space-y-4 border-2 border-black bg-white p-6 rounded-none" @onsubmit="SaveClass">
+            <form class="space-y-4 border border-[#D8D1CD] bg-[#F8F5F2] p-6 rounded-xl" @onsubmit="SaveClass">
                 <h2 class="workspace-heading text-sm font-extrabold uppercase tracking-wider">@(_classEditId is null ? "Tạo lớp mới" : "Sửa lớp (bản nháp)")</h2>
-                <label class="block text-xs font-semibold">Tên lớp<input class="mt-1 w-full border border-[#CFCFCF] px-3 py-2 text-sm rounded-none" @bind="_class.Name" maxlength="256" required /></label>
+                <label class="block text-xs font-semibold">Tên lớp<input class="mt-1 w-full border border-[#D8D1CD] px-3 py-2 text-sm rounded-lg bg-[#F8F5F2] focus:border-[#B83A3A] focus:ring-2 focus:ring-[#B83A3A]/20 outline-none" @bind="_class.Name" maxlength="256" required /></label>
                 <div class="grid grid-cols-2 gap-3">
                     <label class="block text-xs font-semibold">Loại lớp
-                        <select class="mt-1 w-full border border-[#CFCFCF] px-3 py-2 text-sm rounded-none" @bind="_class.TypeId">
+                        <select class="mt-1 w-full border border-[#D8D1CD] px-3 py-2 text-sm rounded-lg bg-[#F8F5F2] focus:border-[#B83A3A] focus:ring-2 focus:ring-[#B83A3A]/20 outline-none" @bind="_class.TypeId">
                             <option value="0">— Chọn —</option>
                             @foreach (var t in _types) { <option value="@t.Id">@t.TypeName</option> }
                         </select>
                     </label>
                     <label class="block text-xs font-semibold">Độ khó
-                        <select class="mt-1 w-full border border-[#CFCFCF] px-3 py-2 text-sm rounded-none" @bind="_class.Difficulty">
+                        <select class="mt-1 w-full border border-[#D8D1CD] px-3 py-2 text-sm rounded-lg bg-[#F8F5F2] focus:border-[#B83A3A] focus:ring-2 focus:ring-[#B83A3A]/20 outline-none" @bind="_class.Difficulty">
                             <option>Beginner</option><option>Intermediate</option><option>Advanced</option>
                         </select>
                     </label>
                 </div>
                 <label class="block text-xs font-semibold">Huấn luyện viên
-                    <select class="mt-1 w-full border border-[#CFCFCF] px-3 py-2 text-sm rounded-none" @bind="_class.InstructorId">
+                    <select class="mt-1 w-full border border-[#D8D1CD] px-3 py-2 text-sm rounded-lg bg-[#F8F5F2] focus:border-[#B83A3A] focus:ring-2 focus:ring-[#B83A3A]/20 outline-none" @bind="_class.InstructorId">
                         <option value="">— Chọn —</option>
                         @foreach (var i in _instructors) { <option value="@i.UserId">@i.FullName</option> }
                     </select>
                 </label>
                 <div class="grid grid-cols-3 gap-3">
-                    <label class="block text-xs font-semibold">Tối thiểu<input type="number" min="1" class="mt-1 w-full border border-[#CFCFCF] px-3 py-2 text-sm rounded-none" @bind="_class.Min" /></label>
-                    <label class="block text-xs font-semibold">Tối đa<input type="number" min="1" class="mt-1 w-full border border-[#CFCFCF] px-3 py-2 text-sm rounded-none" @bind="_class.Max" /></label>
-                    <label class="block text-xs font-semibold">Phút/buổi<input type="number" min="45" max="90" class="mt-1 w-full border border-[#CFCFCF] px-3 py-2 text-sm rounded-none" @bind="_class.Duration" /></label>
+                    <label class="block text-xs font-semibold">Tối thiểu<input type="number" min="1" class="mt-1 w-full border border-[#D8D1CD] px-3 py-2 text-sm rounded-lg bg-[#F8F5F2] focus:border-[#B83A3A] focus:ring-2 focus:ring-[#B83A3A]/20 outline-none" @bind="_class.Min" /></label>
+                    <label class="block text-xs font-semibold">Tối đa<input type="number" min="1" class="mt-1 w-full border border-[#D8D1CD] px-3 py-2 text-sm rounded-lg bg-[#F8F5F2] focus:border-[#B83A3A] focus:ring-2 focus:ring-[#B83A3A]/20 outline-none" @bind="_class.Max" /></label>
+                    <label class="block text-xs font-semibold">Phút/buổi<input type="number" min="45" max="90" class="mt-1 w-full border border-[#D8D1CD] px-3 py-2 text-sm rounded-lg bg-[#F8F5F2] focus:border-[#B83A3A] focus:ring-2 focus:ring-[#B83A3A]/20 outline-none" @bind="_class.Duration" /></label>
                 </div>
                 <div class="grid grid-cols-2 gap-3">
-                    <label class="block text-xs font-semibold">Buổi/tuần<input type="number" min="1" max="7" class="mt-1 w-full border border-[#CFCFCF] px-3 py-2 text-sm rounded-none" @bind="_class.PerWeek" /></label>
-                    <label class="block text-xs font-semibold">Hạn đăng ký<input type="datetime-local" class="mt-1 w-full border border-[#CFCFCF] px-3 py-2 text-sm rounded-none" @bind="_class.Deadline" /></label>
+                    <label class="block text-xs font-semibold">Buổi/tuần<input type="number" min="1" max="7" class="mt-1 w-full border border-[#D8D1CD] px-3 py-2 text-sm rounded-lg bg-[#F8F5F2] focus:border-[#B83A3A] focus:ring-2 focus:ring-[#B83A3A]/20 outline-none" @bind="_class.PerWeek" /></label>
+                    <label class="block text-xs font-semibold">Hạn đăng ký<input type="datetime-local" class="mt-1 w-full border border-[#D8D1CD] px-3 py-2 text-sm rounded-lg bg-[#F8F5F2] focus:border-[#B83A3A] focus:ring-2 focus:ring-[#B83A3A]/20 outline-none" @bind="_class.Deadline" /></label>
                 </div>
                 <div class="grid grid-cols-2 gap-3">
-                    <label class="block text-xs font-semibold">Ngày bắt đầu<input type="date" class="mt-1 w-full border border-[#CFCFCF] px-3 py-2 text-sm rounded-none" @bind="_class.Start" /></label>
-                    <label class="block text-xs font-semibold">Ngày kết thúc<input type="date" class="mt-1 w-full border border-[#CFCFCF] px-3 py-2 text-sm rounded-none" @bind="_class.End" /></label>
+                    <label class="block text-xs font-semibold">Ngày bắt đầu<input type="date" class="mt-1 w-full border border-[#D8D1CD] px-3 py-2 text-sm rounded-lg bg-[#F8F5F2] focus:border-[#B83A3A] focus:ring-2 focus:ring-[#B83A3A]/20 outline-none" @bind="_class.Start" /></label>
+                    <label class="block text-xs font-semibold">Ngày kết thúc<input type="date" class="mt-1 w-full border border-[#D8D1CD] px-3 py-2 text-sm rounded-lg bg-[#F8F5F2] focus:border-[#B83A3A] focus:ring-2 focus:ring-[#B83A3A]/20 outline-none" @bind="_class.End" /></label>
                 </div>
-                <label class="block text-xs font-semibold">Mô tả<textarea class="mt-1 w-full border border-[#CFCFCF] px-3 py-2 text-sm rounded-none" rows="2" @bind="_class.Description" maxlength="1000"></textarea></label>
-                <p class="text-xs text-[#71717A]">Giờ theo múi giờ phòng tập (UTC+7). Buổi học dài 45–90 phút (GBR-75).</p>
+                <label class="block text-xs font-semibold">Mô tả<textarea class="mt-1 w-full border border-[#D8D1CD] px-3 py-2 text-sm rounded-lg bg-[#F8F5F2] focus:border-[#B83A3A] focus:ring-2 focus:ring-[#B83A3A]/20 outline-none" rows="2" @bind="_class.Description" maxlength="1000"></textarea></label>
+                <p class="text-xs text-[#6F6966]">Giờ theo múi giờ phòng tập (UTC+7). Buổi học dài 45–90 phút (GBR-75).</p>
                 <div class="flex gap-2">
-                    <button type="submit" disabled="@_busy" class="workspace-heading bg-black px-6 py-3 text-xs font-bold uppercase text-white rounded-none disabled:opacity-50">Lưu</button>
+                    <button type="submit" disabled="@_busy" class="workspace-heading bg-[#B83A3A] hover:bg-[#9F3030] px-6 py-3 text-xs font-bold uppercase text-white rounded-lg disabled:opacity-50">Lưu</button>
                     @if (_classEditId is not null)
                     {
-                        <button type="button" class="border border-black px-6 py-3 text-xs font-bold uppercase rounded-none" @onclick="ResetClass">Hủy</button>
+                        <button type="button" class="border border-[#C9C0BB] px-6 py-3 text-xs font-bold uppercase rounded-lg" @onclick="ResetClass">Hủy</button>
                     }
                 </div>
             </form>
@@ -147,64 +149,64 @@
             <div class="space-y-4">
                 @if (_classes.Count == 0)
                 {
-                    <p class="border-2 border-black bg-white px-5 py-6 text-sm text-[#545454] rounded-none">No matching records found.</p>
+                    <p class="border border-[#D8D1CD] bg-[#F8F5F2] px-5 py-6 text-sm text-[#6F6966] rounded-xl">No matching records found.</p>
                 }
                 @foreach (var c in _classes)
                 {
-                    <article class="border-2 border-black bg-white rounded-none">
+                    <article class="border border-[#D8D1CD] bg-[#F8F5F2] rounded-lg">
                         <div class="flex flex-wrap items-start justify-between gap-3 px-5 py-4">
                             <div>
                                 <p class="workspace-heading text-sm font-extrabold uppercase">@c.ClassName <span class="ml-2 align-middle"><StatusBadge Status="@c.Status" /></span></p>
-                                <p class="mt-1 text-xs text-[#545454]">@c.TypeName · @c.DifficultyLevel · @c.InstructorName · @c.MinParticipants–@c.MaxParticipants người · @c.DurationMinutes phút</p>
-                                <p class="text-xs text-[#545454]">@c.StartDate.ToString("dd/MM/yyyy") → @c.EndDate.ToString("dd/MM/yyyy") · Hạn đăng ký @DateTime.SpecifyKind(c.RegistrationDeadline, DateTimeKind.Utc).AddHours(7).ToString("dd/MM/yyyy HH:mm") · @c.SessionCount buổi</p>
+                                <p class="mt-1 text-xs text-[#6F6966]">@c.TypeName · @c.DifficultyLevel · @c.InstructorName · @c.MinParticipants–@c.MaxParticipants người · @c.DurationMinutes phút</p>
+                                <p class="text-xs text-[#6F6966]">@c.StartDate.ToString("dd/MM/yyyy") → @c.EndDate.ToString("dd/MM/yyyy") · Hạn đăng ký @DateTime.SpecifyKind(c.RegistrationDeadline, DateTimeKind.Utc).AddHours(7).ToString("dd/MM/yyyy HH:mm") · @c.SessionCount buổi</p>
                             </div>
                             <div class="flex flex-wrap gap-2">
-                                <button type="button" class="border border-black px-3 py-2 text-[11px] font-bold uppercase rounded-none" @onclick="() => ToggleSessions(c.Id)">Buổi học</button>
+                                <button type="button" class="border border-[#C9C0BB] px-3 py-2 text-[11px] font-bold uppercase rounded-lg" @onclick="() => ToggleSessions(c.Id)">Buổi học</button>
                                 @if (c.Status == "Draft")
                                 {
-                                    <button type="button" class="border border-black px-3 py-2 text-[11px] font-bold uppercase rounded-none" @onclick="() => EditClass(c)">Sửa</button>
-                                    <button type="button" disabled="@_busy" class="bg-[#6366F1] px-3 py-2 text-[11px] font-bold uppercase text-white rounded-none" @onclick="() => PublishClass(c)">Công bố</button>
+                                    <button type="button" class="border border-[#C9C0BB] px-3 py-2 text-[11px] font-bold uppercase rounded-lg" @onclick="() => EditClass(c)">Sửa</button>
+                                    <button type="button" disabled="@_busy" class="bg-[#B83A3A] hover:bg-[#9F3030] px-3 py-2 text-[11px] font-bold uppercase text-white rounded-lg" @onclick="() => PublishClass(c)">Công bố</button>
                                 }
                                 @if (c.Status is "Draft" or "Open" or "Full")
                                 {
-                                    <button type="button" disabled="@_busy" class="border border-[#EF4444] px-3 py-2 text-[11px] font-bold uppercase text-[#B91C1C] rounded-none" @onclick="() => CancelClass(c)">Hủy lớp</button>
+                                    <button type="button" disabled="@_busy" class="border border-red-200 px-3 py-2 text-[11px] font-bold uppercase text-[#B91C1C] rounded-lg" @onclick="() => CancelClass(c)">Hủy lớp</button>
                                 }
                             </div>
                         </div>
                         @if (_openClassId == c.Id)
                         {
-                            <div class="border-t-2 border-black bg-[#F7F7F7] px-5 py-4 space-y-4">
+                            <div class="border-t-2 border-[#C9C0BB] bg-[#ECE8E4] px-5 py-4 space-y-4">
                                 @if (c.Status is "Draft" or "Open" or "Full")
                                 {
                                     <form class="grid gap-3 sm:grid-cols-[1fr_1fr_1fr_1fr_1fr_auto] sm:items-end" @onsubmit="() => SaveSession(c)">
-                                        <label class="block text-xs font-semibold">Ngày<input type="date" class="mt-1 w-full border border-[#CFCFCF] bg-white px-2 py-2 text-sm rounded-none" @bind="_session.Date" /></label>
-                                        <label class="block text-xs font-semibold">Bắt đầu<input type="time" class="mt-1 w-full border border-[#CFCFCF] bg-white px-2 py-2 text-sm rounded-none" @bind="_session.Start" /></label>
+                                        <label class="block text-xs font-semibold">Ngày<input type="date" class="mt-1 w-full border border-[#D8D1CD] bg-[#F8F5F2] px-2 py-2 text-sm rounded-lg" @bind="_session.Date" /></label>
+                                        <label class="block text-xs font-semibold">Bắt đầu<input type="time" class="mt-1 w-full border border-[#D8D1CD] bg-[#F8F5F2] px-2 py-2 text-sm rounded-lg" @bind="_session.Start" /></label>
                                         <label class="block text-xs font-semibold">Phòng
-                                            <select class="mt-1 w-full border border-[#CFCFCF] bg-white px-2 py-2 text-sm rounded-none" @bind="_session.StudioId">
+                                            <select class="mt-1 w-full border border-[#D8D1CD] bg-[#F8F5F2] px-2 py-2 text-sm rounded-lg" @bind="_session.StudioId">
                                                 <option value="0">—</option>
                                                 @foreach (var s in _studios.Where(s => s.IsActive)) { <option value="@s.Id">@s.StudioName (@s.Capacity)</option> }
                                             </select>
                                         </label>
                                         <label class="block text-xs font-semibold">HLV thay
-                                            <select class="mt-1 w-full border border-[#CFCFCF] bg-white px-2 py-2 text-sm rounded-none" @bind="_session.InstructorId">
+                                            <select class="mt-1 w-full border border-[#D8D1CD] bg-[#F8F5F2] px-2 py-2 text-sm rounded-lg" @bind="_session.InstructorId">
                                                 <option value="">Mặc định của lớp</option>
                                                 @foreach (var i in _instructors) { <option value="@i.UserId">@i.FullName</option> }
                                             </select>
                                         </label>
-                                        <p class="text-xs text-[#545454]">Kết thúc: @_session.Start.AddMinutes(c.DurationMinutes).ToString("HH:mm")</p>
-                                        <button type="submit" disabled="@_busy" class="bg-black px-4 py-2 text-xs font-bold uppercase text-white rounded-none">@(_sessionEditId is null ? "Thêm buổi" : "Lưu buổi")</button>
+                                        <p class="text-xs text-[#6F6966]">Kết thúc: @_session.Start.AddMinutes(c.DurationMinutes).ToString("HH:mm")</p>
+                                        <button type="submit" disabled="@_busy" class="bg-[#B83A3A] hover:bg-[#9F3030] px-4 py-2 text-xs font-bold uppercase text-white rounded-lg">@(_sessionEditId is null ? "Thêm buổi" : "Lưu buổi")</button>
                                     </form>
                                 }
                                 <table class="w-full text-left text-sm">
-                                    <thead class="text-[10px] uppercase tracking-wider text-[#545454]"><tr><th class="py-2">Ngày</th><th class="py-2">Giờ</th><th class="py-2">Phòng</th><th class="py-2">HLV</th><th class="py-2">Đặt chỗ</th><th class="py-2">Trạng thái</th><th></th></tr></thead>
+                                    <thead class="text-[10px] uppercase tracking-wider text-[#6F6966]"><tr><th class="py-2">Ngày</th><th class="py-2">Giờ</th><th class="py-2">Phòng</th><th class="py-2">HLV</th><th class="py-2">Đặt chỗ</th><th class="py-2">Trạng thái</th><th></th></tr></thead>
                                     <tbody>
                                         @if (_sessions.Count == 0)
                                         {
-                                            <tr><td colspan="7" class="py-3 text-[#545454]">No matching records found.</td></tr>
+                                            <tr><td colspan="7" class="py-3 text-[#6F6966]">No matching records found.</td></tr>
                                         }
                                         @foreach (var s in _sessions)
                                         {
-                                            <tr class="border-t border-[#CFCFCF]">
+                                            <tr class="border-t border-[#D8D1CD]">
                                                 <td class="py-2">@s.ScheduledDate.ToString("ddd dd/MM")</td><td class="py-2">@s.StartTime.ToString("HH:mm")–@s.EndTime.ToString("HH:mm")</td>
                                                 <td class="py-2">@s.StudioName</td><td class="py-2">@s.InstructorName</td><td class="py-2">@s.ConfirmedBookings/@s.MaxParticipants</td>
                                                 <td class="py-2"><StatusBadge Status="@s.Status" /></td>

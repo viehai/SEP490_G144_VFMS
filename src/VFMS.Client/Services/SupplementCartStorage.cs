@@ -18,12 +18,20 @@ public sealed class SupplementCartStorage(IJSRuntime js)
     public sealed record Reconciled(
         IReadOnlyList<(SupplementProductResponse Product, int Quantity)> Lines,
         IReadOnlyList<string> Removed,
-        IReadOnlyList<string> PriceChanged);
+        IReadOnlyList<string> PriceChanged,
+        IReadOnlyList<string>? Reduced = null);
 
     private const string KeyPrefix = "vfms.supplement-cart.";
     private const int MaxQuantity = 999;
 
     public static string KeyFor(string userId) => KeyPrefix + userId;
+
+    /// <summary>
+    /// Most of a product one cart line may hold: the stock left when the store shows it (it does only when the
+    /// stock is low), otherwise the usual 999.
+    /// </summary>
+    public static int MaxFor(SupplementProductResponse product) =>
+        product.StockQuantity is { } left ? Math.Clamp(left, 0, MaxQuantity) : MaxQuantity;
 
     public async Task<IReadOnlyList<SavedLine>> LoadAsync(string userId)
     {
@@ -82,6 +90,7 @@ public sealed class SupplementCartStorage(IJSRuntime js)
         var lines = new List<(SupplementProductResponse, int)>();
         var removed = new List<string>();
         var changed = new List<string>();
+        var reduced = new List<string>();
         foreach (var line in saved)
         {
             current.TryGetValue(line.ProductId, out var product);
@@ -96,8 +105,10 @@ public sealed class SupplementCartStorage(IJSRuntime js)
                 continue;
             }
             if (product.UnitPrice != line.UnitPrice) changed.Add(product.Name);
-            lines.Add((product, line.Quantity));
+            var quantity = Math.Min(line.Quantity, MaxFor(product));
+            if (quantity < line.Quantity) reduced.Add($"{product.Name} (còn {quantity})");
+            lines.Add((product, quantity));
         }
-        return new(lines, removed, changed);
+        return new(lines, removed, changed, reduced);
     }
 }

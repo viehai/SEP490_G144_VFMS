@@ -4,14 +4,25 @@
 <WorkspaceShell Variant="@Variant" IsPreview="@IsPreview">@Body</WorkspaceShell>
 
 @code {
-    private string Variant => Navigation.ToBaseRelativePath(Navigation.Uri).StartsWith("admin/", StringComparison.OrdinalIgnoreCase) ? "admin" : "manager";
+    private string Variant
+    {
+        get
+        {
+            var path = Navigation.ToBaseRelativePath(Navigation.Uri);
+            if (path.StartsWith("admin/", StringComparison.OrdinalIgnoreCase)) return "admin";
+            if (path.StartsWith("staff/", StringComparison.OrdinalIgnoreCase)) return "staff";
+            return "manager";
+        }
+    }
     private static readonly string[] LivePages =
     [
         "manager/customers/create", "manager/membership-plans", "manager/membership-freeze-policy", "manager/membership-freeze-requests", "manager/general-policies", "manager/business-reports",
         "manager/trainer-applications", "manager/pt-packages", "manager/pt-freeze-requests", "manager/pt-attendance-disputes",
         "admin/business-reports", "admin/banned-words", "admin/audit-logs",
         "manager/equipment", "manager/equipment-issues", "manager/purchase-proposals",
-        "manager/supplement-products", "manager/supplement-orders", "manager/promotions"
+        "manager/supplement-products", "manager/supplement-orders", "manager/promotions",
+        "manager/yoga", "manager/dashboard", "admin/dashboard", "manager/competitions",
+        "manager/feedback", "manager/consultations", "staff/feedback", "staff/consultations"
     ];
 
     private bool IsPreview => !LivePages.Contains(Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].TrimEnd('/'),
