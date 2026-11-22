@@ -287,20 +287,19 @@ public sealed class CheckInService : ICheckInService
         int? ptSessionId = null;
         if (staffUserId is null)   // GBR-92 only for self check-in
         {
-            var due = (await _repository.GetScheduledPtSessionsAsync(userId, today, cancellationToken))
+            var due = (await _repository.GetScheduledPtSessionsAsync(userId, today, now, cancellationToken))
                 .FirstOrDefault(s => now >= YogaTime.ToUtc(s.SessionDate, s.StartTime) - TimeSpan.FromMinutes(30) &&
                                      now <= YogaTime.ToUtc(s.SessionDate, s.StartTime) + TimeSpan.FromMinutes(15));
-            if (due is not null)
+            // UC 4.6 step 7: 'Present' set by check-in; the PT has not recorded anything (GBR-103).
+            // shortcut: this update is saved before the visit below, so a failed visit save leaves the session 'Present'; wrap both in one transaction if that is ever seen.
+            if (due is not null && await _repository.CompletePtSessionByCheckInAsync(due, now, cancellationToken))
             {
-                // UC 4.6 step 7: 'Present' set by check-in; the PT has not recorded anything (GBR-103).
-                due.SessionStatus = PTSessionStatus.Completed;
-                due.CheckInCompletedAt = now;
                 PersonalTrainingRules.Settle(due.PTPurchase);   // the final session also completes the contract
                 ptSessionId = due.Id;
             }
         }
 
-        await _repository.SaveChangesAsync(cancellationToken);   // one save: check-in, stale close, PT, QR use, face LastUsedAt
+        await _repository.SaveChangesAsync(cancellationToken);   // one save: check-in, stale close, PT contract, QR use, face LastUsedAt
         return Result<CheckInResultResponse>.Success(new CheckInResultResponse(
             checkIn.Id, userId, user.FullName, membership.EndDate, now,
             GymAccessMessages.Welcome(user.FullName, membership.EndDate), ptSessionId), 201);

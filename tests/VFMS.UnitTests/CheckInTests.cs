@@ -299,6 +299,31 @@ public sealed class CheckInTests
         Assert.Equal(completes ? 2 : 3, pt.PTPurchase.RemainingSessions);
     }
 
+    [Theory]
+    [InlineData(PTSessionStatus.ReschedulePending, -1, true)]     // its answer deadline passed: no longer pending
+    [InlineData(PTSessionStatus.RescheduleRequested, -1, true)]
+    [InlineData(PTSessionStatus.RescheduleRequested, 1, false)]   // still pending
+    [InlineData(PTSessionStatus.PendingFreeze, -1, false)]
+    public async Task CheckInCompletesASessionOnlyWithoutAPendingRequestOrFreeze(PTSessionStatus status, int expiresInMinutes,
+        bool completes)   // UC 4.6 step 7
+    {
+        var (repo, service, qr) = Kiosk();
+        repo.Memberships.Add(Membership("m1"));
+        var pt = new PTSession
+        {
+            Id = 9, MemberUserId = "m1", SessionDate = Today, StartTime = TimeOnly.FromDateTime(Now.AddHours(7).AddMinutes(10)),
+            SessionStatus = status, ProposalExpiresAt = Now.AddMinutes(expiresInMinutes),
+            PTPurchase = new PTPurchase { TotalSessions = 3, RemainingSessions = 3 }
+        };
+        pt.PTPurchase.Sessions.Add(pt);
+        repo.PtSessions.Add(pt);
+
+        var result = await service.KioskCheckInAsync(await QrScan(qr, "m1"));
+
+        Assert.Equal(completes ? 9 : null, result.Data!.CompletedPtSessionId);
+        Assert.Equal(completes ? PTSessionStatus.Completed : status, pt.SessionStatus);
+    }
+
     [Fact]
     public async Task CheckInOnTheFinalPtSessionCompletesTheContract()   // GBR-92 with the PT credit rules
     {
@@ -429,8 +454,18 @@ public sealed class CheckInTests
             Task.FromResult(Active.FirstOrDefault(c => c.MemberUserId == userId && c.Status == CheckInStatus.Active));
         public Task<DateTime?> GetLastCheckInTimeAsync(string userId, CancellationToken cancellationToken = default) =>
             Task.FromResult(Active.Where(c => c.MemberUserId == userId).Select(c => (DateTime?)c.CheckinTime).Max());
-        public Task<IReadOnlyList<PTSession>> GetScheduledPtSessionsAsync(string userId, DateOnly date, CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<PTSession>>(PtSessions.Where(p => p.MemberUserId == userId && p.SessionDate == date && p.SessionStatus == PTSessionStatus.Scheduled).ToList());
+        public Task<IReadOnlyList<PTSession>> GetScheduledPtSessionsAsync(string userId, DateOnly date, DateTime now, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<PTSession>>(PtSessions.Where(p => p.MemberUserId == userId && p.SessionDate == date)
+                .Where(PersonalTrainingRules.CheckInCanComplete(now).Compile()).ToList());
+        public Task<bool> CompletePtSessionByCheckInAsync(PTSession session, DateTime now, CancellationToken cancellationToken = default)
+        {
+            if (!PersonalTrainingRules.CheckInCanComplete(now).Compile()(session))
+                return Task.FromResult(false);
+            session.SessionStatus = PTSessionStatus.Completed;
+            session.CheckInCompletedAt = now;
+            session.ProposalExpiresAt = null;
+            return Task.FromResult(true);
+        }
         public Task<IReadOnlyList<(ApplicationUser User, IReadOnlyList<MemberMembership> Memberships, bool IsCheckedIn)>> SearchMembersAsync(
             string term, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<(ApplicationUser, IReadOnlyList<MemberMembership>, bool)>>(Memberships

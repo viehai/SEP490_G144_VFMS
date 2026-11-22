@@ -54,7 +54,7 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
         builder.Services.AddControllers().AddApplicationPart(typeof(MembershipPurchasesController).Assembly);
         builder.Services.AddFluentValidationAutoValidation();
         builder.Services.AddValidatorsFromAssemblyContaining<MembershipPurchaseRequestValidator>();
-        var dbOptions = new DbContextOptionsBuilder<VfmsDbContext>().UseSqlite(_connection).Options;
+        var dbOptions = new DbContextOptionsBuilder<VfmsDbContext>().UseSqlite(_connection).AddInterceptors(UniqueTestPhoneInterceptor.Instance).Options;
         builder.Services.AddScoped<VfmsDbContext>(_ => new TestContext(dbOptions));
         builder.Services.AddSingleton<TimeProvider>(_clock);
         builder.Configuration["MembershipPayments:BankId"] = "MB";

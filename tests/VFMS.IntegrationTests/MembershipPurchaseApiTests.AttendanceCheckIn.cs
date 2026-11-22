@@ -33,6 +33,45 @@ public sealed partial class MembershipPurchaseApiTests
             "/api/pt/manager/attendance-disputes?processed=false&page=1"))!.Items);
         Assert.Equal((session.Id, false), (row.SessionId, row.TrainerRecordedPresent));
         Assert.NotNull(row.TrainerRecordedAt);
+
+        // UC 4.11: the Manager reviews the record as it was; the PT cannot change it while disputed.
+        using var changed = await trainer.PostAsJsonAsync($"/api/pt/sessions/{session.Id}/attendance", true);
+        Assert.Equal(HttpStatusCode.Conflict, changed.StatusCode);
+        Assert.False(Assert.Single((await manager.GetFromJsonAsync<PagedResponse<PTAttendanceDispute>>(
+            "/api/pt/manager/attendance-disputes?processed=false&page=1"))!.Items).TrainerRecordedPresent);
+    }
+
+    [Fact]
+    public async Task CheckInCompletesAnExpiredRequestSessionButNeverOverwritesAReportSavedFirst()   // UC 4.6 step 7 / GBR-92
+    {
+        using var member = Client("member", "Member");
+        var (_, contract) = await ActivatedPTContract(member);
+        var (expired, reported) = (contract.Sessions[0], contract.Sessions[1]);
+        var now = LocalTime(expired.Date, expired.StartTime).UtcDateTime;
+        await using var scope = _app.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+        var repository = new VFMS.Infrastructure.Repositories.CheckInRepository(db);
+
+        // A request whose answer deadline passed is no longer pending: the check-in completes the session and clears it.
+        var withRequest = await db.PTSessions.SingleAsync(s => s.Id == expired.Id);
+        withRequest.SessionStatus = PTSessionStatus.RescheduleRequested;
+        withRequest.ProposedAdjustmentType = PTAdjustmentType.Reschedule;
+        withRequest.ProposalExpiresAt = now.AddHours(-4);
+        await db.SaveChangesAsync();
+        var due = Assert.Single(await repository.GetScheduledPtSessionsAsync("member", expired.Date, now), s => s.Id == expired.Id);
+        Assert.True(await repository.CompletePtSessionByCheckInAsync(due, now));
+        Assert.Equal((PTSessionStatus.Completed, (DateTime?)now, (DateTime?)null), (due.SessionStatus, due.CheckInCompletedAt, due.ProposalExpiresAt));
+
+        // The kiosk loaded the session, then a 'PT Absent' report was saved first: the check-in leaves it alone.
+        var loaded = await db.PTSessions.SingleAsync(s => s.Id == reported.Id);
+        await using (var other = _app.Services.CreateAsyncScope())
+        {
+            var otherDb = other.ServiceProvider.GetRequiredService<VfmsDbContext>();
+            await otherDb.PTSessions.Where(s => s.Id == reported.Id)
+                .ExecuteUpdateAsync(u => u.SetProperty(s => s.SessionStatus, PTSessionStatus.Cancelled));
+        }
+        Assert.False(await repository.CompletePtSessionByCheckInAsync(loaded, now));
+        Assert.Equal((PTSessionStatus.Cancelled, (DateTime?)null), (loaded.SessionStatus, loaded.CheckInCompletedAt));
     }
 
     [Fact]

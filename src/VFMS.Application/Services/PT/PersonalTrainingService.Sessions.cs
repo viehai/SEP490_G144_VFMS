@@ -120,7 +120,9 @@ public sealed partial class PersonalTrainingService
             p.Member.FullName)
         {
             MakeUpUnits = MakeUpUnits(p).Count,
-            MakeUpDeadline = MakeUpUnits(p).Count > 0 ? PersonalTrainingRules.MakeUpDeadline(p.EndDate) : null,
+            // UC 4.5: also while a unit from a 'PT Absent' report waits for the PT's response period.
+            MakeUpDeadline = MakeUpUnits(p).Count > 0 || p.Sessions.Any(s => MakeUpAvailableAt(s) is not null)
+                ? PersonalTrainingRules.MakeUpDeadline(p.EndDate) : null,
             FreezeUsed = p.PTFreezes.Any(Approved),
             CanReview = FinalTaughtSession(p) is not null,
             TrainerLevel = p.TrainerLevelSnapshot?.ToString(),
@@ -531,8 +533,11 @@ public sealed partial class PersonalTrainingService
             return Missing<PTSessionResponse>();
         var s = p.Sessions.Single(x => x.Id == id);
         var now = Now;
+        // UC 4.11: once disputed, the Manager reviews the PT's record as it stands.
+        if (s.SessionStatus == PTSessionStatus.Disputed)
+            return Conflict<PTSessionResponse>("Buổi đang chờ Manager xử lý tranh chấp, không sửa điểm danh được.");
         var memberReported = s.TrainerAbsenceReportedAt != null && s.TrainerAbsenceReviewedAt == null &&
-            s.SessionStatus is PTSessionStatus.Cancelled or PTSessionStatus.Disputed;
+            s.SessionStatus == PTSessionStatus.Cancelled;
         var lastDay = memberReported ? PersonalTrainingRules.TrainerResponseLastDay(s.SessionDate) : s.SessionDate;
         if (Today < s.SessionDate || Today > lastDay || Utc(s.SessionDate, s.EndTime) > now)
             return Conflict<PTSessionResponse>(memberReported
@@ -551,15 +556,12 @@ public sealed partial class PersonalTrainingService
         else if (memberReported)
         {
             // GBR-103: any PT record against the Member's 'PT Absent' report goes to the Manager (UC 4.11).
-            if (s.SessionStatus != PTSessionStatus.Disputed)
-            {
-                s.SessionStatus = PTSessionStatus.Disputed;
-                s.CancelledAt = null;
-                s.TrainerAbsenceApproved = null;
-                foreach (var manager in await ManagerIds(actor, ct))
-                    Notify(manager, "Tranh chấp điểm danh PT",
-                        $"Hội viên báo PT vắng mặt nhưng PT ghi hội viên {(attended ? "có mặt" : "vắng mặt")}.", nameof(PTSession), id);
-            }
+            s.SessionStatus = PTSessionStatus.Disputed;
+            s.CancelledAt = null;
+            s.TrainerAbsenceApproved = null;
+            foreach (var manager in await ManagerIds(actor, ct))
+                Notify(manager, "Tranh chấp điểm danh PT",
+                    $"Hội viên báo PT vắng mặt nhưng PT ghi hội viên {(attended ? "có mặt" : "vắng mặt")}.", nameof(PTSession), id);
         }
         else if (AwaitingAttendance(s.SessionStatus) || s.SessionStatus is PTSessionStatus.Completed or PTSessionStatus.NoShow)
         {

@@ -21,9 +21,11 @@
             <div><span>Còn lại</span><strong>@Contract.RemainingCredits</strong></div>
         }
     </div>
-    @if (Contract.MakeUpUnits > 0 && Contract.MakeUpDeadline is { } makeUpDeadline)
+    @if (Contract.MakeUpDeadline is { } makeUpDeadline)
     {
-        <p class="trainer-muted">Có @Contract.MakeUpUnits lượt tập bù, dùng được đến @Date(makeUpDeadline). Chọn buổi có nhãn "Lượt bù" để đặt lịch.</p>
+        <p class="trainer-muted">@(Contract.MakeUpUnits > 0
+            ? $"Có {Contract.MakeUpUnits} lượt tập bù, dùng được đến {Date(makeUpDeadline)}. Chọn buổi có nhãn \"Lượt bù\" để đặt lịch."
+            : $"Có lượt tập bù đang chờ PT phản hồi, dùng được đến {Date(makeUpDeadline)}.")</p>
     }
     <p class="trainer-muted">
         Bảo lưu: @(Contract.FreezeUsed ? "đã dùng lượt bảo lưu" : Contract.HasPendingOrApprovedFreeze ? "đang chờ duyệt" : $"còn dùng được (tối đa {Contract.FreezeMaxTotalDays} ngày)")

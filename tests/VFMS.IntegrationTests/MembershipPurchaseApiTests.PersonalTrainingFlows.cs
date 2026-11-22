@@ -52,6 +52,7 @@ public sealed partial class MembershipPurchaseApiTests
         // GBR-103: the make-up unit is usable only after the PT's response period (end of the next day).
         var waiting = await ContractOf(member, id);
         Assert.Equal(0, waiting.MakeUpUnits);
+        Assert.Equal(waiting.EndDate.AddDays(14), waiting.MakeUpDeadline);   // UC 4.5: shown while the unit waits too
         Assert.Equal(LocalTime(first.Date.AddDays(2), TimeOnly.MinValue).UtcDateTime,
             waiting.Sessions.Single(s => s.Id == first.Id).MakeUpAvailableAt);
         _clock.Now = LocalTime(first.Date.AddDays(2), new TimeOnly(0, 1));
