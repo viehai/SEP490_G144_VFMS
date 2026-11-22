@@ -2,7 +2,7 @@ using System.Globalization;
 
 namespace VFMS.Client.Services;
 
-/// <summary>Vietnamese labels, badge colours and error messages for equipment, procurement and supplements.</summary>
+/// <summary>Vietnamese labels, badge colours and error messages for equipment, procurement, supplements and system configuration.</summary>
 public static class OperationsText
 {
     public static readonly string[] EquipmentStatuses = ["Operational", "UnderMaintenance", "Damaged", "Retired"];
@@ -129,11 +129,68 @@ public static class OperationsText
         "SUPPLEMENT_ORDER_INVALID_DATE_RANGE" => "Ngày bắt đầu không được sau ngày kết thúc.",
         "SUPPLEMENT_ORDER_INVALID_STATE" => "Đơn hàng không ở trạng thái cho phép thao tác này.",
         "SUPPLEMENT_ORDER_NOT_FOUND" => "Không tìm thấy đơn hàng.",
+        "BANNED_WORD_EXISTS" => "Từ khóa này đã có trong danh sách.",
+        "BANNED_WORD_INACTIVE_EXISTS" => "Từ khóa này đã có nhưng đang tắt. Hãy bật lại thay vì thêm mới.",
+        "BANNED_WORD_ALREADY_ACTIVE" => "Từ khóa đang được bật.",
+        "BANNED_WORD_ALREADY_INACTIVE" => "Từ khóa đang được tắt.",
+        "BANNED_WORD_NOT_FOUND" => "Không tìm thấy từ khóa.",
+        "BUSINESS_REPORT_EXISTS" => "Đã có báo cáo cho kỳ này.",
+        "BUSINESS_REPORT_INVALID_DATE_RANGE" or "AUDIT_INVALID_DATE_RANGE" => "Ngày bắt đầu không được sau ngày kết thúc.",
+        "BUSINESS_REPORT_INVALID_PERIOD" => "Kỳ báo cáo không hợp lệ.",
+        "BUSINESS_REPORT_PERIOD_IN_FUTURE" => "Kỳ báo cáo chưa kết thúc. Hãy chọn một kỳ đã qua.",
+        "BUSINESS_REPORT_NOT_FOUND" => "Không tìm thấy báo cáo.",
+        "AUDIT_INVALID_ACTION_TYPE" => "Loại thao tác không hợp lệ.",
+        "AUDIT_LOG_NOT_FOUND" => "Không tìm thấy bản ghi nhật ký.",
+        "GYM_NOT_CONFIGURED" => "Chưa có thông tin phòng tập.",
+        "GYM_SETTINGS_INVALID_HOURS" => "Giờ mở cửa phải sớm hơn giờ đóng cửa.",
+        "GYM_SETTINGS_INVALID_RENEWAL_WINDOW" => "Số ngày gia hạn không được âm.",
         _ => null
     };
 
-    /// <summary>Vietnamese text for the contract validators' messages (falls back to the original).</summary>
-    public static string Validation(string message) => message switch
+    /// <summary>Vietnamese names for the properties FluentValidation names in its default messages.</summary>
+    private static string FieldName(string name) => name switch
+    {
+        "Purchase Price" => "Giá mua",
+        "Min Price" => "Giá từ",
+        "Max Price" => "Giá đến",
+        "Unit Price" or "Estimated Unit Price" => "Đơn giá",
+        "Stock Quantity" => "Tồn kho",
+        "Quantity" => "Số lượng",
+        "Renewal Advance Days" => "Số ngày nhắc gia hạn",
+        "Renewal Grace Days" => "Số ngày ân hạn",
+        "Equipment Id" => "Thiết bị",
+        "Product Id" => "Sản phẩm",
+        "Page" => "Trang",
+        "Page Size" => "Số dòng mỗi trang",
+        _ => name
+    };
+
+    private static string Number(string value) =>
+        long.TryParse(value.Replace(",", ""), NumberStyles.Integer, CultureInfo.InvariantCulture, out var number)
+            ? number.ToString("#,##0", CultureInfo.InvariantCulture).Replace(',', '.')
+            : value;
+
+    private static readonly System.Text.RegularExpressions.Regex AtLeastZero =
+        new(@"^'(?<field>[^']+)' must be greater than or equal to '0'\.");
+    private static readonly System.Text.RegularExpressions.Regex AboveZero =
+        new(@"^'(?<field>[^']+)' must be greater than '0'\.");
+    private static readonly System.Text.RegularExpressions.Regex Between =
+        new(@"^'?(?<field>[^']+?)'? must be between (?<from>[\d,.]+) and (?<to>[\d,.]+)\.");
+
+    /// <summary>Vietnamese text for the contract validators' messages, including FluentValidation's own defaults.</summary>
+    public static string Validation(string message)
+    {
+        var text = KnownValidation(message);
+        if (!ReferenceEquals(text, message)) return text;
+        if (AtLeastZero.Match(message) is { Success: true } zero) return $"{FieldName(zero.Groups["field"].Value)} không được là số âm.";
+        if (AboveZero.Match(message) is { Success: true } above) return $"Vui lòng chọn {FieldName(above.Groups["field"].Value).ToLowerInvariant()}.";
+        if (Between.Match(message) is { Success: true } range)
+            return $"{FieldName(range.Groups["field"].Value)} phải từ {Number(range.Groups["from"].Value)} đến {Number(range.Groups["to"].Value)}.";
+        if (message.Contains("must be") && message.Contains("characters")) return "Nội dung vượt quá độ dài cho phép.";
+        return message;
+    }
+
+    private static string KnownValidation(string message) => message switch
     {
         "The Name field is required." => "Vui lòng nhập tên.",
         "Purchase date cannot be in the future." => "Ngày mua không được ở tương lai.",
@@ -162,7 +219,33 @@ public static class OperationsText
         "The start date cannot be after the end date." => "Ngày bắt đầu không được sau ngày kết thúc.",
         "The Courier Name field is required." => "Vui lòng nhập đơn vị vận chuyển.",
         "The Tracking Code field is required." => "Vui lòng nhập mã vận đơn.",
-        _ when message.Contains("must be") && message.Contains("characters") => "Nội dung vượt quá độ dài cho phép.",
+        "Status must be Operational, UnderMaintenance, Damaged or Retired." or "Status must be Active, Inactive or OutOfStock."
+            => "Vui lòng chọn trạng thái hợp lệ.",
+        "Status filter is invalid." => "Bộ lọc trạng thái không hợp lệ.",
+        "Incident type must be Malfunction, Damage, Safety or Other." => "Vui lòng chọn loại sự cố.",
+        "Action must be Add, Set or StopTracking." => "Thao tác kho không hợp lệ.",
+        "Maximum price must not be less than the minimum price." => "Giá đến không được nhỏ hơn giá từ.",
+        "Fulfillment type must be GymPickup or HomeDelivery." => "Vui lòng chọn hình thức nhận hàng.",
+        "Fulfillment type filter is invalid." => "Bộ lọc hình thức nhận hàng không hợp lệ.",
+        "The Word field is required." => "Vui lòng nhập từ khóa.",
+        "Input exceeds maximum allowed length of 100 characters." => "Từ khóa tối đa 100 ký tự.",
+        "Action type filter is invalid." => "Bộ lọc loại thao tác không hợp lệ.",
+        "The Gym Name field is required." => "Vui lòng nhập tên phòng tập.",
+        "Phone number must not exceed 20 characters." => "Số điện thoại tối đa 20 ký tự.",
+        "Invalid phone number format." => "Số điện thoại không đúng định dạng.",
+        "Invalid email address format." => "Email không đúng định dạng.",
+        "Opening time and closing time must be set together." => "Cần nhập cả giờ mở cửa và giờ đóng cửa.",
+        "Opening time must be earlier than closing time." => "Giờ mở cửa phải sớm hơn giờ đóng cửa.",
+        "Membership renewal windows cannot be negative." => "Số ngày gia hạn không được âm.",
+        "Period type must be Day, Week or Month." => "Vui lòng chọn kỳ báo cáo: ngày, tuần hoặc tháng.",
+        "Date is invalid." => "Ngày không hợp lệ.",
+        _ when message.StartsWith("Sort must be", StringComparison.Ordinal) => "Cách sắp xếp không hợp lệ.",
+        _ when message.StartsWith("Stock must be between", StringComparison.Ordinal) => $"Tồn kho phải từ 0 đến {Number(SupplementStockMax)}.",
+        _ when message.StartsWith("Quantity to add must be between", StringComparison.Ordinal) => $"Số lượng nhập phải từ 1 đến {Number(SupplementStockMax)}.",
+        _ when message.StartsWith("Count must be between", StringComparison.Ordinal) => "Số kỳ so sánh không hợp lệ.",
         _ => message
     };
+
+    private static readonly string SupplementStockMax =
+        VFMS.Contracts.Supplements.SupplementStock.MaxQuantity.ToString(CultureInfo.InvariantCulture);
 }

@@ -1,5 +1,6 @@
 @page "/manager/general-policies"
 @layout ManagerAdminLayout
+@using VFMS.Client.Components.Operations
 @using Microsoft.AspNetCore.Authorization
 @using VFMS.Contracts.SystemAdministration
 @using VFMS.Contracts.SystemAdministration.Validators
@@ -44,7 +45,7 @@
                 <p class="mt-2 text-xs text-vfms-text-secondary">Chỉ Manager được chỉnh sửa.</p>
             }
             <EditForm Model="_model" OnValidSubmit="SaveAsync" class="mt-4" novalidate>
-                <ContractValidation TRequest="GymSettingsRequest" Validator="_validator" CreateRequest="CreateRequest" @ref="_validation" />
+                <OperationsValidation TRequest="GymSettingsRequest" Validator="_validator" CreateRequest="CreateRequest" @ref="_validation" />
                 <ValidationSummary />
                 <fieldset disabled="@(_working || !_canEdit)" class="mt-4 grid gap-4 sm:grid-cols-2">
                     <label class="text-xs font-semibold text-vfms-text sm:col-span-2" for="gym-name">
@@ -65,11 +66,11 @@
                     </label>
                     <label class="text-xs font-semibold text-vfms-text" for="gym-open">
                         Giờ mở cửa
-                        <InputDate id="gym-open" Type="InputDateType.Time" class="@Field" @bind-Value="_model.OpenTime" />
+                        <InputDate id="gym-open" ParsingErrorMessage="Nhập giờ mở cửa hợp lệ." Type="InputDateType.Time" class="@Field" @bind-Value="_model.OpenTime" />
                     </label>
                     <label class="text-xs font-semibold text-vfms-text" for="gym-close">
                         Giờ đóng cửa
-                        <InputDate id="gym-close" Type="InputDateType.Time" class="@Field" @bind-Value="_model.CloseTime" />
+                        <InputDate id="gym-close" ParsingErrorMessage="Nhập giờ đóng cửa hợp lệ." Type="InputDateType.Time" class="@Field" @bind-Value="_model.CloseTime" />
                     </label>
                     <label class="flex items-center gap-3 text-sm font-semibold text-vfms-text sm:col-span-2">
                         <InputCheckbox @bind-Value="_model.IsAcceptingMembers" /> Đang nhận hội viên mới
@@ -96,7 +97,7 @@
     private readonly CancellationTokenSource _lifetime = new();
     private readonly GymSettingsModel _model = new();
     private readonly GymSettingsRequestValidator _validator = new();
-    private ContractValidation<GymSettingsRequest>? _validation;
+    private OperationsValidation<GymSettingsRequest>? _validation;
     private GymSettingsResponse? _settings;
     private string? _notice, _error;
     private bool _loading = true, _working, _canEdit;

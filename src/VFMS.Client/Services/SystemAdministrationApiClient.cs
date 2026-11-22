@@ -154,7 +154,15 @@ public sealed class SystemAdministrationApiClient(HttpClient http, AuthSession s
         var token = await session.GetAccessTokenAsync()
             ?? throw new AuthApiException("Vui lòng đăng nhập để tiếp tục.", HttpStatusCode.Unauthorized);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        return await AuthApiClient.SendAsync<T>(http, request, cancellationToken);
+        try
+        {
+            return await AuthApiClient.SendAsync<T>(http, request, cancellationToken);
+        }
+        // Vietnamese text for the general policy, report, banned word and audit log codes; other codes keep the server's message.
+        catch (AuthApiException error) when (error.ErrorCode is { } code && OperationsText.ErrorMessage(code) is { } message)
+        {
+            throw new AuthApiException(message, error.StatusCode, error.Errors, code);
+        }
     }
 
     public void Dispose() => http.Dispose();

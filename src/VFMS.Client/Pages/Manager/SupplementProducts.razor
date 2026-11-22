@@ -60,12 +60,12 @@
                         <InputText id="product-flavour" class="@Ui.Field" @bind-Value="_form.Flavour" maxlength="100" placeholder="VD: Double Rich Chocolate" />
                     </label>
                     <label class="@Ui.Label" for="product-price">Giá bán (₫)
-                        <InputNumber id="product-price" class="@Ui.Field" @bind-Value="_form.UnitPrice" min="1" step="1000" />
+                        <InputNumber id="product-price" ParsingErrorMessage="Giá bán phải là số." class="@Ui.Field" @bind-Value="_form.UnitPrice" min="1" step="1000" />
                     </label>
                     @if (_editingId is null)
                     {
                         <label class="@Ui.Label" for="product-stock">Tồn kho ban đầu
-                            <InputNumber id="product-stock" class="@Ui.Field" @bind-Value="_form.StockQuantity" min="0" max="@SupplementStock.MaxQuantity" placeholder="Để trống nếu không theo dõi" aria-describedby="product-stock-hint" />
+                            <InputNumber id="product-stock" ParsingErrorMessage="Tồn kho phải là số nguyên." class="@Ui.Field" @bind-Value="_form.StockQuantity" min="0" max="@SupplementStock.MaxQuantity" placeholder="Để trống nếu không theo dõi" aria-describedby="product-stock-hint" />
                             <span id="product-stock-hint" class="mt-1 block text-xs font-normal text-vfms-text-secondary">Có số lượng thì đơn hàng tự trừ kho và tự chuyển "Hết hàng" khi về 0.</span>
                         </label>
                     }

@@ -1,5 +1,6 @@
 @page "/admin/banned-words"
 @layout ManagerAdminLayout
+@using VFMS.Client.Components.Operations
 @using Microsoft.AspNetCore.Authorization
 @using VFMS.Contracts.Common
 @using VFMS.Contracts.SystemAdministration
@@ -29,7 +30,7 @@
     <section class="rounded-[12px] border border-vfms-border bg-vfms-surface p-5 sm:p-6 shadow-sm" aria-labelledby="word-form-title">
         <h2 id="word-form-title" class="text-base font-bold text-vfms-text">@(_editingId is null ? "Thêm từ khóa" : "Sửa từ khóa")</h2>
         <EditForm Model="_form" OnValidSubmit="SaveAsync" class="mt-4" novalidate>
-            <ContractValidation TRequest="BannedWordRequest" Validator="_validator" CreateRequest="CreateRequest" @ref="_validation" />
+            <OperationsValidation TRequest="BannedWordRequest" Validator="_validator" CreateRequest="CreateRequest" @ref="_validation" />
             <ValidationSummary />
             <fieldset disabled="@_working" class="mt-4 flex flex-wrap items-end gap-3">
                 <label class="min-w-[240px] flex-1 text-xs font-semibold text-vfms-text" for="word-input">
@@ -119,7 +120,7 @@
     private readonly CancellationTokenSource _lifetime = new();
     private readonly WordModel _form = new();
     private readonly BannedWordRequestValidator _validator = new();
-    private ContractValidation<BannedWordRequest>? _validation;
+    private OperationsValidation<BannedWordRequest>? _validation;
     private PagedResponse<BannedWordResponse>? _page;
     private int? _editingId;
     private string _search = string.Empty, _status = string.Empty;

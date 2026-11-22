@@ -1,5 +1,6 @@
 @page "/admin/audit-logs"
 @layout ManagerAdminLayout
+@using VFMS.Client.Components.Operations
 @using System.Text.Encodings.Web
 @using System.Text.Json
 @using Microsoft.AspNetCore.Authorization
@@ -59,16 +60,16 @@
                 <button type="button" class="@Button" disabled="@_exporting" @onclick="ExportCsvAsync">@(_exporting ? "Đang xuất..." : "Xuất CSV")</button>
             </div>
             <EditForm Model="_filter" OnValidSubmit="() => LoadAsync(1)" novalidate>
-                <ContractValidation TRequest="AuditLogListRequest" Validator="_validator" CreateRequest="() => CreateRequest(1)" @ref="_validation" />
+                <OperationsValidation TRequest="AuditLogListRequest" Validator="_validator" CreateRequest="() => CreateRequest(1)" @ref="_validation" />
                 <ValidationSummary />
                 <fieldset class="flex flex-wrap items-end gap-3">
                     <label class="text-xs font-semibold text-vfms-text" for="log-from">
                         Từ ngày
-                        <InputDate id="log-from" class="@Field" @bind-Value="_filter.From" @bind-Value:after="() => LoadAsync(1)" />
+                        <InputDate id="log-from" ParsingErrorMessage="Nhập ngày hợp lệ." class="@Field" @bind-Value="_filter.From" @bind-Value:after="() => LoadAsync(1)" />
                     </label>
                     <label class="text-xs font-semibold text-vfms-text" for="log-to">
                         Đến ngày
-                        <InputDate id="log-to" class="@Field" @bind-Value="_filter.To" @bind-Value:after="() => LoadAsync(1)" />
+                        <InputDate id="log-to" ParsingErrorMessage="Nhập ngày hợp lệ." class="@Field" @bind-Value="_filter.To" @bind-Value:after="() => LoadAsync(1)" />
                     </label>
                     <label class="text-xs font-semibold text-vfms-text" for="log-action">
                         Thao tác
@@ -148,7 +149,7 @@
     private readonly CancellationTokenSource _lifetime = new();
     private readonly FilterModel _filter = new();
     private readonly AuditLogListRequestValidator _validator = new();
-    private ContractValidation<AuditLogListRequest>? _validation;
+    private OperationsValidation<AuditLogListRequest>? _validation;
     private PagedResponse<AuditLogResponse>? _page;
     private AuditLogResponse? _selected;
     private string? _error, _notice;

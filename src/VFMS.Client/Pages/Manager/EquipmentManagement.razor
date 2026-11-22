@@ -56,10 +56,10 @@
                         </InputSelect>
                     </label>
                     <label class="@Ui.Label" for="eq-date">Ngày mua
-                        <InputDate id="eq-date" class="@Ui.Field" @bind-Value="_form.PurchaseDate" />
+                        <InputDate id="eq-date" ParsingErrorMessage="Nhập ngày mua hợp lệ." class="@Ui.Field" @bind-Value="_form.PurchaseDate" />
                     </label>
                     <label class="@Ui.Label" for="eq-price">Giá mua (₫)
-                        <InputNumber id="eq-price" class="@Ui.Field" @bind-Value="_form.PurchasePrice" min="0" step="1000" />
+                        <InputNumber id="eq-price" ParsingErrorMessage="Giá mua phải là số." class="@Ui.Field" @bind-Value="_form.PurchasePrice" min="0" step="1000" />
                     </label>
                     <label class="@Ui.Label" for="eq-url">Đường dẫn tài liệu
                         <InputText id="eq-url" class="@Ui.Field" @bind-Value="_form.DescriptionUrl" placeholder="https://..." />
