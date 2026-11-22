@@ -10,9 +10,9 @@ public sealed class PasswordResetRepository(VfmsDbContext context) : IPasswordRe
 {
     public Task<ApplicationUser?> FindEligibleUserAsync(string email, CancellationToken cancellationToken)
     {
-        var normalized = email.ToUpperInvariant();
+        var normalized = VFMS.Contracts.Common.UserIdentityRules.NormalizeEmail(email);
         return context.ApplicationUsers.AsNoTracking().FirstOrDefaultAsync(
-            user => user.Email.ToUpper() == normalized && user.AccountStatus == AccountStatus.Active && !user.IsBanned, cancellationToken);
+            user => user.Email == normalized && user.AccountStatus == AccountStatus.Active && !user.IsBanned, cancellationToken);
     }
 
     public async Task<bool> TryIssueAsync(string userId, string expectedPasswordHash, string tokenHash,

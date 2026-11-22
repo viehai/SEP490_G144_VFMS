@@ -1,10 +1,14 @@
+using System.Security.Cryptography;
+using System.Text;
 using Mapster;
 using MapsterMapper;
 using VFMS.Application.Interfaces;
 using VFMS.Application.Mappings;
 using VFMS.Application.Services;
+using VFMS.Application.Settings;
 using VFMS.Contracts.Auth;
 using VFMS.Contracts.Auth.Validators;
+using VFMS.Contracts.Common;
 using VFMS.Contracts.Users;
 using VFMS.Contracts.Users.Validators;
 using VFMS.Domain.Entities;
@@ -51,24 +55,77 @@ public sealed class UserAdministrationValidatorTests
     }
 
     [Fact]
-    public void WalkInCustomerRequestHasNoRoleInput()
+    public void WalkInCustomerRequestHasNoRoleOrPasswordInputAndResponseHasNoPlaintextSecrets()
     {
         Assert.DoesNotContain(
             typeof(WalkInCustomerRequest).GetProperties(),
             property => string.Equals(property.Name, "Role", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(property.Name, "RoleId", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(property.Name, "RoleName", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(property.Name, "Password", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(property.Name, "ConfirmPassword", StringComparison.OrdinalIgnoreCase));
+
+        Assert.DoesNotContain(
+            typeof(WalkInCustomerResponse).GetProperties(),
+            property => string.Equals(property.Name, "GeneratedPassword", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(property.Name, "Password", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(property.Name, "Token", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(property.Name, "SetupToken", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(property.Name, "PasswordSetupTokenHash", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
-    public void WalkInValidatorRequiresOnlyNameAndPhoneWhenEmailIsOmitted()
+    public void WalkInValidatorRequiresNamePhoneAndValidEmail()
     {
         var validator = new WalkInCustomerRequestValidator();
 
-        Assert.True(validator.Validate(new WalkInCustomerRequest("Alex Smith", "0912345678")).IsValid);
-        Assert.False(validator.Validate(new WalkInCustomerRequest("", "0912345678")).IsValid);
-        Assert.False(validator.Validate(new WalkInCustomerRequest("Alex Smith", "")).IsValid);
+        Assert.True(validator.Validate(new WalkInCustomerRequest("Alex Smith", "0912345678", "alex@example.com")).IsValid);
+        Assert.True(validator.Validate(new WalkInCustomerRequest("Alex Smith", "0912-345-678", "alex@example.com")).IsValid);
+        Assert.False(validator.Validate(new WalkInCustomerRequest("", "0912345678", "alex@example.com")).IsValid);
+        Assert.False(validator.Validate(new WalkInCustomerRequest("Alex Smith", "", "alex@example.com")).IsValid);
+        Assert.False(validator.Validate(new WalkInCustomerRequest("Alex Smith", "0912345678", "")).IsValid);
         Assert.False(validator.Validate(new WalkInCustomerRequest("Alex Smith", "0912345678", "invalid")).IsValid);
+    }
+
+    [Fact]
+    public void PhoneNormalizationCanonicalizesFormattingVariants()
+    {
+        Assert.True(UserIdentityRules.TryNormalizePhone(" 0912-345-678 ", out var hyphenated));
+        Assert.True(UserIdentityRules.TryNormalizePhone("(0912) 345 678", out var parenthesized));
+        Assert.True(UserIdentityRules.TryNormalizePhone("+84 912-345-678", out var international));
+        Assert.Equal("0912345678", hyphenated);
+        Assert.Equal(hyphenated, parenthesized);
+        Assert.Equal("+84912345678", international);
+    }
+
+    [Theory]
+    [InlineData("++84912345678")]
+    [InlineData("0912+345678")]
+    [InlineData("(0912 345678")]
+    [InlineData("0912)345678")]
+    [InlineData("0912--345678")]
+    [InlineData("0912A345678")]
+    [InlineData("(--) --")]
+    public void IdentityInputsRejectMalformedPhoneNumbers(string phoneNumber)
+    {
+        Assert.False(UserIdentityRules.TryNormalizePhone(phoneNumber, out _));
+        Assert.False(new WalkInCustomerRequestValidator().Validate(
+            new WalkInCustomerRequest("Walk-in User", phoneNumber, "walkin@example.test")).IsValid);
+        Assert.False(new UpdateUserProfileRequestValidator().Validate(new UpdateUserProfileRequest("Profile User", phoneNumber)).IsValid);
+        Assert.False(new LoginRequestValidator().Validate(new LoginRequest(phoneNumber, "Customer@123")).IsValid);
+    }
+
+    [Fact]
+    public void SetupPasswordValidatorEnforcesTokenFormatAndGbr26PasswordRules()
+    {
+        var validator = new SetupPasswordRequestValidator();
+        var validToken = new string('A', 64);
+
+        Assert.True(validator.Validate(new SetupPasswordRequest(validToken, "Strong@123", "Strong@123")).IsValid);
+        Assert.False(validator.Validate(new SetupPasswordRequest("short", "Strong@123", "Strong@123")).IsValid);
+        Assert.False(validator.Validate(new SetupPasswordRequest(new string('a', 64), "Strong@123", "Strong@123")).IsValid);
+        Assert.False(validator.Validate(new SetupPasswordRequest(validToken, "weakpass", "weakpass")).IsValid);
+        Assert.False(validator.Validate(new SetupPasswordRequest(validToken, "Strong@123", "Mismatch@123")).IsValid);
     }
 
     [Fact]
@@ -103,22 +160,152 @@ public sealed class UserAdministrationValidatorTests
     }
 
     [Fact]
-    public async Task WalkInCreatesCustomerWithGeneratedPasswordAndNoEmail()
+    public async Task WalkInCreatesPendingCustomerWith48HourSetupLinkAuditAndNoPlaintextPassword()
     {
+        var now = new DateTimeOffset(2026, 11, 18, 12, 0, 0, TimeSpan.Zero);
         var repository = new UserAdministrationRepositoryFake();
-        var service = CreateService(repository);
+        var email = new EmailServiceFake();
+        var service = CreateService(repository, email, new FixedTimeProvider(now));
 
         var result = await service.CreateWalkInCustomerAsync(
-            new WalkInCustomerRequest("Alex Smith", "0912345678"));
+            new WalkInCustomerRequest("Alex Smith", "0912-345-678", "alex@example.com"),
+            actorUserId: "staff-1",
+            ipAddress: "127.0.0.1");
 
         Assert.True(result.IsSuccess);
         Assert.Equal(201, result.StatusCode);
         Assert.NotNull(result.Data);
-        Assert.Null(result.Data.Email);
+        Assert.Equal("alex@example.com", result.Data.Email);
+        Assert.Equal("0912345678", result.Data.PhoneNumber);
+        Assert.Equal(AccountStatus.PendingVerification.ToString(), result.Data.AccountStatus);
         Assert.Equal(new[] { "Customer" }, result.Data.Roles);
-        Assert.Matches(@"^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[^a-zA-Z0-9]).{8,32}$", result.Data.GeneratedPassword);
-        Assert.Equal(result.Data.GeneratedPassword, repository.CreatedUser!.PasswordHash);
-        Assert.EndsWith("@walkin.invalid", repository.CreatedUser.Email);
+        Assert.True(result.Data.SetupEmailSent);
+        Assert.Equal(now.UtcDateTime.AddHours(48), result.Data.PasswordSetupExpiresAt);
+
+        Assert.NotNull(repository.CreatedUser);
+        Assert.Equal(AccountStatus.PendingVerification, repository.CreatedUser.AccountStatus);
+        Assert.Equal("0912345678", repository.CreatedUser.PhoneNumber);
+        Assert.NotNull(repository.CreatedUser.PasswordSetupTokenHash);
+        Assert.Equal(64, repository.CreatedUser.PasswordSetupTokenHash.Length);
+        Assert.Equal(now.UtcDateTime.AddHours(48), repository.CreatedUser.PasswordSetupExpiresAt);
+
+        Assert.Single(email.SentMessages);
+        var sent = email.SentMessages[0];
+        Assert.Equal("alex@example.com", sent.Recipient);
+        Assert.Contains("https://localhost:7246/auth/setup-password#token=", sent.Body);
+        var rawToken = ExtractTokenFromEmailBody(sent.Body);
+        Assert.NotEqual(rawToken, repository.CreatedUser.PasswordSetupTokenHash);
+        Assert.Equal(ComputeCustomerSetupHash(rawToken), repository.CreatedUser.PasswordSetupTokenHash);
+
+        Assert.NotNull(repository.LastAuditLog);
+        Assert.Equal("staff-1", repository.LastAuditLog.ActorUserId);
+        Assert.Equal(AuditActionType.Create, repository.LastAuditLog.ActionType);
+        Assert.Equal($"ApplicationUser:{repository.CreatedUser.UserId}", repository.LastAuditLog.AuditEntity);
+        Assert.DoesNotContain(rawToken, repository.LastAuditLog.NewValue ?? string.Empty);
+    }
+
+    [Fact]
+    public async Task WalkInRejectsDuplicatePhoneEvenWhenUniqueEmailIsProvided()
+    {
+        var repository = new UserAdministrationRepositoryFake { PhoneAlreadyExists = true };
+        var email = new EmailServiceFake();
+        var service = CreateService(repository, email);
+
+        var result = await service.CreateWalkInCustomerAsync(
+            new WalkInCustomerRequest("Alex Smith", "0912345678", "unique@example.com"),
+            actorUserId: "staff-1",
+            ipAddress: "127.0.0.1");
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        Assert.Equal("USER_PHONE_EXISTS", result.ErrorCode);
+        Assert.Null(repository.CreatedUser);
+        Assert.Empty(email.SentMessages);
+    }
+
+    [Fact]
+    public async Task WalkInRejectsDuplicateEmailWith409()
+    {
+        var repository = new UserAdministrationRepositoryFake { EmailAlreadyExists = true };
+        var email = new EmailServiceFake();
+        var service = CreateService(repository, email);
+
+        var result = await service.CreateWalkInCustomerAsync(
+            new WalkInCustomerRequest("Alex Smith", "0912345678", "dup@example.com"),
+            actorUserId: "staff-1",
+            ipAddress: "127.0.0.1");
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(409, result.StatusCode);
+        Assert.Equal("AUTH_EMAIL_EXISTS", result.ErrorCode);
+        Assert.Null(repository.CreatedUser);
+        Assert.Empty(email.SentMessages);
+    }
+
+    [Fact]
+    public async Task WalkInFailsFastWith503WhenSmtpIsNotConfigured()
+    {
+        var repository = new UserAdministrationRepositoryFake();
+        var email = new EmailServiceFake { IsConfigured = false };
+        var service = CreateService(repository, email);
+
+        var result = await service.CreateWalkInCustomerAsync(
+            new WalkInCustomerRequest("Alex Smith", "0912345678", "alex@example.com"),
+            actorUserId: "staff-1",
+            ipAddress: "127.0.0.1");
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(503, result.StatusCode);
+        Assert.Equal("CUSTOMER_SETUP_EMAIL_UNAVAILABLE", result.ErrorCode);
+        Assert.Null(repository.CreatedUser);
+    }
+
+    [Theory]
+    [InlineData("https://localhost:7246/auth/setup-password", true, true)]
+    [InlineData("http://127.0.0.1:5273/auth/setup-password", true, true)]
+    [InlineData("https://localhost:7246/auth/setup-password", false, false)]
+    [InlineData("https://127.0.0.1/auth/setup-password", false, false)]
+    [InlineData("https://[::1]/auth/setup-password", false, false)]
+    [InlineData("https://vfms.internal/auth/setup-password", false, false)]
+    [InlineData("https://vfms.example.com/auth/reset-password", false, false)]
+    [InlineData("http://vfms.example.com/auth/setup-password", false, false)]
+    [InlineData("https://vfms.example/auth/setup-password", false, false)]
+    [InlineData("https://vfms.example.com/auth/setup-password", false, true)]
+    [InlineData(null, false, false)]
+    public void CustomerSetupUrlIsEnvironmentBound(string? setupUrl, bool development, bool expected) =>
+        Assert.Equal(expected, CustomerPasswordSetupSettings.FromConfiguration(setupUrl, development).IsValid);
+
+    [Fact]
+    public async Task WalkInRejectsAddressReservedForLegacyPlaceholders()
+    {
+        var repository = new UserAdministrationRepositoryFake();
+        var service = CreateService(repository, new EmailServiceFake());
+
+        var result = await service.CreateWalkInCustomerAsync(
+            new WalkInCustomerRequest("Alex Smith", "0912345678", "alex@WALKIN.INVALID "), "staff-1", null);
+
+        Assert.Equal("USER_EMAIL_INVALID", result.ErrorCode);
+        Assert.Null(repository.CreatedUser);
+    }
+
+    [Fact]
+    public async Task WalkInClearsTokenAndReportsSetupEmailSentFalseWhenSmtpThrows()
+    {
+        var repository = new UserAdministrationRepositoryFake();
+        var email = new EmailServiceFake { ThrowOnSend = true };
+        var service = CreateService(repository, email);
+
+        var result = await service.CreateWalkInCustomerAsync(
+            new WalkInCustomerRequest("Alex Smith", "0912345678", "alex@example.com"),
+            actorUserId: "staff-1",
+            ipAddress: "127.0.0.1");
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(201, result.StatusCode);
+        Assert.False(result.Data!.SetupEmailSent);
+        Assert.Null(result.Data.PasswordSetupExpiresAt);
+        Assert.Null(repository.CreatedUser!.PasswordSetupTokenHash);
+        Assert.Null(repository.CreatedUser.PasswordSetupExpiresAt);
     }
 
     [Fact]
@@ -168,16 +355,35 @@ public sealed class UserAdministrationValidatorTests
         Assert.Equal("NewPass@123", repository.ExistingUser.PasswordHash);
     }
 
-    private static UserAdministrationService CreateService(UserAdministrationRepositoryFake repository) =>
-        CreateService((IUserAdministrationRepository)repository);
+    private static UserAdministrationService CreateService(
+        UserAdministrationRepositoryFake repository,
+        IEmailService? emailService = null,
+        TimeProvider? clock = null) =>
+        CreateService((IUserAdministrationRepository)repository, emailService, clock);
 
-    private static UserAdministrationService CreateService(IUserAdministrationRepository repository)
+    private static UserAdministrationService CreateService(
+        IUserAdministrationRepository repository,
+        IEmailService? emailService = null,
+        TimeProvider? clock = null)
     {
         var mapperConfig = new TypeAdapterConfig();
         mapperConfig.Scan(typeof(UserAdministrationMapping).Assembly);
         IMapper mapper = new ServiceMapper(new EmptyServiceProvider(), mapperConfig);
-        return new UserAdministrationService(repository, new PasswordHasherFake(), mapper);
+        var setupSettings = CustomerPasswordSetupSettings.FromConfiguration(
+            "https://localhost:7246/auth/setup-password", isDevelopment: true);
+        return new UserAdministrationService(repository, new PasswordHasherFake(), mapper, emailService, setupSettings, clock);
     }
+
+    private static string ExtractTokenFromEmailBody(string body)
+    {
+        const string marker = "#token=";
+        var start = body.IndexOf(marker, StringComparison.Ordinal);
+        Assert.True(start >= 0, "Setup email must contain #token= fragment.");
+        return body.Substring(start + marker.Length, 64);
+    }
+
+    private static string ComputeCustomerSetupHash(string raw) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("VFMS:customer-password-setup:v1:" + raw)));
 
     [Fact]
     public async Task AdminCannotLockTheirOwnAccount()
@@ -622,11 +828,35 @@ public sealed class UserAdministrationValidatorTests
             return Task.FromResult(user);
         }
 
+        public Task<ApplicationUser?> GetUserByPasswordSetupTokenHashAsync(string tokenHash, CancellationToken cancellationToken = default) =>
+            Task.FromResult(_users.FirstOrDefault(u => u.PasswordSetupTokenHash == tokenHash));
+
+        public Task<ApplicationUser?> FindPendingCustomerAsync(string? canonicalEmail, string? canonicalPhone, CancellationToken cancellationToken = default) =>
+            Task.FromResult<ApplicationUser?>(null);
+
         public Task<(IReadOnlyList<ApplicationUser> Users, int TotalCount)> GetUsersAsync(string? role, AccountStatus? accountStatus, string? search, int page, int pageSize, CancellationToken cancellationToken = default) =>
             Task.FromResult<(IReadOnlyList<ApplicationUser>, int)>(([], 0));
 
-        public Task CreateUserAsync(ApplicationUser user, int roleId, AuditLog? auditLog = null, CancellationToken cancellationToken = default) =>
+        public Task<Result<T>> ExecuteProvisioningAsync<T>(Func<Task<Result<T>>> action, CancellationToken cancellationToken = default) =>
+            action();
+
+        public Task CreateUserAsync(ApplicationUser user, AuditLog? auditLog = null, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
+
+        public Task<Result<T>> ExecuteCustomerSetupResendAsync<T>(string userId, Func<Task<Result<T>>> action, CancellationToken cancellationToken = default) =>
+            action();
+
+        public Task<bool> TryRotateCustomerSetupTokenAsync(string userId, string expectedEmail, string tokenHash, DateTime expiresAt, DateTime now, CancellationToken cancellationToken = default) =>
+            Task.FromResult(true);
+
+        public Task ClearPasswordSetupTokenAsync(string userId, string tokenHash, DateTime now, AuditLog auditLog, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+
+        public Task SaveSetupAuditAsync(IReadOnlyCollection<AuditLog> auditLogs, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+
+        public Task<bool> TryCompletePasswordSetupAsync(string userId, string tokenHash, string newPasswordHash, AuditLog auditLog, CancellationToken cancellationToken = default) =>
+            Task.FromResult(true);
 
         public Task<bool> HasActiveYogaAssignmentsAsync(string userId, CancellationToken cancellationToken) =>
             Task.FromResult(false);
@@ -634,11 +864,14 @@ public sealed class UserAdministrationValidatorTests
         public Task ReplaceUserRolesAsync(ApplicationUser user, IReadOnlyCollection<int> roleIds, AuditLog auditLog, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
 
-        public Task UpdateAccountStatusAsync(ApplicationUser user, AccountStatus status, bool revokeActiveRefreshTokens, AuditLog auditLog, CancellationToken cancellationToken = default) =>
-            Task.CompletedTask;
+        public Task<AccountStatus?> GetStatusBeforeLatestLockAsync(string userId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<AccountStatus?>(null);
 
-        public Task UpdateUserAsync(ApplicationUser user, CancellationToken cancellationToken = default) =>
-            Task.CompletedTask;
+        public Task<bool> TryUpdateAccountStatusAsync(ApplicationUser user, AccountStatus status, bool revokeActiveRefreshTokens, AuditLog auditLog, CancellationToken cancellationToken = default) =>
+            Task.FromResult(true);
+
+        public Task<Result<bool>> UpdateUserAsync(ApplicationUser user, CancellationToken cancellationToken = default) =>
+            Task.FromResult(Result<bool>.Success(true));
     }
 
     // ── Existing mapster test ─────────────────────────────────────────────────
@@ -683,21 +916,46 @@ public sealed class UserAdministrationValidatorTests
         public object? GetService(Type serviceType) => null;
     }
 
+    private sealed class EmailServiceFake : IEmailService
+    {
+        public bool IsConfigured { get; set; } = true;
+        public bool ThrowOnSend { get; set; }
+        public List<(string Recipient, string Subject, string Body)> SentMessages { get; } = [];
+
+        public Task SendAsync(string recipient, string subject, string textBody, CancellationToken cancellationToken = default)
+        {
+            if (ThrowOnSend)
+                throw new InvalidOperationException("Simulated SMTP outage.");
+
+            SentMessages.Add((recipient, subject, textBody));
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        public DateTimeOffset CurrentUtcNow { get; set; } = utcNow;
+        public override DateTimeOffset GetUtcNow() => CurrentUtcNow;
+    }
+
     private sealed class UserAdministrationRepositoryFake : IUserAdministrationRepository
     {
         public int GetUserByIdCalls { get; private set; }
+        public bool EmailAlreadyExists { get; set; }
+        public bool PhoneAlreadyExists { get; set; }
         public ApplicationUser? ExistingUser { get; init; }
         public ApplicationUser? CreatedUser { get; private set; }
+        public AuditLog? LastAuditLog { get; private set; }
         private readonly ApplicationRole _customerRole = new() { Id = 1, RoleName = "Customer" };
 
         public Task<bool> EmailExistsAsync(string email, CancellationToken cancellationToken = default) =>
-            Task.FromResult(false);
+            Task.FromResult(EmailAlreadyExists);
 
         public Task<bool> PhoneNumberExistsAsync(
             string phoneNumber,
             string? excludingUserId = null,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult(false);
+            Task.FromResult(PhoneAlreadyExists);
 
         public Task<Gym?> GetDefaultGymAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult<Gym?>(new Gym { Id = 1 });
@@ -718,6 +976,19 @@ public sealed class UserAdministrationValidatorTests
             return Task.FromResult(ExistingUser?.UserId == userId ? ExistingUser : null);
         }
 
+        public Task<ApplicationUser?> GetUserByPasswordSetupTokenHashAsync(
+            string tokenHash,
+            CancellationToken cancellationToken = default)
+        {
+            var candidate = CreatedUser ?? ExistingUser;
+            return Task.FromResult(candidate?.PasswordSetupTokenHash == tokenHash ? candidate : null);
+        }
+
+        public Task<ApplicationUser?> FindPendingCustomerAsync(
+            string? canonicalEmail,
+            string? canonicalPhone,
+            CancellationToken cancellationToken = default) => Task.FromResult<ApplicationUser?>(null);
+
         public Task<(IReadOnlyList<ApplicationUser> Users, int TotalCount)> GetUsersAsync(
             string? role,
             AccountStatus? accountStatus,
@@ -727,14 +998,85 @@ public sealed class UserAdministrationValidatorTests
             CancellationToken cancellationToken = default) =>
             Task.FromResult<(IReadOnlyList<ApplicationUser>, int)>(([], 0));
 
+        public Task<Result<T>> ExecuteProvisioningAsync<T>(
+            Func<Task<Result<T>>> action,
+            CancellationToken cancellationToken = default) =>
+            action();
+
         public Task CreateUserAsync(
             ApplicationUser user,
-            int roleId,
             AuditLog? auditLog = null,
             CancellationToken cancellationToken = default)
         {
             CreatedUser = user;
+            LastAuditLog = auditLog;
             return Task.CompletedTask;
+        }
+
+        public Task<Result<T>> ExecuteCustomerSetupResendAsync<T>(
+            string userId,
+            Func<Task<Result<T>>> action,
+            CancellationToken cancellationToken = default) => action();
+
+        public Task<bool> TryRotateCustomerSetupTokenAsync(
+            string userId,
+            string expectedEmail,
+            string tokenHash,
+            DateTime expiresAt,
+            DateTime now,
+            CancellationToken cancellationToken = default)
+        {
+            var candidate = CreatedUser ?? ExistingUser;
+            if (candidate is null || candidate.UserId != userId || candidate.AccountStatus != AccountStatus.PendingVerification)
+                return Task.FromResult(false);
+
+            candidate.PasswordSetupTokenHash = tokenHash;
+            candidate.PasswordSetupExpiresAt = expiresAt;
+            candidate.UpdatedAt = now;
+            return Task.FromResult(true);
+        }
+
+        public Task ClearPasswordSetupTokenAsync(
+            string userId,
+            string tokenHash,
+            DateTime now,
+            AuditLog auditLog,
+            CancellationToken cancellationToken = default)
+        {
+            var candidate = CreatedUser ?? ExistingUser;
+            if (candidate is not null && candidate.UserId == userId && candidate.PasswordSetupTokenHash == tokenHash)
+            {
+                candidate.PasswordSetupTokenHash = null;
+                candidate.PasswordSetupExpiresAt = null;
+                candidate.UpdatedAt = now;
+            }
+            return Task.CompletedTask;
+        }
+
+        public Task SaveSetupAuditAsync(
+            IReadOnlyCollection<AuditLog> auditLogs, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task<bool> TryCompletePasswordSetupAsync(
+            string userId,
+            string tokenHash,
+            string newPasswordHash,
+            AuditLog auditLog,
+            CancellationToken cancellationToken = default)
+        {
+            var now = auditLog.OccurredAt;
+            var candidate = CreatedUser ?? ExistingUser;
+            if (candidate is null || candidate.UserId != userId || candidate.PasswordSetupTokenHash != tokenHash ||
+                !candidate.PasswordSetupExpiresAt.HasValue || candidate.PasswordSetupExpiresAt.Value <= now ||
+                candidate.AccountStatus != AccountStatus.PendingVerification)
+                return Task.FromResult(false);
+
+            candidate.PasswordHash = newPasswordHash;
+            candidate.PasswordSetupTokenHash = null;
+            candidate.PasswordSetupExpiresAt = null;
+            candidate.AccountStatus = AccountStatus.Active;
+            candidate.UpdatedAt = now;
+            LastAuditLog = auditLog;
+            return Task.FromResult(true);
         }
 
         public Task<bool> HasActiveYogaAssignmentsAsync(string userId, CancellationToken cancellationToken) =>
@@ -747,15 +1089,18 @@ public sealed class UserAdministrationValidatorTests
             CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
 
-        public Task UpdateAccountStatusAsync(
+        public Task<AccountStatus?> GetStatusBeforeLatestLockAsync(string userId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<AccountStatus?>(null);
+
+        public Task<bool> TryUpdateAccountStatusAsync(
             ApplicationUser user,
             AccountStatus status,
             bool revokeActiveRefreshTokens,
             AuditLog auditLog,
             CancellationToken cancellationToken = default) =>
-            Task.CompletedTask;
+            Task.FromResult(true);
 
-        public Task UpdateUserAsync(ApplicationUser user, CancellationToken cancellationToken = default) =>
-            Task.CompletedTask;
+        public Task<Result<bool>> UpdateUserAsync(ApplicationUser user, CancellationToken cancellationToken = default) =>
+            Task.FromResult(Result<bool>.Success(true));
     }
 }

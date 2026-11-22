@@ -19,6 +19,8 @@
     [Parameter] public EventCallback<PTWeeklySlot> SlotSelected { get; set; }
     [Parameter] public RenderFragment<PTWeeklySlot>? SlotContent { get; set; }
     [Parameter] public bool StartCurrentWeek { get; set; }
+    /// <summary>UC 4.2 Step 9: sessions moved to the end because a date was busy; shown with a note.</summary>
+    [Parameter] public IReadOnlyCollection<PTCalendarSlot> Moved { get; set; } = [];
 
     private DateOnly _monday;
     private DateOnly _currentMonday;
@@ -50,7 +52,8 @@
         _monday = monday;
         var end = WeekEnd;
         _weekSlots = Slots.Where(slot => slot.Date >= monday && slot.Date <= end)
-            .Select(slot => new PTWeeklySlot(slot.TemplateId, slot.Date.DayOfWeek, slot.StartTime, slot.EndTime))
+            .Select(slot => new PTWeeklySlot(slot.TemplateId, slot.Date.DayOfWeek, slot.StartTime, slot.EndTime,
+                Moved.Contains(slot) ? "Buổi dời ra sau" : null))
             .ToArray();
     }
 

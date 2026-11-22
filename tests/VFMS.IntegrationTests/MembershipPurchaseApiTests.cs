@@ -40,6 +40,8 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
     private readonly TestClock _clock = new();
     private WebApplication _app = null!;
     private int _basic;
+    private int _ptTrainerRole;
+    private int _yogaTrainerRole;
     private int _combo;
     private int _inactive;
     private DateOnly Today => DateOnly.FromDateTime(_clock.Now.ToOffset(TimeSpan.FromHours(7)).DateTime);
@@ -107,8 +109,13 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
         combo.Components.Add(new PackageComponent { ComponentType = ComponentType.YOGA, DurationMonths = 1 });
         var inactive = Plan("Inactive", 200_000m, PackageStatus.Inactive);
         db.Packages.AddRange(basic, combo, inactive);
+        // Trainer Roles as the AddTrainerRoles migration seeds them; EnsureCreated does not run migrations.
+        var ptTrainer = new TrainerRole { RoleName = TrainerRole.PT, Role = roles["PT"] };
+        var yogaTrainer = new TrainerRole { RoleName = TrainerRole.Yoga, Role = new ApplicationRole { RoleName = "YogaInstructor" } };
+        db.TrainerRoles.AddRange(ptTrainer, yogaTrainer);
         await db.SaveChangesAsync();
         (_basic, _combo, _inactive) = (basic.Id, combo.Id, inactive.Id);
+        (_ptTrainerRole, _yogaTrainerRole) = (ptTrainer.Id, yogaTrainer.Id);
     }
 
     public async Task DisposeAsync()
@@ -334,6 +341,88 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Conflict, (await NotifyAsync(purchase, id: 40, at: _clock.Now)).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await NotifyAsync(purchase, id: 41, at: purchase.CreatedAt.AddMinutes(3))).StatusCode);
         Assert.Equal("Paid", (await ReadAsync(await client.GetAsync($"{Route}/{purchase.OrderNumber}"), HttpStatusCode.OK)).OrderStatus);
+    }
+
+    [Fact]
+    public async Task YogaPlanPaidInCashGivesAnActiveYogaMembershipAndTheMemberRole()
+    {
+        await SeedYogaClassAsync("staff", _clock.Now.UtcDateTime.AddDays(7));
+        var yogaPlan = await SeedYogaPlanAsync();
+        using var buyer = Client("buyer", "Customer");
+        using var staff = Client("staff", "Staff");
+
+        var purchase = await CreateAsync(buyer, Purchase([new(yogaPlan, ActivationDate: Today)], MembershipPaymentMethods.Cash));
+        Assert.Equal(600_000m, purchase.AmountDue);
+        var route = $"/api/staff/membership-purchases/{purchase.OrderNumber}/confirm-cash";
+        Assert.Equal("Paid", (await ReadAsync(await staff.PostAsJsonAsync(route,
+            new ConfirmMembershipCashRequest(purchase.AmountDue)), HttpStatusCode.OK)).OrderStatus);
+
+        await using var scope = _app.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+        var membership = await db.MemberMemberships.Include(row => row.PackageComponent).SingleAsync();
+        Assert.Equal("buyer", membership.MemberUserId);
+        Assert.Equal(ComponentType.YOGA, membership.PackageComponent.ComponentType);
+        Assert.Equal(MembershipStatus.Active, membership.MembershipStatus);
+        Assert.Equal(Today, membership.StartDate);
+        Assert.Contains("Member", await RolesAsync(db, "buyer"));
+    }
+
+    [Fact]
+    public async Task YogaPlanCannotBeBoughtWhileNoYogaClassCanBeBooked()
+    {
+        await SeedYogaClassAsync("staff", _clock.Now.UtcDateTime.AddHours(-1));   // registration already closed
+        var yogaPlan = await SeedYogaPlanAsync();
+        using var buyer = Client("buyer", "Customer");
+
+        using var refused = await buyer.PostAsJsonAsync(Route, Purchase([new(yogaPlan)], MembershipPaymentMethods.Cash));
+        var gym = await CreateAsync(buyer, Purchase([new(_basic)], MembershipPaymentMethods.Cash));   // gym plans are unaffected
+
+        Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+        Assert.Contains("PLAN_NOT_PURCHASABLE", await refused.Content.ReadAsStringAsync());
+        Assert.Equal(500_000m, gym.AmountDue);
+    }
+
+    private async Task<int> SeedYogaPlanAsync()
+    {
+        int yogaPlan;
+        await using (var seed = _app.Services.CreateAsyncScope())
+        {
+            var seedDb = seed.ServiceProvider.GetRequiredService<VfmsDbContext>();
+            var plan = new Package
+            {
+                Name = "Yoga", Price = 600_000m, PackageStatus = PackageStatus.Active,
+                Components = [new PackageComponent { ComponentType = ComponentType.YOGA, DurationDays = 30 }]
+            };
+            seedDb.Packages.Add(plan);
+            await seedDb.SaveChangesAsync();
+            yogaPlan = plan.Id;
+        }
+        return yogaPlan;
+    }
+
+    /// <summary>
+    /// A yoga class members can still book: yoga-only plans are sold only while one exists.
+    /// The instructor gets the YogaInstructor role unless <paramref name="instructorTeaches"/> is false.
+    /// </summary>
+    private async Task SeedYogaClassAsync(string instructorId, DateTime deadlineUtc,
+        YogaClassStatus status = YogaClassStatus.Open, bool instructorTeaches = true)
+    {
+        await using var scope = _app.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+        if (instructorTeaches)
+        {
+            var role = await db.ApplicationRoles.FirstOrDefaultAsync(r => r.RoleName == "YogaInstructor")
+                       ?? db.ApplicationRoles.Add(new ApplicationRole { RoleName = "YogaInstructor" }).Entity;
+            db.ApplicationUserRoles.Add(new ApplicationUserRole { UserId = instructorId, Role = role });
+        }
+        db.YogaClasses.Add(new YogaClass
+        {
+            YogaClassType = new YogaClassType { TypeName = "Hatha" }, ClassName = "Hatha Morning",
+            InstructorUserId = instructorId, MinParticipants = 1, MaxParticipants = 10, DurationMinutes = 60,
+            ClassStatus = status, RegistrationDeadline = deadlineUtc,
+            StartDate = DateOnly.FromDateTime(deadlineUtc).AddDays(1), EndDate = DateOnly.FromDateTime(deadlineUtc).AddDays(60)
+        });
+        await db.SaveChangesAsync();
     }
 
     [Fact]

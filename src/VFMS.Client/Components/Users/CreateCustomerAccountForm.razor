@@ -1,0 +1,457 @@
+@using System.Net
+@using VFMS.Client.Components.Auth
+@using VFMS.Client.Services
+@using VFMS.Contracts.Users
+@using VFMS.Contracts.Users.Validators
+@inject VfmsApiClient Api
+
+@if (_created is not null)
+{
+    <section class="max-w-2xl rounded-xl border border-[#D8D1CD] bg-[#F8F5F2] p-6 shadow-sm sm:p-8"
+             aria-labelledby="create-customer-success-title"
+             aria-live="polite">
+        <div class="flex items-start gap-4 border-b border-[#D8D1CD] pb-5">
+            <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-lg font-extrabold text-emerald-700"
+                 aria-hidden="true">✓</div>
+            <div class="min-w-0">
+                @if (!_foundExisting)
+                {
+                    <p class="workspace-heading text-[10px] font-bold tracking-[0.18em] text-[#B83A3A]">UC-06 / HOÀN TẤT</p>
+                }
+                <h2 id="create-customer-success-title" class="workspace-heading mt-1 text-xl font-extrabold text-[#242424] sm:text-2xl">
+                    @(_foundExisting ? "Đã tìm thấy tài khoản chờ thiết lập mật khẩu" : "Tạo tài khoản khách hàng thành công")
+                </h2>
+                @if (!_foundExisting)
+                {
+                    <p class="mt-1 text-sm text-[#6F6966]">Thông tin tài khoản mới đã được ghi nhận trên hệ thống.</p>
+                }
+            </div>
+        </div>
+
+        @if (_setupEmailSent == true)
+        {
+            <div class="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3.5 text-sm text-emerald-900" role="status">
+                <p class="font-semibold">
+                    @(_resendSuccessMessage ?? "Liên kết thiết lập mật khẩu đã được gửi đến email của khách hàng. Liên kết có hiệu lực trong 48 giờ.")
+                </p>
+                @if (_setupExpiresAt.HasValue)
+                {
+                    <p class="mt-1 text-xs text-emerald-800">
+                        Hiệu lực đến: @FormatVietnamTime(_setupExpiresAt.Value) (UTC+7)
+                    </p>
+                }
+            </div>
+        }
+        else if (_setupEmailSent == false)
+        {
+            <div class="mt-5 rounded-xl border border-amber-300 bg-amber-50 px-4 py-4 text-sm text-amber-950" role="alert">
+                <p class="font-semibold">Tài khoản đã được tạo nhưng chưa gửi được email thiết lập mật khẩu.</p>
+                <p class="mt-1 text-xs leading-relaxed text-amber-900">
+                    Khách hàng chưa thể đăng nhập cho tới khi nhận được liên kết thiết lập mật khẩu.
+                    Vui lòng không tạo tài khoản trùng lặp — hãy nhấn nút gửi lại email bên dưới.
+                </p>
+            </div>
+        }
+        else
+        {
+            <p class="mt-5 text-sm text-[#6F6966]">Kiểm tra thông tin khách hàng bên dưới trước khi gửi lại liên kết thiết lập mật khẩu.</p>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(_resendError))
+        {
+            <div class="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
+                @_resendError
+            </div>
+        }
+
+        <dl class="mt-6 grid gap-4 rounded-xl border border-[#D8D1CD] bg-[#ECE8E4]/60 p-4 text-sm sm:grid-cols-2 sm:p-5">
+            <div class="min-w-0">
+                <dt class="workspace-heading text-[10px] font-bold tracking-[0.14em] text-[#6F6966]">HỌ VÀ TÊN</dt>
+                <dd class="mt-1 break-words font-semibold text-[#242424]">@_created.FullName</dd>
+            </div>
+            <div class="min-w-0">
+                <dt class="workspace-heading text-[10px] font-bold tracking-[0.14em] text-[#6F6966]">EMAIL</dt>
+                <dd class="mt-1 break-all font-medium text-[#242424]">@_created.Email</dd>
+            </div>
+            <div class="min-w-0">
+                <dt class="workspace-heading text-[10px] font-bold tracking-[0.14em] text-[#6F6966]">SỐ ĐIỆN THOẠI</dt>
+                <dd class="mt-1 font-medium text-[#242424]">@_created.PhoneNumber</dd>
+            </div>
+            <div class="min-w-0">
+                <dt class="workspace-heading text-[10px] font-bold tracking-[0.14em] text-[#6F6966]">VAI TRÒ</dt>
+                <dd class="mt-1">
+                    <span class="inline-flex rounded-full border border-[#D8D1CD] bg-[#F8F5F2] px-2.5 py-0.5 text-xs font-bold text-[#242424]">
+                        @DisplayRole(_created.Roles)
+                    </span>
+                </dd>
+            </div>
+            <div class="min-w-0 sm:col-span-2">
+                <dt class="workspace-heading text-[10px] font-bold tracking-[0.14em] text-[#6F6966]">TRẠNG THÁI TÀI KHOẢN</dt>
+                <dd class="mt-1">
+                    <span class="inline-flex rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-bold text-[#B45309]">
+                        @DisplayStatus(_created.AccountStatus)
+                    </span>
+                </dd>
+            </div>
+        </dl>
+
+        <div class="mt-6 flex flex-col gap-3 border-t border-[#D8D1CD] pt-5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+            @if (CanResendSetupEmail)
+            {
+                <button type="button"
+                        disabled="@_resending"
+                        @onclick="ResendSetupEmailAsync"
+                        class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-60 @(_setupEmailSent != true ? "bg-[#B83A3A] text-white hover:bg-[#9D2E2E]" : "border border-[#B83A3A] bg-white text-[#B83A3A] hover:bg-[#F3E4E2]")">
+                    @(_resending ? "Đang gửi lại email..." : "Gửi lại email thiết lập mật khẩu")
+                </button>
+            }
+
+            <div class="flex flex-col gap-2.5 sm:ml-auto sm:flex-row">
+                <button type="button"
+                        disabled="@_resending"
+                        @onclick="ResetForm"
+                        class="inline-flex items-center justify-center rounded-lg border border-[#D8D1CD] bg-white px-4 py-2.5 text-sm font-bold text-[#242424] transition-colors hover:bg-[#ECE8E4] disabled:cursor-not-allowed disabled:opacity-60">
+                    @(_foundExisting ? "Quay lại biểu mẫu" : "Tạo khách hàng khác")
+                </button>
+                <a href="@DashboardRoute"
+                   class="inline-flex items-center justify-center rounded-lg bg-[#242424] px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#3A3A3A]">
+                    Quay lại Dashboard
+                </a>
+            </div>
+        </div>
+    </section>
+}
+else
+{
+    <section class="max-w-2xl rounded-xl border border-[#D8D1CD] bg-[#F8F5F2] p-6 shadow-sm sm:p-8"
+             aria-labelledby="create-customer-form-title">
+        <div class="border-b border-[#D8D1CD] pb-4">
+            <p class="workspace-heading text-[10px] font-bold tracking-[0.18em] text-[#B83A3A]">THÔNG TIN KHÁCH HÀNG</p>
+            <h2 id="create-customer-form-title" class="workspace-heading mt-1 text-lg font-extrabold text-[#242424]">
+                Nhập thông tin tại quầy lễ tân
+            </h2>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(_formError))
+        {
+            <div class="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3.5 text-sm text-red-800" role="alert">
+                @_formError
+            </div>
+        }
+
+        <EditForm Model="_model" OnValidSubmit="SubmitAsync" OnInvalidSubmit="InvalidSubmit" novalidate class="mt-5 space-y-5">
+            <ContractValidation TRequest="WalkInCustomerRequest"
+                                Validator="_validator"
+                                CreateRequest="CreateRequest"
+                                @ref="_validation" />
+
+            <fieldset disabled="@FormBusy" aria-busy="@(FormBusy ? "true" : "false")" class="space-y-5">
+                <div>
+                    <label for="customer-full-name" class="block text-sm font-semibold text-[#242424]">
+                        Họ và tên <span class="text-[#B83A3A]" aria-hidden="true">*</span>
+                    </label>
+                    <InputText id="customer-full-name"
+                               @bind-Value="_model.FullName"
+                               maxlength="256"
+                               autocomplete="name"
+                               placeholder="Ví dụ: Nguyễn Văn An"
+                               aria-required="true"
+                               aria-describedby="customer-full-name-error"
+                               class="mt-1.5 w-full min-w-0 rounded-lg border border-[#D8D1CD] bg-white px-3.5 py-2.5 text-sm text-[#242424] placeholder:text-[#8C8581] focus:border-[#B83A3A] focus:outline-none focus:ring-2 focus:ring-[#B83A3A]/20" />
+                    <div id="customer-full-name-error" class="mt-1 text-xs text-red-700">
+                        <ValidationMessage For="() => _model.FullName" />
+                    </div>
+                </div>
+
+                <div>
+                    <label for="customer-email" class="block text-sm font-semibold text-[#242424]">
+                        Email <span class="text-[#B83A3A]" aria-hidden="true">*</span>
+                    </label>
+                    <InputText id="customer-email"
+                               type="email"
+                               @bind-Value="_model.Email"
+                               maxlength="256"
+                               autocomplete="email"
+                               placeholder="khachhang@example.com"
+                               aria-required="true"
+                               aria-describedby="customer-email-error"
+                               class="mt-1.5 w-full min-w-0 rounded-lg border border-[#D8D1CD] bg-white px-3.5 py-2.5 text-sm text-[#242424] placeholder:text-[#8C8581] focus:border-[#B83A3A] focus:outline-none focus:ring-2 focus:ring-[#B83A3A]/20" />
+                    <div id="customer-email-error" class="mt-1 text-xs text-red-700">
+                        <ValidationMessage For="() => _model.Email" />
+                    </div>
+                </div>
+
+                <div>
+                    <label for="customer-phone" class="block text-sm font-semibold text-[#242424]">
+                        Số điện thoại <span class="text-[#B83A3A]" aria-hidden="true">*</span>
+                    </label>
+                    <InputText id="customer-phone"
+                               type="tel"
+                               @bind-Value="_model.PhoneNumber"
+                               maxlength="20"
+                               autocomplete="tel"
+                               placeholder="0912345678"
+                               aria-required="true"
+                               aria-describedby="customer-phone-error"
+                               class="mt-1.5 w-full min-w-0 rounded-lg border border-[#D8D1CD] bg-white px-3.5 py-2.5 text-sm text-[#242424] placeholder:text-[#8C8581] focus:border-[#B83A3A] focus:outline-none focus:ring-2 focus:ring-[#B83A3A]/20" />
+                    <div id="customer-phone-error" class="mt-1 text-xs text-red-700">
+                        <ValidationMessage For="() => _model.PhoneNumber" />
+                    </div>
+                </div>
+
+                <div class="rounded-xl border border-[#D8D1CD] bg-[#ECE8E4]/75 px-4 py-3.5 text-xs leading-relaxed text-[#4A4543]">
+                    <p class="font-semibold text-[#242424]">
+                        Tài khoản được tạo với vai trò Customer.
+                    </p>
+                    <p class="mt-1">
+                        Sau khi tạo tài khoản, hệ thống sẽ gửi email để khách hàng tự thiết lập mật khẩu. Liên kết có hiệu lực trong 48 giờ.
+                    </p>
+                </div>
+
+                <div class="flex flex-col gap-2 sm:items-start">
+                    <button type="button"
+                            @onclick="FindPendingCustomerAsync"
+                            aria-describedby="find-pending-customer-help"
+                            class="inline-flex items-center justify-center rounded-lg border border-[#D8D1CD] bg-white px-4 py-2.5 text-sm font-bold text-[#242424] transition-colors hover:bg-[#ECE8E4] disabled:cursor-not-allowed disabled:opacity-60">
+                        @(_finding ? "Đang tìm tài khoản..." : "Tìm tài khoản chờ thiết lập mật khẩu")
+                    </button>
+                    <p id="find-pending-customer-help" class="text-xs text-[#6F6966]">
+                        Nhập email hoặc số điện thoại để tìm tài khoản có sẵn. Nếu nhập cả hai, chúng phải thuộc cùng một tài khoản.
+                    </p>
+                </div>
+
+                <div class="flex flex-col-reverse gap-3 border-t border-[#D8D1CD] pt-5 sm:flex-row sm:items-center sm:justify-end">
+                    <a href="@DashboardRoute"
+                       class="inline-flex items-center justify-center rounded-lg border border-[#D8D1CD] bg-white px-5 py-2.5 text-sm font-bold text-[#242424] transition-colors hover:bg-[#ECE8E4]">
+                        Hủy
+                    </a>
+                    <button type="submit"
+                            disabled="@FormBusy"
+                            class="inline-flex items-center justify-center gap-2 rounded-lg bg-[#B83A3A] px-6 py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#9D2E2E] disabled:cursor-not-allowed disabled:opacity-60">
+                        @(_submitting ? "Đang tạo tài khoản..." : "Tạo tài khoản")
+                    </button>
+                </div>
+            </fieldset>
+        </EditForm>
+    </section>
+}
+
+@code {
+    [Parameter] public string DashboardRoute { get; set; } = "/staff/dashboard";
+
+    private readonly WalkInCustomerRequestValidator _validator = new();
+    private CreateCustomerFormModel _model = new();
+    private ContractValidation<WalkInCustomerRequest>? _validation;
+    private WalkInCustomerResponse? _created;
+    private bool _submitting;
+    private bool _finding;
+    private bool _resending;
+    private bool _foundExisting;
+    private bool? _setupEmailSent;
+    private DateTime? _setupExpiresAt;
+    private string? _formError;
+    private string? _resendError;
+    private string? _resendSuccessMessage;
+
+    private bool FormBusy => _submitting || _finding;
+
+    private bool CanResendSetupEmail =>
+        _created is not null &&
+        string.Equals(_created.AccountStatus, "PendingVerification", StringComparison.OrdinalIgnoreCase);
+
+    private WalkInCustomerRequest CreateRequest() =>
+        new(_model.FullName.Trim(), _model.PhoneNumber.Trim(), _model.Email.Trim());
+
+    private void InvalidSubmit() =>
+        _formError = "Vui lòng kiểm tra lại thông tin khách hàng đã nhập.";
+
+    private async Task SubmitAsync()
+    {
+        if (FormBusy)
+            return;
+
+        _submitting = true;
+        _formError = null;
+        _resendError = null;
+        _resendSuccessMessage = null;
+
+        try
+        {
+            var response = await Api.CreateWalkInCustomerAsync(CreateRequest());
+            _created = response;
+            _setupEmailSent = response.SetupEmailSent;
+            _setupExpiresAt = response.PasswordSetupExpiresAt;
+        }
+        catch (ApiException ex)
+        {
+            ApplySubmitError(ex);
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+
+    private async Task FindPendingCustomerAsync()
+    {
+        if (FormBusy)
+            return;
+
+        var email = _model.Email.Trim();
+        var phone = _model.PhoneNumber.Trim();
+        if (email.Length == 0 && phone.Length == 0)
+        {
+            _formError = "Nhập email hoặc số điện thoại để tìm tài khoản.";
+            return;
+        }
+
+        _finding = true;
+        _formError = null;
+        _resendError = null;
+        _resendSuccessMessage = null;
+        try
+        {
+            _created = await Api.FindPendingCustomerAsync(new FindPendingCustomerRequest(
+                email.Length == 0 ? null : email,
+                phone.Length == 0 ? null : phone));
+            _foundExisting = true;
+            _setupEmailSent = null;
+            _setupExpiresAt = null;
+        }
+        catch (ApiException ex)
+        {
+            if (ex.Errors.Count > 0)
+                _validation?.ShowErrors(ex.Errors);
+
+            _formError = ex.ErrorCode switch
+            {
+                "USER_EMAIL_INVALID" => "Địa chỉ email không hợp lệ.",
+                "USER_PHONE_INVALID" => "Số điện thoại không hợp lệ.",
+                _ when ex.StatusCode == HttpStatusCode.NotFound => "Không tìm thấy tài khoản khách hàng đang chờ thiết lập mật khẩu.",
+                _ => ex.Message
+            };
+        }
+        finally
+        {
+            _finding = false;
+        }
+    }
+
+    private async Task ResendSetupEmailAsync()
+    {
+        if (_resending || _created is null || !CanResendSetupEmail)
+            return;
+
+        _resending = true;
+        _resendError = null;
+        _resendSuccessMessage = null;
+
+        try
+        {
+            var resent = await Api.ResendCustomerSetupEmailAsync(_created.UserId);
+            _setupEmailSent = true;
+            _setupExpiresAt = resent.PasswordSetupExpiresAt;
+            _resendSuccessMessage = "Đã gửi lại liên kết thiết lập mật khẩu mới đến email của khách hàng. Liên kết có hiệu lực trong 48 giờ.";
+        }
+        catch (ApiException ex)
+        {
+            _resendError = MapResendError(ex);
+        }
+        finally
+        {
+            _resending = false;
+        }
+    }
+
+    private void ResetForm()
+    {
+        if (_resending)
+            return;
+
+        _model = new CreateCustomerFormModel();
+        _created = null;
+        _foundExisting = false;
+        _setupEmailSent = null;
+        _setupExpiresAt = null;
+        _formError = null;
+        _resendError = null;
+        _resendSuccessMessage = null;
+    }
+
+    private void ApplySubmitError(ApiException ex)
+    {
+        switch (ex.ErrorCode)
+        {
+            case "AUTH_EMAIL_EXISTS":
+                const string emailDuplicateMessage = "Email này đã được sử dụng bởi một tài khoản khác.";
+                _formError = emailDuplicateMessage;
+                _validation?.ShowErrors(new Dictionary<string, string[]> { ["Email"] = [emailDuplicateMessage] });
+                return;
+
+            case "USER_PHONE_EXISTS":
+                const string phoneDuplicateMessage = "Số điện thoại này đã được sử dụng bởi một tài khoản khác.";
+                _formError = phoneDuplicateMessage;
+                _validation?.ShowErrors(new Dictionary<string, string[]> { ["PhoneNumber"] = [phoneDuplicateMessage] });
+                return;
+
+            case "CUSTOMER_SETUP_EMAIL_UNAVAILABLE":
+                _formError = "Dịch vụ gửi email thiết lập mật khẩu hiện chưa khả dụng. Tài khoản chưa được tạo — vui lòng liên hệ quản trị viên.";
+                return;
+
+            case "USER_PROVISIONING_CONFLICT":
+                _formError = "Hệ thống đang xử lý yêu cầu tạo tài khoản khác. Vui lòng thử lại sau giây lát.";
+                return;
+        }
+
+        if (ex.Errors.Count > 0)
+        {
+            _validation?.ShowErrors(ex.Errors);
+            _formError = "Vui lòng kiểm tra lại thông tin khách hàng đã nhập.";
+            return;
+        }
+
+        _formError = ex.StatusCode switch
+        {
+            HttpStatusCode.Unauthorized => "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
+            HttpStatusCode.Forbidden => "Tài khoản của bạn không có quyền tạo tài khoản khách hàng.",
+            HttpStatusCode.ServiceUnavailable => "Dịch vụ gửi email thiết lập mật khẩu hiện chưa khả dụng. Vui lòng liên hệ quản trị viên.",
+            _ => ex.Message
+        };
+    }
+
+    private static string MapResendError(ApiException ex) => ex.ErrorCode switch
+    {
+        "CUSTOMER_SETUP_EMAIL_UNAVAILABLE" => "Dịch vụ gửi email hiện chưa khả dụng. Vui lòng liên hệ quản trị viên.",
+        "CUSTOMER_SETUP_EMAIL_FAILED" => "Không thể gửi email thiết lập mật khẩu lúc này. Vui lòng thử lại sau.",
+        "CUSTOMER_SETUP_RESEND_BUSY" => "Một yêu cầu gửi lại đang được xử lý. Vui lòng đợi rồi thử lại.",
+        "USER_SETUP_RESEND_NOT_ELIGIBLE" => "Tài khoản này không còn ở trạng thái chờ thiết lập mật khẩu.",
+        "USER_NOT_FOUND" => "Không tìm thấy tài khoản khách hàng.",
+        _ when ex.StatusCode == HttpStatusCode.TooManyRequests => "Bạn đã yêu cầu gửi lại quá nhiều lần. Vui lòng đợi ít phút rồi thử lại.",
+        _ => ex.Message
+    };
+
+    private static string DisplayRole(IReadOnlyCollection<string>? roles) =>
+        roles is { Count: > 0 } ? string.Join(", ", roles) : "Customer";
+
+    private static string DisplayStatus(string? status) => status switch
+    {
+        "PendingVerification" => "Chờ thiết lập mật khẩu",
+        "Active" => "Đang hoạt động",
+        "Locked" => "Đang bị khóa",
+        "Inactive" => "Ngừng hoạt động",
+        _ => "Chờ thiết lập mật khẩu"
+    };
+
+    private static string FormatVietnamTime(DateTime utcTime)
+    {
+        var utc = DateTime.SpecifyKind(utcTime, DateTimeKind.Utc);
+        return utc.AddHours(7).ToString("dd/MM/yyyy HH:mm");
+    }
+
+    private sealed class CreateCustomerFormModel
+    {
+        public string FullName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string PhoneNumber { get; set; } = string.Empty;
+    }
+}

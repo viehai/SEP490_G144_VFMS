@@ -36,6 +36,10 @@
                     {
                         <a href="/pt/dashboard" class="@ManagerLinkClass" aria-label="Không gian làm việc huấn luyện viên">Khu PT</a>
                     }
+                    else if (auth.User.IsInRole("YogaInstructor"))
+                    {
+                        <a href="/pt/trainer-profile" class="@ManagerLinkClass" aria-label="Không gian làm việc huấn luyện viên Yoga">Khu Yoga</a>
+                    }
                     @if (auth.User.IsInRole("Member"))
                     {
                         <NavLink href="/my-memberships" Match="NavLinkMatch.Prefix" ActiveClass="text-[#B83A3A] underline underline-offset-4"

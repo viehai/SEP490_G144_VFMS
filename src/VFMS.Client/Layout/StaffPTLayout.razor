@@ -5,9 +5,21 @@
 
 @code {
     private string Variant => Navigation.ToBaseRelativePath(Navigation.Uri).StartsWith("pt/", StringComparison.OrdinalIgnoreCase) ? "pt" : "staff";
-    private static readonly string[] LivePages = ["staff/equipment-issues", "staff/purchase-proposals", "staff/supplement-orders",
-        "pt/trainer-profile", "pt/availability", "pt/assigned-members", "pt/teaching-schedule"];
+    private static readonly string[] LivePages =
+    [
+        "staff/dashboard", "staff/customers/create", "staff/membership-cash-receipt", "staff/pt-cash-receipt",
+        "staff/equipment-issues", "staff/purchase-proposals", "staff/supplement-orders",
+        "staff/check-ins", "staff/yoga", "pt/yoga",
+        "pt/trainer-profile", "pt/availability", "pt/assigned-members", "pt/teaching-schedule"
+    ];
 
-    private bool IsPreview => !LivePages.Contains(Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].TrimEnd('/'),
-        StringComparer.OrdinalIgnoreCase);
+    // A live page's sub-pages (e.g. staff/yoga/sessions/5/attendance) are live too.
+    private bool IsPreview
+    {
+        get
+        {
+            var path = Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].TrimEnd('/');
+            return !LivePages.Any(p => path.Equals(p, StringComparison.OrdinalIgnoreCase) || path.StartsWith(p + "/", StringComparison.OrdinalIgnoreCase));
+        }
+    }
 }

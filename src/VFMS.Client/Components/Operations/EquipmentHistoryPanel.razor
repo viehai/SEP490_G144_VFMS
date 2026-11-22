@@ -1,0 +1,144 @@
+@using VFMS.Contracts.Common
+@using VFMS.Contracts.Equipment
+@inject OperationsApiClient Api
+@implements IDisposable
+
+@* Issue history of one piece of equipment (Manager, UC-76): totals, a repeated-issue warning and every report with how it was handled. *@
+
+<section class="@Ui.Card" aria-labelledby="history-title" aria-busy="@_loading">
+    <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+            <h2 id="history-title" class="text-base font-bold text-vfms-text">Lịch sử sự cố · @Equipment.Name</h2>
+            <p class="mt-1 text-xs text-vfms-text-secondary">
+                @(Equipment.Code ?? "Chưa có mã")@(BrandModel is { Length: > 0 } brand ? $" · {brand}" : "")@(Equipment.PurchaseDate is { } bought ? $" · Mua ngày {bought:dd/MM/yyyy}" : "")
+            </p>
+        </div>
+        <button type="button" class="@Ui.Button" @onclick="OnClose">Đóng</button>
+    </div>
+
+    @if (_error is not null)
+    {
+        <p role="alert" class="@Ui.Error mt-4">@_error</p>
+    }
+
+    @if (_summary is { } s)
+    {
+        @if (s.RepeatedIssues)
+        {
+            <p role="status" class="mt-4 rounded-[10px] border border-red-300 bg-red-50 p-4 text-sm text-red-900">
+                Thiết bị này bị báo sự cố @s.RecentIssues lần trong @EquipmentIssueSummaryResponse.RecentDays ngày qua. Nên kiểm tra kỹ hoặc cân nhắc thay thế.
+            </p>
+        }
+        <dl class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div class="rounded-[12px] border border-vfms-border bg-vfms-surface-alt p-4">
+                <dt class="text-xs font-semibold text-vfms-text-secondary">Tổng số sự cố</dt>
+                <dd class="mt-2 text-2xl font-extrabold tracking-tight text-vfms-text">@s.TotalIssues</dd>
+            </div>
+            <div class="rounded-[12px] border border-vfms-border bg-vfms-surface-alt p-4">
+                <dt class="text-xs font-semibold text-vfms-text-secondary">Đang mở</dt>
+                <dd class="mt-2 text-2xl font-extrabold tracking-tight @(s.OpenIssues > 0 ? "text-[#D97706]" : "text-vfms-text")">@s.OpenIssues</dd>
+            </div>
+            <div class="rounded-[12px] border border-vfms-border bg-vfms-surface-alt p-4">
+                <dt class="text-xs font-semibold text-vfms-text-secondary">@EquipmentIssueSummaryResponse.RecentDays ngày qua</dt>
+                <dd class="mt-2 text-2xl font-extrabold tracking-tight @(s.RepeatedIssues ? "text-[#DC2626]" : "text-vfms-text")">@s.RecentIssues</dd>
+            </div>
+            <div class="rounded-[12px] border border-vfms-border bg-vfms-surface-alt p-4">
+                <dt class="text-xs font-semibold text-vfms-text-secondary">Mất an toàn</dt>
+                <dd class="mt-2 text-2xl font-extrabold tracking-tight @(s.SafetyIssues > 0 ? "text-[#DC2626]" : "text-vfms-text")">@s.SafetyIssues</dd>
+            </div>
+        </dl>
+        <p class="mt-3 text-xs text-vfms-text-secondary">
+            Báo gần nhất: @(s.LastReportedAt is { } reported ? OperationsText.Local(reported) : "chưa có")
+            · Xử lý xong gần nhất: @(s.LastClosedAt is { } closed ? OperationsText.Local(closed) : "chưa có")
+        </p>
+    }
+
+    @if (_loading && _issues is null)
+    {
+        <p role="status" class="mt-4 text-sm">Đang tải lịch sử...</p>
+    }
+    else if (_issues is { Items.Count: > 0 } list)
+    {
+        <ol class="mt-5 space-y-3" aria-label="Các lần báo sự cố, mới nhất trước">
+            @foreach (var issue in list.Items)
+            {
+                <li @key="issue.Id" class="rounded-[10px] border border-vfms-border bg-vfms-bg p-4">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span class="text-xs font-semibold text-vfms-text">#@issue.Id · @OperationsText.Local(issue.ReportedAt)</span>
+                        <span class="@OperationsText.Badge(issue.IncidentType)">@OperationsText.Label(issue.IncidentType)</span>
+                        <span class="@OperationsText.Badge(issue.Status)">@OperationsText.Label(issue.Status)</span>
+                    </div>
+                    <p class="mt-2 text-sm whitespace-pre-wrap text-vfms-text">@issue.Description</p>
+                    <p class="mt-2 text-xs text-vfms-text-secondary">
+                        Người báo: @(issue.ReportedByName ?? "—")@(issue.HandledByName is { } handler ? $" · Người xử lý: {handler}" : "")
+                    </p>
+                    @if (issue.ResolutionNote is { } note)
+                    {
+                        <p class="mt-1 text-xs text-vfms-text"><span class="font-semibold">Kết quả:</span> @note@(issue.ResolvedAt is { } at ? $" ({OperationsText.Local(at)})" : "")</p>
+                    }
+                    @if (issue.SafetyConfirmations.Count > 0)
+                    {
+                        <ul class="mt-2 space-y-1 border-l-2 border-vfms-border pl-3 text-xs text-vfms-text-secondary" aria-label="Xác nhận an toàn">
+                            @foreach (var confirmation in issue.SafetyConfirmations.OrderBy(c => c.ConfirmedAt))
+                            {
+                                <li>@OperationsText.Local(confirmation.ConfirmedAt) · @(confirmation.ConfirmedByName ?? "—"): @confirmation.Note</li>
+                            }
+                        </ul>
+                    }
+                </li>
+            }
+        </ol>
+        <Pager Page="list.Page" PageSize="list.PageSize" TotalCount="list.TotalCount" Noun="lần báo" AriaLabel="Phân trang lịch sử sự cố" Disabled="_loading" OnPage="LoadIssuesAsync" />
+    }
+    else if (_issues is not null)
+    {
+        <p role="status" class="mt-4 text-sm text-vfms-text-secondary">Thiết bị này chưa từng bị báo sự cố.</p>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public EquipmentResponse Equipment { get; set; } = null!;
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private const int PageSize = 5;
+    private readonly CancellationTokenSource _lifetime = new();
+    private EquipmentIssueSummaryResponse? _summary;
+    private PagedResponse<EquipmentIssueResponse>? _issues;
+    private int? _loadedFor;
+    private bool _loading;
+    private string? _error;
+
+    private string BrandModel => string.Join(" · ", new[] { Equipment.Brand, Equipment.Model }.Where(v => !string.IsNullOrWhiteSpace(v)));
+
+    // The panel stays open while the Manager picks another machine, so reload whenever the equipment changes.
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedFor == Equipment.Id) return;
+        _loadedFor = Equipment.Id;
+        _summary = null;
+        _issues = null;
+        _error = null;
+        try { _summary = await Api.GetEquipmentIssueSummaryAsync(Equipment.Id, _lifetime.Token); }
+        catch (AuthApiException error) { _error = error.Message; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        await LoadIssuesAsync(1);
+    }
+
+    private async Task LoadIssuesAsync(int page)
+    {
+        _loading = true;
+        try
+        {
+            _issues = await Api.GetIssuesAsync(new(null, Equipment.Id, page, PageSize, Sort: "newest"), ct: _lifetime.Token);
+        }
+        catch (AuthApiException error) { _error = error.Message; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        finally { _loading = false; }
+    }
+
+    public void Dispose()
+    {
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+    }
+}

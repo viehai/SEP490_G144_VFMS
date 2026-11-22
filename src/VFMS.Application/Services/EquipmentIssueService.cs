@@ -2,6 +2,7 @@ using MapsterMapper;
 using VFMS.Application.Interfaces;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Equipment;
+using VFMS.Contracts.Operations;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
 
@@ -82,11 +83,18 @@ public sealed class EquipmentIssueService : IEquipmentIssueService
             status = parsed;
         }
 
+        var sort = string.Equals(request.Sort?.Trim(), "severity", StringComparison.OrdinalIgnoreCase)
+            ? EquipmentIssueSort.Severity : EquipmentIssueSort.Newest;
+        var search = string.IsNullOrWhiteSpace(request.Search) ? null : request.Search.Trim();
         var (items, total) = await _repository.SearchIssuesAsync(
-            status, request.EquipmentId, onlyReportedByUserId, request.Page, request.PageSize, cancellationToken);
+            new EquipmentIssueQuery(status, request.EquipmentId, onlyReportedByUserId, search, sort, request.Page, request.PageSize),
+            cancellationToken);
         return Result<PagedResponse<EquipmentIssueResponse>>.Success(new PagedResponse<EquipmentIssueResponse>(
             request.Page, request.PageSize, total, items.Select(_mapper.Map<EquipmentIssueResponse>).ToArray()));
     }
+
+    public async Task<Result<StatusCountsResponse>> GetIssueCountsAsync(CancellationToken cancellationToken = default) =>
+        Result<StatusCountsResponse>.Success(StatusCounts.From(await _repository.CountIssuesByStatusAsync(null, cancellationToken)));
 
     public async Task<Result<EquipmentIssueResponse>> GetIssueAsync(
         int id, string? onlyReportedByUserId, CancellationToken cancellationToken = default)

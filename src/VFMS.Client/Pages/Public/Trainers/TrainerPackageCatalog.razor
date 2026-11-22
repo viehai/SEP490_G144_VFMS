@@ -19,7 +19,11 @@
     }
     else if (_trainer?.IsOwnProfile == true)
     {
-        <a class="trainer-button trainer-primary" href="/pt/trainer-profile">Quản lý hồ sơ PT</a>
+        <a class="trainer-button trainer-primary" href="/pt/trainer-profile">Quản lý hồ sơ</a>
+    }
+    else if (_trainer is { } nonPT && nonPT.Profile.TrainerRole != "PT")
+    {
+        <p class="trainer-panel">Huấn luyện viên này không phải PT nên không có gói PT.</p>
     }
     else if (_packages is { Length: 0 })
     {
@@ -105,7 +109,8 @@
             var trainer = await Api.DetailAsync(Id);
             if (version != _version) return;
             _trainer = trainer;
-            if (trainer.IsOwnProfile) return;
+            // Feature 4 serves Trainer Role PT only.
+            if (trainer.IsOwnProfile || trainer.Profile.TrainerRole != "PT") return;
 
             var packages = await Api.PackagesAsync();
             if (version == _version)

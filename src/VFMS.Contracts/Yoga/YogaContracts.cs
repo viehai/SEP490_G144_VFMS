@@ -87,7 +87,9 @@ public sealed record YogaSessionResponse(
     int FreeSeats,
     DateTime? AttendanceSubmittedAt = null,
     /// <summary>GBR-86: the roster was submitted more than 30 minutes after the session started.</summary>
-    bool AttendanceSubmittedLate = false
+    bool AttendanceSubmittedLate = false,
+    /// <summary>UTC. After it the class can no longer be booked or waitlisted (YogaClassRules.Bookable).</summary>
+    DateTime? RegistrationDeadline = null
 );
 
 /// <summary>Filter for timetable views. Dates are gym-local; defaults to the current week.</summary>

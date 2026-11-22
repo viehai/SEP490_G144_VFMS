@@ -16,6 +16,8 @@ public class TrainerProfile : BaseEntity
     public string CertificatesJson { get; set; } = "[]";
     public string? AvatarJson { get; set; }
     public string PTUserId { get; set; } = string.Empty;
+    /// <summary>PT or Yoga; null only for rows created before trainer roles existed.</summary>
+    public int? TrainerRoleId { get; set; }
     /// <summary>Citizen ID (CCCD) copied from the hired application; verified on ProfileUpdate (UC-3.2, UC-3.3).</summary>
     public string? CitizenId { get; set; }
     public string? Bio { get; set; }
@@ -28,9 +30,12 @@ public class TrainerProfile : BaseEntity
     public bool AcceptingNewMembers { get; set; }
     /// <summary>First day of the current 'Not Accepting' period; null while accepting (GBR-98).</summary>
     public DateOnly? NotAcceptingSince { get; set; }
+    /// <summary>GBR-98: start of the 60-day count; moved forward each day the trainer still has a running contract.</summary>
+    public DateOnly? NotAcceptingCountFrom { get; set; }
 
     // ── Navigation Properties ──────────────────────────────────
     public ApplicationUser PTUser { get; set; } = null!;
+    public TrainerRole? TrainerRole { get; set; }
     public ICollection<PTAvailability> Availabilities { get; set; } = [];
     public ICollection<PTPurchase> PTPurchases { get; set; } = [];
     public ICollection<TrainerReview> Reviews { get; set; } = [];

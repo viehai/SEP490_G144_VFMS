@@ -88,7 +88,10 @@ internal static class WorkoutSeed
 
         if (await context.WorkoutPlans.AnyAsync(p => p.IsTemplate))
             return;
-        var ownerId = await context.ApplicationUsers.Where(u => u.Email == ownerEmail).Select(u => u.UserId).FirstOrDefaultAsync();
+        var ownerId = await context.ApplicationUsers
+            .Where(user => user.Email == ownerEmail && user.UserRoles.Any(role => role.Role.RoleName == "Admin"))
+            .Select(user => user.UserId)
+            .FirstOrDefaultAsync();
         if (ownerId is null)
             return;
 

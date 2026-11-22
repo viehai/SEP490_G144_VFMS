@@ -1,4 +1,5 @@
 @inject PersonalTrainingApiClient Api
+@inject ToastService Toasts
 @using VFMS.Contracts.Trainers
 
 <section class="trainer-panel trainer-stack">
@@ -47,18 +48,36 @@
 
     @if (!IsTrainer && CanOfferReview)
     {
-        <form class="trainer-stack pt-session" @onsubmit="ReviewAsync" @onsubmit:preventDefault>
-            <h3>Đánh giá huấn luyện viên</h3>
-            <p class="trainer-muted">Bạn đã hoàn thành gói @Contract.PackageName. Đánh giá được công khai kèm tên của bạn và không thể sửa.</p>
-            <label>Điểm<select class="trainer-input" @bind="_rating" disabled="@_busy">
-                @for (var i = 5; i >= 1; i--) { <option value="@i">@i sao</option> }
-            </select></label>
-            <label>Nhận xét (10–500 ký tự)<textarea class="trainer-input" rows="3" maxlength="500"
+        <div class="trainer-row">
+            <button type="button" class="trainer-button trainer-primary" @onclick="() => _reviewOpen = true">Đánh giá huấn luyện viên</button>
+        </div>
+    }
+    else if (!IsTrainer && ReviewNotice is { } reviewNotice)
+    {
+        <p class="trainer-muted">@reviewNotice</p>
+    }
+    @* UC 4.10: the 'Rate Your Trainer' modal. *@
+    <WorkspaceModal Open="@(_reviewOpen && CanOfferReview)" Eyebrow="VFMS / GÓI PT" Title="Đánh giá huấn luyện viên"
+                    OnClose="() => _reviewOpen = false">
+        <form class="trainer-stack" @onsubmit="ReviewAsync" @onsubmit:preventDefault>
+            <p><strong>@TrainerName</strong> · @(Contract.PackageName ?? $"Hợp đồng #{Contract.Id}")@(Contract.TrainerLevel is { } level ? $" · cấp {level}" : "")</p>
+            <p class="trainer-muted">Đánh giá được công khai kèm tên của bạn và không thể sửa hoặc xóa.</p>
+            <fieldset class="trainer-row" disabled="@_busy">
+                <legend>Điểm: @_rating/5 sao</legend>
+                @for (var i = 1; i <= 5; i++)
+                {
+                    var star = i;
+                    <button type="button" class="trainer-button" aria-label="@($"{star} sao")" aria-pressed="@(_rating >= star ? "true" : "false")"
+                            @onclick="() => _rating = star">@(_rating >= star ? "★" : "☆")</button>
+                }
+            </fieldset>
+            <label>Nhận xét (10–500 ký tự)<textarea class="trainer-input" rows="4" maxlength="500"
                 @bind="_comment" disabled="@_busy"></textarea></label>
             <BannedWordPreview Text="@_comment" Words="_bannedWords" />
+            <TrainerFeedback Error="@_error" />
             <button class="trainer-button trainer-primary" disabled="@_busy">Gửi đánh giá</button>
         </form>
-    }
+    </WorkspaceModal>
 
     <TrainerFeedback Error="@_error" Message="@_message" />
     <button type="button" class="trainer-button" aria-pressed="@_history" disabled="@_busy"
@@ -124,10 +143,6 @@
                         else if (IsTrainer)
                         {
                             <button class="trainer-button" disabled="@_busy" @onclick="() => OpenOptionsAsync(item)">Đề xuất đổi lịch</button>
-                            @if (item.CreditUnits == 1 && Contract.AvailableCredits > 0)
-                            {
-                                <button class="trainer-button" disabled="@_busy" @onclick="() => DoubleAsync(item)">Đề xuất ca đôi</button>
-                            }
                             <button class="trainer-button" disabled="@_busy" @onclick="() => CancelAsync(item)">Xin hủy buổi</button>
                         }
                         else
@@ -153,7 +168,8 @@
                 {
                     <div class="trainer-stack">
                         <p class="trainer-muted">Lịch cũ vẫn được giữ cho đến khi @(IsTrainer ? "hội viên" : "PT") chấp nhận. Các ca bận chỉ hiển thị thời gian.</p>
-                        <label>Xem lịch từ ngày<input class="trainer-input" type="date" min="@Today.ToString("yyyy-MM-dd")"
+                        @if (IsTrainer) { <p class="trainer-muted">Chọn một giờ tròn trong giờ mở cửa. Giờ bận của bạn và của hội viên hiện là "Bận".</p> }
+                        <label>@(IsTrainer ? "Ngày tập mới" : "Xem lịch từ ngày")<input class="trainer-input" type="date" min="@Today.ToString("yyyy-MM-dd")"
                                @bind="_from" @bind:after="LoadOptionsAsync" disabled="@_busy" /></label>
                         @if (_options is { Length: 0 }) { <p>Không có ca trong khoảng đã chọn.</p> }
                         <div class="pt-options">
@@ -179,7 +195,7 @@
                             <label>Ngày tập bù<input class="trainer-input" type="date" min="@Today.ToString("yyyy-MM-dd")" @bind="_makeUpDate" /></label>
                             <label>Giờ bắt đầu
                                 <select class="trainer-input" @bind="_makeUpHour">
-                                    @for (var hour = 5; hour <= 22; hour++) { <option value="@hour">@($"{hour:00}:00")</option> }
+                                    @foreach (var hour in MakeUpHours) { <option value="@hour">@($"{hour:00}:00 – {hour + 1:00}:00")</option> }
                                 </select>
                             </label>
                         </fieldset>
@@ -214,6 +230,8 @@
     [Parameter] public string? TrainerName { get; set; }
     [Parameter] public EventCallback Changed { get; set; }
     [Parameter] public bool IsReschedulePage { get; set; }
+    /// <summary>UC 4.10: open the review modal at once (the contract was opened from 'Completed Contracts').</summary>
+    [Parameter] public bool OpenReview { get; set; }
     private const string Reschedule = "reschedule", MakeUp = "makeup", Absence = "absence";
     private PTRescheduleSlot[] _options = [];
     private PTRescheduleSlot? _requested;
@@ -224,7 +242,7 @@
     private string _comment = "", _absenceReason = "";
     private IReadOnlyList<string> _bannedWords = [];
     private int _rating = 5;
-    private bool _busy, _history, _reviewed;
+    private bool _busy, _history, _reviewed, _reviewOpen;
 
     private static readonly string[] Taught = ["Completed", "AutoCompleted", "NoShow", "Disputed"];
     private IEnumerable<PTSessionResponse> Visible => Contract.Sessions.Where(s => _history
@@ -232,9 +250,21 @@
         : s.Status != "Cancelled" || s.IsMakeUpUnit || s.TrainerAbsenceReportedAt is not null)
         .Where(s => _history || !IsTrainer || IsFuture(s.Date, s.EndTime) || s.IsMakeUpUnit);
     private PTCalendarSlot[] CalendarSlots => Visible.Select(s => new PTCalendarSlot(s.Id, s.Date, s.StartTime, s.EndTime, s.Status)).ToArray();
-    private bool CanOfferReview => !_reviewed && Contract.Status == "Completed" &&
-        Contract.Sessions.LastOrDefault(s => s.Status is not ("Cancelled" or "MakeUpPending" or "MakeUpRequested"))?.Status
-            is "Completed" or "AutoCompleted";
+    // UC 4.7: a 60-minute make-up starts on a whole hour and ends by gym closing time.
+    private IEnumerable<int> MakeUpHours => MakeUpStartHours(Contract);
+    public static IEnumerable<int> MakeUpStartHours(PTContractResponse? contract) =>
+        contract is { GymOpenTime: { } open, GymCloseTime: { } close } && open < close
+            ? Enumerable.Range(open.Hour + (open.Minute > 0 ? 1 : 0), Math.Max(0, close.Hour - open.Hour - (open.Minute > 0 ? 1 : 0)))
+            : Enumerable.Range(5, 18);
+    // UC 4.10: the server decides eligibility (completed, final session held); a contract is reviewed once, also after a reload.
+    private bool CanOfferReview => !_reviewed && !Contract.HasReview && Contract.CanReview;
+    private string? ReviewNotice => _reviewed || Contract.HasReview
+        ? "Bạn đã đánh giá hợp đồng này. Đánh giá không thể sửa hoặc xóa."
+        : Contract.Status is "Completed" or "Expired"
+            ? "Chỉ hợp đồng đã hoàn thành đủ buổi và đã tập buổi cuối mới được đánh giá huấn luyện viên."
+            : null;
+
+    protected override void OnInitialized() => _reviewOpen = OpenReview && CanOfferReview;
     private static DateTime LocalNow => DateTime.UtcNow.AddHours(7);
     private static bool IsFuture(DateOnly date, TimeOnly time) => date.ToDateTime(time) > LocalNow;
     // GBR-14: changes are requested at least 12 hours before the start.
@@ -249,7 +279,6 @@
     private static string ProposalText(PTProposalResponse p) => p.Type switch
     {
         "Cancellation" => "Đề nghị hủy buổi này (sẽ thành lượt bù)",
-        "DoubleSession" => $"Đề xuất ca đôi {Time(p.StartTime)} – {Time(p.EndTime)}",
         "MakeUp" => $"Buổi bù {Date(p.Date)} · {Time(p.StartTime)} – {Time(p.EndTime)}",
         _ => $"Đề xuất đổi sang {Date(p.Date)} · {Time(p.StartTime)} – {Time(p.EndTime)}"
     };
@@ -278,7 +307,12 @@
 
     private void CloseEditor() { _editor = null; _sessionId = null; }
     private void OpenEditor(PTSessionResponse item, string editor) { _sessionId = item.Id; _editor = editor; _absenceReason = ""; }
-    private void OpenMakeUp(PTSessionResponse item) { OpenEditor(item, MakeUp); _makeUpDate = Today.AddDays(1); }
+    private void OpenMakeUp(PTSessionResponse item)
+    {
+        OpenEditor(item, MakeUp);
+        _makeUpDate = Today.AddDays(1);
+        if (!MakeUpHours.Contains(_makeUpHour)) _makeUpHour = MakeUpHours.FirstOrDefault(9);
+    }
 
     private Task SendAbsenceAsync() => _sessionId is { } id
         ? RunAsync(async () =>
@@ -328,9 +362,6 @@
         else await Api.DecideProposalAsync(item.Id, new(accept, proposal.ExpiresAt));
     }, accept ? "Đã chấp nhận đề xuất." : "Đã từ chối đề xuất.", refresh: true);
 
-    private Task DoubleAsync(PTSessionResponse item) => RunAsync(async () =>
-        await Api.ProposeAsync(item.Id, new(item.Date, item.StartTime, "DoubleSession")), "Đã gửi đề xuất ca đôi.", refresh: true);
-
     private Task ReviewAsync()
     {
         if (_comment.Trim().Length is < 10 or > 500)
@@ -341,13 +372,16 @@
         _bannedWords = [];
         return RunAsync(async () =>
         {
-            try { await Api.ReviewAsync(Contract.Id, new(_rating, _comment.Trim())); _reviewed = true; }
+            try { await Api.ReviewAsync(Contract.Id, new(_rating, _comment.Trim())); }
             catch (AuthApiException ex) when (TrainerContentRules.ProhibitedWords(ex.ErrorCode, ex.Message) is { Count: > 0 } words)
             {
                 _bannedWords = words;
                 throw new AuthApiException("Nhận xét có từ ngữ không được phép. Sửa các từ được tô đỏ rồi gửi lại.");
             }
-        }, "Đã gửi đánh giá. Cảm ơn bạn!");
+            _reviewed = true;
+            _reviewOpen = false;
+            Toasts.Show("Đã gửi đánh giá. Cảm ơn bạn!");
+        }, refresh: true);
     }
 
     private async Task RunAsync(Func<Task> action, string? message = null, bool refresh = false)

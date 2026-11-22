@@ -10,7 +10,7 @@ namespace VFMS.API.Controllers;
 
 [ApiController]
 [Route("api/membership-plans")]
-[Authorize(Roles = nameof(UserRole.Customer) + "," + nameof(UserRole.Member))]
+[AllowAnonymous]   // public price list: the home page shows the same plans signed in or out; buying needs a login
 [Produces("application/json")]
 public sealed class MembershipPlanCatalogController(IMembershipPlanService service) : ControllerBase
 {

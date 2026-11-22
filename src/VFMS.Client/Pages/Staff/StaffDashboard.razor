@@ -1,7 +1,12 @@
 @page "/staff/dashboard"
 @layout StaffPTLayout
 @using Microsoft.AspNetCore.Authorization
+@using VFMS.Contracts.CheckIn
+@using VFMS.Contracts.Consultations
+@using VFMS.Contracts.Equipment
 @attribute [Authorize(Roles = "Staff")]
+@inject VfmsApiClient Api
+@implements IDisposable
 
 <PageTitle>Staff Dashboard | Victor Fitness</PageTitle>
 
@@ -12,147 +17,145 @@
             <h1 class="workspace-heading text-3xl font-extrabold tracking-tight text-[#242424] sm:text-4xl">STAFF DASHBOARD</h1>
             <p class="mt-2 max-w-xl text-sm leading-relaxed text-[#6F6966]">Nắm bắt tình hình phòng tập, hỗ trợ hội viên và xử lý công việc tại quầy.</p>
         </div>
-        <div class="flex flex-wrap items-center gap-3">
-            <span class="workspace-heading border border-[#D8D1CD] bg-[#F8F5F2] px-3.5 py-2 text-[10px] font-bold rounded-lg text-[#242424]">CA SÁNG · 07:00–15:00</span>
-            <span class="border border-[#D8D1CD] bg-[#ECE8E4] px-3.5 py-2 text-xs text-[#6F6966] rounded-lg">Dữ liệu minh họa</span>
-        </div>
+        <span class="workspace-heading border border-[#D8D1CD] bg-[#F8F5F2] px-3.5 py-2 text-[10px] font-bold rounded-lg text-[#242424]">@GymToday.ToString("dd / MM / yyyy")</span>
     </header>
 
     <section class="grid gap-4 lg:grid-cols-3" aria-label="Thống kê vận hành">
-        @foreach (var stat in _stats)
-        {
-            <article class="group flex min-h-[180px] flex-col justify-between border border-[#D8D1CD] bg-[#F8F5F2] p-6 transition-all hover:border-[#B83A3A] rounded-xl">
-                <div class="flex items-start justify-between gap-4">
-                    <p class="workspace-heading max-w-[190px] text-xs font-bold leading-relaxed text-[#242424]">@stat.Label</p>
-                    <span class="workspace-heading text-xs font-bold text-[#8C8581]">@stat.Index</span>
-                </div>
-                <div class="mt-6 flex items-end justify-between gap-4">
-                    <p class="workspace-heading text-5xl font-extrabold leading-none tracking-tight text-[#B83A3A]">@stat.Value.ToString("00")</p>
-                    <span class="text-right text-xs text-[#6F6966]">@stat.Note</span>
-                </div>
-            </article>
-        }
+        <StatCard Index="01" Label="KHÁCH ĐANG CHECK-IN" Value="@_checkIns?.CurrentOccupancy.ToString("00")" Href="/staff/check-ins"
+                  Note="@(_checkIns is null ? null : $"{_checkIns.CheckInsToday} lượt vào hôm nay")" />
+        <StatCard Index="02" Label="THIẾT BỊ BÁO HỎNG" Value="@_newIssues?.ToString("00")" Href="/staff/equipment-issues" Note="Chờ tiếp nhận xử lý" />
+        <StatCard Index="03" Label="TƯ VẤN ĐANG MỞ" Value="@_openConsultations?.ToString("00")" Href="/staff/consultations" Note="Khách hàng chờ phản hồi" />
     </section>
+
+    @if (_errors.Count > 0)
+    {
+        <p role="alert" class="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">Không tải được: @string.Join("; ", _errors)</p>
+    }
 
     <section id="quick-actions" aria-labelledby="staff-actions-title" class="space-y-4">
-        <div class="flex flex-wrap items-end justify-between gap-3">
-            <div>
-                <p class="workspace-heading mb-1 text-[10px] font-bold tracking-[0.18em] text-[#B83A3A]">WORKSPACE / 01</p>
-                <h2 id="staff-actions-title" class="workspace-heading text-base font-extrabold text-[#242424]">QUICK ACTIONS</h2>
-            </div>
-            <span class="text-xs text-[#6F6966]">Chọn công việc để xem danh sách minh họa</span>
+        <div>
+            <p class="workspace-heading mb-1 text-[10px] font-bold tracking-[0.18em] text-[#B83A3A]">WORKSPACE / 01</p>
+            <h2 id="staff-actions-title" class="workspace-heading text-base font-extrabold text-[#242424]">QUICK ACTIONS</h2>
         </div>
-        <div class="grid gap-3 lg:grid-cols-3">
+        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <AuthorizeView Roles="Staff">
-                <a href="/staff/membership-cash-receipt"
-                   class="flex min-h-[100px] items-center border border-[#D8D1CD] bg-[#F8F5F2] p-5 text-sm font-bold text-[#242424] hover:border-[#B83A3A] hover:bg-[#F3EDEA] rounded-xl transition-all">
-                    Xác nhận tiền mặt mua gói tập
+                <a href="/staff/customers/create"
+                   class="flex min-h-[100px] items-center justify-between gap-4 border border-[#B83A3A] bg-[#F3E4E2]/60 p-5 text-left text-[#242424] hover:bg-[#F3E4E2] rounded-xl transition-all">
+                    <span>
+                        <span class="workspace-heading block text-xs font-extrabold text-[#B83A3A]">TẠO TÀI KHOẢN KHÁCH HÀNG</span>
+                        <span class="mt-1.5 block text-xs text-[#6F6966]">Tạo nhanh tài khoản Customer và gửi link thiết lập mật khẩu 48 giờ</span>
+                    </span>
+                    <span class="text-xl text-[#B83A3A]" aria-hidden="true">↗</span>
                 </a>
             </AuthorizeView>
-            @foreach (var action in _actions)
+            @foreach (var action in Actions)
             {
-                var active = _selectedAction == action.Id;
-                <button type="button" @onclick="() => _selectedAction = action.Id" aria-pressed="@(active ? "true" : "false")"
-                        class="flex min-h-[100px] items-center justify-between gap-4 border p-5 text-left transition-all rounded-xl cursor-pointer @(active ? "border-[#B83A3A] bg-[#F3E4E2] text-[#B83A3A]" : "border-[#D8D1CD] bg-[#F8F5F2] text-[#242424] hover:border-[#B83A3A] hover:bg-[#F3EDEA]")">
+                <a href="@action.Href" class="flex min-h-[100px] items-center justify-between gap-4 border border-[#D8D1CD] bg-[#F8F5F2] p-5 text-[#242424] transition-all hover:border-[#B83A3A] hover:bg-[#F3EDEA] rounded-xl">
                     <span><span class="workspace-heading block text-xs font-extrabold">@action.Title</span><span class="mt-1.5 block text-xs text-[#6F6966]">@action.Description</span></span>
                     <span class="text-xl" aria-hidden="true">↗</span>
-                </button>
+                </a>
             }
         </div>
     </section>
 
-    <section class="overflow-hidden border border-[#D8D1CD] bg-[#F8F5F2] rounded-xl shadow-sm" aria-labelledby="staff-list-title" aria-live="polite">
+    <section class="overflow-hidden border border-[#D8D1CD] bg-[#F8F5F2] rounded-xl shadow-sm" aria-labelledby="staff-list-title">
         <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[#D8D1CD] p-5 sm:px-6">
             <div>
-                <h2 id="staff-list-title" class="workspace-heading text-sm font-extrabold text-[#242424]">@SelectedTitle</h2>
-                <p class="mt-1 text-xs text-[#6F6966]">@SelectedDescription</p>
+                <h2 id="staff-list-title" class="workspace-heading text-sm font-extrabold text-[#242424]">ĐANG TRONG PHÒNG TẬP</h2>
+                <p class="mt-1 text-xs text-[#6F6966]">Những lượt check-in mới nhất chưa check-out.</p>
             </div>
-            <span class="workspace-heading border border-[#D8D1CD] bg-[#ECE8E4] px-3 py-1 text-[10px] font-bold rounded-lg text-[#6F6966]">@_demoDate.ToString("dd / MM / yyyy")</span>
+            <a href="/staff/check-ins" class="text-xs font-bold text-[#B83A3A] underline">Xem tất cả</a>
         </div>
         <div class="overflow-x-auto">
-            @if (_selectedAction == "customers")
+            @if (_checkIns is null)
             {
-                <table class="workspace-table w-full min-w-[640px] text-left text-sm">
-                    <caption class="sr-only">Khách hàng cần hỗ trợ đăng ký tài khoản</caption>
-                    <thead class="workspace-heading bg-[#ECE8E4] text-[10px] tracking-wider text-[#242424]"><tr><th scope="col" class="px-6 py-4">KHÁCH HÀNG</th><th scope="col" class="px-6 py-4">LIÊN HỆ</th><th scope="col" class="px-6 py-4">NHU CẦU</th><th scope="col" class="px-6 py-4">TRẠNG THÁI</th></tr></thead>
-                    <tbody class="divide-y divide-[#ECE8E4]">
-                        @foreach (var customer in _customers)
-                        {
-                            <tr class="hover:bg-[#F3EDEA]"><th scope="row" class="px-6 py-4 font-semibold text-[#242424]">@customer.Name</th><td class="px-6 py-4 text-xs text-[#6F6966]">@customer.Email</td><td class="px-6 py-4 text-xs">@customer.Interest</td><td class="px-6 py-4"><span class="inline-flex border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-bold text-[#D97706] rounded-full">Chờ tư vấn</span></td></tr>
-                        }
-                    </tbody>
-                </table>
+                <p role="status" class="px-6 py-8 text-sm text-[#6F6966]">@(_loading ? "Đang tải..." : "Không có dữ liệu check-in.")</p>
             }
-            else if (_selectedAction == "lockers")
+            else if (_checkIns.Items.Count == 0)
             {
-                <table class="workspace-table w-full min-w-[640px] text-left text-sm">
-                    <caption class="sr-only">Tủ đồ cần xử lý</caption>
-                    <thead class="workspace-heading bg-[#ECE8E4] text-[10px] tracking-wider text-[#242424]"><tr><th scope="col" class="px-6 py-4">TỦ ĐỒ</th><th scope="col" class="px-6 py-4">HỘI VIÊN</th><th scope="col" class="px-6 py-4">NGÀY HẾT HẠN</th><th scope="col" class="px-6 py-4">TRẠNG THÁI</th></tr></thead>
-                    <tbody class="divide-y divide-[#ECE8E4]">
-                        @foreach (var locker in _lockers)
-                        {
-                            <tr class="hover:bg-[#F3EDEA]"><th scope="row" class="workspace-heading px-6 py-4 font-bold text-[#242424]">@locker.Code</th><td class="px-6 py-4 text-xs text-[#6F6966]">@locker.Member</td><td class="px-6 py-4 text-xs text-[#6F6966]">@locker.ExpiredOn.ToString("dd/MM/yyyy")</td><td class="px-6 py-4"><span class="inline-flex border border-red-200 bg-red-50 px-2.5 py-1 text-[10px] font-bold text-[#DC2626] rounded-full">Quá hạn @locker.OverdueDays ngày</span></td></tr>
-                        }
-                    </tbody>
-                </table>
+                <p role="status" class="px-6 py-8 text-sm text-[#6F6966]">Hiện không có hội viên nào trong phòng tập.</p>
             }
             else
             {
                 <table class="workspace-table w-full min-w-[640px] text-left text-sm">
-                    <caption class="sr-only">Hoạt động check-in gần đây</caption>
-                    <thead class="workspace-heading bg-[#ECE8E4] text-[10px] tracking-wider text-[#242424]"><tr><th scope="col" class="px-6 py-4">HỘI VIÊN</th><th scope="col" class="px-6 py-4">MÃ THẺ</th><th scope="col" class="px-6 py-4">GIỜ VÀO</th><th scope="col" class="px-6 py-4">TRẠNG THÁI</th></tr></thead>
+                    <caption class="sr-only">Hội viên đang trong phòng tập</caption>
+                    <thead class="workspace-heading bg-[#ECE8E4] text-[10px] tracking-wider text-[#242424]"><tr><th scope="col" class="px-6 py-4">HỘI VIÊN</th><th scope="col" class="px-6 py-4">ĐIỆN THOẠI</th><th scope="col" class="px-6 py-4">GIỜ VÀO</th><th scope="col" class="px-6 py-4">ĐÃ TẬP</th></tr></thead>
                     <tbody class="divide-y divide-[#ECE8E4]">
-                        @foreach (var checkIn in _checkIns)
+                        @foreach (var checkIn in _checkIns.Items.OrderByDescending(c => c.CheckinTime).Take(8))
                         {
-                            <tr class="hover:bg-[#F3EDEA]"><th scope="row" class="px-6 py-4 font-semibold text-[#242424]">@checkIn.Name</th><td class="workspace-heading px-6 py-4 text-xs font-bold text-[#6F6966]">@checkIn.MemberCode</td><td class="px-6 py-4 text-xs text-[#6F6966]">@checkIn.Time</td><td class="px-6 py-4"><span class="inline-flex border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-[#16A34A] rounded-full">Đang tập</span></td></tr>
+                            <tr @key="checkIn.CheckInId" class="hover:bg-[#F3EDEA]"><th scope="row" class="px-6 py-4 font-semibold text-[#242424]">@checkIn.MemberName</th><td class="px-6 py-4 text-xs text-[#6F6966]">@(checkIn.PhoneNumber ?? "—")</td><td class="px-6 py-4 text-xs text-[#6F6966]">@CheckInTime(checkIn.CheckinTime)</td><td class="px-6 py-4 text-xs text-[#6F6966]">@Duration(checkIn.MinutesInside)</td></tr>
                         }
                     </tbody>
                 </table>
             }
         </div>
-        <p class="border-t border-[#D8D1CD] bg-[#ECE8E4] px-6 py-4 text-xs leading-relaxed text-[#6F6966]">Bản xem trước giao diện. Các thao tác tạo tài khoản, check-in và quản lý tủ sẽ được kết nối với màn hình nghiệp vụ tương ứng.</p>
     </section>
 </div>
 
 @code {
-    private readonly DateOnly _demoDate = new(2026, 11, 6);
-    private string _selectedAction = "checkin";
-    private readonly StatItem[] _stats =
+    private static readonly TimeSpan GymOffset = TimeSpan.FromHours(7);
+    private static readonly ActionItem[] Actions =
     [
-        new("01", "KHÁCH ĐANG CHECK-IN", 42, "Trong phòng tập"),
-        new("02", "TỦ ĐỒ QUÁ HẠN", 3, "Cần liên hệ hội viên"),
-        new("03", "THIẾT BỊ BÁO HỎNG", 5, "Chờ tiếp nhận xử lý")
+        new("/staff/check-ins", "MANUAL CHECK-IN", "Check-in, check-out hội viên tại quầy"),
+        new("/staff/membership-cash-receipt", "THU TIỀN MẶT", "Xác nhận tiền mặt mua gói tập"),
+        new("/staff/pt-cash-receipt", "THU TIỀN MẶT GÓI PT", "Xác nhận tiền mặt gói PT"),
+        new("/staff/equipment-issues", "SỰ CỐ THIẾT BỊ", "Tiếp nhận và xử lý báo hỏng"),
+        new("/staff/consultations", "TƯ VẤN KHÁCH HÀNG", "Trả lời yêu cầu tư vấn"),
+        new("/staff/yoga", "LỚP YOGA", "Buổi yoga và điểm danh"),
+        new("/staff/supplement-orders", "ĐƠN THỰC PHẨM BỔ SUNG", "Xử lý đơn tại quầy")
     ];
-    private readonly ActionItem[] _actions =
-    [
-        new("customers", "CREATE CUSTOMER ACCOUNT", "Tiếp nhận và hỗ trợ khách hàng mới"),
-        new("checkin", "MANUAL CHECK-IN", "Theo dõi lượt vào phòng tập"),
-        new("lockers", "MANAGE LOCKERS", "Kiểm tra tủ đồ cần xử lý")
-    ];
-    private readonly CheckInItem[] _checkIns =
-    [
-        new("Nguyễn Minh Anh", "VF-000128", "09:42"),
-        new("Trần Quốc Bảo", "VF-000256", "09:38"),
-        new("Lê Hoàng Nam", "VF-000314", "09:35"),
-        new("Phạm Ngọc Linh", "VF-000407", "09:28")
-    ];
-    private readonly CustomerItem[] _customers =
-    [
-        new("Vũ Gia Huy", "giahuy@example.com", "Gói Gym 3 tháng"),
-        new("Đỗ Mai Chi", "maichi@example.com", "Yoga Studio"),
-        new("Bùi Thanh Sơn", "thanhson@example.com", "Personal Training")
-    ];
-    private readonly LockerItem[] _lockers =
-    [
-        new("A-012", "Nguyễn Minh Anh", new DateOnly(2026, 11, 4), 2),
-        new("A-028", "Lê Hoàng Nam", new DateOnly(2026, 11, 3), 3),
-        new("B-006", "Đỗ Mai Chi", new DateOnly(2026, 11, 5), 1)
-    ];
-    private string SelectedTitle => _selectedAction switch { "customers" => "KHÁCH HÀNG CẦN HỖ TRỢ", "lockers" => "TỦ ĐỒ CẦN XỬ LÝ", _ => "CHECK-IN GẦN ĐÂY" };
-    private string SelectedDescription => _selectedAction switch { "customers" => "03 khách hàng mẫu đang chờ tư vấn tại quầy.", "lockers" => "03 tủ đồ mẫu đã quá ngày hết hạn.", _ => "04 lượt vào mẫu trong ca làm việc." };
-    private sealed record StatItem(string Index, string Label, int Value, string Note);
-    private sealed record ActionItem(string Id, string Title, string Description);
-    private sealed record CheckInItem(string Name, string MemberCode, string Time);
-    private sealed record CustomerItem(string Name, string Email, string Interest);
-    private sealed record LockerItem(string Code, string Member, DateOnly ExpiredOn, int OverdueDays);
+
+    private readonly CancellationTokenSource _lifetime = new();
+    private readonly List<string> _errors = [];
+    private ActiveCheckInsResponse? _checkIns;
+    private int? _newIssues;
+    private int? _openConsultations;
+    private bool _loading = true;
+
+    private static DateOnly GymToday => DateOnly.FromDateTime(DateTime.UtcNow.Add(GymOffset));
+
+    // Today's check-ins show the time only; an older, never-closed one shows its date too.
+    private static string CheckInTime(DateTime utc)
+    {
+        var local = DateTime.SpecifyKind(utc, DateTimeKind.Utc).Add(GymOffset);
+        return DateOnly.FromDateTime(local) == GymToday ? local.ToString("HH:mm") : local.ToString("dd/MM HH:mm");
+    }
+
+    private static string Duration(int minutes) => minutes < 60 ? $"{minutes} phút" : $"{minutes / 60} giờ {minutes % 60:00} phút";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Each figure loads on its own, so one failing module does not blank the others.
+        await Task.WhenAll(
+            Load("check-in", async ct => _checkIns = await Api.GetAsync<ActiveCheckInsResponse>("api/check-ins/active", ct)),
+            Load("thiết bị", async ct => _newIssues = (await Api.GetAsync<PagedResponse<EquipmentIssueResponse>>(
+                "api/equipment-issues?status=Reported&page=1&pageSize=1", ct)).TotalCount),
+            Load("tư vấn", async ct => _openConsultations = (await Api.GetAsync<PagedResponse<ConsultationConversationResponse>>(
+                "api/consultations?status=Open&page=1&pageSize=1", ct)).TotalCount));
+        _loading = false;
+    }
+
+    private async Task Load(string what, Func<CancellationToken, Task> load)
+    {
+        try
+        {
+            await load(_lifetime.Token);
+        }
+        catch (ApiException ex)
+        {
+            _errors.Add($"{what} ({ex.Message})");
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+            // The user left the page.
+        }
+    }
+
+    public void Dispose()
+    {
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+    }
+
+    private sealed record ActionItem(string Href, string Title, string Description);
 }
