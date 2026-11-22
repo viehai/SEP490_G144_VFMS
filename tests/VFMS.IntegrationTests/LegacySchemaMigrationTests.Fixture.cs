@@ -52,7 +52,7 @@ public sealed partial class LegacySchemaMigrationTests
         var user = new ApplicationUser
         {
             UserId = "migration-member", Gym = gym, FullName = "Migration member",
-            Email = "migration-member@example.test", PasswordHash = "test-only", AccountStatus = AccountStatus.Active
+            Email = "migration-member@example.test", PhoneNumber = "0900000031", PasswordHash = "test-only", AccountStatus = AccountStatus.Active
         };
         var package = new Package
         {
@@ -112,6 +112,8 @@ public sealed partial class LegacySchemaMigrationTests
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+            modelBuilder.Entity<ApplicationUser>().Ignore(row => row.AccountStatusBeforeLock);
+            modelBuilder.Entity<Gym>().Ignore(row => row.IsAcceptingTrainerApplications);
             // The deployed legacy layout has only the Guid FK; the three inline fields arrive during upgrade.
             modelBuilder.Entity<MembershipFreeze>().Ignore(row => row.SupportingDocumentFileName);
             modelBuilder.Entity<MembershipFreeze>().Ignore(row => row.SupportingDocumentContentType);

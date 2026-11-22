@@ -53,6 +53,7 @@ public sealed class TrainersController(TrainerService service) : ControllerBase
         this.ToActionResult(await service.ResendSetup(id, Actor, ct));
 
     [HttpPost("setup-password"), AllowAnonymous, EnableRateLimiting("trainer-public")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None, Order = -3000)]
     public async Task<IActionResult> Setup(TrainerSetupRequest request, CancellationToken ct) =>
         this.ToActionResult(await service.Setup(request, ct));
 

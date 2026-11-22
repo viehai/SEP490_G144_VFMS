@@ -16,6 +16,8 @@ public interface ITrainerStore
     void Remove<T>(T entity) where T : BaseEntity;
     Task Save(CancellationToken ct);
     Task<Result<T>> Write<T>(Func<Task<Result<T>>> action, CancellationToken ct);
+    Task<ApplicationUser?> FindEligiblePasswordSetupAsync(string tokenHash, DateTime now, CancellationToken ct);
+    Task<bool> TryCompletePasswordSetupAsync(string userId, string tokenHash, string passwordHash, DateTime now, CancellationToken ct);
     TrainerQueuedEmail Email(string recipient, string subject, string body);
     Task<TrainerStoredFile> SaveFile(TrainerFileInput file, CancellationToken ct);
     Task<byte[]?> ReadFile(TrainerStoredFile file, CancellationToken ct);

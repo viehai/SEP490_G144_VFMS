@@ -1,6 +1,5 @@
 using System.Data;
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using VFMS.Application.Interfaces;
@@ -8,6 +7,7 @@ using VFMS.Contracts.Common;
 using VFMS.Contracts.Trainers;
 using VFMS.Domain.Common;
 using VFMS.Domain.Entities;
+using VFMS.Domain.Enums;
 using VFMS.Infrastructure.Data;
 
 namespace VFMS.Infrastructure.Repositories;
@@ -23,6 +23,34 @@ public sealed class TrainerStore(VfmsDbContext db, IDataProtectionProvider prote
     public void Add<T>(T entity) where T : BaseEntity => db.Set<T>().Add(entity);
     public void Remove<T>(T entity) where T : BaseEntity => db.Set<T>().Remove(entity);
     public Task Save(CancellationToken ct) => db.SaveChangesAsync(ct);
+
+    public Task<ApplicationUser?> FindEligiblePasswordSetupAsync(string tokenHash, DateTime now, CancellationToken ct) =>
+        EligiblePasswordSetupUsers(now).AsNoTracking().FirstOrDefaultAsync(
+            user => user.PasswordSetupTokenHash == tokenHash, ct);
+
+    public async Task<bool> TryCompletePasswordSetupAsync(string userId, string tokenHash, string passwordHash, DateTime now, CancellationToken ct) =>
+        await EligiblePasswordSetupUsers(now)
+            .Where(user => user.UserId == userId && user.PasswordSetupTokenHash == tokenHash)
+            .ExecuteUpdateAsync(update => update
+                .SetProperty(user => user.PasswordHash, passwordHash)
+                .SetProperty(user => user.PasswordSetupTokenHash, (string?)null)
+                .SetProperty(user => user.PasswordSetupExpiresAt, (DateTime?)null)
+                .SetProperty(user => user.ResetTokenHash, (string?)null)
+                .SetProperty(user => user.ResetTokenExpiresAt, (DateTime?)null)
+                .SetProperty(user => user.AccountStatus, AccountStatus.Active)
+                .SetProperty(user => user.UpdatedAt, now), ct) == 1;
+
+    private IQueryable<ApplicationUser> EligiblePasswordSetupUsers(DateTime now) =>
+        db.ApplicationUsers.Where(user => user.AccountStatus == AccountStatus.PendingVerification &&
+            !user.IsBanned && user.PasswordSetupExpiresAt > now &&
+            db.TrainerApplications.Any(application => application.HiredUserId == user.UserId &&
+                application.ApplicationType == "Recruitment" && application.ApplicationStatus == TrainerApplicationStatus.Hired &&
+                application.TrainerRole != null && application.TrainerRole.IsActive &&
+                (application.TrainerRole.Role.RoleName == nameof(UserRole.PT) ||
+                    application.TrainerRole.Role.RoleName == "YogaInstructor") &&
+                user.UserRoles.Any(userRole => userRole.RoleId == application.TrainerRole.RoleId) &&
+                !user.UserRoles.Any(userRole => userRole.RoleId != application.TrainerRole.RoleId)));
+
     public TrainerQueuedEmail Email(string recipient, string subject, string body) => new()
     {
         Recipient = recipient,
@@ -67,9 +95,10 @@ public sealed class TrainerStore(VfmsDbContext db, IDataProtectionProvider prote
             }
             return result;
         }
-        catch (SqlException ex) when (ex.Number is 51000 or 1205)
+        catch (Exception exception) when (AccountIdentityConflict.SqlErrorNumber(exception) is 51000 or 1205)
         {
-            await transaction.RollbackAsync(ct);
+            if (AccountIdentityConflict.SqlErrorNumber(exception) == 51000)
+                await transaction.RollbackAsync(ct);
             db.ChangeTracker.Clear();
             return Result<T>.Failure("Recruitment is busy; retry shortly.", "TRAINER_CONFLICT", 409);
         }
@@ -78,6 +107,12 @@ public sealed class TrainerStore(VfmsDbContext db, IDataProtectionProvider prote
             await transaction.RollbackAsync(ct);
             db.ChangeTracker.Clear();
             return Result<T>.Failure("Record changed; refresh and retry.", "TRAINER_CONFLICT", 409);
+        }
+        catch (DbUpdateException exception) when (AccountIdentityConflict.GetField(exception) is { } field)
+        {
+            await transaction.RollbackAsync(ct);
+            db.ChangeTracker.Clear();
+            return AccountIdentityConflict.ResultFor<T>(field);
         }
         catch (DbUpdateException)
         {

@@ -21,6 +21,12 @@ Report 3 governs functional and non-functional requirements. Use case diagrams p
 
 **Current authentication gaps.** Logout revokes the submitted refresh token. A previously issued access token can remain valid until expiry. Registration creates an active account directly, so OTP verification remains pending. Login checks existing lock status, with automatic lockout after repeated failures still pending.
 
+### Account identifiers and onboarding
+
+GBR-24 reserves the canonical email and phone across all non-deleted accounts, including pending, locked, and inactive accounts. Soft deletion releases both identifiers. Email is trimmed and compared case-insensitively. A phone keeps its digits and optional leading `+`. National and international prefixes stay distinct. Registration, front-desk creation, profile phone updates, internal accounts, trainer provisioning, and login share this policy.
+
+The identity migration checks existing non-deleted rows before it changes data. Resolve any reported invalid or duplicate identifiers by verifying the contact owner before applying it. Reissue setup links issued before purpose binding through the appropriate Customer or Trainer resend flow. Set `CustomerPasswordSetup__SetupUrl` to the deployed HTTPS client setup route outside Development. Development can use the local client URL.
+
 ### Password recovery requirement and current implementation (Module 1)
 
 The approved password recovery verification flow (`UC-04`, `GBR-29`) requires a single-use OTP of six numeric digits valid for exactly 5 minutes (300 seconds) under `GBR-25`.

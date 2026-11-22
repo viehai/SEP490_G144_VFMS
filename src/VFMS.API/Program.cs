@@ -13,6 +13,7 @@ using VFMS.API.Extensions;
 using VFMS.Application.Interfaces;
 using VFMS.Application.Mappings;
 using VFMS.Application.Services;
+using VFMS.Application.Settings;
 using VFMS.Contracts.Auth.Validators;
 using VFMS.Contracts.Users.Validators;
 using VFMS.Domain.Enums;
@@ -43,6 +44,10 @@ builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IAuthRepository, AuthRepository>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddPasswordRecovery(builder.Configuration);
+builder.Services.AddSingleton(CustomerPasswordSetupSettings.FromConfiguration(
+    builder.Configuration["CustomerPasswordSetup:SetupUrl"],
+    builder.Environment.IsDevelopment(),
+    builder.Configuration.GetValue<int?>("CustomerPasswordSetup:TokenLifetimeHours")));
 builder.Services.AddScoped<IUserAdministrationRepository, UserAdministrationRepository>();
 builder.Services.AddScoped<IUserAdministrationService, UserAdministrationService>();
 builder.Services.AddSystemAdministrationModule();
@@ -197,7 +202,6 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 app.UseCors("VfmsClient");
-app.UseRateLimiter();
 
 app.UseAuthentication();
 app.UseAuthorization();
