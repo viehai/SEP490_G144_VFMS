@@ -13,7 +13,7 @@ public sealed class FeedbackRepository : IFeedbackRepository
 
     public FeedbackRepository(VfmsDbContext context) => _context = context;
 
-    // Gym feedback rows have no PT contract; PT reviews (UC 4.10) are final and never managed here (GBR-102).
+    // Gym feedback rows have no PT contract; PT reviews (UC 4.10) are final and never managed here (GBR-108).
     private IQueryable<TrainerReview> GymFeedback => _context.TrainerReviews.Where(review => review.PTPurchaseId == null);
 
     public async Task<(IReadOnlyList<TrainerReview> Items, int Total)> SearchAsync(

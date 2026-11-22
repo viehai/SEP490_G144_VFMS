@@ -2055,10 +2055,19 @@ namespace VFMS.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<DateTime?>("AttendanceRecordedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool?>("AttendanceRecordedPresent")
+                        .HasColumnType("bit");
+
                     b.Property<DateTime?>("AttendanceReminderSentAt")
                         .HasColumnType("datetime2");
 
                     b.Property<DateTime?>("CancelledAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("CheckInCompletedAt")
                         .HasColumnType("datetime2");
 
                     b.Property<DateTime>("CreatedAt")

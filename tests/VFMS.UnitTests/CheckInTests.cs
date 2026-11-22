@@ -287,14 +287,32 @@ public sealed class CheckInTests
         var (repo, service, qr) = Kiosk();
         repo.Memberships.Add(Membership("m1"));
         var start = TimeOnly.FromDateTime(Now.AddHours(7).AddMinutes(startsInMinutes));
-        var pt = new PTSession { Id = 9, MemberUserId = "m1", SessionDate = Today, StartTime = start, PTPurchase = new PTPurchase { RemainingSessions = 3 } };
+        var pt = new PTSession { Id = 9, MemberUserId = "m1", SessionDate = Today, StartTime = start, PTPurchase = new PTPurchase { TotalSessions = 3, RemainingSessions = 3 } };
+        pt.PTPurchase.Sessions.Add(pt);
         repo.PtSessions.Add(pt);
 
         var result = await service.KioskCheckInAsync(await QrScan(qr, "m1"));
 
         Assert.Equal(completes ? 9 : null, result.Data!.CompletedPtSessionId);
         Assert.Equal(completes ? PTSessionStatus.Completed : PTSessionStatus.Scheduled, pt.SessionStatus);
+        Assert.Equal(completes, pt.CheckInCompletedAt is not null);   // UC 4.6 step 7: marked as set by check-in
         Assert.Equal(completes ? 2 : 3, pt.PTPurchase.RemainingSessions);
+    }
+
+    [Fact]
+    public async Task CheckInOnTheFinalPtSessionCompletesTheContract()   // GBR-92 with the PT credit rules
+    {
+        var (repo, service, qr) = Kiosk();
+        repo.Memberships.Add(Membership("m1"));
+        var contract = new PTPurchase { TotalSessions = 2, RemainingSessions = 1, Status = PTPurchaseStatus.Active };
+        contract.Sessions.Add(new PTSession { Id = 1, MemberUserId = "m1", SessionDate = Today.AddDays(-7), SessionStatus = PTSessionStatus.Completed, PTPurchase = contract });
+        var last = new PTSession { Id = 2, MemberUserId = "m1", SessionDate = Today, StartTime = TimeOnly.FromDateTime(Now.AddHours(7).AddMinutes(10)), PTPurchase = contract };
+        contract.Sessions.Add(last);
+        repo.PtSessions.Add(last);
+
+        await service.KioskCheckInAsync(await QrScan(qr, "m1"));
+
+        Assert.Equal((0, PTPurchaseStatus.Completed, true), (contract.RemainingSessions, contract.Status, contract.IsCompleted));
     }
 
     [Fact]

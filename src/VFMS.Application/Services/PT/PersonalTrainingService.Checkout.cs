@@ -12,7 +12,7 @@ public sealed partial class PersonalTrainingService
 {
     private static readonly TimeSpan PaymentDuration = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan HoldDuration = TimeSpan.FromMinutes(20);
-    // GBR-96: the Member must click 'Proceed to Payment' within the first 10 minutes of the order.
+    // GBR-102: the Member must click 'Proceed to Payment' within the first 10 minutes of the order.
     private static readonly TimeSpan ProceedWindow = TimeSpan.FromMinutes(10);
     // Counter (cash) orders hold the slots as long as a membership cash order (NewScope: UC 4.4).
     private static readonly TimeSpan CounterHold = TimeSpan.FromHours(24);

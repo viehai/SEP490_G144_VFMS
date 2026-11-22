@@ -109,7 +109,7 @@ public sealed partial class PersonalTrainingService(IPersonalTrainingStore store
             NotifiedAt = Now
         });
 
-    /// <summary>GBR-98: removes the PT role after more than 60 consecutive 'Not Accepting' days, once no contract is still running,
+    /// <summary>GBR-104: removes the PT role after more than 60 consecutive 'Not Accepting' days, once no contract is still running,
     /// including its 14-day make-up period (GBR-14).</summary>
     public async Task ExpireInactiveTrainers(DateOnly today, CancellationToken ct)
     {
@@ -119,7 +119,7 @@ public sealed partial class PersonalTrainingService(IPersonalTrainingStore store
             .Select(role => (int?)role.Id), ct);
         foreach (var profile in profiles)
         {
-            // GBR-98: while a contract is still running the 60 days have not started; they count from the day the last one ends.
+            // GBR-104: while a contract is still running the 60 days have not started; they count from the day the last one ends.
             // shortcut: the start moves forward once per daily sweep, so a missed sweep day starts the count that much earlier.
             if (await store.Query<PTPurchase>().Where(p => p.PTUserId == profile.PTUserId)
                     .Where(PersonalTrainingRules.StillRunning(today)).AnyAsync(store, ct))

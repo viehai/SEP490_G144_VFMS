@@ -21,11 +21,14 @@
             <div class="trainer-row"><TrainerStatus Status="@session.Status" /><span class="trainer-muted">Tính @session.CreditUnits buổi</span></div>
             @if (CanRecord(session))
             {
-                <p class="trainer-muted">@(session.Status is "Completed" or "NoShow" ? "Có thể sửa điểm danh đến hết hôm nay." :
-                    session.Status == "PendingFreeze" ? "Buổi đang chờ duyệt bảo lưu: ghi vắng mặt không bị trừ buổi." :
-                    "Điểm danh trong hôm nay. Sau 20:00 hệ thống sẽ nhắc nếu chưa điểm danh.")</p>
+                <p class="trainer-muted">@(AwaitingMyResponse(session)
+                    ? $"Hội viên báo bạn vắng mặt. Nếu bạn đã dạy, hãy điểm danh trước hết ngày {Date(session.Date.AddDays(1))}: buổi sẽ chuyển Manager xem xét."
+                    : session.CompletedByCheckIn ? "Hội viên đã check-in nên buổi được ghi có mặt. Bạn có thể sửa đến hết hôm nay."
+                    : session.Status is "Completed" or "NoShow" ? "Có thể sửa điểm danh đến hết hôm nay."
+                    : session.Status == "PendingFreeze" ? "Buổi đang chờ duyệt bảo lưu: ghi vắng mặt không bị trừ buổi."
+                    : "Điểm danh trong hôm nay.")</p>
                 <div class="trainer-row">
-                    <button class="trainer-button trainer-primary" disabled="@(_busy || session.Status == "Completed")" @onclick="() => AttendanceAsync(true)">Hội viên có mặt</button>
+                    <button class="trainer-button trainer-primary" disabled="@(_busy || session.Status == "Completed" && !session.CompletedByCheckIn)" @onclick="() => AttendanceAsync(true)">Hội viên có mặt</button>
                     @if (session.Status != "PendingFreeze")
                     {
                         <button class="trainer-button" disabled="@(_busy || session.Status == "NoShow")" @onclick="() => AttendanceAsync(false)">Hội viên vắng mặt</button>
@@ -40,7 +43,7 @@
             }
             @if (session.Status == "Disputed")
             {
-                <p class="trainer-feedback" role="status">Hội viên báo PT vắng mặt trong khi bạn ghi có mặt. Manager sẽ xem xét và thông báo kết quả.</p>
+                <p class="trainer-feedback" role="status">Hội viên báo PT vắng mặt trong khi bạn đã điểm danh. Manager sẽ xem xét và thông báo kết quả.</p>
             }
             @if (session.Status is "Completed" or "AutoCompleted")
             {
@@ -83,10 +86,12 @@
 
     protected override Task OnParametersSetAsync() => LoadAsync();
 
-    // GBR-97: attendance is recorded after the session ends, on the session day, and can be edited that day.
-    private static bool CanRecord(PTSessionResponse s) => s.Date == Today &&
+    // GBR-103: attendance is recorded after the session ends, on the session day, and can be edited that day;
+    // a session the Member reported as 'PT Absent' can still be recorded until the end of the next day.
+    private static bool CanRecord(PTSessionResponse s) => AwaitingMyResponse(s) || s.Date == Today &&
         s.Date.ToDateTime(s.EndTime) <= DateTime.UtcNow.AddHours(7) &&
         s.Status is "Scheduled" or "ReschedulePending" or "RescheduleRequested" or "Completed" or "NoShow" or "PendingFreeze";
+    private static bool AwaitingMyResponse(PTSessionResponse s) => s.Status == "Cancelled" && s.MakeUpAvailableAt > DateTime.UtcNow;
 
     private async Task LoadAsync()
     {

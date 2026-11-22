@@ -72,6 +72,8 @@ public sealed class PersonalTrainingApiClient(HttpClient http, AuthSession sessi
     public Task<PagedResponse<PTAttendanceDispute>> AttendanceDisputesAsync(bool processed, int page) =>
         Send<PagedResponse<PTAttendanceDispute>>(HttpMethod.Get,
             $"manager/attendance-disputes?processed={(processed ? "true" : "false")}&page={page}");
+    public Task<IReadOnlyList<PTDisputeCheckIn>> DisputeCheckInsAsync(int id) =>
+        Send<IReadOnlyList<PTDisputeCheckIn>>(HttpMethod.Get, $"manager/attendance-disputes/{id}/check-ins");
     public Task<PTSessionResponse> DecideDisputeAsync(int id, PTAttendanceDisputeDecision request) =>
         Send<PTSessionResponse>(HttpMethod.Post, $"manager/attendance-disputes/{id}/decision", request);
     public Task<PTSessionResponse> NoteAsync(int id, PTNoteRequest request) =>

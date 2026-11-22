@@ -80,6 +80,23 @@ public static class PersonalTrainingRules
             session.PTPurchase.Status == PTPurchaseStatus.PendingPayment &&
             session.PTPurchase.HoldExpiresAt > now);
 
+    /// <summary>Recounts the remaining sessions and completes the contract once nothing is left; needs p.Sessions loaded.
+    /// Shared by PT attendance and the check-in kiosk (GBR-92).</summary>
+    public static void Settle(PTPurchase p)
+    {
+        var (used, reserved) = Credits(p.Sessions);
+        p.RemainingSessions = Math.Max(0, p.TotalSessions - used);
+        if (p.RemainingSessions == 0 && reserved == 0)
+        {
+            p.Status = PTPurchaseStatus.Completed;
+            p.IsCompleted = true;
+        }
+    }
+
+    /// <summary>GBR-103: after a 'PT Absent' report the PT can still record attendance until the end of the next day;
+    /// the make-up unit becomes usable after that day.</summary>
+    public static DateOnly TrainerResponseLastDay(DateOnly sessionDate) => sessionDate.AddDays(1);
+
     public static (int Used, int Reserved) Credits(IEnumerable<PTSession> sessions)
     {
         var used = 0;

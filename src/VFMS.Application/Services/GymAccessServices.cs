@@ -292,9 +292,10 @@ public sealed class CheckInService : ICheckInService
                                      now <= YogaTime.ToUtc(s.SessionDate, s.StartTime) + TimeSpan.FromMinutes(15));
             if (due is not null)
             {
+                // UC 4.6 step 7: 'Present' set by check-in; the PT has not recorded anything (GBR-103).
                 due.SessionStatus = PTSessionStatus.Completed;
-                if (due.PTPurchase.RemainingSessions > 0)
-                    due.PTPurchase.RemainingSessions--;
+                due.CheckInCompletedAt = now;
+                PersonalTrainingRules.Settle(due.PTPurchase);   // the final session also completes the contract
                 ptSessionId = due.Id;
             }
         }

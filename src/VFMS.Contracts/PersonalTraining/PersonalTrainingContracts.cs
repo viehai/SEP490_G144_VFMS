@@ -44,7 +44,7 @@ public sealed record PTRescheduleDecision(bool Accept, DateOnly Date, TimeOnly S
 public sealed record PTRescheduleSlot(DateOnly Date, TimeOnly StartTime, TimeOnly EndTime, string Status);
 public sealed record PTMakeUpRequest(DateOnly Date, TimeOnly StartTime);
 public sealed record PTNoteRequest(string Note);
-/// <summary>Member 'PT Absent' report on the session day (GBR-97); the note is optional.</summary>
+/// <summary>Member 'PT Absent' report on the session day (GBR-103); the note is optional.</summary>
 public sealed record PTTrainerAbsenceReportRequest(string? Reason = null);
 public static class PTDisputeDecisions
 {
@@ -57,7 +57,12 @@ public static class PTDisputeDecisions
 public sealed record PTAttendanceDisputeDecision(string Decision, string Note);
 public sealed record PTAttendanceDispute(int SessionId, int ContractId, string MemberName, string TrainerName,
     DateOnly Date, TimeOnly StartTime, TimeOnly EndTime, string? MemberNote, DateTime ReportedAt, string Status,
-    string? Decision, string? ReviewNote, string? ReviewerName = null);
+    string? Decision, string? ReviewNote, string? ReviewerName = null,
+    bool? TrainerRecordedPresent = null, DateTime? TrainerRecordedAt = null);
+/// <summary>UC 4.11 step 3: one gym visit of the Member on the disputed session's day (times in UTC).</summary>
+public sealed record PTDisputeCheckIn(DateTime CheckinTime, string CheckinMethod, string? CheckedInBy,
+    DateTime? CheckoutTime, string? CheckoutMethod, string? CheckedOutBy, string Status,
+    bool InCheckInWindow, bool OverlapsSession);
 public sealed record PTSessionResponse(int Id, DateOnly Date, TimeOnly StartTime, TimeOnly EndTime,
     string Status, int CreditUnits, string? Note, DateTime? NoteUpdatedAt, PTProposalResponse? Proposal,
     DateTime? TrainerAbsenceReportedAt = null, bool? TrainerAbsenceApproved = null,
@@ -65,6 +70,10 @@ public sealed record PTSessionResponse(int Id, DateOnly Date, TimeOnly StartTime
 {
     /// <summary>Cancelled without penalty and not rebooked yet: a make-up can be proposed from it (GBR-14).</summary>
     public bool IsMakeUpUnit { get; init; }
+    /// <summary>'Present' set by the Member's self check-in; the PT has not recorded attendance (UC 4.6 step 7).</summary>
+    public bool CompletedByCheckIn { get; init; }
+    /// <summary>A make-up unit from a 'PT Absent' report that waits for the PT: usable from this time (UTC, GBR-103).</summary>
+    public DateTime? MakeUpAvailableAt { get; init; }
 }
 public sealed record PTContractResponse(int Id, string TrainerId, string MemberId, string? PackageName,
     string Status, DateOnly StartDate, DateOnly EndDate, int TotalCredits, int UsedCredits,
@@ -78,7 +87,7 @@ public sealed record PTContractResponse(int Id, string TrainerId, string MemberI
     /// <summary>Contract end date + 14 days; shown only when make-up units exist.</summary>
     public DateOnly? MakeUpDeadline { get; init; }
     public bool FreezeUsed { get; init; }
-    /// <summary>Open one-week window to choose another trainer (GBR-98).</summary>
+    /// <summary>Open one-week window to choose another trainer (GBR-104).</summary>
     public DateTime? TrainerChangeDeadline { get; init; }
     /// <summary>UC 4.10: the Member already reviewed this contract.</summary>
     public bool HasReview { get; init; }
@@ -94,7 +103,7 @@ public sealed record PTAssignedMember(int ContractId, string MemberId, string Fu
     string Email, string Phone, int TotalCredits, int RemainingCredits, DateOnly ExpiresOn, DateOnly? LastTrainedOn);
 /// <summary>
 /// UC 4.8: Moves override the suggested post-freeze slot of a frozen session (same trainer). With a replacement
-/// trainer, ReplacementTemplateIds is that trainer's weekly pattern for all remaining sessions (GBR-99).
+/// trainer, ReplacementTemplateIds is that trainer's weekly pattern for all remaining sessions (GBR-105).
 /// </summary>
 public sealed record PTFreezeRequest(DateOnly StartDate, DateOnly ResumeDate, string Reason,
     PTEarlyResumeMove[]? Moves = null, string? ReplacementTrainerId = null, int[]? ReplacementTemplateIds = null);

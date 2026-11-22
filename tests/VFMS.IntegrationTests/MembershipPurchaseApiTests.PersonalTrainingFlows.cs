@@ -49,6 +49,12 @@ public sealed partial class MembershipPurchaseApiTests
             new PTTrainerAbsenceReportRequest());
         Assert.True(reported.StatusCode == HttpStatusCode.OK, await reported.Content.ReadAsStringAsync());
         Assert.Equal("Cancelled", (await reported.Content.ReadFromJsonAsync<PTSessionResponse>())!.Status);
+        // GBR-103: the make-up unit is usable only after the PT's response period (end of the next day).
+        var waiting = await ContractOf(member, id);
+        Assert.Equal(0, waiting.MakeUpUnits);
+        Assert.Equal(LocalTime(first.Date.AddDays(2), TimeOnly.MinValue).UtcDateTime,
+            waiting.Sessions.Single(s => s.Id == first.Id).MakeUpAvailableAt);
+        _clock.Now = LocalTime(first.Date.AddDays(2), new TimeOnly(0, 1));
         var afterFirst = await ContractOf(member, id);
         Assert.Equal(1, afterFirst.MakeUpUnits);
         Assert.Equal(afterFirst.EndDate.AddDays(14), afterFirst.MakeUpDeadline);
@@ -69,6 +75,7 @@ public sealed partial class MembershipPurchaseApiTests
         using var decided = await manager.PostAsJsonAsync($"/api/pt/manager/attendance-disputes/{second.Id}/decision",
             new PTAttendanceDisputeDecision(PTDisputeDecisions.PTAbsent, "Front desk confirmed the PT was away"));
         Assert.True(decided.StatusCode == HttpStatusCode.OK, await decided.Content.ReadAsStringAsync());
+        _clock.Now = LocalTime(second.Date.AddDays(2), new TimeOnly(0, 1));   // both units past the PT's response period
         Assert.Equal(2, (await ContractOf(member, id)).MakeUpUnits);
         var processed = (await manager.GetFromJsonAsync<PagedResponse<PTAttendanceDispute>>(
             "/api/pt/manager/attendance-disputes?processed=true&page=1"))!.Items;

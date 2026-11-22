@@ -164,6 +164,11 @@ public sealed class PersonalTrainingController(PersonalTrainingService service) 
     public Task<IActionResult> AttendanceDisputes([FromQuery] bool processed, [FromQuery] int page,
         CancellationToken ct) => AsUser(actor => service.AttendanceDisputes(actor, processed, page, ct));
 
+    [HttpGet("manager/attendance-disputes/{id:int}/check-ins")]
+    [Authorize(Roles = "Manager")]
+    public Task<IActionResult> DisputeCheckIns(int id, CancellationToken ct) =>
+        AsUser(actor => service.DisputeCheckIns(actor, id, ct));
+
     [HttpPost("manager/attendance-disputes/{id:int}/decision")]
     [Authorize(Roles = "Manager")]
     public Task<IActionResult> DecideDispute(int id, PTAttendanceDisputeDecision request, CancellationToken ct) =>

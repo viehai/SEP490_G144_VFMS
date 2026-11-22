@@ -34,7 +34,7 @@ public sealed partial class MembershipPurchaseApiTests
         using var absent = await trainer.PostAsJsonAsync($"/api/pt/sessions/{first.Id}/attendance", false);
         Assert.True(absent.StatusCode == HttpStatusCode.OK, await absent.Content.ReadAsStringAsync());
 
-        // UC 4.8 step 8.1 / GBR-97: the corrected absence returns to Pending Freeze instead of a forfeited No-Show.
+        // UC 4.8 step 8.1 / GBR-103: the corrected absence returns to Pending Freeze instead of a forfeited No-Show.
         Assert.Equal("PendingFreeze", (await absent.Content.ReadFromJsonAsync<PTSessionResponse>())!.Status);
         Assert.Equal(0, (await ContractOf(member, id)).UsedCredits);
     }
@@ -85,7 +85,7 @@ public sealed partial class MembershipPurchaseApiTests
         var current = (await trainer.GetFromJsonAsync<PagedResponse<PTAssignedMember>>(currentPath))!.Items;
         Assert.Equal(taught.SessionDate, Assert.Single(current, row => row.ContractId == id).LastTrainedOn);
 
-        // GBR-98: the PT role is kept while the contract still has make-up to use.
+        // GBR-104: the PT role is kept while the contract still has make-up to use.
         var service = scope.ServiceProvider.GetRequiredService<PersonalTrainingService>();
         await service.ExpireInactiveTrainers(Today, default);
         Assert.True((await db.TrainerProfiles.AsNoTracking().SingleAsync(p => p.PTUserId == "buyer")).IsActive);

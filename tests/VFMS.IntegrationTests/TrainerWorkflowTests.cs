@@ -279,7 +279,7 @@ public class TrainerWorkflowTests
         var service = fixture.Service;
         TrainerTestDatabase.Success(await service.Setup(new(await fixture.SetupToken(hired.Id), "TestPassword1!"), default));
         var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7));
-        // New trainers start 'Accepting New Members', so the GBR-98 60-day count does not run.
+        // New trainers start 'Accepting New Members', so the GBR-104 60-day count does not run.
         var stored = await fixture.Db.TrainerProfiles.AsNoTracking().SingleAsync();
         Assert.True(stored.AcceptingNewMembers);
         Assert.Null(stored.NotAcceptingSince);
@@ -301,7 +301,7 @@ public class TrainerWorkflowTests
         Assert.Equal(today, (await fixture.Db.TrainerProfiles.AsNoTracking().SingleAsync()).NotAcceptingSince);
         Assert.NotNull((await fixture.Db.PTPurchases.AsNoTracking().SingleAsync()).TrainerChangeDeadline);
 
-        // GBR-98: switching back to 'Accepting' closes that window early.
+        // GBR-104: switching back to 'Accepting' closes that window early.
         var accepting = TrainerTestDatabase.Success(await service.SetReadiness(true, stored.PTUserId, default));
         Assert.True(accepting.IsAcceptingNewMembers);
         Assert.Null((await fixture.Db.PTPurchases.AsNoTracking().SingleAsync()).TrainerChangeDeadline);
@@ -385,7 +385,7 @@ public class TrainerWorkflowTests
         Assert.Empty(TrainerTestDatabase.Success(await service.Search(new(TrainerRole: "PT"), default)).Items);
         Assert.Single(TrainerTestDatabase.Success(await service.Search(new(Search: "Hatha"), default)).Items);
 
-        // GBR-101: an active Yoga trainer cannot submit another recruitment, signed in or not.
+        // GBR-107: an active Yoga trainer cannot submit another recruitment, signed in or not.
         Assert.Equal("TRAINER_NOT_ELIGIBLE", (await service.Submit(yoga with { TrainerRole = "PT", CitizenId = "000000000077" }, null, default)).ErrorCode);
         Assert.Equal("TRAINER_NOT_ELIGIBLE", (await service.Submit(yoga with { Email = "other@example.test", CitizenId = "000000000078" },
             profile.PTUserId, default)).ErrorCode);
@@ -735,7 +735,7 @@ public class TrainerWorkflowTests
         await using var fixture = new TrainerTestDatabase(); await fixture.Initialize();
         var db = fixture.Db; var service = fixture.Service; var request = TrainerTestDatabase.Request;
         await AddUser(db, "staff", "staff@example.test", "0900000050", "Staff");
-        // GBR-101: Staff email (any Gmail dot variant included) cannot apply.
+        // GBR-107: Staff email (any Gmail dot variant included) cannot apply.
         Assert.Equal("TRAINER_NOT_ELIGIBLE", (await service.Submit(request with { Email = "staff@example.test" }, null, default)).ErrorCode);
 
         TrainerTestDatabase.Success(await service.Submit(request, null, default));
@@ -835,7 +835,7 @@ public class TrainerWorkflowTests
         Assert.Empty(TrainerTestDatabase.Success(await service.Applications(new(To: now.AddHours(-1)), "manager", default)).Items);
     }
 
-    // UC 3.4 step 3: gender and minimum-rating filters; the rating counts only PT contract reviews (UC 4.10, GBR-102).
+    // UC 3.4 step 3: gender and minimum-rating filters; the rating counts only PT contract reviews (UC 4.10, GBR-108).
     [SqlTrainerFact]
     public async Task Directory_filters_by_gender_and_by_average_PT_review_rating()
     {
@@ -981,7 +981,7 @@ public class TrainerWorkflowTests
         var profile = await db.TrainerProfiles.SingleAsync();
         db.Add(new BannedWordList { Word = "scam", CreatedByUserId = "manager" });
         var member = await AddUser(db, "member", "member@example.test", "0900000060", "Member");
-        // The membership graph is irrelevant here; the review only needs a PT contract row (GBR-102).
+        // The membership graph is irrelevant here; the review only needs a PT contract row (GBR-108).
         await db.Database.ExecuteSqlRawAsync("ALTER TABLE [PTPurchases] NOCHECK CONSTRAINT ALL");
         var contract = new PTPurchase { MemberUserId = member.UserId, PTUserId = profile.PTUserId, Status = PTPurchaseStatus.Expired };
         db.Add(contract);

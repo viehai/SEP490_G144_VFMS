@@ -8,7 +8,7 @@ namespace VFMS.Application.Services;
 
 public sealed partial class PersonalTrainingService
 {
-    /// <summary>GBR-99: trainers who accept new members and have the package's trainer level.</summary>
+    /// <summary>GBR-105: trainers who accept new members and have the package's trainer level.</summary>
     public async Task<Result<IReadOnlyList<PTReplacementTrainer>>> ReplacementTrainers(string actor, int contractId, CancellationToken ct)
     {
         if (await User(actor, UserRole.Member, ct) is null)
@@ -65,7 +65,7 @@ public sealed partial class PersonalTrainingService
 
     /// <summary>
     /// UC 4.13: moves the remaining sessions to the new trainer. Taught sessions and notes stay with the previous trainer;
-    /// total sessions, price and freeze status are unchanged and no payment is created (GBR-99).
+    /// total sessions, price and freeze status are unchanged and no payment is created (GBR-105).
     /// </summary>
     public Task<Result<PTContractResponse>> ChangeTrainer(string actor, int contractId, PTTrainerChangeRequest request,
         CancellationToken ct) => Write(async () =>

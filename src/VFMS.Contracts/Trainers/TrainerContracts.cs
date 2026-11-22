@@ -49,12 +49,12 @@ public sealed record TrainerProfileResponse(int Id, string UserId, string FullNa
     public TrainerProfileResponse() : this(0, "", "", "", "", "", 0, null, null, 0) { }
     public bool IsAcceptingNewMembers { get; init; }
     public DateOnly? NotAcceptingSince { get; init; }
-    /// <summary>GBR-98: first day of the 60-day count (later than NotAcceptingSince while contracts were still running).</summary>
+    /// <summary>GBR-104: first day of the 60-day count (later than NotAcceptingSince while contracts were still running).</summary>
     public DateOnly? NotAcceptingCountFrom { get; init; }
     /// <summary>PT or Yoga. Only a PT sells packages and publishes a weekly timetable (UC 3.4).</summary>
     public string TrainerRole { get; init; } = "";
 }
-/// <summary>ContractsNotified: members told they may change trainer within one week (GBR-98).</summary>
+/// <summary>ContractsNotified: members told they may change trainer within one week (GBR-104).</summary>
 public sealed record TrainerReadinessStatus(bool IsAcceptingNewMembers, int ContractsNotified);
 public sealed record SetTrainerReadinessRequest(bool IsAcceptingNewMembers);
 public sealed record TrainerReviewResponse(int Rating, string? Comment, string MemberName = "");

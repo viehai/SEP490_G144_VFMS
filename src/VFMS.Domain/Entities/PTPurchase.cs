@@ -30,7 +30,7 @@ public class PTPurchase : BaseEntity
     public decimal PurchasePrice { get; set; }
     public DateOnly PurchaseDate { get; set; }
     public bool IsCompleted { get; set; } = false;
-    /// <summary>End of the one-week window to change trainer after the trainer stops accepting members (GBR-98).</summary>
+    /// <summary>End of the one-week window to change trainer after the trainer stops accepting members (GBR-104).</summary>
     public DateTime? TrainerChangeDeadline { get; set; }
 
     // ── Navigation Properties ──────────────────────────────────

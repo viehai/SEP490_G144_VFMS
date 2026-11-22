@@ -101,7 +101,7 @@ public sealed class TrainerApiClientTests
         Assert.True(await api.SetupAsync(new("setup-token", "Example01!")));
     }
 
-    // UC 3.4 step 7 / GBR-98: 'Explore Packages' only for a PT accepting new members; schedule link for the member's package.
+    // UC 3.4 step 7 / GBR-104: 'Explore Packages' only for a PT accepting new members; schedule link for the member's package.
     [Theory]
     [InlineData("PT", true, false, true, false)]
     [InlineData("PT", false, false, false, false)]

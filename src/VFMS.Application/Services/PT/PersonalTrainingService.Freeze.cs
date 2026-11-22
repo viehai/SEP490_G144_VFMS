@@ -162,7 +162,7 @@ public sealed partial class PersonalTrainingService
     }
 
     /// <summary>
-    /// GBR-99: the remaining (untaught) sessions from <paramref name="from"/>, plus unused make-up units, move to a trainer
+    /// GBR-105: the remaining (untaught) sessions from <paramref name="from"/>, plus unused make-up units, move to a trainer
     /// with the same level who accepts new members, on a weekly pattern starting at <paramref name="firstDate"/>.
     /// </summary>
     private async Task<Result<FreezePlan>> PlanTransfer(PTPurchase p, DateOnly from, DateOnly firstDate, string trainerId,
@@ -195,7 +195,7 @@ public sealed partial class PersonalTrainingService
             await GymCoverageShort(p.MemberUserId, end, ct)));
     }
 
-    /// <summary>GBR-99: an active PT of the same gym and level who accepts new members and teaches no Yoga class.</summary>
+    /// <summary>GBR-105: an active PT of the same gym and level who accepts new members and teaches no Yoga class.</summary>
     private async Task<bool> ReplacementAllowed(PTPurchase p, string trainerId, CancellationToken ct)
     {
         var trainer = await User(trainerId, UserRole.PT, ct);
@@ -451,7 +451,7 @@ public sealed partial class PersonalTrainingService
 
     /// <summary>
     /// UC 4.9 step 7: rechecks the held post-freeze slots before approval. A slot fails when its time has passed, it falls
-    /// outside opening hours, its trainer is no longer an active PT, a replacement trainer no longer meets GBR-99, or another
+    /// outside opening hours, its trainer is no longer an active PT, a replacement trainer no longer meets GBR-105, or another
     /// booking now overlaps it (the same check used when the slots were planned).
     /// </summary>
     private async Task<List<PTSession>> UnavailableHolds(PTPurchase purchase, PTFreeze freeze, PTSession[] holds,

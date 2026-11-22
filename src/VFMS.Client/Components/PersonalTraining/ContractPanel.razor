@@ -113,6 +113,7 @@
                     else { <TrainerStatus Status="@item.Status" /> }
                 </div>
                 <p class="trainer-muted">Tính @item.CreditUnits buổi</p>
+                @if (item.CompletedByCheckIn) { <p class="trainer-muted">Ghi có mặt nhờ hội viên check-in.</p> }
                 @if (IsTrainer)
                 {
                     <a class="trainer-link" href="@($"/pt/contracts/{Contract.Id}/sessions/{item.Id}")">Mở chi tiết ca học</a>
@@ -208,7 +209,7 @@
                 @if (_sessionId == item.Id && _editor == Absence)
                 {
                     <form class="trainer-stack" @onsubmit="SendAbsenceAsync" @onsubmit:preventDefault>
-                        <p class="trainer-muted">Nếu PT chưa điểm danh hoặc ghi vắng mặt, buổi được trả lại thành buổi bù. Nếu PT đã ghi có mặt, Manager sẽ xem xét.</p>
+                        <p class="trainer-muted">Nếu PT chưa điểm danh, buổi thành buổi bù; PT có thể phản hồi đến hết ngày hôm sau, sau đó bạn mới đặt lịch buổi bù được. Nếu PT đã điểm danh (có mặt hoặc vắng mặt), Manager sẽ xem xét.</p>
                         <label>Ghi chú (không bắt buộc)<textarea class="trainer-input" rows="3" maxlength="1000" @bind="_absenceReason" disabled="@_busy"></textarea></label>
                         <div class="trainer-row"><button class="trainer-button trainer-primary" disabled="@_busy">Gửi báo cáo</button>
                             <button type="button" class="trainer-button" @onclick="CloseEditor">Đóng</button></div>
@@ -269,7 +270,7 @@
     private static bool IsFuture(DateOnly date, TimeOnly time) => date.ToDateTime(time) > LocalNow;
     // GBR-14: changes are requested at least 12 hours before the start.
     private static bool CanRequestChange(PTSessionResponse s) => s.Date.ToDateTime(s.StartTime) - LocalNow >= TimeSpan.FromHours(12);
-    // GBR-97: the Member reports 'PT Absent' on the session day, after it started.
+    // GBR-103: the Member reports 'PT Absent' on the session day, after it started.
     private bool CanReportAbsence(PTSessionResponse s) => !IsTrainer && s.TrainerAbsenceReportedAt is null && s.Date == Today &&
         !IsFuture(s.Date, s.StartTime) && s.Status is "Scheduled" or "Completed" or "NoShow" or "ReschedulePending" or "RescheduleRequested";
     private bool IDecide(PTSessionResponse s) => IsTrainer
@@ -285,7 +286,8 @@
 
     private static string AbsenceOutcome(PTSessionResponse s) => s.Status switch
     {
-        "Disputed" => "PT đã ghi có mặt, đang chờ Manager xem xét.",
+        "Disputed" => "PT đã điểm danh khác với báo cáo, đang chờ Manager xem xét.",
+        "Cancelled" when s.MakeUpAvailableAt is { } opens => $"đang chờ PT phản hồi; buổi bù đặt lịch được từ {LocalTime(opens)}.",
         "Cancelled" => "đã trả lại thành buổi bù.",
         "Completed" => "Manager xác nhận buổi tập đã diễn ra.",
         "NoShow" => "Manager xác nhận hội viên vắng mặt.",

@@ -71,15 +71,15 @@ The approved password recovery verification flow (`UC-04`, `GBR-29`) requires a 
 - Validate advance notice (`GBR-42`), min/max duration per request (`GBR-40`), and remaining cumulative quota (`GBR-41`, `MSG-27`). Weekly Yoga packages cannot be frozen (`GBR-85`).
 - Manager reviews and approves or rejects requests (`UC-17`). `JOB-03` puts the membership into `Frozen` when an approved freeze starts, restores `Active` at the end, and extends the expiry date by the frozen days. Suspend turnstile and booking access while `Frozen` (`GBR-43`). Recalculate the extension using the actual frozen days on early unfreeze (`GBR-44`).
 
-### 4.2 Trainer Recruitment & Profile (`GBR-01` to `GBR-05`, `GBR-101`, `GBR-102`)
+### 4.2 Trainer Recruitment & Profile (`GBR-01` to `GBR-05`, `GBR-107`, `GBR-108`)
 - Guests/Customers submit trainer applications with Citizen ID (CCCD), Email, Phone, and 1 to 5 certificates: PDF/JPG/PNG uploads of at most 5 MB each, HTTPS links of at most 2,048 characters, or a mix (`GBR-01`).
 - `Specialty` is `PT` or `Yoga` for both Recruitment and ProfileUpdate. Both map to the single `PT` role.
 - Recruitment and ProfileUpdate each have a 10-minute waiting period after the most recent successful submission of the same type. Recruitment matches email or CCCD, and dotted/undotted `@gmail.com` variants count as one email. Only one ProfileUpdate may be pending per trainer (`GBR-03`).
-- Staff, Manager, Admin and active Trainer accounts cannot apply. Hiring one application closes the person's other Pending/Interviewing applications (`GBR-101`).
+- Staff, Manager, Admin and active Trainer accounts cannot apply. Hiring one application closes the person's other Pending/Interviewing applications (`GBR-107`).
 - Submitting an application does **not** create an `ApplicationUser` account (`GBR-02`). When the Manager hires the candidate after an interview, the Manager sets the Trainer Level (`Junior`, `Senior`, `Master`) and confirms identity. The system links an existing active Customer/Member account, or provisions a new account with a single-use password setup link valid for 48 hours. No password is emailed. If the link expires unused, Managers are notified in-app and a resend invalidates the previous link (`GBR-04`). When matching details point to several accounts, the Manager verifies identity and selects the account to link.
 - The applicant's CCCD is stored in `TrainerProfile.CitizenId` on hire and verified for every ProfileUpdate.
 - PTs can update their public bio and avatar directly (bio screened against `BannedWordList`, `GBR-66`). New certificates, certificate replacements and specialty changes require Manager approval (`GBR-05`).
-- Trainer reviews are final and published with the Member's name (`GBR-102`).
+- Trainer reviews are final and published with the Member's name (`GBR-108`).
 
 ### 4.3 Personal Training (PT 1-on-1) Scheduling & PT Freeze (`GBR-06` to `GBR-17`)
 - Requires an active General Gym Membership covering the training period (`GBR-10`, `MSG-31`).

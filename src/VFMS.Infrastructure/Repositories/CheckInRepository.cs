@@ -51,7 +51,7 @@ public sealed class CheckInRepository : AuditedRepositoryBase, ICheckInRepositor
             .OrderByDescending(c => c.CheckinTime).Select(c => (DateTime?)c.CheckinTime).FirstOrDefaultAsync(cancellationToken);
 
     public async Task<IReadOnlyList<PTSession>> GetScheduledPtSessionsAsync(string userId, DateOnly date, CancellationToken cancellationToken = default) =>
-        await Context.PTSessions.Include(s => s.PTPurchase)
+        await Context.PTSessions.Include(s => s.PTPurchase).ThenInclude(p => p.Sessions)
             .Where(s => s.MemberUserId == userId && s.SessionDate == date && s.SessionStatus == PTSessionStatus.Scheduled)
             .ToListAsync(cancellationToken);
 

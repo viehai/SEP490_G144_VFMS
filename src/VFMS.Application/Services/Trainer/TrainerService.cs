@@ -367,7 +367,7 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
             (isGmail && user.Email.ToLower().EndsWith(GmailSuffix) && user.Email.ToLower().Replace(".", "") == identity));
     }
 
-    // GBR-101: Staff, Manager, Admin and active Trainer (PT or Yoga) accounts cannot apply.
+    // GBR-107: Staff, Manager, Admin and active Trainer (PT or Yoga) accounts cannot apply.
     private async Task<bool> IsEmployee(string email, string citizenId, CancellationToken ct) =>
         await store.Count(from u in AccountsWithEmail(email)
                           join ur in store.Query<ApplicationUserRole>() on u.UserId equals ur.UserId
@@ -390,7 +390,7 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
                 (isGmail && user.Email.ToLower().EndsWith(GmailSuffix) && user.Email.ToLower().Replace(".", "") == identity)), ct);
     }
 
-    // Only an active Customer/Member account can be linked on hire (UC-3.2 step 7, GBR-101).
+    // Only an active Customer/Member account can be linked on hire (UC-3.2 step 7, GBR-107).
     private async Task<HashSet<string>> IneligibleAccounts(IReadOnlyList<ApplicationUser> users, CancellationToken ct)
     {
         var ids = users.Select(u => u.UserId).ToList();
@@ -525,7 +525,7 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
             var userId = user?.UserId;
             var previous = await store.First(store.Query<TrainerProfile>().Where(x => x.CitizenId == a.CitizenId ||
                 (userId != null && x.PTUserId == userId)), ct);
-            // A trainer removed under GBR-98 keeps an inactive profile; hiring the same person again reactivates it.
+            // A trainer removed under GBR-104 keeps an inactive profile; hiring the same person again reactivates it.
             var rehire = previous is { IsActive: false } && previous.PTUserId == userId && previous.CitizenId == a.CitizenId;
             if (previous != null && !rehire)
                 return previous.CitizenId == a.CitizenId
@@ -573,7 +573,7 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
             profile.ExperienceYears = a.ExperienceYears;
             profile.Level = Enum.Parse<TrainerLevel>(r.Level!);
             profile.IsActive = true;
-            // New and rehired trainers start 'Accepting New Members', so the GBR-98 60-day count does not run.
+            // New and rehired trainers start 'Accepting New Members', so the GBR-104 60-day count does not run.
             profile.AcceptingNewMembers = true;
             profile.NotAcceptingSince = null;
             profile.NotAcceptingCountFrom = null;
@@ -582,7 +582,7 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
             await store.Save(ct);
             a.HiredUserId = user!.UserId;
             a.ApplicationStatus = TrainerApplicationStatus.Hired;
-            // GBR-101: hiring closes the person's other open recruitment applications.
+            // GBR-107: hiring closes the person's other open recruitment applications.
             var others = await store.List(RecruitmentHistory(store.Query<TrainerApplication>().Where(x => x.ApplicationType == "Recruitment"),
                     a.Email.Trim().ToLowerInvariant(), a.CitizenId)
                 .Where(x => x.Id != a.Id && (x.ApplicationStatus == TrainerApplicationStatus.Pending ||
@@ -687,7 +687,7 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
             TrainerRole = profile.TrainerRole != null ? profile.TrainerRole.RoleName : ""
         };
 
-    /// <summary>UC 4.12 / GBR-98: the change applies immediately; members of untouched contracts get one week to change trainer.</summary>
+    /// <summary>UC 4.12 / GBR-104: the change applies immediately; members of untouched contracts get one week to change trainer.</summary>
     public Task<Result<TrainerReadinessStatus>> SetReadiness(bool accepting, string actor, CancellationToken ct) =>
         store.Write(async () =>
         {
@@ -708,7 +708,7 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
                 if (!accepting)
                     notified = await OfferTrainerChange(actor, now, today, ct);
                 else
-                    // GBR-98: switching back to 'Accepting' closes the one-week window to change trainer.
+                    // GBR-104: switching back to 'Accepting' closes the one-week window to change trainer.
                     foreach (var contract in await store.List(store.Query<PTPurchase>()
                                  .Where(p => p.PTUserId == actor && p.TrainerChangeDeadline != null), ct))
                         contract.TrainerChangeDeadline = null;
@@ -772,7 +772,7 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
                 (x.Status == PTPurchaseStatus.Active || x.Status == PTPurchaseStatus.Frozen) &&
                 !x.IsCompleted && x.EndDate >= today), ct) > 0;
         const int pageSize = 20;
-        // GBR-102: only PT contract reviews (UC 4.10) belong to a trainer; gym feedback has no PTPurchaseId.
+        // GBR-108: only PT contract reviews (UC 4.10) belong to a trainer; gym feedback has no PTPurchaseId.
         var reviews = store.Query<TrainerReview>().Where(x => x.TrainerUserId == p.UserId && x.PTPurchaseId != null &&
             x.IsVisible && x.ReviewStatus == TrainerReviewStatus.Approved);
         var reviewTotal = await store.Count(reviews, ct);

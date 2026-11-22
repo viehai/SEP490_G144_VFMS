@@ -48,9 +48,19 @@ public sealed partial class PersonalTrainingService
         return PTPurchaseStatus.Expired;
     }
 
-    /// <summary>A cancelled session returned without penalty that has no live replacement yet.</summary>
+    /// <summary>A cancelled session returned without penalty that has no live replacement yet. A unit from a
+    /// 'PT Absent' report is usable only after the PT's response period (GBR-103).</summary>
     private List<PTSession> MakeUpUnits(PTPurchase p) => p.Sessions.Where(s => s.SessionStatus == PTSessionStatus.Cancelled &&
-        s.CancelledAt != null && !s.IsCreditForfeited && !HasLiveReplacement(p, s.Id)).ToList();
+        s.CancelledAt != null && !s.IsCreditForfeited && MakeUpAvailableAt(s) is null && !HasLiveReplacement(p, s.Id)).ToList();
+
+    /// <summary>GBR-103: when a make-up unit from an undecided 'PT Absent' report becomes usable, or null if it already is.</summary>
+    private DateTime? MakeUpAvailableAt(PTSession s)
+    {
+        if (s.SessionStatus != PTSessionStatus.Cancelled || s.TrainerAbsenceReportedAt is null || s.TrainerAbsenceReviewedAt is not null)
+            return null;
+        var opens = Utc(PersonalTrainingRules.TrainerResponseLastDay(s.SessionDate).AddDays(1), TimeOnly.MinValue);
+        return opens > Now ? opens : null;
+    }
 
     private bool HasLiveReplacement(PTPurchase p, int sessionId) => p.Sessions.Any(r => r.ReplacementForSessionId == sessionId &&
         (r.SessionStatus is PTSessionStatus.MakeUpPending or PTSessionStatus.MakeUpRequested
@@ -77,8 +87,15 @@ public sealed partial class PersonalTrainingService
                 ? new(s.ProposedDate!.Value, s.ProposedStartTime!.Value, s.ProposedEndTime!.Value,
                     s.ProposedAdjustmentType!.Value.ToString(),
                     DateTime.SpecifyKind(s.ProposalExpiresAt!.Value, DateTimeKind.Utc)) : null,
-            s.TrainerAbsenceReportedAt, s.TrainerAbsenceApproved, s.TrainerAbsenceReviewNote);
+            s.TrainerAbsenceReportedAt, s.TrainerAbsenceApproved, s.TrainerAbsenceReviewNote)
+        {
+            CompletedByCheckIn = CheckInOnly(s)
+        };
     }
+
+    /// <summary>UC 4.6 step 7: 'Present' set by the Member's check-in that no PT record has replaced.</summary>
+    private static bool CheckInOnly(PTSession s) =>
+        s.SessionStatus == PTSessionStatus.Completed && s.CheckInCompletedAt is not null && s.AttendanceRecordedAt is null;
 
     private PTContractResponse ContractResponse(PTPurchase p)
     {
@@ -91,7 +108,11 @@ public sealed partial class PersonalTrainingService
             Math.Max(0, p.TotalSessions - used),
             p.FreezeMinimumDaysSnapshot, p.FreezeMaxTotalDaysSnapshot, RemainingFreezeDays(p),
             p.Sessions.OrderBy(s => s.SessionDate).ThenBy(s => s.StartTime)
-                .Select(s => SessionResponse(s, Now) with { IsMakeUpUnit = MakeUpUnits(p).Contains(s) }).ToArray(),
+                .Select(s => SessionResponse(s, Now) with
+                {
+                    IsMakeUpUnit = MakeUpUnits(p).Contains(s),
+                    MakeUpAvailableAt = MakeUpAvailableAt(s) is { } opens ? DateTime.SpecifyKind(opens, DateTimeKind.Utc) : null
+                }).ToArray(),
             status == PTPurchaseStatus.PendingPayment ? p.Order?.OrderNumber : null,
             status == PTPurchaseStatus.PendingPayment && p.Order is { } order
                 ? DateTime.SpecifyKind(PaymentDeadline(order), DateTimeKind.Utc) : null,
@@ -460,16 +481,7 @@ public sealed partial class PersonalTrainingService
         return valid ? Result<PTSessionResponse>.Success(SessionResponse(session, now)) : Conflict<PTSessionResponse>(message);
     }
 
-    private static void SettleCredits(PTPurchase p)
-    {
-        var (used, reserved) = PersonalTrainingRules.Credits(p.Sessions);
-        p.RemainingSessions = Math.Max(0, p.TotalSessions - used);
-        if (p.RemainingSessions == 0 && reserved == 0)
-        {
-            p.Status = PTPurchaseStatus.Completed;
-            p.IsCompleted = true;
-        }
-    }
+    private static void SettleCredits(PTPurchase p) => PersonalTrainingRules.Settle(p);
 
     private static bool AwaitingAttendance(PTSessionStatus status) =>
         status is PTSessionStatus.Scheduled or PTSessionStatus.ReschedulePending or PTSessionStatus.RescheduleRequested;
@@ -508,7 +520,8 @@ public sealed partial class PersonalTrainingService
         }
     }
 
-    /// <summary>UC 4.6 / GBR-97: Present or Absent is recorded after the session ends, on the session day, and can be edited that day.</summary>
+    /// <summary>UC 4.6 / GBR-103: Present or Absent is recorded after the session ends, on the session day, and can be edited
+    /// that day. For a session the Member reported as 'PT Absent', the PT can still record it until the end of the next day.</summary>
     public Task<Result<PTSessionResponse>> RecordAttendance(string actor, int id, bool attended, CancellationToken ct) => Write(async () =>
     {
         if (await User(actor, UserRole.PT, ct) is null)
@@ -518,31 +531,35 @@ public sealed partial class PersonalTrainingService
             return Missing<PTSessionResponse>();
         var s = p.Sessions.Single(x => x.Id == id);
         var now = Now;
-        if (s.SessionDate != Today || Utc(s.SessionDate, s.EndTime) > now)
-            return Conflict<PTSessionResponse>("Chỉ điểm danh sau khi buổi tập kết thúc và trong chính ngày tập.");
+        var memberReported = s.TrainerAbsenceReportedAt != null && s.TrainerAbsenceReviewedAt == null &&
+            s.SessionStatus is PTSessionStatus.Cancelled or PTSessionStatus.Disputed;
+        var lastDay = memberReported ? PersonalTrainingRules.TrainerResponseLastDay(s.SessionDate) : s.SessionDate;
+        if (Today < s.SessionDate || Today > lastDay || Utc(s.SessionDate, s.EndTime) > now)
+            return Conflict<PTSessionResponse>(memberReported
+                ? "Chỉ điểm danh buổi bị hội viên báo vắng đến hết ngày hôm sau."
+                : "Chỉ điểm danh sau khi buổi tập kết thúc và trong chính ngày tập.");
         if (attended && !await HasGymAccess(p.MemberUserId, s.SessionDate, ct))
             return Result<PTSessionResponse>.Failure(
                 "Hội viên không có quyền vào gym trong ngày tập. Hãy ghi nhận vắng mặt.", "PT_GYM_COVERAGE", 409);
 
-        var memberReported = s.TrainerAbsenceReportedAt != null && s.TrainerAbsenceReviewedAt == null;
         if (s.SessionStatus == PTSessionStatus.PendingFreeze)
         {
             // Protected by a pending freeze: attending uses the session, an absence is never penalised.
             if (attended)
                 s.SessionStatus = PTSessionStatus.Completed;
         }
-        else if (memberReported && s.SessionStatus is PTSessionStatus.Cancelled or PTSessionStatus.Disputed)
+        else if (memberReported)
         {
-            // UC 4.11: PT 'Present' against a Member 'PT Absent' report goes to the Manager.
-            if (attended && s.SessionStatus != PTSessionStatus.Disputed)
+            // GBR-103: any PT record against the Member's 'PT Absent' report goes to the Manager (UC 4.11).
+            if (s.SessionStatus != PTSessionStatus.Disputed)
             {
                 s.SessionStatus = PTSessionStatus.Disputed;
                 s.CancelledAt = null;
+                s.TrainerAbsenceApproved = null;
                 foreach (var manager in await ManagerIds(actor, ct))
-                    Notify(manager, "Tranh chấp điểm danh PT", "PT ghi có mặt nhưng hội viên báo PT vắng mặt.", nameof(PTSession), id);
+                    Notify(manager, "Tranh chấp điểm danh PT",
+                        $"Hội viên báo PT vắng mặt nhưng PT ghi hội viên {(attended ? "có mặt" : "vắng mặt")}.", nameof(PTSession), id);
             }
-            else if (!attended)
-                MarkMakeUp(s, now);
         }
         else if (AwaitingAttendance(s.SessionStatus) || s.SessionStatus is PTSessionStatus.Completed or PTSessionStatus.NoShow)
         {
@@ -550,20 +567,24 @@ public sealed partial class PersonalTrainingService
                 CloseMemberReschedule(s, null, "RescheduleExpired", "Yêu cầu đổi lịch đã hết hạn.");
             else if (AwaitingAttendance(s.SessionStatus))
                 ClearProposal(s);
-            // UC 4.8 step 8.1 / GBR-97: a session under a pending freeze is never penalised, even after a 'Present' is corrected.
+            // UC 4.8 step 8.1 / GBR-103: a session under a pending freeze is never penalised, even after a 'Present' is corrected.
             var pendingFreeze = s.SessionStatus == PTSessionStatus.Completed && p.PTFreezes.Any(f =>
                 f.RequestStatus == PTFreezeRequestStatus.Pending && f.RequestedStartDate <= s.SessionDate && s.SessionDate < f.RequestedEndDate);
             s.SessionStatus = attended ? PTSessionStatus.Completed : pendingFreeze ? PTSessionStatus.PendingFreeze : PTSessionStatus.NoShow;
         }
         else
             return Conflict<PTSessionResponse>("Buổi này không thể điểm danh.");
+        // UC 4.6 step 6: the PT's record replaces a 'Present' set by check-in.
+        s.AttendanceRecordedAt = now;
+        s.AttendanceRecordedPresent = attended;
+        s.CheckInCompletedAt = null;
         SettleCredits(p);
         Audit(actor, nameof(PTSession), s.Id, attended ? "AttendancePresent" : "AttendanceAbsent");
         await store.Save(ct);
         return Result<PTSessionResponse>.Success(SessionResponse(s, now));
     }, ct);
 
-    /// <summary>UC 4.6 / GBR-97: on the session day the Member reports 'PT Absent'.</summary>
+    /// <summary>UC 4.6 / GBR-103: on the session day the Member reports 'PT Absent'.</summary>
     public Task<Result<PTSessionResponse>> ReportTrainerAbsence(string actor, int id,
         PTTrainerAbsenceReportRequest request, CancellationToken ct) => Write(async () =>
     {
@@ -583,27 +604,34 @@ public sealed partial class PersonalTrainingService
         session.StatusBeforeTrainerAbsenceReport = session.SessionStatus;
         session.TrainerAbsenceReason = string.IsNullOrWhiteSpace(request.Reason) ? null : request.Reason.Trim();
         session.TrainerAbsenceReportedAt = now;
-        string message;
-        if (session.SessionStatus == PTSessionStatus.Completed)
+        string message, trainerMessage;
+        // GBR-103: a PT record (Present or Absent) disagrees with the report; a 'Present' set only by check-in is not one.
+        var trainerRecorded = session.SessionStatus is PTSessionStatus.Completed or PTSessionStatus.NoShow && !CheckInOnly(session);
+        if (trainerRecorded)
         {
+            var recorded = session.SessionStatus == PTSessionStatus.Completed ? "có mặt" : "vắng mặt";
             session.SessionStatus = PTSessionStatus.Disputed;
-            message = "PT đã ghi có mặt nên báo cáo được chuyển Manager xem xét.";
+            message = trainerMessage = $"PT đã ghi hội viên {recorded} nên báo cáo được chuyển Manager xem xét.";
             foreach (var manager in await ManagerIds(session.PTUserId, ct))
-                Notify(manager, "Tranh chấp điểm danh PT", "Hội viên báo PT vắng mặt nhưng PT đã ghi có mặt.", nameof(PTSession), id);
+                Notify(manager, "Tranh chấp điểm danh PT", $"Hội viên báo PT vắng mặt nhưng PT đã ghi hội viên {recorded}.", nameof(PTSession), id);
         }
         else
         {
-            // PT recorded Absent or nothing: the session did not take place and becomes a make-up unit.
+            // The PT recorded nothing: the session becomes a make-up unit, usable once the PT's response period ends.
             if (AwaitingAttendance(session.SessionStatus))
                 ClearProposal(session);
             MarkMakeUp(session, now);
             session.TrainerAbsenceApproved = true;
             ReopenIfCompleted(contract, Today);
-            message = $"Buổi tập được trả lại thành buổi bù, dùng được đến {PersonalTrainingRules.MakeUpDeadline(contract.EndDate):dd/MM/yyyy}.";
+            var lastDay = PersonalTrainingRules.TrainerResponseLastDay(session.SessionDate);
+            message = $"Buổi tập thành buổi bù. PT có thể phản hồi đến hết ngày {lastDay:dd/MM/yyyy}; sau đó bạn đặt lịch buổi bù được " +
+                $"(dùng được đến {PersonalTrainingRules.MakeUpDeadline(contract.EndDate):dd/MM/yyyy}).";
+            trainerMessage = $"Hội viên báo bạn vắng buổi {session.StartTime:HH:mm} ngày {session.SessionDate:dd/MM/yyyy}. " +
+                $"Nếu bạn đã dạy, hãy điểm danh trước hết ngày {lastDay:dd/MM/yyyy} để Manager xem xét.";
         }
         SettleCredits(contract);
         Audit(actor, nameof(PTSession), id, $"TrainerAbsentReported:{session.SessionStatus}");
-        Notify(session.PTUserId, "Hội viên báo PT vắng mặt", message, nameof(PTSession), id);
+        Notify(session.PTUserId, "Hội viên báo PT vắng mặt", trainerMessage, nameof(PTSession), id);
         Notify(actor, "Đã ghi nhận báo PT vắng mặt", message, nameof(PTSession), id);
         await store.Save(ct);
         return Result<PTSessionResponse>.Success(SessionResponse(session, now));
@@ -629,7 +657,37 @@ public sealed partial class PersonalTrainingService
             s.Member.FullName, s.PTUser.FullName, s.SessionDate, s.StartTime, s.EndTime, s.TrainerAbsenceReason,
             s.TrainerAbsenceReportedAt!.Value, s.SessionStatus.ToString(),
             s.TrainerAbsenceReviewedAt == null ? null : DisputeDecision(s.SessionStatus), s.TrainerAbsenceReviewNote,
-            s.TrainerAbsenceReviewedByUserId is { } reviewer ? names.GetValueOrDefault(reviewer) : null), ct);
+            s.TrainerAbsenceReviewedByUserId is { } reviewer ? names.GetValueOrDefault(reviewer) : null,
+            // Older rows have no saved PT record: before this column, a dispute always came from a PT 'Present'.
+            s.AttendanceRecordedPresent ?? (s.StatusBeforeTrainerAbsenceReport == PTSessionStatus.NoShow ? false : true),
+            s.AttendanceRecordedAt is { } recordedAt ? DateTime.SpecifyKind(recordedAt, DateTimeKind.Utc) : null), ct);
+    }
+
+    /// <summary>UC 4.11 step 3: the Member's gym visits on the disputed session's day, marked when they match the session.</summary>
+    public async Task<Result<IReadOnlyList<PTDisputeCheckIn>>> DisputeCheckIns(string actor, int id, CancellationToken ct)
+    {
+        if (await User(actor, UserRole.Manager, ct) is null)
+            return Forbidden<IReadOnlyList<PTDisputeCheckIn>>();
+        var session = await store.Query<PTSession>().AsNoTracking(store)
+            .SingleOrDefaultAsync(store, s => s.Id == id && s.TrainerAbsenceReportedAt != null, ct);
+        if (session is null)
+            return Missing<IReadOnlyList<PTDisputeCheckIn>>();
+        var dayStart = Utc(session.SessionDate, TimeOnly.MinValue);
+        var dayEnd = dayStart.AddDays(1);
+        var visits = await store.Query<CheckIn>().AsNoTracking(store).Including(store, "HandledByUser", "CheckedOutByUser")
+            .Where(c => c.MemberUserId == session.MemberUserId && c.CheckinTime >= dayStart && c.CheckinTime < dayEnd)
+            .OrderBy(c => c.CheckinTime).ToListAsync(store, ct);
+        var start = Utc(session.SessionDate, session.StartTime);
+        var end = Utc(session.SessionDate, session.EndTime);
+        var utc = (DateTime t) => DateTime.SpecifyKind(t, DateTimeKind.Utc);
+        IReadOnlyList<PTDisputeCheckIn> rows = visits.Select(c => new PTDisputeCheckIn(
+            utc(c.CheckinTime), c.CheckinMethod.ToString(), c.HandledByUser?.FullName,
+            c.CheckoutTime is { } outAt ? utc(outAt) : null, c.CheckoutMethod?.ToString(), c.CheckedOutByUser?.FullName,
+            c.Status.ToString(),
+            // GBR-92 window: from 30 minutes before to 15 minutes after the start.
+            c.CheckinTime >= start.AddMinutes(-30) && c.CheckinTime <= start.AddMinutes(15),
+            c.CheckinTime < end && (c.CheckoutTime ?? (c.Status == CheckInStatus.Active ? Now : c.CheckinTime)) > start)).ToList();
+        return Result<IReadOnlyList<PTDisputeCheckIn>>.Success(rows);
     }
 
     private static string? DisputeDecision(PTSessionStatus status) => status switch
@@ -663,7 +721,7 @@ public sealed partial class PersonalTrainingService
                 ReopenIfCompleted(session.PTPurchase, Today);
                 break;
             case PTDisputeDecisions.MemberAbsent:
-                // GBR-97: a session under a pending freeze is never penalised.
+                // GBR-103: a session under a pending freeze is never penalised.
                 session.SessionStatus = session.PTPurchase.PTFreezes.Any(f => f.RequestStatus == PTFreezeRequestStatus.Pending &&
                     f.RequestedStartDate <= session.SessionDate && session.SessionDate < f.RequestedEndDate)
                     ? PTSessionStatus.PendingFreeze : PTSessionStatus.NoShow;
@@ -689,10 +747,9 @@ public sealed partial class PersonalTrainingService
         return Result<PTSessionResponse>.Success(SessionResponse(session, now));
     }, ct);
 
-    /// <summary>GBR-97: 20:00 reminder for unrecorded sessions of the day; unrecorded past days become Completed (auto).</summary>
+    /// <summary>GBR-103: sessions nobody recorded and no check-in completed become Completed (auto) after their day.</summary>
     public Task<Result<int>> ProcessAttendance(CancellationToken ct) => Write(async () =>
     {
-        var now = Now;
         var today = Today;
         var changed = 0;
         var stale = await store.Query<PTSession>().Including(store, "PTPurchase.Sessions")
@@ -705,20 +762,6 @@ public sealed partial class PersonalTrainingService
             session.SessionStatus = PTSessionStatus.AutoCompleted;
             SettleCredits(session.PTPurchase);
             changed++;
-        }
-        if (now.AddHours(7).TimeOfDay >= TimeSpan.FromHours(20))
-        {
-            var unrecorded = await store.List(store.Query<PTSession>().Where(s => s.SessionDate == today &&
-                s.AttendanceReminderSentAt == null && (s.SessionStatus == PTSessionStatus.Scheduled ||
-                    s.SessionStatus == PTSessionStatus.ReschedulePending || s.SessionStatus == PTSessionStatus.RescheduleRequested))
-                .OrderBy(s => s.Id).Take(200), ct);
-            foreach (var session in unrecorded.Where(s => Utc(s.SessionDate, s.EndTime) <= now))
-            {
-                session.AttendanceReminderSentAt = now;
-                Notify(session.PTUserId, "Nhắc điểm danh PT",
-                    $"Buổi {session.StartTime:HH:mm}–{session.EndTime:HH:mm} hôm nay chưa được điểm danh.", nameof(PTSession), session.Id);
-                changed++;
-            }
         }
         await store.Save(ct);
         return Result<int>.Success(changed);
@@ -742,7 +785,7 @@ public sealed partial class PersonalTrainingService
         return Result<PTSessionResponse>.Success(SessionResponse(session, Now));
     }, ct);
 
-    /// <summary>UC 4.10 / GBR-102: the completed contract's final session, if it was held; its trainer is the one reviewed.</summary>
+    /// <summary>UC 4.10 / GBR-108: the completed contract's final session, if it was held; its trainer is the one reviewed.</summary>
     private PTSession? FinalTaughtSession(PTPurchase p)
     {
         if (EffectiveStatus(p) != PTPurchaseStatus.Completed)
