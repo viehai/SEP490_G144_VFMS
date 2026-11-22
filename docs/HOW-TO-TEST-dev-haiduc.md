@@ -216,7 +216,25 @@ The dashboards (and `/staff/membership-cash-receipt`, `/manager/competitions`) n
 
 Try it: as Staff, check a member in on `/staff/check-ins`, then open `/staff/dashboard`: the count and the table include them. As Manager, generate a report for a past day on `/manager/business-reports`, then open `/manager/dashboard`.
 
-## 7. Known gaps
+## 7. Trainer roles (database)
+
+The `TrainerRoles` table from the updated ERD (*VFMS Erd v2 - TrainerRole* on Drive) is in main since PR #15. The migration `AddTrainerRoles` runs by itself the next time the API starts, so there is nothing to run by hand. No screen changes, and the login roles are still `PT` and `YogaInstructor`.
+
+Check it in SQL after starting the API once:
+```sql
+-- Two rows: PT -> PT, Yoga -> YogaInstructor
+SELECT t.Id, t.RoleName, r.RoleName AS LoginRole, t.IsActive
+FROM TrainerRoles t JOIN ApplicationRoles r ON r.Id = t.RoleId;
+
+-- Profiles that existed before the migration got a role: Yoga if the user is only a yoga instructor, otherwise PT
+SELECT u.Email, tr.RoleName
+FROM TrainerProfiles p
+JOIN ApplicationUsers u ON u.UserId = p.PTUserId
+LEFT JOIN TrainerRoles tr ON tr.Id = p.TrainerRoleId;
+```
+Every trainer application that existed before the migration is set to PT.
+
+## 8. Known gaps
 
 - **One integration test from dev/viehai fails on SQLite.** `MembershipPurchaseApiTests.InvoicePdfPreservesMaximumPersistedDecimalPrecisionWithLongHistoricalItemName` comes from dev/viehai (commit 0642777, invoice PDF export) and tests that feature at the largest `decimal(18,2)` amount. The test's own SQLite database can't hold that many digits (`9999999999999999.99` comes back as `10000000000000000`), so it fails on main too. It isn't caused by this branch. Expected result: Unit 585, Client 315 and Integration 499 pass, with that 1 failing and 21 skipped (SQL Server-only tests). To run the rest without it:
   ```powershell
@@ -226,6 +244,7 @@ Try it: as Staff, check a member in on `/staff/check-ins`, then open `/staff/das
 - **Yoga plans can't be renewed yet.** Renewal (`/my-memberships` → gia hạn) still only covers gym plans, so a yoga member buys a new yoga plan instead; it starts after the current one ends.
 - **Old SQL yoga parts removed (20/11/2026).** Before yoga plans existed, a YOGA part was added by SQL to the gym package "Gym 1 Month", so its buyers (the member and the three demo members) also got a yoga membership. That part and those 4 yoga memberships are now soft-deleted (`IsDeleted = 1`, by SQL, because no API removes a membership); nothing used them. The 4 accounts bought "Yoga 1 Tháng" through the real flow instead, so `/my-memberships` shows one Gym card and one Yoga card.
 - **The yoga instructor account was made by SQL.** `yoga@test.vn` (Test Yoga Instructor) was created by SQL before any screen could make one, and every local class and session points to it, so it stays. Hiring a yoga trainer through recruitment still gives the PT role, not YogaInstructor (left as is: changing it touches the recruitment module and database). Without SQL, an Admin can make one with `POST /api/admin/users/staff` (role `YogaInstructor`) or add the role with `PUT /api/admin/users/{userId}/roles`; there is no Admin user page in the client for this yet.
+- **Trainer roles are only in the database so far.** Profiles and applications created after the migration get no trainer role (`TrainerRoleId` is NULL) until `TrainerService` sets it, and merging `PT` and `YogaInstructor` into one `Trainer` login role is not done. Both belong to the trainer module owner.
 - **Still showing written-in demo content (not changed here):** the PT dashboard `/pt/dashboard` (PT module, another team member), the home page equipment showcase (static), and the template pages Weather and Counter with their menu links.
 - **Business reports made while testing.** On 20/11/2026 two business reports were generated on the local database to check the Manager dashboard: Monthly 2026-10 (empty) and Daily 2026-11-16. The dashboard shows the newest one.
 - **Self check-in from anywhere.** Because the kiosk is open to Customers and Members, one can check in from anywhere with `/my-qr` plus `/kiosk` on one phone. That check-in can also mark a PT session as done.
