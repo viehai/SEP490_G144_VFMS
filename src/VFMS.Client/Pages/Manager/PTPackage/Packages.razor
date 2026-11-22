@@ -2,7 +2,6 @@
 @layout ManagerAdminLayout
 @attribute [Authorize(Roles = "Manager")]
 @inject PersonalTrainingApiClient Api
-@inject IJSRuntime JS
 @inject ToastService Toasts
 
 <PageTitle>Quản lý gói PT | Victor Fitness</PageTitle>
@@ -122,7 +121,7 @@
                                     <div class="flex flex-wrap gap-2">
                                         <button type="button" class="@Button" disabled="@ListDisabled" aria-label="Xem hoặc sửa @row.Name" @onclick="() => View(row)">Xem / Sửa</button>
                                         <button type="button" class="@Button" disabled="@ListDisabled" @onclick="() => ChangeStatusAsync(row)">@(row.IsActive ? "Ngừng bán" : "Mở bán")</button>
-                                        <button type="button" class="@Button text-red-700 hover:bg-red-50" disabled="@ListDisabled" aria-label="Xóa @row.Name" @onclick="() => DeleteAsync(row)">Xóa</button>
+                                        <button type="button" class="@Button text-red-700 hover:bg-red-50" disabled="@ListDisabled" aria-label="Xóa @row.Name" @onclick="() => _deleting = row">Xóa</button>
                                     </div>
                                 </td>
                             </tr>
@@ -139,6 +138,22 @@
             </nav>
         }
     </section>
+
+    @* UC 4.3 Step 2.2: in-page confirmation (a native confirm() is blocked in some embedded browsers). *@
+    <WorkspaceModal Open="@(_deleting is not null)" Eyebrow="VFMS / GÓI PT" Title="Xóa gói PT" OnClose="CloseDelete">
+        @if (_deleting is { } target)
+        {
+            <div class="pt-confirm space-y-5 p-6 text-sm text-[#242424]">
+                <p class="text-base font-semibold break-words">Xóa gói "@target.Name"?</p>
+                <p class="text-[#6F6966]">Nếu gói đã có lịch sử đơn hàng hoặc đăng ký, hệ thống sẽ chuyển gói sang Ngừng bán.</p>
+                <TrainerFeedback Error="@_error" />
+                <div class="flex flex-wrap justify-end gap-3 border-t border-[#D8D1CD] pt-4">
+                    <button type="button" class="@Button px-4 py-2 text-sm" disabled="@_working" @onclick="CloseDelete">Hủy</button>
+                    <button type="button" class="@PrimaryButton" disabled="@_working" @onclick="DeleteAsync">@(_working ? "Đang xóa..." : "Xóa gói")</button>
+                </div>
+            </div>
+        }
+    </WorkspaceModal>
 </div>
 
 @code {
@@ -149,7 +164,7 @@
 
     private PTPackageResponse[]? _packages;
     private PTPackageResponse[] _filtered = [];
-    private PTPackageResponse? _selected;
+    private PTPackageResponse? _selected, _deleting;
     private Draft? _draft;
     private int _page = 1;
     private string _searchInput = "", _statusInput = "";
@@ -260,13 +275,15 @@
         await LoadAsync();
     });
 
-    private Task DeleteAsync(PTPackageResponse item) => RunActionAsync(async () =>
+    private void CloseDelete()
     {
-        if (!await JS.InvokeAsync<bool>("confirm",
-            $"Xóa gói {item.Name}? Nếu gói đã có lịch sử đơn hàng hoặc đăng ký, hệ thống sẽ chuyển gói sang Ngừng bán."))
-            return;
+        if (!_working) _deleting = null;
+    }
 
+    private Task DeleteAsync() => _deleting is not { } item ? Task.CompletedTask : RunActionAsync(async () =>
+    {
         var result = await Api.DeletePackageAsync(item.Id);
+        _deleting = null;
         Toasts.Show(result.KeptHistory
             ? "Gói PT đã được chuyển sang Ngừng bán. Lịch sử đơn hàng và hợp đồng vẫn được lưu."
             : "Đã xóa gói PT.");

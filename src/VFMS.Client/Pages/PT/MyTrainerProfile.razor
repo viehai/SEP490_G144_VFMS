@@ -20,7 +20,8 @@
                 <div class="trainer-row">
                     <TrainerAvatar Trainer="detail.Profile" />
                     <div><h2>@detail.Profile.FullName</h2><p class="trainer-muted">@detail.Profile.TrainerRole · @detail.Profile.Specialty · @detail.Profile.Level · @detail.Profile.ExperienceYears năm kinh nghiệm</p>
-                    <p class="trainer-muted">@(detail.Profile.AverageRating > 0 ? $"{detail.Profile.AverageRating:0.0} / 5 sao" : "Chưa có đánh giá")</p></div>
+                    @if (detail.Profile.AverageRating > 0) { <StarRating Value="detail.Profile.AverageRating" /> }
+                    else { <p class="trainer-muted">Chưa có đánh giá</p> }</div>
                 </div>
                 @* UC 4.12: accepting status belongs to Trainer Role PT only. *@
                 @if (detail.Profile.TrainerRole == "PT")

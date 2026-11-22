@@ -73,11 +73,17 @@
                 }
                 else
                 {
-                    <p class="trainer-status">Trung bình @detail.Profile.AverageRating.ToString("0.0") / 5 sao</p>
+                    <div class="trainer-row">
+                        <StarRating Value="detail.Profile.AverageRating" Large="true" />
+                        <span class="trainer-muted">trên 5 · @detail.ReviewTotal đánh giá</span>
+                    </div>
                     <ul class="trainer-list">
                         @foreach (var review in detail.Reviews)
                         {
-                            <li><strong>@review.MemberName</strong> · @review.Rating / 5 sao<p class="trainer-copy">@review.Comment</p></li>
+                            <li class="trainer-review-item">
+                                <div class="trainer-row trainer-between"><strong>@review.MemberName</strong><StarRating Value="review.Rating" ShowValue="false" /></div>
+                                <p class="trainer-copy">@review.Comment</p>
+                            </li>
                         }
                     </ul>
                     @if (detail.ReviewTotal > 20)

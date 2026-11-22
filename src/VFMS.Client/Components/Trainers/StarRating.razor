@@ -1,0 +1,11 @@
+@* Read-only 5-star rating; the yellow layer is clipped to Value/5 so averages like 4,3 show a partial star (UC 3.4, UC 4.10). *@
+<span class="trainer-stars @(Large ? "trainer-stars--lg" : null)" role="img" aria-label="@($"{Value:0.0} trên 5 sao")">
+    <span class="trainer-stars-track" aria-hidden="true">★★★★★<span class="trainer-stars-fill" style="width: @Percent">★★★★★</span></span>
+    @if (ShowValue) { <span class="trainer-stars-value">@Value.ToString("0.0")</span> }
+</span>
+@code {
+    [Parameter] public decimal Value { get; set; }
+    [Parameter] public bool ShowValue { get; set; } = true;
+    [Parameter] public bool Large { get; set; }
+    private string Percent => FormattableString.Invariant($"{Math.Clamp(Value, 0, 5) * 20:0.##}%");
+}

@@ -65,7 +65,8 @@
                     </div>
                     <div class="trainer-row trainer-between">
                         <span class="trainer-status">@trainer.Level</span>
-                        <span>@(trainer.AverageRating > 0 ? $"{trainer.AverageRating:0.0} / 5 sao" : "Chưa có đánh giá")</span>
+                        @if (trainer.AverageRating > 0) { <StarRating Value="trainer.AverageRating" /> }
+                        else { <span class="trainer-muted">Chưa có đánh giá</span> }
                     </div>
                 </article>
             }

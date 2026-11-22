@@ -61,23 +61,42 @@
     @* UC 4.10: the 'Rate Your Trainer' modal. *@
     <WorkspaceModal Open="@(_reviewOpen && CanOfferReview)" Eyebrow="VFMS / GÓI PT" Title="Đánh giá huấn luyện viên"
                     OnClose="() => _reviewOpen = false">
-        <form class="trainer-stack" @onsubmit="ReviewAsync" @onsubmit:preventDefault>
-            <p><strong>@TrainerName</strong> · @(Contract.PackageName ?? $"Hợp đồng #{Contract.Id}")@(Contract.TrainerLevel is { } level ? $" · cấp {level}" : "")</p>
-            <p class="trainer-muted">Đánh giá được công khai kèm tên của bạn và không thể sửa hoặc xóa.</p>
-            <fieldset class="trainer-row" disabled="@_busy">
-                <legend>Điểm: @_rating/5 sao</legend>
-                @for (var i = 1; i <= 5; i++)
-                {
-                    var star = i;
-                    <button type="button" class="trainer-button" aria-label="@($"{star} sao")" aria-pressed="@(_rating >= star ? "true" : "false")"
-                            @onclick="() => _rating = star">@(_rating >= star ? "★" : "☆")</button>
-                }
+        <form class="pt-review-form" @onsubmit="ReviewAsync" @onsubmit:preventDefault>
+            <div class="pt-review-trainer">
+                <span class="trainer-avatar" aria-hidden="true">@Initials(TrainerName)</span>
+                <div>
+                    <strong>@(TrainerName ?? "Huấn luyện viên")</strong>
+                    <span class="trainer-muted">@(Contract.PackageName ?? $"Hợp đồng #{Contract.Id}")@(Contract.TrainerLevel is { } level ? $" · cấp {level}" : "")</span>
+                </div>
+            </div>
+            <fieldset class="pt-review-rating" disabled="@_busy" @onmouseleave="() => _hoverRating = null">
+                <legend>Bạn chấm buổi tập với huấn luyện viên này mấy sao?</legend>
+                <div class="pt-review-stars">
+                    @for (var i = 1; i <= 5; i++)
+                    {
+                        var star = i;
+                        <button type="button" class="pt-review-star" data-on="@((_hoverRating ?? _rating) >= star ? "true" : "false")"
+                                aria-label="@($"{star} sao")" aria-pressed="@(_rating == star ? "true" : "false")"
+                                @onmouseenter="() => _hoverRating = star" @onfocus="() => _hoverRating = star"
+                                @onclick="() => _rating = star">★</button>
+                    }
+                </div>
+                <span class="pt-review-caption" aria-live="polite">@(_hoverRating ?? _rating)/5 · @RatingLabel(_hoverRating ?? _rating)</span>
             </fieldset>
-            <label>Nhận xét (10–500 ký tự)<textarea class="trainer-input" rows="4" maxlength="500"
-                @bind="_comment" disabled="@_busy"></textarea></label>
+            <label class="pt-review-comment">Nhận xét
+                <textarea class="trainer-input" rows="4" maxlength="500" placeholder="Chia sẻ trải nghiệm: giáo án, cách hướng dẫn, mức độ hỗ trợ…"
+                          @bind="_comment" @bind:event="oninput" disabled="@_busy"></textarea>
+                <span class="pt-review-count" data-ok="@(CommentLength is 0 or (>= 10 and <= 500) ? "true" : "false")">
+                    <span>Tối thiểu 10 ký tự</span><span>@CommentLength/500</span>
+                </span>
+            </label>
             <BannedWordPreview Text="@_comment" Words="_bannedWords" />
+            <p class="pt-review-note">Đánh giá được công khai kèm tên của bạn và không thể sửa hoặc xóa.</p>
             <TrainerFeedback Error="@_error" />
-            <button class="trainer-button trainer-primary" disabled="@_busy">Gửi đánh giá</button>
+            <div class="pt-review-actions">
+                <button type="button" class="trainer-button" disabled="@_busy" @onclick="() => _reviewOpen = false">Hủy</button>
+                <button class="trainer-button trainer-primary" disabled="@_busy">Gửi đánh giá</button>
+            </div>
         </form>
     </WorkspaceModal>
 
@@ -245,6 +264,18 @@
     private string _comment = "", _absenceReason = "";
     private IReadOnlyList<string> _bannedWords = [];
     private int _rating = 5;
+    private int? _hoverRating;
+    private int CommentLength => _comment.Trim().Length;
+    private static string RatingLabel(int rating) => rating switch
+    {
+        1 => "Rất không hài lòng",
+        2 => "Chưa hài lòng",
+        3 => "Bình thường",
+        4 => "Hài lòng",
+        _ => "Rất hài lòng"
+    };
+    private static string Initials(string? name) => string.Concat((name ?? "HLV").Replace("-", " ")
+        .Split(' ', StringSplitOptions.RemoveEmptyEntries).TakeLast(2).Select(word => char.ToUpperInvariant(word[0])));
     private bool _busy, _history, _reviewed, _reviewOpen;
 
     private static readonly string[] Taught = ["Completed", "AutoCompleted", "NoShow", "Disputed"];
