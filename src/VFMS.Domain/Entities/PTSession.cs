@@ -29,15 +29,21 @@ public class PTSession : BaseEntity
     public DateTime? ProposalEmailSentAt { get; set; }
     public DateTime? ProposalEmailRetryAt { get; set; }
     public DateTime? NoteUpdatedAt { get; set; }
+    /// <summary>The PT who wrote the coaching note (UC 4.6 step 9).</summary>
+    public string? NoteAuthorUserId { get; set; }
     public int? ReplacementForSessionId { get; set; }
     public string? TrainerAbsenceReason { get; set; }
     public DateTime? TrainerAbsenceReportedAt { get; set; }
     public PTSessionStatus? StatusBeforeTrainerAbsenceReport { get; set; }
     public DateTime? TrainerAbsenceReviewedAt { get; set; }
     public string? TrainerAbsenceReviewNote { get; set; }
+    /// <summary>The Manager who decided the attendance dispute (UC 4.11 step 5).</summary>
+    public string? TrainerAbsenceReviewedByUserId { get; set; }
     public bool? TrainerAbsenceApproved { get; set; }
     /// <summary>When the 20:00 attendance reminder was sent to the PT (GBR-97).</summary>
     public DateTime? AttendanceReminderSentAt { get; set; }
+    /// <summary>The freeze whose post-freeze schedule created this session, so withdrawing it restores only its own moves (UC 4.8).</summary>
+    public int? PTFreezeId { get; set; }
 
     // ── Navigation Properties ──────────────────────────────────
     public PTPurchase PTPurchase { get; set; } = null!;

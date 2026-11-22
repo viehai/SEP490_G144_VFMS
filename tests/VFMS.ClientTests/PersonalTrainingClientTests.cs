@@ -36,7 +36,8 @@ public sealed class PersonalTrainingClientTests
                 Content = JsonContent.Create(new PTCheckoutResponse(1, "ORD-1", "Pending", 500000,
                     DateTime.UtcNow.AddMinutes(15), null, null, DateTime.UtcNow.AddMinutes(20)))
             };
-        })) { BaseAddress = new Uri("https://api.example.test/") };
+        }))
+        { BaseAddress = new Uri("https://api.example.test/") };
         var login = new LoginResponse("access", "refresh", "Bearer", 1800, "member", "Member", "member@example.test", ["Member"]);
         var session = new AuthSession(new Storage(JsonSerializer.Serialize(new StoredAuthSession(login, DateTimeOffset.UtcNow.AddMinutes(10), false))),
             new AuthApiClient(http));

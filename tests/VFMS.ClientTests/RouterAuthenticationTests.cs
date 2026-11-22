@@ -68,6 +68,7 @@ public sealed class RouterAuthenticationTests
             .AddSingleton(session).AddSingleton<AuthenticationStateProvider>(session)
             .AddSingleton(new MembershipPlanApiClient(http, session))
             .AddSingleton(new VfmsApiClient(http, session))
+            .AddSingleton(new ToastService())
             .AddSingleton<IJSRuntime>(storage).AddSingleton<NavigationManager>(navigation)
             .AddSingleton<IComponentActivator>(components)
             .AddSingleton<INavigationInterception>(new NoNavigationInterception())

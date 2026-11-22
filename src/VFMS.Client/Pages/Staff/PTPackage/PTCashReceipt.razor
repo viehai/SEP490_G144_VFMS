@@ -1,0 +1,54 @@
+@page "/staff/pt-cash-receipt"
+@layout StaffPTLayout
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "Staff")]
+@using VFMS.Contracts.PersonalTraining
+@using VFMS.Client.Components.Operations
+@using VFMS.Client.Components.Trainers
+@using static VFMS.Client.Services.PTDisplay
+@inject PersonalTrainingApiClient Api
+
+<PageTitle>Xác nhận tiền mặt gói PT | Victor Fitness</PageTitle>
+<section class="workspace-page trainer-page trainer-stack">
+    <PageHeader Overline="VFMS / GÓI PT" Title="Xác nhận tiền mặt gói PT"
+                Description="Hội viên đã chọn thanh toán tại quầy. Nhập mã đơn hội viên đọc và số tiền thực nhận; lịch tập được xác nhận ngay." />
+    <TrainerFeedback Error="@_error" />
+    <form class="trainer-panel trainer-stack" style="max-width: 28rem" @onsubmit="ConfirmAsync" @onsubmit:preventDefault>
+        <fieldset class="trainer-stack" disabled="@_busy">
+            <label>Mã đơn<input class="trainer-input" @bind="_orderNumber" required maxlength="50" placeholder="VD: ORD-20261117-..." /></label>
+            <label>Số tiền đã nhận (₫)<input class="trainer-input" type="number" min="1" step="1" required @bind="_amount" /></label>
+            <button class="trainer-button trainer-primary">@(_busy ? "Đang xác nhận…" : "Xác nhận đã nhận tiền")</button>
+        </fieldset>
+    </form>
+    @if (_confirmed is { } order)
+    {
+        <div class="trainer-panel trainer-stack" role="status">
+            <div class="trainer-row trainer-between"><h2>Đơn @order.OrderNumber</h2><TrainerStatus Status="@order.Status" /></div>
+            <p>Đã nhận @Money(order.AmountDue) · Hóa đơn <strong>@order.InvoiceNumber</strong>. Lịch tập của hội viên đã được xác nhận.</p>
+        </div>
+    }
+</section>
+
+@code {
+    private string _orderNumber = "";
+    private decimal? _amount;
+    private bool _busy;
+    private string? _error;
+    private PTCheckoutResponse? _confirmed;
+
+    private async Task ConfirmAsync()
+    {
+        if (_busy || _amount is not > 0 || string.IsNullOrWhiteSpace(_orderNumber)) return;
+        _busy = true;
+        _error = null;
+        _confirmed = null;
+        try
+        {
+            _confirmed = await Api.ConfirmCashAsync(_orderNumber.Trim().ToUpperInvariant(), new(_amount.Value), default);
+            _orderNumber = "";
+            _amount = null;
+        }
+        catch (AuthApiException ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+}

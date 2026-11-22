@@ -18,12 +18,12 @@ public sealed partial class LegacySchemaMigrationTests
         var gym = new Gym { GymName = "Transaction projection test gym" };
         var owner = new ApplicationUser
         {
-            UserId = "transaction-owner", FullName = "Owner", Email = "owner@example.test",
+            UserId = "transaction-owner", FullName = "Owner", Email = "owner@example.test", PhoneNumber = "0900000032",
             PasswordHash = "test", Gym = gym, AccountStatus = AccountStatus.Active
         };
         var other = new ApplicationUser
         {
-            UserId = "transaction-other", FullName = "Other", Email = "other@example.test",
+            UserId = "transaction-other", FullName = "Other", Email = "other@example.test", PhoneNumber = "0900000033",
             PasswordHash = "test", Gym = gym, AccountStatus = AccountStatus.Active
         };
         var package = new Package

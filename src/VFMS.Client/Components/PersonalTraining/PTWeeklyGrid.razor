@@ -50,7 +50,13 @@
                                 }
                                 else
                                 {
-                                    <div class="pt-calendar-slot"><strong>@Time(start) – @Time(slot.EndTime)</strong></div>
+                                    <div class="pt-calendar-slot"><strong>@Time(start) – @Time(slot.EndTime)</strong>
+                                        @if (slot.BlockedReason is { } note)
+                                        {
+                                            @* Read-only grids use BlockedReason as a short note, e.g. a moved session. *@
+                                            <small class="block trainer-muted">@note</small>
+                                        }
+                                    </div>
                                 }
                             }
                         </td>

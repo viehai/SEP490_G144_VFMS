@@ -84,7 +84,7 @@ public sealed class ConsultationService : IConsultationService
         var conversation = await _repository.GetAsync(id, cancellationToken);
         if (conversation is null) return NotFound();
         if (!isManager && conversation.CustomerUserId != senderUserId) return Forbidden();
-        if (conversation.Status == "Closed") 
+        if (conversation.Status == "Closed")
             return Result<ConsultationConversationResponse>.Failure(
                 "Cuộc tư vấn đã đóng.", "CONSULTATION_CLOSED", 409);
 

@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using VFMS.Client.Auth;
+using VFMS.Contracts.Users;
 
 namespace VFMS.Client.Services;
 
@@ -14,6 +15,19 @@ namespace VFMS.Client.Services;
 /// </summary>
 public sealed class VfmsApiClient(HttpClient http, AuthSession session, ILogger<VfmsApiClient>? logger = null)
 {
+    public Task<WalkInCustomerResponse> CreateWalkInCustomerAsync(
+        WalkInCustomerRequest request, CancellationToken cancellationToken = default) =>
+        PostAsync<WalkInCustomerResponse>("api/users/walk-in-customer", request, cancellationToken);
+
+    public Task<WalkInCustomerResponse> FindPendingCustomerAsync(
+        FindPendingCustomerRequest request, CancellationToken cancellationToken = default) =>
+        PostAsync<WalkInCustomerResponse>("api/users/find-pending-customer", request, cancellationToken);
+
+    public Task<ResendSetupEmailResponse> ResendCustomerSetupEmailAsync(
+        string userId, CancellationToken cancellationToken = default) =>
+        PostAsync<ResendSetupEmailResponse>(
+            $"api/users/{Uri.EscapeDataString(userId)}/resend-setup-email", null, cancellationToken);
+
     public Task<T> GetAsync<T>(string path, CancellationToken cancellationToken = default) =>
         SendAsync<T>(HttpMethod.Get, path, null, cancellationToken);
 
@@ -84,6 +98,7 @@ public sealed class VfmsApiClient(HttpClient http, AuthSession session, ILogger<
         {
             HttpStatusCode.Unauthorized => "Your session has expired. Please sign in again to continue. (MSG-11)",
             HttpStatusCode.Forbidden => "Bạn không có quyền thực hiện thao tác này.",
+            HttpStatusCode.TooManyRequests => "Bạn đã thao tác quá nhiều lần. Vui lòng đợi một lát rồi thử lại.",
             >= HttpStatusCode.InternalServerError => "Hệ thống tạm thời chưa sẵn sàng. Vui lòng thử lại sau.",
             _ => "Không thể hoàn tất yêu cầu. Vui lòng thử lại."
         };

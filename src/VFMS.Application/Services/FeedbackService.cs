@@ -51,18 +51,13 @@ public sealed class FeedbackService : IFeedbackService
         if (member is null)
             return Failure<FeedbackResponse>("Không tìm thấy hội viên.", "FEEDBACK_USER_NOT_FOUND", 404);
 
-        var trainers = await _repository.GetTrainersAsync(cancellationToken);
-        if (trainers.Count == 0)
-            return Failure<FeedbackResponse>("Hệ thống chưa có huấn luyện viên để lưu đánh giá.", "FEEDBACK_TRAINER_NOT_FOUND", 404);
-        var trainer = await _repository.GetUserAsync(trainers[0].UserId, cancellationToken);
-        if (trainer is null)
-            return Failure<FeedbackResponse>("Hệ thống chưa có huấn luyện viên để lưu đánh giá.", "FEEDBACK_TRAINER_NOT_FOUND", 404);
-
+        // Gym feedback shares the TrainerReview table with PT reviews (no new tables): it has no PTPurchaseId,
+        // and TrainerUserId points at the member because the column is required. It never counts for a trainer.
         var review = new TrainerReview
         {
-            TrainerUserId = trainer.UserId,
+            TrainerUserId = member.UserId,
             MemberUserId = member.UserId,
-            TrainerUser = trainer,
+            TrainerUser = member,
             MemberUser = member,
             Rating = request.Rating,
             Comment = string.IsNullOrWhiteSpace(request.Comment) ? null : request.Comment.Trim(),
