@@ -69,14 +69,14 @@
                 {
                     <form @onsubmit="() => RunActionAsync(issue)" @onsubmit:preventDefault>
                         <fieldset disabled="@_working" class="space-y-3">
-                            <label class="@Ui.Label block" for="issue-action">Thao tác
-                                <select id="issue-action" class="@Ui.Field" @bind="_action">
+                            <label class="@Ui.Label block" for="issue-action">Thao tác <span class="text-vfms-primary" aria-hidden="true">*</span>
+                                <select aria-required="true" id="issue-action" class="@Ui.Field" @bind="_action">
                                     @foreach (var action in actions) { <option value="@action.Path">@action.Label</option> }
                                 </select>
                             </label>
                             @if (NeedsNote)
                             {
-                                <label class="@Ui.Label block" for="issue-note">Ghi chú (bắt buộc)
+                                <label class="@Ui.Label block" for="issue-note">Ghi chú <span class="text-vfms-primary" aria-hidden="true">*</span>
                                     <textarea id="issue-note" class="@Ui.Field" rows="3" @bind="_note" maxlength="1000" required></textarea>
                                 </label>
                             }

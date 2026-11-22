@@ -206,11 +206,11 @@
                         </InputRadioGroup>
                         @if (_checkout.FulfillmentType == "HomeDelivery")
                         {
-                            <label class="@Ui.Label block" for="recipient">Người nhận
-                                <InputText id="recipient" class="@Ui.Field" @bind-Value="_checkout.RecipientName" maxlength="150" />
+                            <label class="@Ui.Label block" for="recipient">Người nhận <span class="text-vfms-primary" aria-hidden="true">*</span>
+                                <InputText aria-required="true" id="recipient" class="@Ui.Field" @bind-Value="_checkout.RecipientName" maxlength="150" />
                             </label>
-                            <label class="@Ui.Label block" for="address">Địa chỉ giao hàng
-                                <InputTextArea id="address" class="@Ui.Field" rows="2" @bind-Value="_checkout.DeliveryAddress" maxlength="500" />
+                            <label class="@Ui.Label block" for="address">Địa chỉ giao hàng <span class="text-vfms-primary" aria-hidden="true">*</span>
+                                <InputTextArea aria-required="true" id="address" class="@Ui.Field" rows="2" @bind-Value="_checkout.DeliveryAddress" maxlength="500" />
                             </label>
                             <label class="@Ui.Label block" for="delivery-note">Ghi chú
                                 <InputText id="delivery-note" class="@Ui.Field" @bind-Value="_checkout.DeliveryNote" maxlength="500" />

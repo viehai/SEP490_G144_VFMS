@@ -45,10 +45,10 @@
                     case "Processing":
                         <form class="space-y-3" @onsubmit='() => ActAsync(order, "out-for-delivery")' @onsubmit:preventDefault>
                             <fieldset disabled="@_working" class="space-y-3">
-                                <label class="@Ui.Label block" for="courier">Đơn vị vận chuyển
+                                <label class="@Ui.Label block" for="courier">Đơn vị vận chuyển <span class="text-vfms-primary" aria-hidden="true">*</span>
                                     <input id="courier" class="@Ui.Field" @bind="_courier" maxlength="100" required placeholder="VD: GHN" />
                                 </label>
-                                <label class="@Ui.Label block" for="tracking">Mã vận đơn
+                                <label class="@Ui.Label block" for="tracking">Mã vận đơn <span class="text-vfms-primary" aria-hidden="true">*</span>
                                     <input id="tracking" class="@Ui.Field" @bind="_tracking" maxlength="100" required />
                                 </label>
                                 <button type="submit" class="@Ui.PrimaryButton w-full">Giao cho đơn vị vận chuyển</button>

@@ -34,7 +34,7 @@
             <ValidationSummary />
             <fieldset disabled="@_working" class="mt-4 flex flex-wrap items-end gap-3">
                 <label class="min-w-[240px] flex-1 text-xs font-semibold text-vfms-text" for="word-input">
-                    Từ khóa
+                    Từ khóa <span class="text-vfms-primary" aria-hidden="true">*</span>
                     <InputText id="word-input" class="@Field" @bind-Value="_form.Word" maxlength="100" required />
                 </label>
                 <button type="submit" class="@PrimaryButton">@(_editingId is null ? "Thêm" : "Lưu")</button>

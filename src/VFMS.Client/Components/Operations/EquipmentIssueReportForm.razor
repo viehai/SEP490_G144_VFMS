@@ -15,8 +15,8 @@
                 <button type="button" class="@Ui.Button mt-1" @onclick="SearchAsync">Tìm</button>
             </div>
         </label>
-        <label class="@Ui.Label" for="@($"{IdPrefix}-equipment")">Thiết bị
-            <InputSelect id="@($"{IdPrefix}-equipment")" class="@Ui.Field" @bind-Value="_form.EquipmentId">
+        <label class="@Ui.Label" for="@($"{IdPrefix}-equipment")">Thiết bị <span class="text-vfms-primary" aria-hidden="true">*</span>
+            <InputSelect aria-required="true" id="@($"{IdPrefix}-equipment")" class="@Ui.Field" @bind-Value="_form.EquipmentId">
                 <option value="0">@(_equipment.Count == 0 ? "Không tìm thấy thiết bị" : "Chọn thiết bị")</option>
                 @foreach (var item in _equipment)
                 {
@@ -24,13 +24,13 @@
                 }
             </InputSelect>
         </label>
-        <label class="@Ui.Label" for="@($"{IdPrefix}-type")">Loại sự cố
-            <InputSelect id="@($"{IdPrefix}-type")" class="@Ui.Field" @bind-Value="_form.IncidentType">
+        <label class="@Ui.Label" for="@($"{IdPrefix}-type")">Loại sự cố <span class="text-vfms-primary" aria-hidden="true">*</span>
+            <InputSelect aria-required="true" id="@($"{IdPrefix}-type")" class="@Ui.Field" @bind-Value="_form.IncidentType">
                 @foreach (var type in OperationsText.IncidentTypes) { <option value="@type">@OperationsText.Label(type)</option> }
             </InputSelect>
         </label>
-        <label class="@Ui.Label sm:col-span-2" for="@($"{IdPrefix}-description")">Mô tả sự cố
-            <InputTextArea id="@($"{IdPrefix}-description")" class="@Ui.Field" rows="4" @bind-Value="_form.Description" maxlength="1000" placeholder="VD: Dây cáp máy kéo xô bị sờn, phát ra tiếng kêu khi kéo." />
+        <label class="@Ui.Label sm:col-span-2" for="@($"{IdPrefix}-description")">Mô tả sự cố <span class="text-vfms-primary" aria-hidden="true">*</span>
+            <InputTextArea aria-required="true" id="@($"{IdPrefix}-description")" class="@Ui.Field" rows="4" @bind-Value="_form.Description" maxlength="1000" placeholder="VD: Dây cáp máy kéo xô bị sờn, phát ra tiếng kêu khi kéo." />
         </label>
         <label class="@Ui.Label sm:col-span-2" for="@($"{IdPrefix}-image")">Link ảnh (không bắt buộc)
             <InputText id="@($"{IdPrefix}-image")" class="@Ui.Field" @bind-Value="_form.ImageUrl" placeholder="https://..." />

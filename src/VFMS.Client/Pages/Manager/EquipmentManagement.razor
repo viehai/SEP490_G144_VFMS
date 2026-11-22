@@ -27,14 +27,14 @@
                 <OperationsValidation TRequest="EquipmentRequest" Validator="_validator" CreateRequest="CreateRequest" @ref="_validation" />
                 <ValidationSummary />
                 <fieldset disabled="@_working" class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    <label class="@Ui.Label sm:col-span-2" for="eq-name">Tên thiết bị
+                    <label class="@Ui.Label sm:col-span-2" for="eq-name">Tên thiết bị <span class="text-vfms-primary" aria-hidden="true">*</span>
                         <InputText id="eq-name" class="@Ui.Field" @bind-Value="_form.Name" maxlength="200" required />
                     </label>
                     <label class="@Ui.Label" for="eq-code">Mã thiết bị
                         <InputText id="eq-code" class="@Ui.Field" @bind-Value="_form.Code" maxlength="50" placeholder="@CodeHint" />
                         <span class="mt-1 block text-[11px] font-normal text-vfms-text-muted">@CodeHelp</span>
                     </label>
-                    <label class="@Ui.Label" for="eq-category">Danh mục
+                    <label class="@Ui.Label" for="eq-category">Danh mục <span class="text-vfms-primary" aria-hidden="true">*</span>
                         <InputSelect id="eq-category" class="@Ui.Field" @bind-Value="_form.CategoryId" required>
                             <option value="">Chọn danh mục</option>
                             @foreach (var category in _categories)
@@ -82,15 +82,16 @@
             <h2 id="status-form-title" class="text-base font-bold text-vfms-text">Đổi trạng thái: @target.Name</h2>
             <form class="mt-4" @onsubmit="ChangeStatusAsync" @onsubmit:preventDefault>
                 <fieldset disabled="@_working" class="flex flex-wrap items-end gap-3">
-                    <label class="@Ui.Label" for="status-new">Trạng thái mới
-                        <select id="status-new" class="@Ui.Field" @bind="_newStatus">
+                    <label class="@Ui.Label" for="status-new">Trạng thái mới <span class="text-vfms-primary" aria-hidden="true">*</span>
+                        <select aria-required="true" id="status-new" class="@Ui.Field" @bind="_newStatus">
                             @foreach (var status in OperationsText.EquipmentStatuses.Where(s => s != target.Status))
                             {
                                 <option value="@status">@OperationsText.Label(status)</option>
                             }
                         </select>
                     </label>
-                    <label class="@Ui.Label min-w-[260px] flex-1" for="status-note">Ghi chú @(_newStatus == "Retired" ? "(bắt buộc khi thanh lý)" : "")
+                    <label class="@Ui.Label min-w-[260px] flex-1" for="status-note">@(_newStatus == "Retired" ? "Lý do thanh lý" : "Ghi chú")
+                        @if (_newStatus == "Retired") { <span class="text-vfms-primary" aria-hidden="true">*</span> }
                         <input id="status-note" class="@Ui.Field" @bind="_statusNote" maxlength="1000" required="@(_newStatus == "Retired")" />
                     </label>
                     <button type="submit" class="@Ui.PrimaryButton">Cập nhật</button>
@@ -193,10 +194,10 @@
                 <OperationsValidation TRequest="EquipmentCategoryRequest" Validator="_categoryValidator" CreateRequest="CreateCategoryRequest" @ref="_categoryValidation" />
                 <ValidationSummary />
                 <fieldset disabled="@_working" class="flex flex-wrap items-end gap-3">
-                    <label class="@Ui.Label w-full sm:w-56" for="cat-name">Tên danh mục
+                    <label class="@Ui.Label w-full sm:w-56" for="cat-name">Tên danh mục <span class="text-vfms-primary" aria-hidden="true">*</span>
                         <InputText id="cat-name" class="@Ui.Field" @bind-Value="_categoryForm.Name" maxlength="100" required />
                     </label>
-                    <label class="@Ui.Label w-32" for="cat-prefix">Tiền tố mã
+                    <label class="@Ui.Label w-32" for="cat-prefix">Tiền tố mã <span class="text-vfms-primary" aria-hidden="true">*</span>
                         <InputText id="cat-prefix" class="@($"{Ui.Field} uppercase")" @bind-Value="_categoryForm.CodePrefix" maxlength="5" placeholder="VD: TM" required />
                     </label>
                     <label class="@Ui.Label min-w-[220px] flex-1" for="cat-desc">Mô tả
