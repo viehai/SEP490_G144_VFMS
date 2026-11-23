@@ -112,7 +112,7 @@
                     </label>
                     <label class="block text-xs font-semibold">Độ khó
                         <select class="mt-1 w-full border border-[#D8D1CD] px-3 py-2 text-sm rounded-lg bg-[#F8F5F2] focus:border-[#B83A3A] focus:ring-2 focus:ring-[#B83A3A]/20 outline-none" @bind="_class.Difficulty">
-                            <option>Beginner</option><option>Intermediate</option><option>Advanced</option>
+                            <option value="Beginner">Cơ bản</option><option value="Intermediate">Trung cấp</option><option value="Advanced">Nâng cao</option>
                         </select>
                     </label>
                 </div>
@@ -157,7 +157,7 @@
                         <div class="flex flex-wrap items-start justify-between gap-3 px-5 py-4">
                             <div>
                                 <p class="workspace-heading text-sm font-extrabold uppercase">@c.ClassName <span class="ml-2 align-middle"><StatusBadge Status="@c.Status" /></span></p>
-                                <p class="mt-1 text-xs text-[#6F6966]">@c.TypeName · @c.DifficultyLevel · @c.InstructorName · @c.MinParticipants–@c.MaxParticipants người · @c.DurationMinutes phút</p>
+                                <p class="mt-1 text-xs text-[#6F6966]">@c.TypeName · @(c.DifficultyLevel switch { "Beginner" => "Cơ bản", "Intermediate" => "Trung cấp", "Advanced" => "Nâng cao", var l => l }) · @c.InstructorName · @c.MinParticipants–@c.MaxParticipants người · @c.DurationMinutes phút</p>
                                 <p class="text-xs text-[#6F6966]">@c.StartDate.ToString("dd/MM/yyyy") → @c.EndDate.ToString("dd/MM/yyyy") · Hạn đăng ký @DateTime.SpecifyKind(c.RegistrationDeadline, DateTimeKind.Utc).AddHours(7).ToString("dd/MM/yyyy HH:mm") · @c.SessionCount buổi</p>
                             </div>
                             <div class="flex flex-wrap gap-2">
