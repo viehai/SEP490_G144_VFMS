@@ -56,16 +56,15 @@ internal static class GymAccessMessages
     public const string Denied =
         "Access denied: No active membership found or biometric verification failed. Please contact the front desk.";   // MSG-36
     public const string DeniedCode = "ACCESS_DENIED";
+    /// <summary>Kiosk scan matched no member (face not enrolled, QR token used, expired or replaced).</summary>
+    public const string NotRecognisedCode = "SCAN_NOT_RECOGNISED";
 
     /// <summary>MSG-36 with the membership status, as UC "Check In" step 3 asks.</summary>
     public static string DeniedWithStatus(string status) => $"{Denied} Membership status: {status}.";
-    public const string PassbackCode = "ANTI_PASSBACK";
 
     public static string Welcome(string name, DateOnly validThrough) =>
         string.Create(CultureInfo.InvariantCulture, $"Welcome back, {name}! Access granted. Valid through {validThrough:dd/MM/yyyy}.");   // MSG-35
 
-    public static string Passback(int minutes) =>
-        $"Access denied: Entry recorded recently. Anti-passback cooldown active for {minutes} minutes.";   // MSG-37
 }
 
 public sealed class MemberQrService : IMemberQrService
@@ -110,13 +109,12 @@ public sealed class MemberQrService : IMemberQrService
 
 /// <summary>
 /// UC-44 Self Check-In (kiosk, FaceID or QR) and the shared entry rules: Active membership (GBR-89),
-/// anti-passback (GBR-90), one open visit at a time, and PT auto-completion (GBR-92).
+/// one open visit at a time, and PT auto-completion (GBR-92).
 /// </summary>
 public sealed class CheckInService : ICheckInService
 {
     /// <summary>Euclidean distance between face-api descriptors. Stricter than face-api's 0.6 default: a false match opens the gate.</summary>
     public const double FaceMatchThreshold = 0.5;
-    public static readonly TimeSpan AntiPassback = TimeSpan.FromMinutes(15);
     /// <summary>JOB-04: a visit still open after 6 hours is treated as closed.</summary>
     public static readonly TimeSpan MaxVisit = TimeSpan.FromHours(6);
 
@@ -179,7 +177,7 @@ public sealed class CheckInService : ICheckInService
         // Identify once: a QR token is single-use, so the in/out decision must not redeem it twice.
         var (userId, method) = await IdentifyAsync(request, cancellationToken);
         if (userId is null || (selfUserId is not null && userId != selfUserId))
-            return Result<KioskScanResultResponse>.Failure(GymAccessMessages.Denied, GymAccessMessages.DeniedCode, 403);
+            return Result<KioskScanResultResponse>.Failure(GymAccessMessages.Denied, GymAccessMessages.NotRecognisedCode, 403);
 
         if (await _repository.GetOpenCheckInAsync(userId, cancellationToken) is { } open)
         {
@@ -256,12 +254,6 @@ public sealed class CheckInService : ICheckInService
                 GymAccessMessages.DeniedWithStatus(MembershipRules.GymStatus(all, today)), GymAccessMessages.DeniedCode, 403);
         if (!InAccessWindow(membership.PackageComponent, TimeOnly.FromDateTime(localNow)))
             return Result<CheckInResultResponse>.Failure(GymAccessMessages.Denied, GymAccessMessages.DeniedCode, 403);
-
-        if (await _repository.GetLastCheckInTimeAsync(userId, cancellationToken) is { } last && now - last < AntiPassback)
-        {
-            var minutes = (int)Math.Ceiling((AntiPassback - (now - last)).TotalMinutes);
-            return Result<CheckInResultResponse>.Failure(GymAccessMessages.Passback(minutes), GymAccessMessages.PassbackCode, 409);
-        }
 
         if (await _repository.GetOpenCheckInAsync(userId, cancellationToken) is { } open)
         {

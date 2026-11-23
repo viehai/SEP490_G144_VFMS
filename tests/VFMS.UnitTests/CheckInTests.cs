@@ -216,7 +216,7 @@ public sealed class CheckInTests
         Assert.NotNull(first.Data.CheckIn);
         Assert.Equal("CheckOut", second.Data!.Action);
         Assert.NotNull(second.Data.CheckOut);
-        Assert.Equal(403, stranger.StatusCode);
+        Assert.Equal((403, "SCAN_NOT_RECOGNISED"), (stranger.StatusCode, stranger.ErrorCode));
     }
 
     [Theory]
@@ -236,15 +236,13 @@ public sealed class CheckInTests
     }
 
     [Fact]
-    public async Task AntiPassbackBlocksReEntryAndStaleVisitIsClosed()   // GBR-90, JOB-04
+    public async Task ReEntryRightAfterCheckOutIsAllowedOpenVisitBlocksAndStaleVisitIsClosed()   // no cooldown, JOB-04
     {
         var (repo, service, qr) = Kiosk();
         repo.Memberships.Add(Membership("m1"));
-        repo.Active.Add(new CheckIn { MemberUserId = "m1", CheckinTime = Now.AddMinutes(-5), Status = CheckInStatus.CheckedOut });
+        repo.Active.Add(new CheckIn { MemberUserId = "m1", CheckinTime = Now.AddMinutes(-1), Status = CheckInStatus.CheckedOut });
 
-        var blocked = await service.KioskCheckInAsync(await QrScan(qr, "m1"));
-        Assert.Equal("ANTI_PASSBACK", blocked.ErrorCode);
-        Assert.Contains("10 minutes", blocked.ErrorMessage);
+        Assert.Equal(201, (await service.KioskCheckInAsync(await QrScan(qr, "m1"))).StatusCode);
 
         repo.Active.Clear();
         var open = new CheckIn { MemberUserId = "m1", CheckinTime = Now.AddHours(-2), Status = CheckInStatus.Active };
@@ -409,8 +407,6 @@ public sealed class CheckInTests
             Task.FromResult(Active.FirstOrDefault(c => c.Id == id));
         public Task<CheckIn?> GetOpenCheckInAsync(string userId, CancellationToken cancellationToken = default) =>
             Task.FromResult(Active.FirstOrDefault(c => c.MemberUserId == userId && c.Status == CheckInStatus.Active));
-        public Task<DateTime?> GetLastCheckInTimeAsync(string userId, CancellationToken cancellationToken = default) =>
-            Task.FromResult(Active.Where(c => c.MemberUserId == userId).Select(c => (DateTime?)c.CheckinTime).Max());
         public Task<IReadOnlyList<PTSession>> GetScheduledPtSessionsAsync(string userId, DateOnly date, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<PTSession>>(PtSessions.Where(p => p.MemberUserId == userId && p.SessionDate == date && p.SessionStatus == PTSessionStatus.Scheduled).ToList());
         public Task<IReadOnlyList<(ApplicationUser User, IReadOnlyList<MemberMembership> Memberships, bool IsCheckedIn)>> SearchMembersAsync(
