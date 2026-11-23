@@ -1089,7 +1089,7 @@ public class VfmsDbContext : DbContext
         modelBuilder.Entity<PurchaseProposalItem>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.Property(e => e.EstimatedUnitPrice).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.UnitPrice).HasColumnType("decimal(18,2)");
 
             entity.HasOne(e => e.PurchaseProposal)
                 .WithMany(p => p.Items)

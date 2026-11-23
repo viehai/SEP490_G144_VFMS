@@ -104,8 +104,8 @@ public sealed class PurchaseProposalsController : ControllerBase
 
     [HttpPost("{id:int}/complete")]
     [Authorize(Roles = "Manager")]
-    public Task<IActionResult> Complete(int id, CancellationToken cancellationToken) =>
-        Run(userId => _service.CompleteAsync(id, userId, ClientIp, cancellationToken));
+    public Task<IActionResult> Complete(int id, [FromBody] PurchaseProposalCompleteRequest request, CancellationToken cancellationToken) =>
+        Run(userId => _service.CompleteAsync(id, request, userId, ClientIp, cancellationToken));
 
     private async Task<IActionResult> Run<T>(Func<string, Task<Result<T>>> action)
     {

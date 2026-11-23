@@ -148,6 +148,10 @@ public sealed class OperationsApiClient(HttpClient http, AuthSession session) : 
         SendAsync<PurchaseProposalResponse>(HttpMethod.Put, $"{ProposalsPath}/{id}", ct, JsonContent.Create(request));
 
     /// <summary>Staff: submit. Manager: approve, reject, request-revision (with a note), complete (no body).</summary>
+    /// <summary>Marks an approved proposal as purchased with the real unit price of each item.</summary>
+    public Task<PurchaseProposalResponse> CompleteProposalAsync(int id, PurchaseProposalCompleteRequest request, CancellationToken ct = default) =>
+        SendAsync<PurchaseProposalResponse>(HttpMethod.Post, $"{ProposalsPath}/{id}/complete", ct, JsonContent.Create(request));
+
     public Task<PurchaseProposalResponse> ProposalActionAsync(int id, string action, string? note = null, CancellationToken ct = default) =>
         SendAsync<PurchaseProposalResponse>(HttpMethod.Post, $"{ProposalsPath}/{id}/{action}", ct,
             action is "approve" or "reject" or "request-revision" ? JsonContent.Create(new PurchaseProposalReviewRequest(note)) : null);
