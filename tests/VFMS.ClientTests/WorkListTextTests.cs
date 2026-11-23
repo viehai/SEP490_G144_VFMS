@@ -50,6 +50,14 @@ public sealed class WorkListTextTests
     }
 
     [Theory]
+    [InlineData("SupplementOrder", 50, "Đơn thực phẩm bổ sung #50")]
+    [InlineData("BannedWordList", 29, "Từ khóa cấm #29")]
+    [InlineData("ApplicationUser:3f2a9c1e-0000-0000-0000-000000000000", null, "Tài khoản")]
+    [InlineData("SomethingNew", 3, "SomethingNew #3")]   // an unknown type keeps its code name
+    public void AuditEntitiesReadInVietnamese(string entity, int? id, string shown) =>
+        Assert.Equal(shown, OperationsText.AuditEntity(entity, id));
+
+    [Theory]
     [InlineData("Escalated: Đã khóa máy.", "Chuyển quản lý: Đã khóa máy.")]
     [InlineData("Not safe after repair: Còn rung.", "Chưa an toàn sau sửa chữa: Còn rung.")]
     [InlineData("Disposed: Hỏng khung.", "Thanh lý: Hỏng khung.")]

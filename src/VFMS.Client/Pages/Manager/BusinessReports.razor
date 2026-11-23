@@ -69,7 +69,7 @@
         <section class="rounded-[12px] border border-vfms-border bg-vfms-surface p-5 sm:p-6 shadow-sm" aria-labelledby="report-title">
             <div class="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                    <h2 id="report-title" class="text-base font-bold text-vfms-text">@report.ReportName</h2>
+                    <h2 id="report-title" class="text-base font-bold text-vfms-text">@BusinessReportNames.For(report.PeriodType, report.PeriodStart, report.PeriodEnd)</h2>
                     <p class="mt-1 text-xs text-vfms-text-secondary">@PeriodLabel(report.PeriodType) · @report.PeriodStart.ToString("dd/MM/yyyy") – @report.PeriodEnd.ToString("dd/MM/yyyy") · Tạo bởi @(report.GeneratedByName ?? "—") lúc @report.GeneratedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</p>
                 </div>
                 <div class="flex flex-wrap gap-2">
@@ -188,12 +188,12 @@
                         @foreach (var row in list.Items)
                         {
                             <tr @key="row.Id">
-                                <th scope="row">@row.ReportName</th>
+                                <th scope="row">@BusinessReportNames.For(row.PeriodType, row.PeriodStart, row.PeriodEnd)</th>
                                 <td>@PeriodLabel(row.PeriodType)</td>
                                 <td class="whitespace-nowrap">@row.PeriodStart.ToString("dd/MM/yyyy") – @row.PeriodEnd.ToString("dd/MM/yyyy")</td>
                                 <td>@(row.GeneratedByName ?? "—")</td>
                                 <td class="whitespace-nowrap">@row.GeneratedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
-                                <td><button type="button" class="@Button" aria-label="Xem @row.ReportName" @onclick="() => OpenAsync(row.Id)">Xem</button></td>
+                                <td><button type="button" class="@Button" aria-label="Xem @BusinessReportNames.For(row.PeriodType, row.PeriodStart, row.PeriodEnd)" @onclick="() => OpenAsync(row.Id)">Xem</button></td>
                             </tr>
                         }
                     </tbody>
@@ -252,7 +252,7 @@
             _selected = await Api.GenerateReportAsync(CreateGenerateRequest() with { ConfirmNew = confirmNew }, _lifetime.Token);
             _confirmNew = false;
             _ = LoadTrendAsync(_selected);
-            _notice = $"Đã tạo báo cáo {_selected.ReportName}.";
+            _notice = $"Đã tạo {BusinessReportNames.For(_selected.PeriodType, _selected.PeriodStart, _selected.PeriodEnd).ToLowerInvariant()}.";
             await LoadAsync(1);
         }
         catch (AuthApiException error) when (error.StatusCode == HttpStatusCode.Conflict) { _confirmNew = true; }

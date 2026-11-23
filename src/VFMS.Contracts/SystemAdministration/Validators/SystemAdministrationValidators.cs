@@ -36,6 +36,7 @@ public sealed class AuditLogListRequestValidator : AbstractValidator<AuditLogLis
             .Must(x => x.From is null || x.To is null || x.From <= x.To)
             .OverridePropertyName("From")
             .WithMessage("The start date cannot be after the end date.");
+        RuleFor(x => x.Actor).MaximumLength(100);
         RuleFor(x => x.ActionType)
             .Must(type => string.IsNullOrWhiteSpace(type) ||
                 ActionTypes.Contains(type.Trim(), StringComparer.OrdinalIgnoreCase))

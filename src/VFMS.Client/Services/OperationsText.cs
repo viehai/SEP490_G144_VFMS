@@ -98,6 +98,31 @@ public static class OperationsText
         status is not ("Resolved" or "MarkedSafe")
         && nowUtc - reportedAtUtc >= (incidentType == "Safety" ? TimeSpan.FromDays(1) : TimeSpan.FromDays(3));
 
+    /// <summary>Vietnamese names for the entity types the audit log records, in the order of the "Đối tượng" filter.</summary>
+    public static readonly (string Type, string Label)[] AuditEntities =
+    [
+        ("Equipment", "Thiết bị"), ("CatalogCategory", "Danh mục thiết bị"), ("EquipmentIssueReport", "Sự cố thiết bị"),
+        ("PurchaseProposal", "Đề xuất mua sắm"), ("SupplementProduct", "Sản phẩm bổ sung"), ("SupplementOrder", "Đơn thực phẩm bổ sung"),
+        ("Gym", "Thông tin phòng tập"), ("BannedWordList", "Từ khóa cấm"), ("BusinessReportSnapshot", "Báo cáo kinh doanh"),
+        ("ApplicationUser", "Tài khoản"), ("Package", "Gói tập PT"), ("FreezePolicy", "Chính sách bảo lưu"),
+        ("MembershipFreeze", "Bảo lưu hội viên"), ("PaymentTransaction", "Giao dịch thanh toán"), ("Voucher", "Mã giảm giá"),
+        ("Competition", "Cuộc thi"), ("CompetitionJoin", "Đăng ký cuộc thi"), ("TrainerReview", "Đánh giá huấn luyện viên"),
+        ("WorkoutPlan", "Kế hoạch tập luyện"), ("FaceData", "Dữ liệu khuôn mặt"), ("YogaClass", "Lớp Yoga"),
+        ("YogaClassType", "Loại lớp Yoga"), ("YogaClassSchedule", "Lịch lớp Yoga"), ("YogaStudio", "Phòng Yoga"),
+        ("YogaAttendance", "Điểm danh Yoga"),
+    ];
+
+    /// <summary>
+    /// The audit log's "Đối tượng" in Vietnamese: "SupplementOrder" + 50 → "Đơn thực phẩm bổ sung #50". Some entries carry
+    /// the type and a user id in one value ("ApplicationUser:3f2a…"); the id is left out, the actor column names the person.
+    /// </summary>
+    public static string AuditEntity(string auditEntity, int? entityId)
+    {
+        var type = auditEntity.Split([':', ' '], 2)[0];
+        var label = AuditEntities.FirstOrDefault(e => e.Type == type).Label ?? type;
+        return entityId is { } id ? $"{label} #{id}" : label;
+    }
+
     /// <summary>The "work still to do" filter option, e.g. "Cần xử lý (5)": the total of the given statuses.</summary>
     public static string WorkCountLabel(IEnumerable<string> statuses, VFMS.Contracts.Operations.StatusCountsResponse? counts) =>
         counts is null ? "Cần xử lý" : $"Cần xử lý ({statuses.Sum(status => counts.Counts.GetValueOrDefault(status))})";

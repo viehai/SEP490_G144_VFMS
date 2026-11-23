@@ -125,6 +125,18 @@ public sealed class SystemAdministrationTests
         Assert.Empty(await service.FindBannedWordsAsync(null));
     }
 
+    [Theory]
+    [InlineData("đồ ngu", "Ông là đồ ngu!", true)]
+    [InlineData("đồ ngu", "Ông là do ngu!", true)]          // typed without accents
+    [InlineData("đồ ngu", "Ông là ĐỒ NGU", true)]
+    [InlineData("lừa đảo", "phong tap lua dao khach", true)]
+    [InlineData("vô dụng", "Máy này vợ dùng rất thích", false)] // a different phrase with accents is never caught
+    [InlineData("vô dụng", "may nay vo dung", true)]
+    [InlineData("đồ ngu", "đồ ngủ đẹp", false)]                // "ngủ" (sleep) is written with its accent
+    [InlineData("ngu", "Nguyễn Văn A", false)]                 // whole words only
+    public void BannedWordsMatchWithOrWithoutAccents(string word, string text, bool blocked) =>
+        Assert.Equal(blocked, BannedWordService.ContainsWholeWord(text, word));
+
     // ── Audit log service ────────────────────────────────────────
 
     [Fact]
@@ -136,9 +148,21 @@ public sealed class SystemAdministrationTests
         var result = await service.GetLogsAsync(new AuditLogListRequest(
             From: new DateTime(2026, 11, 1), To: new DateTime(2026, 11, 4), ActionType: "accountlock"));
 
+        // Gym days (UTC+7): 01/11 00:00 to the end of 04/11 in Vietnam is 31/10 17:00 to 04/11 17:00 UTC.
         Assert.True(result.IsSuccess);
-        Assert.Equal(new DateTime(2026, 11, 5), repository.LastToExclusive);
+        Assert.Equal(new DateTime(2026, 10, 31, 17, 0, 0), repository.LastFrom);
+        Assert.Equal(new DateTime(2026, 11, 4, 17, 0, 0), repository.LastToExclusive);
         Assert.Equal(AuditActionType.AccountLock, repository.LastActionType);
+    }
+
+    [Fact]
+    public async Task AuditLogSearchesTheActorByNameOrEmail()
+    {
+        var repository = new AuditLogRepositoryFake();
+
+        await new AuditLogService(repository, CreateMapper()).GetLogsAsync(new AuditLogListRequest(Actor: "  manager "));
+
+        Assert.Equal("manager", repository.LastActorSearch);
     }
 
     [Fact]
@@ -228,14 +252,18 @@ public sealed class SystemAdministrationTests
 
     private sealed class AuditLogRepositoryFake : IAuditLogRepository
     {
+        public DateTime? LastFrom { get; private set; }
         public DateTime? LastToExclusive { get; private set; }
+        public string? LastActorSearch { get; private set; }
         public AuditActionType? LastActionType { get; private set; }
 
         public Task<(IReadOnlyList<AuditLog> Logs, int TotalCount)> SearchAsync(
             DateTime? fromUtc, DateTime? toUtcExclusive, string? actorUserId, AuditActionType? actionType,
-            string? entity, int page, int pageSize, CancellationToken cancellationToken = default)
+            string? entity, int page, int pageSize, CancellationToken cancellationToken = default, string? actorSearch = null)
         {
+            LastFrom = fromUtc;
             LastToExclusive = toUtcExclusive;
+            LastActorSearch = actorSearch;
             LastActionType = actionType;
             return Task.FromResult<(IReadOnlyList<AuditLog>, int)>(([], 0));
         }

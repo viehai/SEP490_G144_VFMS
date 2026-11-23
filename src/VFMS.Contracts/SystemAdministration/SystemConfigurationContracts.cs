@@ -119,3 +119,19 @@ public sealed record BusinessReportTrendResponse(
     string PeriodType,
     IReadOnlyList<ReportTrendPoint> Points
 );
+
+/// <summary>
+/// Vietnamese business report names, used by the API for new reports and by the screens for every report
+/// (reports saved before 23/11/2026 have English names such as "Weekly report 2026-10-26 to 2026-11-01").
+/// </summary>
+public static class BusinessReportNames
+{
+    public static string For(string? periodType, DateOnly start, DateOnly end) => periodType?.Trim().ToLowerInvariant() switch
+    {
+        "day" => $"Báo cáo ngày {start:dd/MM/yyyy}",
+        "week" when start.Year == end.Year => $"Báo cáo tuần {start:dd/MM} – {end:dd/MM/yyyy}",
+        "week" => $"Báo cáo tuần {start:dd/MM/yyyy} – {end:dd/MM/yyyy}",
+        "month" => $"Báo cáo tháng {start:MM/yyyy}",
+        _ => $"Báo cáo {start:dd/MM/yyyy} – {end:dd/MM/yyyy}"
+    };
+}

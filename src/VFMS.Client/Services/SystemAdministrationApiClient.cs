@@ -58,7 +58,7 @@ public sealed class SystemAdministrationApiClient(HttpClient http, AuthSession s
         SendAsync<PagedResponse<AuditLogResponse>>(HttpMethod.Get, WithQuery(AuditLogsPath,
             ("from", request.From?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)),
             ("to", request.To?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)),
-            ("actorUserId", request.ActorUserId), ("actionType", request.ActionType), ("entity", request.Entity),
+            ("actorUserId", request.ActorUserId), ("actor", request.Actor), ("actionType", request.ActionType), ("entity", request.Entity),
             ("page", Number(request.Page)), ("pageSize", Number(request.PageSize))), cancellationToken);
 
     public Task<AuditLogResponse> GetAuditLogAsync(int id, CancellationToken cancellationToken = default) =>

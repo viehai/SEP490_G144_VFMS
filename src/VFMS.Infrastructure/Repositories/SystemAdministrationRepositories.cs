@@ -79,9 +79,12 @@ public sealed class AuditLogRepository : IAuditLogRepository
 
     public async Task<(IReadOnlyList<AuditLog> Logs, int TotalCount)> SearchAsync(
         DateTime? fromUtc, DateTime? toUtcExclusive, string? actorUserId, AuditActionType? actionType,
-        string? entity, int page, int pageSize, CancellationToken cancellationToken = default)
+        string? entity, int page, int pageSize, CancellationToken cancellationToken = default, string? actorSearch = null)
     {
         var query = _context.AuditLogs.AsNoTracking().Include(log => log.ActorUser).AsQueryable();
+        if (actorSearch is not null)
+            query = query.Where(log => log.ActorUser != null &&
+                (log.ActorUser.FullName.Contains(actorSearch) || log.ActorUser.Email.Contains(actorSearch)));
         if (fromUtc.HasValue)
             query = query.Where(log => log.OccurredAt >= fromUtc.Value);
         if (toUtcExclusive.HasValue)
@@ -90,8 +93,8 @@ public sealed class AuditLogRepository : IAuditLogRepository
             query = query.Where(log => log.ActorUserId == actorUserId);
         if (actionType.HasValue)
             query = query.Where(log => log.ActionType == actionType.Value);
-        if (entity is not null)
-            query = query.Where(log => log.AuditEntity.StartsWith(entity));
+        if (entity is not null) // the exact type, so "Equipment" does not also return "EquipmentIssueReport"
+            query = query.Where(log => log.AuditEntity == entity || log.AuditEntity.StartsWith(entity + ":"));
 
         var total = await query.CountAsync(cancellationToken);
         var logs = await query
