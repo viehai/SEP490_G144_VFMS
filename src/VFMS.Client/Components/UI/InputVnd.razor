@@ -1,0 +1,64 @@
+@using System.Diagnostics.CodeAnalysis
+@typeparam TValue
+@inherits InputBase<TValue>
+
+<input @attributes="AdditionalAttributes" class="@CssClass" type="text" inputmode="@(WholeUnits ? "numeric" : "decimal")"
+       data-vnd-input="@(WholeUnits ? "whole" : "decimal")" maxlength="38"
+       @bind:get="DisplayText" @bind:set="SetText" @bind:event="oninput" />
+
+@code {
+    [Parameter] public bool WholeUnits { get; set; }
+    [Parameter] public string ParsingErrorMessage { get; set; } = "Nhập số tiền VND hợp lệ.";
+
+    private string? _text;
+    private TValue? _lastValue;
+    private string? DisplayText => _text ?? CurrentValueAsString;
+
+    protected override void OnParametersSet()
+    {
+        if (!EqualityComparer<TValue>.Default.Equals(Value, _lastValue)) ClearText();
+        _lastValue = Value;
+    }
+
+    private void SetText(string? input)
+    {
+        _text = Vnd.FormatInput(DisplayText, input, WholeUnits);
+        if (_text.Length == 0 && default(TValue) is null) _lastValue = default;
+        CurrentValueAsString = _text;
+    }
+
+    protected override string? FormatValueAsString(TValue? value) => value is decimal amount ? Vnd.FormatAmount(amount) : null;
+
+    protected override bool TryParseValueFromString(string? value, out TValue result,
+        [NotNullWhen(false)] out string? validationErrorMessage)
+    {
+        if (Vnd.ParseInput(value, WholeUnits) is { } amount)
+        {
+            result = (TValue)(object)amount;
+            // ValueChanged can render the parent before the input event returns.
+            _lastValue = result;
+            validationErrorMessage = null;
+            return true;
+        }
+
+        result = default!;
+        validationErrorMessage = ParsingErrorMessage;
+        return false;
+    }
+
+    private void ClearText()
+    {
+        if (_text is null) return;
+
+        _text = null;
+        // Clear InputBase's parsing message when the field or its edited value is replaced.
+        var formatted = FormatValueAsString(Value);
+        if (CurrentValueAsString != formatted) CurrentValueAsString = formatted;
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) ClearText();
+        base.Dispose(disposing);
+    }
+}

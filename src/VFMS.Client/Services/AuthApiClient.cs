@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using VFMS.Contracts.Auth;
+using VFMS.Contracts.Users;
 
 namespace VFMS.Client.Services;
 
@@ -19,6 +20,13 @@ public sealed class AuthApiClient(HttpClient http) : IDisposable
 
     public Task<LoginResponse> RefreshAsync(string refreshToken, CancellationToken cancellationToken = default) =>
         PostAsync<RefreshTokenRequest, LoginResponse>("api/auth/refresh", new(refreshToken), cancellationToken);
+
+    internal async Task<UserProfileResponse> GetProfileAsync(string accessToken, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "api/users/me");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        return await SendAsync<UserProfileResponse>(http, request, cancellationToken);
+    }
 
     public async Task LogoutAsync(string accessToken, string refreshToken, CancellationToken cancellationToken = default)
     {

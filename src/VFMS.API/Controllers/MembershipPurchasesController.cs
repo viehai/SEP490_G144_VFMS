@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using VFMS.API.Extensions;
 using VFMS.Application.Interfaces;
+using VFMS.Contracts.Common;
 using VFMS.Contracts.Memberships;
 using VFMS.Domain.Enums;
 
@@ -50,6 +51,13 @@ public sealed class MembershipPurchasesController(IMembershipPurchaseService ser
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public sealed class StaffMembershipPurchasesController(IMembershipPurchaseService service) : ControllerBase
 {
+    [HttpGet]
+    [ProducesResponseType(typeof(PagedResponse<StaffPackageOrderResponse>), 200)]
+    public async Task<IActionResult> List([FromQuery] StaffPackageOrderQuery query, CancellationToken ct) =>
+        User.GetUserId() is { } staffId
+            ? this.ToActionResult(await service.ListStaffOrdersAsync(staffId, query, ct))
+            : Unauthorized();
+
     [HttpPost("{orderNumber}/confirm-cash")]
     [ProducesResponseType(typeof(MembershipPurchaseResponse), 200)]
     public async Task<IActionResult> ConfirmCash(string orderNumber, ConfirmMembershipCashRequest request, CancellationToken ct) =>

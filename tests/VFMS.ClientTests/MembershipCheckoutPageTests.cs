@@ -121,6 +121,7 @@ public sealed partial class MembershipPlanApiClientTests
         Assert.Contains("Tạm tính", html);
         Assert.Contains("Giảm giá", html);
         Assert.Contains("Chờ thanh toán", html);
+        Assert.DoesNotContain("Xem Gói của tôi", html);
         if (discount == 500_000)
         {
             Assert.Contains("Hoàn tất đơn hàng miễn phí", html);
@@ -132,6 +133,32 @@ public sealed partial class MembershipPlanApiClientTests
 
         if (Environment.GetEnvironmentVariable("VFMS_UC19_PREVIEW_DIR") is { Length: > 0 } output)
             await WriteCheckoutPreviewAsync(rendered, output, previewName);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task PaidCheckoutShowsTheNextActivationStepForTheCorrectBeneficiary(bool forPurchaser)
+    {
+        var purchase = VoucherPurchase(0) with
+        {
+            OrderStatus = MembershipPurchaseStatuses.Paid,
+            Message = MembershipPurchaseMessages.Paid,
+            Items = [new(1, "Gym 30 ngày", forPurchaser, null, 500_000m, AwaitingActivation: true)]
+        };
+        var html = WebUtility.HtmlDecode(await RenderCheckoutPageAsync(purchase));
+
+        Assert.Contains("Thanh toán thành công.", html);
+        if (forPurchaser)
+        {
+            Assert.Contains("href=\"/my-memberships\"", html);
+            Assert.Contains("Chọn ngày kích hoạt cho gói đã mua", html);
+        }
+        else
+        {
+            Assert.DoesNotContain("href=\"/my-memberships\"", html);
+            Assert.Contains("Người nhận quà có thể chọn ngày kích hoạt", html);
+        }
     }
 
     private static async Task<string> RenderVoucherPanelAsync(MembershipPurchaseResponse purchase, bool canManage,

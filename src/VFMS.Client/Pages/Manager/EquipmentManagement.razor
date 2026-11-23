@@ -23,7 +23,7 @@
     {
         <section class="@Ui.Card" aria-labelledby="equipment-form-title">
             <h2 id="equipment-form-title" class="text-base font-bold text-vfms-text">@(_editingId is null ? "Thêm thiết bị" : "Sửa thiết bị")</h2>
-            <EditForm Model="_form" OnValidSubmit="SaveAsync" class="mt-4" novalidate>
+            <EditForm @key="_form" Model="_form" OnValidSubmit="SaveAsync" class="mt-4" novalidate>
                 <OperationsValidation TRequest="EquipmentRequest" Validator="_validator" CreateRequest="CreateRequest" @ref="_validation" />
                 <ValidationSummary />
                 <fieldset disabled="@_working" class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -59,7 +59,7 @@
                         <InputDate id="eq-date" ParsingErrorMessage="Nhập ngày mua hợp lệ." class="@Ui.Field" @bind-Value="_form.PurchaseDate" />
                     </label>
                     <label class="@Ui.Label" for="eq-price">Giá mua (₫)
-                        <InputNumber id="eq-price" ParsingErrorMessage="Giá mua phải là số." class="@Ui.Field" @bind-Value="_form.PurchasePrice" min="0" step="1000" />
+                        <InputVnd id="eq-price" class="@Ui.Field" @bind-Value="_form.PurchasePrice" ParsingErrorMessage="Nhập giá mua hợp lệ." />
                     </label>
                     <label class="@Ui.Label" for="eq-url">Đường dẫn tài liệu
                         <InputText id="eq-url" class="@Ui.Field" @bind-Value="_form.DescriptionUrl" placeholder="https://..." />
@@ -242,7 +242,7 @@
 @code {
     private const int PageSize = 20;
     private readonly CancellationTokenSource _lifetime = new();
-    private readonly EquipmentModel _form = new();
+    private EquipmentModel _form = new();
     private readonly CategoryModel _categoryForm = new();
     private readonly EquipmentRequestValidator _validator = new();
     private readonly EquipmentCategoryRequestValidator _categoryValidator = new();
@@ -370,7 +370,7 @@
     private void StartCreate()
     {
         _editingId = null;
-        _form.Reset();
+        _form = new();
         _statusTarget = null;
         _formOpen = true;
     }
@@ -378,15 +378,18 @@
     private void StartEdit(EquipmentResponse row)
     {
         _editingId = row.Id;
-        _form.Name = row.Name;
-        _form.Code = row.Code;
-        _form.CategoryId = row.CategoryId;
-        _form.Brand = row.Brand;
-        _form.Model = row.Model;
-        _form.PurchaseDate = row.PurchaseDate;
-        _form.PurchasePrice = row.PurchasePrice;
-        _form.DescriptionUrl = row.DescriptionUrl;
-        _form.Note = row.Note;
+        _form = new()
+        {
+            Name = row.Name,
+            Code = row.Code,
+            CategoryId = row.CategoryId,
+            Brand = row.Brand,
+            Model = row.Model,
+            PurchaseDate = row.PurchaseDate,
+            PurchasePrice = row.PurchasePrice,
+            DescriptionUrl = row.DescriptionUrl,
+            Note = row.Note
+        };
         _statusTarget = null;
         _formOpen = true;
     }
@@ -501,15 +504,6 @@
         public decimal? PurchasePrice { get; set; }
         public string? DescriptionUrl { get; set; }
         public string? Note { get; set; }
-
-        public void Reset()
-        {
-            Name = "";
-            Code = Brand = Model = DescriptionUrl = Note = null;
-            CategoryId = null;
-            PurchaseDate = null;
-            PurchasePrice = null;
-        }
     }
 
     private sealed class CategoryModel

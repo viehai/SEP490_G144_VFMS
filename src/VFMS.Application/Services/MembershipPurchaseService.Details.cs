@@ -32,10 +32,19 @@ public sealed partial class MembershipPurchaseService
             detail.InvoiceNumber, new(detail.TotalFrozenDays, detail.FreezeCount, history)));
     }
 
-    internal static MembershipSummaryResponse ToSummary(OwnedMembership membership, DateOnly today) =>
-        new(membership.MembershipId, membership.MembershipPlanId, membership.PlanName,
-            membership.ComponentType.ToString(), membership.StartDate, membership.EndDate,
-            GetCurrentMembershipStatus(membership.Status, membership.EndDate, today).ToString());
+    internal static MembershipSummaryResponse ToSummary(OwnedMembership membership, DateOnly today)
+    {
+        var awaiting = membership.Status == MembershipStatus.AwaitingActivation;
+        MembershipActivationWindow? activation = null;
+        if (awaiting && membership.PurchasedAt is { } purchasedAt)
+        {
+            var purchased = LocalDate(Utc(purchasedAt));
+            activation = new(purchased, today > purchased ? today : purchased, ActivationDeadline(purchasedAt));
+        }
+        return new(membership.MembershipId, membership.MembershipPlanId, membership.PlanName,
+            membership.ComponentType.ToString(), awaiting ? null : membership.StartDate, awaiting ? null : membership.EndDate,
+            GetCurrentMembershipStatus(membership.Status, membership.EndDate, today).ToString(), activation);
+    }
 
     internal static MembershipStatus GetCurrentMembershipStatus(MembershipStatus status, DateOnly endDate, DateOnly today) =>
         status == MembershipStatus.Active && endDate < today ? MembershipStatus.Expired : status;

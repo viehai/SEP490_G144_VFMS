@@ -44,7 +44,7 @@ public static class ReportInsights
 
     public static string Format(decimal value, string valueType) => valueType switch
     {
-        "Currency" => $"{Number(value, "#,##0.##")} ₫",
+        "Currency" => Vnd.Format(value),
         "Percentage" => $"{Number(value, "0.##")}%",
         _ => Number(value, "#,##0"),
     };

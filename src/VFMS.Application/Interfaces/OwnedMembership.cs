@@ -4,7 +4,7 @@ namespace VFMS.Application.Interfaces;
 
 public sealed record OwnedMembership(
     int MembershipId, int MembershipPlanId, string PlanName, ComponentType ComponentType,
-    DateOnly StartDate, DateOnly EndDate, MembershipStatus Status);
+    DateOnly StartDate, DateOnly EndDate, MembershipStatus Status, DateTime? PurchasedAt = null);
 
 public sealed record OwnedMembershipDetail(
     OwnedMembership Membership, DateTime? PurchasedAt, string? InvoiceNumber,

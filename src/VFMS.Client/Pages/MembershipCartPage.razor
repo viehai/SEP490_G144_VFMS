@@ -1,0 +1,161 @@
+@page "/membership-cart"
+@layout PublicLayout
+@using Microsoft.AspNetCore.Authorization
+@using VFMS.Contracts.Memberships
+@using VFMS.Contracts.Memberships.Validators
+@using VFMS.Client.Components.Memberships
+@attribute [Authorize(Roles = "Customer,Member")]
+@inject MembershipCart Cart
+@inject MembershipPlanApiClient Plans
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<PageTitle>@Title | Victor Fitness</PageTitle>
+
+<section class="mx-auto max-w-3xl space-y-6 px-5 pb-16 pt-28 font-body" aria-labelledby="cart-title">
+    <header class="space-y-2 border-b border-vfms-border pb-5">
+        <a href="/membership-plans" class="inline-flex min-h-[44px] items-center text-sm font-bold text-vfms-primary hover:underline">← Danh sách gói tập</a>
+        <h1 id="cart-title" class="font-heading text-3xl font-extrabold text-vfms-text">@Title</h1>
+    </header>
+
+    @if (Cart.Count == 0)
+    {
+        <p role="status" class="rounded-xl border border-vfms-border bg-vfms-surface p-6 text-sm text-vfms-text-secondary">Giỏ hàng của bạn đang trống. Chọn một gói tập để tiếp tục.</p>
+    }
+    else
+    {
+        <form @onsubmit="SubmitAsync" @onsubmit:preventDefault class="space-y-5 rounded-xl border border-vfms-border bg-vfms-surface p-5 shadow-sm sm:p-6">
+            <fieldset disabled="@_submitting" class="space-y-5">
+                <legend class="sr-only">@Title</legend>
+                <ul class="divide-y divide-vfms-border">
+                    @foreach (var line in Cart.Lines)
+                    {
+                        <li @key="line" class="space-y-3 py-4 first:pt-0">
+                            <div class="flex flex-wrap items-center justify-between gap-2">
+                                <h2 class="font-heading text-base font-bold text-vfms-text">@line.Name @if (_choosingPayment) { <span class="text-sm">× @line.Quantity</span> }</h2>
+                                <span class="font-bold text-vfms-text">@TransactionDisplay.Money(line.Price * line.Quantity)</span>
+                            </div>
+                            @if (_choosingPayment)
+                            {
+                                <p class="text-sm text-vfms-text-secondary">@(string.IsNullOrWhiteSpace(line.BeneficiaryEmail) ? "Cho mình" : $"Tặng {line.BeneficiaryEmail.Trim()}")</p>
+                            }
+                            else
+                            {
+                                <div class="flex flex-wrap items-center gap-2 text-sm">
+                                    <button type="button" class="@SecondaryButton" disabled="@(line.Quantity <= 1)" aria-label="Giảm số lượng @line.Name" @onclick="() => Cart.ChangeQuantity(line, -1)">−</button>
+                                    <span aria-label="Số lượng @line.Name">@line.Quantity</span>
+                                    <button type="button" class="@SecondaryButton" disabled="@(Cart.Count >= MembershipCart.MaximumItems)" aria-label="Tăng số lượng @line.Name" @onclick="() => Cart.ChangeQuantity(line, 1)">+</button>
+                                    <button type="button" class="px-3 py-2 text-sm font-semibold text-red-800 hover:underline" aria-label="Bỏ gói @line.Name" @onclick="() => Cart.Remove(line)">Bỏ gói</button>
+                                </div>
+                                <label class="block text-sm font-semibold text-vfms-text">
+                                    Email người thụ hưởng (tùy chọn)
+                                    <input type="email" class="@Field sm:max-w-sm" maxlength="256" autocomplete="off" @bind="line.BeneficiaryEmail" />
+                                    <span class="mt-1 block text-xs font-normal text-vfms-text-secondary">Để trống nếu mua cho mình.</span>
+                                </label>
+                            }
+                        </li>
+                    }
+                </ul>
+                <dl class="flex flex-wrap justify-between gap-2 border-t border-vfms-border pt-4 text-lg font-bold">
+                    <dt>Tạm tính</dt><dd class="text-vfms-primary">@TransactionDisplay.Money(Cart.Subtotal)</dd>
+                </dl>
+                @if (_choosingPayment)
+                {
+                    <label for="membership-payment-method" class="block text-sm font-semibold text-vfms-text">
+                        Phương thức thanh toán <span class="text-red-700" aria-hidden="true">*</span>
+                        <select id="membership-payment-method" class="@Field sm:max-w-sm" required @bind="_paymentMethod" @ref="_paymentField">
+                            <option value="@MembershipPaymentMethods.VietQr">Chuyển khoản VietQR</option>
+                            <option value="@MembershipPaymentMethods.Cash">Tiền mặt tại quầy</option>
+                        </select>
+                    </label>
+                    <div id="membership-activation-terms" class="space-y-1 rounded-lg bg-vfms-muted p-4 text-sm leading-6 text-vfms-text">
+                        <h2 class="font-semibold">Điều khoản kích hoạt</h2>
+                        <p>@MembershipPurchaseMessages.ActivationTerms</p>
+                    </div>
+                    <p class="text-sm text-vfms-text-secondary">Bạn có thể áp dụng mã giảm giá sau khi tạo đơn, trước khi thanh toán.</p>
+                }
+                @if (_error is not null)
+                {
+                    <p role="alert" class="rounded-lg bg-red-50 p-3 text-sm text-red-800">@_error</p>
+                }
+                <div class="flex flex-wrap gap-3">
+                    @if (_choosingPayment)
+                    {
+                        <button type="button" class="@SecondaryButton" @onclick="EditCart">Sửa giỏ hàng</button>
+                    }
+                    <button type="submit" aria-describedby="@(_choosingPayment ? "membership-activation-terms" : null)"
+                            class="min-h-[44px] rounded-lg bg-vfms-primary px-5 py-2 text-sm font-bold text-white hover:bg-vfms-primary-hover disabled:opacity-50">
+                        @(_submitting ? "Đang tạo đơn..." : _choosingPayment ? "Tạo đơn thanh toán" : "Tiến hành thanh toán")
+                    </button>
+                </div>
+            </fieldset>
+        </form>
+    }
+</section>
+
+@code {
+    private const string Field = "mt-1 block w-full rounded-lg border border-vfms-border bg-white px-3 py-2 text-sm font-normal";
+    private const string SecondaryButton = "min-h-[44px] rounded-lg border border-vfms-border px-4 py-2 text-sm font-semibold hover:bg-vfms-muted disabled:opacity-50";
+    private static readonly MembershipPurchaseRequestValidator Validator = new();
+    private readonly CancellationTokenSource _lifetime = new();
+    private string _paymentMethod = MembershipPaymentMethods.VietQr;
+    private bool _choosingPayment;
+    private bool _submitting;
+    private string? _error;
+    private ElementReference _paymentField;
+    private bool _focusPayment;
+    private string Title => _choosingPayment ? "Thanh toán gói tập" : "Giỏ hàng";
+
+    private async Task SubmitAsync()
+    {
+        if (_submitting || Cart.Count == 0) return;
+        _error = null;
+        if (!_choosingPayment)
+        {
+            _choosingPayment = _focusPayment = true;
+            return;
+        }
+
+        _submitting = true;
+        var ct = _lifetime.Token;
+        try
+        {
+            var items = Cart.Lines.SelectMany(line => Enumerable.Repeat(
+                new MembershipPurchaseItemRequest(line.PlanId, line.BeneficiaryEmail?.Trim()), line.Quantity)).ToArray();
+            var request = new MembershipPurchaseRequest(items, _paymentMethod);
+            var validation = await Validator.ValidateAsync(request, ct);
+            if (!validation.IsValid)
+            {
+                _error = validation.Errors[0].ErrorMessage;
+                return;
+            }
+
+            var purchase = await Plans.PurchaseAsync(request, ct);
+            Cart.Clear();
+            if (!ct.IsCancellationRequested)
+                Navigation.NavigateTo($"/membership-purchases/{Uri.EscapeDataString(purchase.OrderNumber)}");
+        }
+        catch (AuthApiException error) when (!ct.IsCancellationRequested) { _error = error.Message; }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        finally { _submitting = false; }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_focusPayment) return;
+        _focusPayment = false;
+        await _paymentField.FocusAsync();
+    }
+
+    private void EditCart()
+    {
+        _choosingPayment = false;
+        _error = null;
+    }
+
+    public void Dispose()
+    {
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+    }
+}

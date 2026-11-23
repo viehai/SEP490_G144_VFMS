@@ -21,6 +21,7 @@
 
     @if (_formOpen)
     {
+        var previewAmounts = _form.Items.Select(PreviewAmount).ToArray();
         <section class="@Ui.Card" aria-labelledby="proposal-form-title">
             <h2 id="proposal-form-title" class="text-base font-bold text-vfms-text">@(_editing is null ? "Đề xuất mới" : $"Sửa {_editing.ProposalNumber}")</h2>
             @if (_editing?.Reviews.OrderByDescending(r => r.ReviewedAt).FirstOrDefault() is { ReviewNote: { } feedback })
@@ -59,7 +60,7 @@
                                     <input aria-required="true" type="number" class="@Ui.Field" @bind="item.Quantity" min="1" max="10000" />
                                 </label>
                                 <label class="@Ui.Label">Đơn giá dự kiến (₫) <span class="text-vfms-primary" aria-hidden="true">*</span>
-                                    <input aria-required="true" type="number" class="@Ui.Field" @bind="item.EstimatedUnitPrice" min="1" step="1000" />
+                                    <InputVnd aria-required="true" class="@Ui.Field" @bind-Value="item.EstimatedUnitPrice" ParsingErrorMessage="Nhập đơn giá dự kiến hợp lệ." />
                                 </label>
                                 <EquipmentPicker Class="sm:col-span-2" Id="@($"proposal-item-{number}-equipment")" Label="Thiết bị liên quan"
                                                  Equipment="_equipment" EmptyText="Không có (mua mới)" Placeholder="Không có (mua mới), hoặc gõ tên, mã máy"
@@ -69,14 +70,14 @@
                                     <input class="@Ui.Field" @bind="item.Reason" maxlength="500" />
                                 </label>
                                 <div class="flex items-end justify-between gap-2 sm:col-span-1 sm:flex-col sm:items-end">
-                                    <span class="text-xs font-semibold text-vfms-primary">@OperationsText.Money(item.Quantity * item.EstimatedUnitPrice)</span>
+                                    <span class="text-xs font-semibold text-vfms-primary">@(previewAmounts[index] is { } amount ? OperationsText.Money(amount) : "—")</span>
                                     <button type="button" class="@Ui.DangerButton" disabled="@(_form.Items.Count == 1)" aria-label="Xóa hạng mục @number" @onclick="() => _form.Items.Remove(item)">Xóa</button>
                                 </div>
                             </div>
                         }
                         <button type="button" class="@Ui.Button" disabled="@(_form.Items.Count >= 50)" @onclick="() => _form.Items.Add(new())">+ Thêm hạng mục</button>
                     </div>
-                    <p class="text-right text-sm">Tổng dự kiến: <span class="text-lg font-extrabold text-vfms-primary">@OperationsText.Money(_form.Items.Sum(i => i.Quantity * i.EstimatedUnitPrice))</span></p>
+                    <p class="text-right text-sm">Tổng dự kiến: <span class="text-lg font-extrabold text-vfms-primary">@(previewAmounts.Any(amount => amount is null) ? "—" : OperationsText.Money(previewAmounts.Sum() ?? 0m))</span></p>
                     <div class="flex flex-wrap gap-3">
                         <button type="submit" class="@Ui.PrimaryButton" @onclick="() => _submit = true">Gửi duyệt</button>
                         <button type="submit" class="@Ui.Button" @onclick="() => _submit = false">Lưu nháp</button>
@@ -194,6 +195,12 @@
         _form.Items.Select(i => new PurchaseProposalItemRequest(i.ItemName.Trim(), i.Quantity, i.EstimatedUnitPrice,
             int.TryParse(i.EquipmentId, out var id) ? id : null, string.IsNullOrWhiteSpace(i.Reason) ? null : i.Reason.Trim())).ToList(),
         _submit);
+
+    // Apply the proposal limits before multiplying values still being entered.
+    private static decimal? PreviewAmount(ItemModel item) =>
+        item.Quantity is >= 1 and <= 10_000 && item.EstimatedUnitPrice is >= 0 and <= 1_000_000_000_000m
+            ? item.Quantity * item.EstimatedUnitPrice
+            : null;
 
     // Filters apply as they change: dropdowns and dates at once, text boxes after a short pause in typing.
     private LiveQuery Live => _live ??= new(_lifetime.Token);
