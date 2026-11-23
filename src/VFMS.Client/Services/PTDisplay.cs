@@ -6,7 +6,7 @@ internal static class PTDisplay
 {
     private static readonly CultureInfo Vietnamese = CultureInfo.GetCultureInfo("vi-VN");
     internal static DateOnly Today => DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7));
-    internal static string Money(decimal value) => $"{value.ToString("N0", Vietnamese)} ₫";
+    internal static string Money(decimal value) => Vnd.Format(value);
     internal static string Date(DateOnly value) => value.ToString("dd/MM/yyyy", Vietnamese);
     internal static string Time(TimeOnly value) => value.ToString("HH:mm", Vietnamese);
     internal static string LocalTime(DateTime utc) =>

@@ -199,10 +199,9 @@ public partial class Promotions : IDisposable
         _editContext.OnFieldChanged -= ValidateChange;
     }
 
-    private static string Money(decimal value) => value.ToString("N0", Vietnamese) + " ₫";
     private static string DateLabel(DateTime date) => PromotionFormModel.ToGymTime(date).ToString("dd/MM/yyyy HH:mm", Vietnamese);
     private static string DiscountLabel(PromotionResponse response) => response.DiscountType == PromotionDiscountType.Percentage
-        ? response.DiscountValue.ToString("0.##", Vietnamese) + "%" : Money(response.DiscountValue);
+        ? response.DiscountValue.ToString("0.##", Vietnamese) + "%" : Vnd.Format(response.DiscountValue);
     private static string StatusLabel(PromotionStatus status) => status switch
     {
         PromotionStatus.Scheduled => "Đã lên lịch / Scheduled",
@@ -224,5 +223,15 @@ public partial class Promotions : IDisposable
         DetachValidation();
         _lifetime.Cancel();
         _lifetime.Dispose();
+    }
+}
+
+public sealed class PromotionPercentageInput : InputNumber<decimal?>
+{
+    protected override void Dispose(bool disposing)
+    {
+        // The .NET 8 input keeps its parsing errors in the form after it is removed.
+        if (disposing) CurrentValueAsString = FormatValueAsString(Value);
+        base.Dispose(disposing);
     }
 }

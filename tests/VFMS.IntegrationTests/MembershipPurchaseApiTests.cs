@@ -36,6 +36,7 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
     private const string WebhookRoute = "/api/v1/commerce/payment/webhook/sepay";
     private const string Secret = "uc12-test-signing-secret";
     private const string BankAccount = "123456789";
+    private static int _nextPhone;
     private readonly SqliteConnection _connection = new("Data Source=:memory:;Foreign Keys=True");
     private readonly TestClock _clock = new();
     private WebApplication _app = null!;
@@ -151,8 +152,8 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
             paymentMethod = "VietQR",
             items = new[]
             {
-                new { planId = _basic, beneficiaryEmail = (string?)null, activationDate = Today, unitPrice = 1 },
-                new { planId = _combo, beneficiaryEmail = (string?)"GIFT@example.test", activationDate = Today.AddDays(30), unitPrice = 1 }
+                new { planId = _basic, beneficiaryEmail = (string?)null, unitPrice = 1 },
+                new { planId = _combo, beneficiaryEmail = (string?)"GIFT@example.test", unitPrice = 1 }
             }
         });
         var purchase = await ReadAsync(response, HttpStatusCode.Created);
@@ -197,16 +198,14 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
         Assert.Empty(await scope.ServiceProvider.GetRequiredService<VfmsDbContext>().Orders.ToListAsync());
     }
 
-    [Theory]
-    [InlineData(-1)]
-    [InlineData(31)]
-    public async Task ActivationOutsideWindowReturnsMsg25(int offset)
+    [Fact]
+    public async Task CheckoutDoesNotAllowSettingTheActivationDateBeforePayment()
     {
         using var client = Client("buyer", "Customer");
-        using var response = await client.PostAsJsonAsync(Route, Purchase([new(_basic, ActivationDate: Today.AddDays(offset))]));
+        using var response = await client.PostAsJsonAsync(Route, Purchase([new(_basic, ActivationDate: Today)]));
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("MSG-25", problem.GetProperty("code").GetString());
+        Assert.Equal("MEMBERSHIP_ACTIVATION_AFTER_PAYMENT", problem.GetProperty("code").GetString());
     }
 
     [Fact]
@@ -214,7 +213,7 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
     {
         using var client = Client("buyer", "Customer");
         var activation = Today.AddDays(1);
-        var purchase = await CreateAsync(client, Purchase([new(_basic), new(_combo, "gift@example.test", activation)]));
+        var purchase = await CreateAsync(client, Purchase([new(_basic), new(_combo, "gift@example.test")]));
         await using (var scope = _app.Services.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
@@ -235,6 +234,7 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
         Assert.Equal("MSG-23", paid.MessageCode);
         Assert.NotNull(paid.InvoiceNumber);
         Assert.Equal("Basic", paid.Items[0].PlanName);
+        Assert.All(paid.Items, item => Assert.True(item.AwaitingActivation));
         Assert.Equal(1_300_000m, paid.AmountDue);
         Assert.Null(paid.VietQr);
 
@@ -243,17 +243,35 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
             var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
             var memberships = await db.MemberMemberships.OrderBy(row => row.MemberUserId).ToListAsync();
             Assert.Equal(3, memberships.Count);
-            Assert.Equal(MembershipStatus.Active, memberships[0].MembershipStatus);
-            Assert.Equal(Today.AddDays(29), memberships[0].EndDate);
-            Assert.All(memberships.Skip(1), membership =>
-            {
-                Assert.Equal("gift", membership.MemberUserId);
-                Assert.Equal(MembershipStatus.Scheduled, membership.MembershipStatus);
-                Assert.Equal(activation, membership.StartDate);
-            });
-            Assert.Equal(["Member", "PT"], await RolesAsync(db, "buyer"));
+            Assert.All(memberships, membership => Assert.Equal(MembershipStatus.AwaitingActivation, membership.MembershipStatus));
+            Assert.Equal(["Customer", "PT"], await RolesAsync(db, "buyer"));
             Assert.Equal(["Customer"], await RolesAsync(db, "gift"));
             Assert.Single(await db.Invoices.ToListAsync());
+        }
+
+        var bought = Assert.Single(await ListOwnedMembershipsAsync(client));
+        Assert.Null(bought.StartDate);
+        Assert.Null(bought.EndDate);
+        Assert.Equal(new MembershipActivationWindow(Today, Today, Today.AddDays(30)), bought.Activation);
+        var activated = await ActivateMembershipAsync(client, bought.MembershipId, Today);
+        Assert.Equal(MembershipStatuses.Active, activated.Membership.Status);
+        Assert.Equal(Today.AddDays(29), activated.Membership.EndDate);
+
+        using var gift = Client("gift", "Customer");
+        var gifted = await ListOwnedMembershipsAsync(gift);
+        Assert.Equal(2, gifted.Length);
+        await ActivateMembershipAsync(gift, gifted[0].MembershipId, activation);
+        Assert.All(await ListOwnedMembershipsAsync(gift), membership =>
+        {
+            Assert.Equal(MembershipStatuses.Scheduled, membership.Status);
+            Assert.Equal(activation, membership.StartDate);
+        });
+        await using (var scope = _app.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+            Assert.Equal(["Member", "PT"], await RolesAsync(db, "buyer"));
+            Assert.Equal(["Customer"], await RolesAsync(db, "gift"));
+            Assert.All(await db.OrderItems.ToListAsync(), item => Assert.Null(item.ActivationStartDate));
         }
         _clock.Now = _clock.Now.AddDays(1);
         await RunJobAsync((service, ct) => service.AdvanceMembershipsAsync(ct));
@@ -265,20 +283,29 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task SameServiceQueuesAcrossOrdersAndDifferentServicesStartInParallel()
+    public async Task ChosenStartDatesAreHonoredEvenWhenTheSameServiceOverlaps()
     {
         using var client = Client("buyer", "Customer");
         var first = await CreateAsync(client, Purchase([new(_basic)]));
         var second = await CreateAsync(client, Purchase([new(_combo), new(_basic)]));
         Assert.Equal(HttpStatusCode.OK, (await NotifyAsync(first, id: 20)).StatusCode);
+        var started = Assert.Single(await ListOwnedMembershipsAsync(client));
+        await ActivateMembershipAsync(client, started.MembershipId, Today);
         Assert.Equal(HttpStatusCode.OK, (await NotifyAsync(second, id: 21)).StatusCode);
 
-        await using var scope = _app.Services.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
-        var memberships = await db.MemberMemberships.Include(row => row.PackageComponent).ToListAsync();
-        Assert.Equal([Today, Today.AddDays(30), Today.AddDays(60)], memberships
-            .Where(row => row.PackageComponent.ComponentType == ComponentType.GYM).Select(row => row.StartDate).Order());
-        Assert.Equal(Today, Assert.Single(memberships, row => row.PackageComponent.ComponentType == ComponentType.YOGA).StartDate);
+        var memberships = await ListOwnedMembershipsAsync(client);
+        var combo = memberships.First(row => row.MembershipPlanId == _combo);
+        var anotherGym = memberships.Single(row => row.MembershipPlanId == _basic && row.MembershipId != started.MembershipId);
+        var chosen = Today.AddDays(3);
+        Assert.Equal(chosen, (await ActivateMembershipAsync(client, combo.MembershipId, chosen)).Membership.StartDate);
+        Assert.Equal(chosen, (await ActivateMembershipAsync(client, anotherGym.MembershipId, chosen)).Membership.StartDate);
+
+        _clock.Now = _clock.Now.AddDays(3);
+        await RunJobAsync((service, ct) => service.AdvanceMembershipsAsync(ct));
+        var active = await ListOwnedMembershipsAsync(client);
+        Assert.All(active, row => Assert.Equal(MembershipStatuses.Active, row.Status));
+        Assert.Equal(3, active.Count(row => row.ComponentType == "GYM"));
+        Assert.Equal(chosen, Assert.Single(active, row => row.ComponentType == "YOGA").StartDate);
     }
 
     [Fact]
@@ -344,18 +371,21 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task YogaPlanPaidInCashGivesAnActiveYogaMembershipAndTheMemberRole()
+    public async Task YogaPlanPaidInCashWaitsForActivationAndThenGrantsTheMemberRole()
     {
         await SeedYogaClassAsync("staff", _clock.Now.UtcDateTime.AddDays(7));
         var yogaPlan = await SeedYogaPlanAsync();
         using var buyer = Client("buyer", "Customer");
         using var staff = Client("staff", "Staff");
 
-        var purchase = await CreateAsync(buyer, Purchase([new(yogaPlan, ActivationDate: Today)], MembershipPaymentMethods.Cash));
+        var purchase = await CreateAsync(buyer, Purchase([new(yogaPlan)], MembershipPaymentMethods.Cash));
         Assert.Equal(600_000m, purchase.AmountDue);
         var route = $"/api/staff/membership-purchases/{purchase.OrderNumber}/confirm-cash";
         Assert.Equal("Paid", (await ReadAsync(await staff.PostAsJsonAsync(route,
             new ConfirmMembershipCashRequest(purchase.AmountDue)), HttpStatusCode.OK)).OrderStatus);
+        var awaiting = Assert.Single(await ListOwnedMembershipsAsync(buyer));
+        Assert.Equal(MembershipStatuses.AwaitingActivation, awaiting.Status);
+        await ActivateMembershipAsync(buyer, awaiting.MembershipId, Today);
 
         await using var scope = _app.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
@@ -470,9 +500,10 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
         var route = $"/api/staff/membership-purchases/{purchase.OrderNumber}/confirm-cash";
         using var response = await staff.PostAsJsonAsync(route, new ConfirmMembershipCashRequest(purchase.AmountDue));
         Assert.Equal("Paid", (await ReadAsync(response, HttpStatusCode.OK)).OrderStatus);
-        var entitlement = await db.MemberMemberships.SingleAsync();
+        var entitlement = Assert.Single(await ListOwnedMembershipsAsync(buyer));
+        var activated = await ActivateMembershipAsync(buyer, entitlement.MembershipId, Today);
         var expectedEnd = days.HasValue ? Today.AddDays(days.Value - 1) : Today.AddMonths(months!.Value).AddDays(-1);
-        Assert.Equal(expectedEnd, entitlement.EndDate);
+        Assert.Equal(expectedEnd, activated.Membership.EndDate);
     }
 
     [Theory]
@@ -582,6 +613,7 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
         var user = new ApplicationUser
         {
             UserId = id, FullName = id, Gym = gym, Email = $"{id}@example.test", PasswordHash = "test",
+            PhoneNumber = FormattableString.Invariant($"09{Interlocked.Increment(ref _nextPhone):D8}"),
             AccountStatus = status, UserRoles = [new ApplicationUserRole { Role = role }]
         };
         if (additional is not null)

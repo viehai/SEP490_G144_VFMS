@@ -14,12 +14,14 @@ public static class MembershipPurchaseStatuses
 
 public static class MembershipPurchaseMessages
 {
+    public const int ActivationWindowDays = 30;
     public const string PaidCode = "MSG-23";
     public const string Paid = "Thanh toán thành công.";
     public const string FailedCode = "MSG-24";
     public const string Failed = "Giao dịch trực tuyến thất bại hoặc đã hết hiệu lực.";
     public const string ActivationDateCode = "MSG-25";
-    public const string ActivationDate = "Chọn ngày kích hoạt từ hôm nay đến tối đa 30 ngày tới.";
+    public const string ActivationAfterPayment = "Chọn ngày kích hoạt trong Gói của tôi sau khi thanh toán.";
+    public const string ActivationTerms = "Bạn có 30 ngày kể từ ngày mua để chọn ngày kích hoạt trong Gói của tôi. Đến hạn, gói chưa chọn ngày sẽ tự kích hoạt hoặc được xếp nối tiếp sau các gói cùng loại đã có lịch.";
     public const string RenewalBlockedCode = "MSG-26";
     public const string RenewalBlocked = "Không thể gia hạn gói hội viên đang đóng băng hoặc bị tạm đình chỉ.";
 }
@@ -37,7 +39,7 @@ public sealed record MembershipPurchaseItemRequest(
     int PlanId, string? BeneficiaryEmail = null, DateOnly? ActivationDate = null);
 
 public sealed record MembershipPurchaseItemResponse(
-    int PlanId, string PlanName, bool IsForPurchaser, DateOnly? ActivationDate, decimal UnitPrice);
+    int PlanId, string PlanName, bool IsForPurchaser, DateOnly? ActivationDate, decimal UnitPrice, bool AwaitingActivation = false);
 
 public sealed record VietQrPaymentResponse(
     string ImageUrl, string BankId, string AccountNumber, string AccountName, string TransferContent);

@@ -1,4 +1,5 @@
 using System.Globalization;
+using VFMS.Client.Services;
 
 namespace VFMS.Client.Components.Memberships;
 
@@ -6,7 +7,7 @@ public static class TransactionDisplay
 {
     private static readonly CultureInfo VietnameseCulture = CultureInfo.GetCultureInfo("vi-VN");
 
-    public static string Money(decimal amount) => $"{amount.ToString("#,0.##", VietnameseCulture)} ₫";
+    public static string Money(decimal amount) => Vnd.Format(amount);
 
     public static string Date(DateTimeOffset timestamp) =>
         timestamp.ToOffset(TimeSpan.FromHours(7)).ToString("dd/MM/yyyy HH:mm", VietnameseCulture);

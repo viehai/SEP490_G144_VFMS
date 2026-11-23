@@ -23,7 +23,7 @@
 
     <section class="grid gap-4 lg:grid-cols-3" aria-label="Thống kê hoạt động kinh doanh">
         <StatCard Index="01" Label="DOANH THU" Href="/manager/business-reports"
-                  Value="@(Metric("TotalRevenue") is { } revenue ? $"{revenue.ToString("N0", VietnameseNumbers)} ₫" : null)" Note="@ReportNote" />
+                  Value="@(Metric("TotalRevenue") is { } revenue ? Vnd.Format(revenue) : null)" Note="@ReportNote" />
         <StatCard Index="02" Label="GÓI HỘI VIÊN ĐANG HOẠT ĐỘNG" Href="/manager/business-reports"
                   Value="@Metric("ActiveMemberships")?.ToString("N0", VietnameseNumbers)" Note="@ReportNote" />
         <StatCard Index="03" Label="YÊU CẦU CHỜ DUYỆT" Href="/manager/membership-freeze-requests"

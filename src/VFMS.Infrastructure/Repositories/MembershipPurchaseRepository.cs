@@ -8,7 +8,7 @@ using VFMS.Infrastructure.Data;
 
 namespace VFMS.Infrastructure.Repositories;
 
-public sealed class MembershipPurchaseRepository(VfmsDbContext context) : IMembershipPurchaseRepository
+public sealed partial class MembershipPurchaseRepository(VfmsDbContext context) : IMembershipPurchaseRepository
 {
     public async Task<T> ExecuteInSerializableTransactionAsync<T>(Func<Task<T>> work, CancellationToken ct)
     {
@@ -55,7 +55,7 @@ public sealed class MembershipPurchaseRepository(VfmsDbContext context) : IMembe
         if (purchaserId is not null)
             query = query.Where(order => order.PurchaserUserId == purchaserId);
         if (!forUpdate)
-            query = query.AsNoTracking().Include(order => order.Items);
+            query = query.AsNoTracking().Include(order => order.Items).ThenInclude(item => item.MemberMemberships);
         else
             query = query.Include(order => order.Purchaser)
                 .Include(order => order.Items).ThenInclude(item => item.Package).ThenInclude(plan => plan.Components);
@@ -127,10 +127,12 @@ public sealed class MembershipPurchaseRepository(VfmsDbContext context) : IMembe
 
     public Task<List<OwnedMembership>> ListOwnedMembershipsAsync(string memberId, CancellationToken ct) =>
         OwnedMemberships(memberId)
-            .OrderByDescending(membership => membership.EndDate).ThenByDescending(membership => membership.Id)
+            .OrderByDescending(membership => membership.MembershipStatus == MembershipStatus.AwaitingActivation)
+            .ThenByDescending(membership => membership.EndDate).ThenByDescending(membership => membership.Id)
             .Select(membership => new OwnedMembership(membership.Id, membership.OrderItem.PackageId,
                 membership.OrderItem.PackageNameSnapshot, membership.PackageComponent.ComponentType,
-                membership.StartDate, membership.EndDate, membership.MembershipStatus))
+                membership.StartDate, membership.EndDate, membership.MembershipStatus,
+                membership.OrderItem.Order.PaymentTransaction!.PaidAt ?? membership.OrderItem.Order.CompletedAt))
             .ToListAsync(ct);
 
     public Task<OwnedMembershipDetail?> FindOwnedMembershipAsync(string memberId, int membershipId, CancellationToken ct) =>
@@ -138,7 +140,8 @@ public sealed class MembershipPurchaseRepository(VfmsDbContext context) : IMembe
             .Select(membership => new OwnedMembershipDetail(
                 new OwnedMembership(membership.Id, membership.OrderItem.PackageId,
                     membership.OrderItem.PackageNameSnapshot, membership.PackageComponent.ComponentType,
-                    membership.StartDate, membership.EndDate, membership.MembershipStatus),
+                    membership.StartDate, membership.EndDate, membership.MembershipStatus,
+                    membership.OrderItem.Order.PaymentTransaction!.PaidAt ?? membership.OrderItem.Order.CompletedAt),
                 membership.OrderItem.Order.PaymentTransaction!.PaidAt ?? membership.OrderItem.Order.CompletedAt,
                 membership.OrderItem.Order.PurchaserUserId == memberId
                     ? membership.OrderItem.Order.PaymentTransaction!.Invoice!.InvoiceNumber : null,
@@ -151,6 +154,15 @@ public sealed class MembershipPurchaseRepository(VfmsDbContext context) : IMembe
 
     private IQueryable<MemberMembership> OwnedMemberships(string memberId) =>
         context.MemberMemberships.AsNoTracking().Where(membership => membership.MemberUserId == memberId);
+
+    public Task<List<MemberMembership>> LoadOwnedOrderMembershipsAsync(string memberId, int membershipId, CancellationToken ct)
+    {
+        var memberships = context.MemberMemberships.Where(row => row.MemberUserId == memberId);
+        var orderItems = memberships.Where(row => row.Id == membershipId).Select(row => row.OrderItemId);
+        return memberships.Where(row => orderItems.Contains(row.OrderItemId))
+            .Include(row => row.OrderItem).ThenInclude(item => item.Order).ThenInclude(order => order.PaymentTransaction)
+            .ToListAsync(ct);
+    }
 
     // General Policies configures renewal windows on the default gym.
     public Task<Gym?> GetRenewalPolicyGymAsync(CancellationToken ct) =>
@@ -184,11 +196,22 @@ public sealed class MembershipPurchaseRepository(VfmsDbContext context) : IMembe
             .Where(order => order.OrderNumber == orderNumber && order.Items.Any(item => item.RenewedFromMembershipId != null))
             .Select(order => order.PurchaserUserId).SingleOrDefaultAsync(ct);
 
-    public Task<List<MemberMembership>> LoadDueMembershipsAsync(DateOnly today, CancellationToken ct) =>
-        context.MemberMemberships.Where(membership =>
-                (membership.MembershipStatus == MembershipStatus.Scheduled && membership.StartDate <= today) ||
-                (membership.MembershipStatus == MembershipStatus.Active && membership.EndDate < today))
-            .OrderBy(membership => membership.StartDate).Take(100).ToListAsync(ct);
+    public Task<string[]> FindMembershipUsersDueAsync(DateOnly today, DateTime activationCutoffUtc, CancellationToken ct) =>
+        DueMemberships(today, activationCutoffUtc).Select(row => row.MemberUserId).Distinct()
+            .OrderBy(id => id).Take(100).ToArrayAsync(ct);
+
+    public Task<List<MemberMembership>> LoadDueMembershipsAsync(
+        string[] userIds, DateOnly today, DateTime activationCutoffUtc, CancellationToken ct) =>
+        DueMemberships(today, activationCutoffUtc).Where(row => userIds.Contains(row.MemberUserId))
+            .Include(row => row.OrderItem).ThenInclude(item => item.Order).ThenInclude(order => order.PaymentTransaction)
+            .ToListAsync(ct);
+
+    private IQueryable<MemberMembership> DueMemberships(DateOnly today, DateTime activationCutoffUtc) =>
+        context.MemberMemberships.Where(row =>
+            (row.MembershipStatus == MembershipStatus.Scheduled && row.StartDate <= today) ||
+            (row.MembershipStatus == MembershipStatus.Active && row.EndDate < today) ||
+            (row.MembershipStatus == MembershipStatus.AwaitingActivation && row.OrderItem.Order.OrderStatus == OrderStatus.Paid &&
+                (row.OrderItem.Order.PaymentTransaction!.PaidAt ?? row.OrderItem.Order.CompletedAt) < activationCutoffUtc));
 
     public void Add(Order order) => context.Orders.Add(order);
     public void Add(AuditLog audit) => context.AuditLogs.Add(audit);

@@ -60,7 +60,7 @@
                         <InputText id="product-flavour" class="@Ui.Field" @bind-Value="_form.Flavour" maxlength="100" placeholder="VD: Double Rich Chocolate" />
                     </label>
                     <label class="@Ui.Label" for="product-price">Giá bán (₫)
-                        <InputNumber id="product-price" class="@Ui.Field" @bind-Value="_form.UnitPrice" min="1" step="1000" />
+                        <InputVnd id="product-price" class="@Ui.Field" @bind-Value="_form.UnitPrice" ParsingErrorMessage="Nhập giá bán hợp lệ." />
                     </label>
                     @if (_editingId is null)
                     {
@@ -150,10 +150,14 @@
                         </select>
                     </label>
                     <label class="@Ui.Label w-32" for="product-filter-min">Giá từ (₫)
-                        <input id="product-filter-min" type="number" class="@Ui.Field" min="0" step="10000" @bind="_minPrice" @bind:event="oninput" @bind:after="SearchTypedAsync" placeholder="0" />
+                        <input id="product-filter-min" type="text" inputmode="decimal" data-vnd-input="decimal" class="@Ui.Field"
+                               @bind:get="_minPriceText" @bind:set="SetMinPriceAsync" @bind:event="oninput" placeholder="0"
+                               aria-describedby="product-filter-price-error" />
                     </label>
                     <label class="@Ui.Label w-32" for="product-filter-max">Đến (₫)
-                        <input id="product-filter-max" type="number" class="@Ui.Field" min="0" step="10000" @bind="_maxPrice" @bind:event="oninput" @bind:after="SearchTypedAsync" placeholder="Tối đa" />
+                        <input id="product-filter-max" type="text" inputmode="decimal" data-vnd-input="decimal" class="@Ui.Field"
+                               @bind:get="_maxPriceText" @bind:set="SetMaxPriceAsync" @bind:event="oninput" placeholder="Tối đa"
+                               aria-describedby="product-filter-price-error" />
                     </label>
                     <label class="@Ui.Label" for="product-filter-status">Trạng thái
                         <select id="product-filter-status" class="@Ui.Field" @bind="_filterStatus" @bind:after="() => LoadAsync(1)">
@@ -175,10 +179,12 @@
                         <button type="button" class="text-xs font-semibold text-vfms-primary underline-offset-2 hover:underline" @onclick="ClearFiltersAsync">Xóa bộ lọc</button>
                     }
                 </fieldset>
-                @if (_priceError is not null)
-                {
-                    <p role="alert" class="mt-2 text-xs font-semibold text-vfms-error">@_priceError</p>
-                }
+                <div id="product-filter-price-error">
+                    @if (_priceError is not null)
+                    {
+                        <p role="alert" class="mt-2 text-xs font-semibold text-vfms-error">@_priceError</p>
+                    }
+                </div>
             </form>
         </div>
         @if (_loading && _page is null)
@@ -264,7 +270,7 @@
 @code {
     private const int PageSize = 20;
     private readonly CancellationTokenSource _lifetime = new();
-    private readonly ProductModel _form = new();
+    private ProductModel _form = new();
     private readonly SupplementProductRequestValidator _validator = new();
     private OperationsValidation<SupplementProductRequest>? _validation;
     private PagedResponse<SupplementProductResponse>? _page;
@@ -283,10 +289,10 @@
     private string _stockAction = SupplementStock.Add;
     private int? _stockQuantity;
     private string? _stockNote;
-    private decimal? _minPrice, _maxPrice;
+    private string _minPriceText = "", _maxPriceText = "";
     private string? _priceError;
     private bool HasFilters => !string.IsNullOrWhiteSpace(_search) || _filterBrand != "" || _filterCategory != "" || _filterStatus != ""
-        || _minPrice.HasValue || _maxPrice.HasValue || _sort != "name" || _lowStock;
+        || !string.IsNullOrWhiteSpace(_minPriceText) || !string.IsNullOrWhiteSpace(_maxPriceText) || _sort != "name" || _lowStock;
     private int? _editingId;
     private string? _brokenPreview;
     private readonly HashSet<int> _brokenImages = [];
@@ -363,19 +369,37 @@
 
     private Task SearchTypedAsync() => Live.AfterTypingAsync(token => FetchAsync(1, token));
 
+    private Task SetMinPriceAsync(string? input)
+    {
+        _minPriceText = Vnd.FormatInput(_minPriceText, input);
+        return SearchTypedAsync();
+    }
+
+    private Task SetMaxPriceAsync(string? input)
+    {
+        _maxPriceText = Vnd.FormatInput(_maxPriceText, input);
+        return SearchTypedAsync();
+    }
+
     private async Task FetchAsync(int page, CancellationToken token)
     {
-        _priceError = _minPrice > _maxPrice ? "Giá \"từ\" phải nhỏ hơn hoặc bằng giá \"đến\"." : null;
-        if (_priceError is not null || _minPrice < 0 || _maxPrice < 0)
+        var minPrice = Vnd.ParseInput(_minPriceText);
+        var maxPrice = Vnd.ParseInput(_maxPriceText);
+        _priceError = (minPrice is null && !string.IsNullOrWhiteSpace(_minPriceText)) ||
+            (maxPrice is null && !string.IsNullOrWhiteSpace(_maxPriceText))
+                ? "Nhập mức giá hợp lệ, ví dụ 300.000."
+                : minPrice < 0 || maxPrice < 0 ? "Giá không được âm."
+                : minPrice > maxPrice ? "Giá \"từ\" phải nhỏ hơn hoặc bằng giá \"đến\"." : null;
+        if (_priceError is not null)
         {
-            _priceError ??= "Giá không được âm.";
+            _loading = false;
             return;
         }
         _loading = true;
         try
         {
             _page = await Api.GetProductsAsync(new(Blank(_search), Blank(_filterCategory), Blank(_filterStatus), page, PageSize,
-                Brand: Blank(_filterBrand), MinPrice: _minPrice, MaxPrice: _maxPrice, Sort: _sort, LowStock: _lowStock), manage: true, token);
+                Brand: Blank(_filterBrand), MinPrice: minPrice, MaxPrice: maxPrice, Sort: _sort, LowStock: _lowStock), manage: true, token);
         }
         catch (AuthApiException error) { _error = error.Message; }
         finally { if (!token.IsCancellationRequested) _loading = false; }
@@ -384,7 +408,7 @@
     private async Task ClearFiltersAsync()
     {
         _search = _filterBrand = _filterCategory = _filterStatus = "";
-        _minPrice = _maxPrice = null;
+        _minPriceText = _maxPriceText = "";
         _sort = "name";
         _lowStock = false;
         await LoadAsync(1);
@@ -404,11 +428,7 @@
     private void StartCreate()
     {
         _editingId = null;
-        _form.Name = _form.Description = _form.ImageUrl = "";
-        _form.Category = _form.Brand = _form.Size = _form.Flavour = null;
-        _form.UnitPrice = 0;
-        _form.Status = "Active";
-        _form.StockQuantity = null;
+        _form = new();
         _stockTarget = null;
         _formOpen = true;
     }
@@ -416,16 +436,19 @@
     private void StartEdit(SupplementProductResponse product)
     {
         _editingId = product.Id;
-        _form.Name = product.Name;
-        _form.Description = product.Description ?? "";
-        _form.ImageUrl = product.ImageUrl ?? "";
-        _form.Category = product.Category;
-        _form.Brand = product.Brand;
-        _form.Size = product.Size;
-        _form.Flavour = product.Flavour;
-        _form.UnitPrice = product.UnitPrice;
-        _form.Status = product.Status;
-        _form.StockQuantity = product.StockQuantity;
+        _form = new()
+        {
+            Name = product.Name,
+            Description = product.Description ?? "",
+            ImageUrl = product.ImageUrl ?? "",
+            Category = product.Category,
+            Brand = product.Brand,
+            Size = product.Size,
+            Flavour = product.Flavour,
+            UnitPrice = product.UnitPrice,
+            Status = product.Status,
+            StockQuantity = product.StockQuantity
+        };
         _stockTarget = null;
         _formOpen = true;
     }

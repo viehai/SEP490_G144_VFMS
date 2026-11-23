@@ -380,6 +380,8 @@ public sealed class MembershipVoucherTests
         public Task<(int Confirmed, int Reserved)> CountVoucherCapacityAsync(int voucherId, CancellationToken ct) => Task.FromResult((Confirmed, Reserved));
         public Task<Order?> FindOrderAsync(string orderNumber, string? purchaserId, bool forUpdate, CancellationToken ct) =>
             Task.FromResult(orderNumber == Order.OrderNumber && (purchaserId is null || purchaserId == Order.PurchaserUserId) ? Order : null);
+        public Task<PagedResponse<StaffPackageOrderResponse>> ListStaffOrdersAsync(int gymId, StaffPackageOrderFilter filter,
+            DateTime nowUtc, CancellationToken ct) => throw new NotSupportedException();
         public Task SaveChangesAsync(CancellationToken ct) { SaveCount++; return Task.CompletedTask; }
         public Task<List<ApplicationUser>> LockUsersAsync(string[] userIds, CancellationToken ct) => Task.FromResult(new List<ApplicationUser> { Buyer });
         public Task<ApplicationRole?> GetMemberRoleAsync(CancellationToken ct) => Task.FromResult<ApplicationRole?>(new() { Id = 2, RoleName = "Member" });
@@ -398,7 +400,9 @@ public sealed class MembershipVoucherTests
         public Task<Gym?> GetRenewalPolicyGymAsync(CancellationToken ct) => throw new NotSupportedException();
         public Task<List<MemberMembership>> LoadRenewableMembershipsAsync(string memberId, int? membershipId, CancellationToken ct) => throw new NotSupportedException();
         public Task<List<Order>> LoadRenewalOrdersAsync(int[] membershipIds, bool forUpdate, CancellationToken ct) => throw new NotSupportedException();
-        public Task<List<MemberMembership>> LoadDueMembershipsAsync(DateOnly today, CancellationToken ct) => throw new NotSupportedException();
+        public Task<string[]> FindMembershipUsersDueAsync(DateOnly today, DateTime cutoffUtc, CancellationToken ct) => throw new NotSupportedException();
+        public Task<List<MemberMembership>> LoadDueMembershipsAsync(string[] userIds, DateOnly today, DateTime cutoffUtc, CancellationToken ct) => throw new NotSupportedException();
+        public Task<List<MemberMembership>> LoadOwnedOrderMembershipsAsync(string memberId, int membershipId, CancellationToken ct) => throw new NotSupportedException();
 
         private static ApplicationUser User(string id, UserRole role) => new()
         {
