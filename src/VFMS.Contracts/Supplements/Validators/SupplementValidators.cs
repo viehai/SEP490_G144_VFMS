@@ -156,7 +156,8 @@ public sealed class SupplementOrderListRequestValidator : AbstractValidator<Supp
     public SupplementOrderListRequestValidator()
     {
         RuleFor(x => x.Status)
-            .Must(s => SupplementRules.IsBlankOrOneOf(s, SupplementRules.OrderStatuses))
+            .Must(s => SupplementRules.IsBlankOrOneOf(s, SupplementRules.OrderStatuses)
+                || string.Equals(s?.Trim(), VFMS.Contracts.Operations.StatusFilters.ActiveOrders, StringComparison.OrdinalIgnoreCase))
             .WithMessage("Status filter is invalid.");
         RuleFor(x => x.FulfillmentType)
             .Must(t => SupplementRules.IsBlankOrOneOf(t, SupplementRules.FulfillmentTypes))

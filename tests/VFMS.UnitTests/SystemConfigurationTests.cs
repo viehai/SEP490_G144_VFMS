@@ -84,10 +84,10 @@ public sealed class SystemConfigurationTests
     // ── Business Reports (UC-86) ─────────────────────────────────
 
     [Theory]
-    [InlineData("Day", "2026-11-04", "2026-11-04", "2026-11-04", "Daily report 2026-11-04")]
-    [InlineData("week", "2026-10-28", "2026-10-26", "2026-11-01", "Weekly report 2026-10-26 to 2026-11-01")]
-    [InlineData("Week", "2026-11-01", "2026-10-26", "2026-11-01", "Weekly report 2026-10-26 to 2026-11-01")]
-    [InlineData("Month", "2026-02-14", "2026-02-01", "2026-02-28", "Monthly report 2026-02")]
+    [InlineData("Day", "2026-11-04", "2026-11-04", "2026-11-04", "Báo cáo ngày 04/11/2026")]
+    [InlineData("week", "2026-10-28", "2026-10-26", "2026-11-01", "Báo cáo tuần 26/10 – 01/11/2026")]
+    [InlineData("Week", "2026-11-01", "2026-10-26", "2026-11-01", "Báo cáo tuần 26/10 – 01/11/2026")]
+    [InlineData("Month", "2026-02-14", "2026-02-01", "2026-02-28", "Báo cáo tháng 02/2026")]
     public async Task PeriodIsExpandedFromTheChosenDate(string type, string date, string start, string end, string name)
     {
         var repo = new ReportRepo();

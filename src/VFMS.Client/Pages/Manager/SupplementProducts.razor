@@ -27,7 +27,7 @@
                 <OperationsValidation TRequest="SupplementProductRequest" Validator="_validator" CreateRequest="CreateRequest" @ref="_validation" />
                 <ValidationSummary />
                 <fieldset disabled="@_working" class="mt-4 grid gap-4 sm:grid-cols-[1fr_1fr_160px]">
-                    <label class="@Ui.Label sm:col-span-2" for="product-name">Tên sản phẩm
+                    <label class="@Ui.Label sm:col-span-2" for="product-name">Tên sản phẩm <span class="text-vfms-primary" aria-hidden="true">*</span>
                         <InputText id="product-name" class="@Ui.Field" @bind-Value="_form.Name" maxlength="200" required />
                     </label>
                     <div class="row-span-5 flex items-start justify-center">
@@ -59,13 +59,13 @@
                     <label class="@Ui.Label" for="product-flavour">Hương vị
                         <InputText id="product-flavour" class="@Ui.Field" @bind-Value="_form.Flavour" maxlength="100" placeholder="VD: Double Rich Chocolate" />
                     </label>
-                    <label class="@Ui.Label" for="product-price">Giá bán (₫)
-                        <InputVnd id="product-price" class="@Ui.Field" @bind-Value="_form.UnitPrice" ParsingErrorMessage="Nhập giá bán hợp lệ." />
+                    <label class="@Ui.Label" for="product-price">Giá bán (₫) <span class="text-vfms-primary" aria-hidden="true">*</span>
+                        <InputVnd aria-required="true" id="product-price" class="@Ui.Field" @bind-Value="_form.UnitPrice" ParsingErrorMessage="Nhập giá bán hợp lệ." />
                     </label>
                     @if (_editingId is null)
                     {
                         <label class="@Ui.Label" for="product-stock">Tồn kho ban đầu
-                            <InputNumber id="product-stock" class="@Ui.Field" @bind-Value="_form.StockQuantity" min="0" max="@SupplementStock.MaxQuantity" placeholder="Để trống nếu không theo dõi" aria-describedby="product-stock-hint" />
+                            <InputNumber id="product-stock" ParsingErrorMessage="Tồn kho phải là số nguyên." class="@Ui.Field" @bind-Value="_form.StockQuantity" min="0" max="@SupplementStock.MaxQuantity" placeholder="Để trống nếu không theo dõi" aria-describedby="product-stock-hint" />
                             <span id="product-stock-hint" class="mt-1 block text-xs font-normal text-vfms-text-secondary">Có số lượng thì đơn hàng tự trừ kho và tự chuyển "Hết hàng" khi về 0.</span>
                         </label>
                     }
@@ -73,16 +73,16 @@
                     {
                         <p class="text-xs text-vfms-text-secondary">Tồn kho: <span class="font-semibold text-vfms-text">@StockText(_form.StockQuantity)</span>. Đổi tồn kho bằng nút "Kho" trong danh sách.</p>
                     }
-                    <label class="@Ui.Label" for="product-status">Trạng thái
-                        <InputSelect id="product-status" class="@Ui.Field" @bind-Value="_form.Status">
+                    <label class="@Ui.Label" for="product-status">Trạng thái <span class="text-vfms-primary" aria-hidden="true">*</span>
+                        <InputSelect aria-required="true" id="product-status" class="@Ui.Field" @bind-Value="_form.Status">
                             @foreach (var status in OperationsText.ProductStatuses) { <option value="@status">@OperationsText.Label(status)</option> }
                         </InputSelect>
                     </label>
-                    <label class="@Ui.Label sm:col-span-2" for="product-image">Link ảnh (png, jpg, jpeg)
-                        <InputText id="product-image" class="@Ui.Field" @bind-Value="_form.ImageUrl" placeholder="https://.../anh.jpg" />
+                    <label class="@Ui.Label sm:col-span-2" for="product-image">Link ảnh (png, jpg, jpeg) <span class="text-vfms-primary" aria-hidden="true">*</span>
+                        <InputText aria-required="true" id="product-image" class="@Ui.Field" @bind-Value="_form.ImageUrl" placeholder="https://.../anh.jpg" />
                     </label>
-                    <label class="@Ui.Label sm:col-span-3" for="product-description">Mô tả
-                        <InputTextArea id="product-description" class="@Ui.Field" rows="3" @bind-Value="_form.Description" maxlength="2000" />
+                    <label class="@Ui.Label sm:col-span-3" for="product-description">Mô tả <span class="text-vfms-primary" aria-hidden="true">*</span>
+                        <InputTextArea aria-required="true" id="product-description" class="@Ui.Field" rows="3" @bind-Value="_form.Description" maxlength="2000" />
                     </label>
                     <div class="flex flex-wrap items-end gap-3 sm:col-span-3">
                         <button type="submit" class="@Ui.PrimaryButton">@(_working ? "Đang lưu..." : "Lưu sản phẩm")</button>
@@ -100,8 +100,8 @@
             <p class="mt-1 text-xs text-vfms-text-secondary">Tồn kho hiện tại: <span class="font-semibold text-vfms-text">@StockText(stockOf.StockQuantity)</span></p>
             <form class="mt-4" @onsubmit="SaveStockAsync" @onsubmit:preventDefault>
                 <fieldset disabled="@_working" class="grid gap-4 sm:grid-cols-[220px_160px_1fr]">
-                    <label class="@Ui.Label" for="stock-action">Thao tác
-                        <select id="stock-action" class="@Ui.Field" @bind="_stockAction">
+                    <label class="@Ui.Label" for="stock-action">Thao tác <span class="text-vfms-primary" aria-hidden="true">*</span>
+                        <select aria-required="true" id="stock-action" class="@Ui.Field" @bind="_stockAction">
                             <option value="@SupplementStock.Add">Nhập thêm hàng</option>
                             <option value="@SupplementStock.Set">Kiểm kê (đặt số lượng)</option>
                             @if (stockOf.StockQuantity is not null)
@@ -112,7 +112,7 @@
                     </label>
                     @if (_stockAction != SupplementStock.StopTracking)
                     {
-                        <label class="@Ui.Label" for="stock-quantity">@(_stockAction == SupplementStock.Add ? "Số lượng nhập" : "Số lượng thực tế")
+                        <label class="@Ui.Label" for="stock-quantity">@(_stockAction == SupplementStock.Add ? "Số lượng nhập" : "Số lượng thực tế") <span class="text-vfms-primary" aria-hidden="true">*</span>
                             <input id="stock-quantity" type="number" class="@Ui.Field" min="@(_stockAction == SupplementStock.Add ? 1 : 0)" max="@SupplementStock.MaxQuantity" @bind="_stockQuantity" required />
                         </label>
                     }

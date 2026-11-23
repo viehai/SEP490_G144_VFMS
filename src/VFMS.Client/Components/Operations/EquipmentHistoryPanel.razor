@@ -74,7 +74,7 @@
                     </p>
                     @if (issue.ResolutionNote is { } note)
                     {
-                        <p class="mt-1 text-xs text-vfms-text"><span class="font-semibold">Kết quả:</span> @note@(issue.ResolvedAt is { } at ? $" ({OperationsText.Local(at)})" : "")</p>
+                        <p class="mt-1 text-xs text-vfms-text"><span class="font-semibold">Kết quả:</span> @OperationsText.Note(note)@(issue.ResolvedAt is { } at ? $" ({OperationsText.Local(at)})" : "")</p>
                     }
                     @if (issue.SafetyConfirmations.Count > 0)
                     {

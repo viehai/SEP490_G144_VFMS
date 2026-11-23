@@ -120,9 +120,46 @@ public sealed class BannedWordService : IBannedWordService
 
     public static bool ContainsWholeWord(string text, string word)
     {
-        var pattern = @"(?<![\p{L}\p{N}])" + Regex.Escape(word).Replace(@"\ ", @"\s+") + @"(?![\p{L}\p{N}])";
-        return Regex.IsMatch(text, pattern,
-            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(200));
+        const RegexOptions options = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant;
+        var timeout = TimeSpan.FromMilliseconds(200);
+        if (Regex.IsMatch(text, WholeWordPattern(word), options, timeout))
+            return true;
+
+        // Also catch the word typed without accents ("do ngu" for "đồ ngu"). Only a part of the text that is itself
+        // written without accents counts, so "vợ dùng" never matches "vô dụng" although both fold to "vo dung".
+        var plainWord = Fold(word);
+        if (plainWord == word.ToLowerInvariant())
+            return false; // the word has no accents, so the exact check above already covered it
+        var plainText = Fold(text); // same length as text: one character for one character
+        return Regex.Matches(plainText, WholeWordPattern(plainWord), options, timeout)
+            .Any(match => IsWithoutAccents(text.AsSpan(match.Index, match.Length)));
+    }
+
+    private static string WholeWordPattern(string word) =>
+        @"(?<![\p{L}\p{N}])" + Regex.Escape(word).Replace(@"\ ", @"\s+") + @"(?![\p{L}\p{N}])";
+
+    /// <summary>Lower case without Vietnamese accents, keeping one character for each character ("Đồ Ngu" → "do ngu").</summary>
+    internal static string Fold(string value)
+    {
+        var plain = new char[value.Length];
+        for (var i = 0; i < value.Length; i++)
+            plain[i] = FoldChar(value[i]);
+        return new string(plain);
+    }
+
+    private static char FoldChar(char c)
+    {
+        var lower = char.ToLowerInvariant(c);
+        if (lower == 'đ') return 'd';
+        var decomposed = lower.ToString().Normalize(System.Text.NormalizationForm.FormD);
+        return decomposed.Length > 0 ? decomposed[0] : lower;
+    }
+
+    private static bool IsWithoutAccents(ReadOnlySpan<char> span)
+    {
+        foreach (var c in span)
+            if (FoldChar(c) != char.ToLowerInvariant(c)) return false;
+        return true;
     }
 
     private static Result<BannedWordResponse> Duplicate(BannedWordList existing) =>

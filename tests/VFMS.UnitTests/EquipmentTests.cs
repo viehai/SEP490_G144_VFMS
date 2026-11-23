@@ -236,6 +236,45 @@ public sealed class EquipmentTests
         Assert.Equal("EquipmentIssueUpdate", note.NotificationType);
     }
 
+    [Theory]
+    [InlineData("Safety", EquipmentStatus.Operational, EquipmentStatus.Damaged)]          // taken out of use at once
+    [InlineData("Malfunction", EquipmentStatus.Operational, EquipmentStatus.Operational)]
+    [InlineData("Safety", EquipmentStatus.UnderMaintenance, EquipmentStatus.UnderMaintenance)] // already out of use
+    public async Task SafetyReportTakesAWorkingMachineOutOfUse(string type, EquipmentStatus before, EquipmentStatus after)
+    {
+        var repo = new Repo();
+        var eq = repo.SeedEquipment(before);
+
+        var result = await Issues(repo).ReportAsync(new ReportEquipmentIssueRequest(eq.Id, type, "Loose bolt"), Member, null);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(after, eq.EquipmentStatus);
+    }
+
+    [Fact]
+    public async Task MarkingASafetyReportSafePutsTheMachineBackInUse()
+    {
+        var repo = new Repo();
+        var eq = repo.SeedEquipment(EquipmentStatus.Operational);
+        var service = Issues(repo);
+        var issue = (await service.ReportAsync(new ReportEquipmentIssueRequest(eq.Id, "Safety", "Loose bolt"), Member, null)).Data!;
+
+        Assert.True((await service.MarkSafeAsync(issue.Id, "Tightened, safe", Staff, null)).IsSuccess);
+        Assert.Equal(EquipmentStatus.Operational, eq.EquipmentStatus);
+    }
+
+    [Fact]
+    public async Task MarkingSafeKeepsTheMachineOutWhileAnotherIssueIsOpen()
+    {
+        var repo = new Repo();
+        var eq = repo.SeedEquipment(EquipmentStatus.Damaged);
+        repo.SeedIssue(eq, EquipmentIssueStatus.Escalated);
+        var second = repo.SeedIssue(eq, EquipmentIssueStatus.Reported);
+
+        Assert.True((await Issues(repo).MarkSafeAsync(second.Id, "Not this part", Staff, null)).IsSuccess);
+        Assert.Equal(EquipmentStatus.Damaged, eq.EquipmentStatus);
+    }
+
     [Fact]
     public async Task ReportRejectsRetiredEquipmentAndWarnsOnDuplicate()
     {

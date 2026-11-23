@@ -28,12 +28,12 @@
             {
                 <p class="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"><span class="font-semibold">Quản lý yêu cầu sửa:</span> @feedback</p>
             }
-            <EditForm Model="_form" OnValidSubmit="SaveAsync" class="mt-4" novalidate>
+            <EditForm Model="_form" OnSubmit="SubmitFormAsync" class="mt-4" novalidate>
                 <OperationsValidation TRequest="PurchaseProposalRequest" Validator="_validator" CreateRequest="CreateRequest" @ref="_validation" />
                 <ValidationSummary />
                 <fieldset disabled="@_working" class="mt-4 space-y-4">
-                    <label class="@Ui.Label block" for="proposal-description">Mô tả / lý do đề xuất
-                        <InputTextArea id="proposal-description" class="@Ui.Field" rows="2" @bind-Value="_form.Description" maxlength="1000" />
+                    <label class="@Ui.Label block" for="proposal-description">Mô tả / lý do đề xuất <span class="text-vfms-primary" aria-hidden="true">*</span>
+                        <InputTextArea aria-required="true" id="proposal-description" class="@Ui.Field" rows="2" @bind-Value="_form.Description" maxlength="1000" />
                     </label>
                     <div class="space-y-3">
                         @for (var index = 0; index < _form.Items.Count; index++)
@@ -53,21 +53,19 @@
                                         @foreach (var model in EquipmentCatalog.ModelsOf(item.Brand)) { <option value="@model">@model</option> }
                                     </select>
                                 </label>
-                                <label class="@Ui.Label sm:col-span-2">Hạng mục @number
+                                <label class="@Ui.Label sm:col-span-2">Hạng mục @number <span class="text-vfms-primary" aria-hidden="true">*</span>
                                     <input class="@Ui.Field" @bind="item.ItemName" maxlength="200" required />
                                 </label>
-                                <label class="@Ui.Label">Số lượng
-                                    <input type="number" class="@Ui.Field" @bind="item.Quantity" min="1" max="10000" />
+                                <label class="@Ui.Label">Số lượng <span class="text-vfms-primary" aria-hidden="true">*</span>
+                                    <input aria-required="true" type="number" class="@Ui.Field" @bind="item.Quantity" min="1" max="10000" />
                                 </label>
-                                <label class="@Ui.Label">Đơn giá dự kiến (₫)
-                                    <InputVnd class="@Ui.Field" @bind-Value="item.EstimatedUnitPrice" ParsingErrorMessage="Nhập đơn giá dự kiến hợp lệ." />
+                                <label class="@Ui.Label">Đơn giá dự kiến (₫) <span class="text-vfms-primary" aria-hidden="true">*</span>
+                                    <InputVnd aria-required="true" class="@Ui.Field" @bind-Value="item.EstimatedUnitPrice" ParsingErrorMessage="Nhập đơn giá dự kiến hợp lệ." />
                                 </label>
-                                <label class="@Ui.Label sm:col-span-2">Thiết bị liên quan
-                                    <select class="@Ui.Field" @bind="item.EquipmentId">
-                                        <option value="">Không có (mua mới)</option>
-                                        @foreach (var equipment in _equipment) { <option value="@equipment.Id">@equipment.Name@(equipment.Code is { } code ? $" · {code}" : "")</option> }
-                                    </select>
-                                </label>
+                                <EquipmentPicker Class="sm:col-span-2" Id="@($"proposal-item-{number}-equipment")" Label="Thiết bị liên quan"
+                                                 Equipment="_equipment" EmptyText="Không có (mua mới)" Placeholder="Không có (mua mới), hoặc gõ tên, mã máy"
+                                                 Value="@(int.TryParse(item.EquipmentId, out var linked) ? linked : null)"
+                                                 ValueChanged="(int? id) => item.EquipmentId = id?.ToString() ?? string.Empty" />
                                 <label class="@Ui.Label sm:col-span-5">Ghi chú
                                     <input class="@Ui.Field" @bind="item.Reason" maxlength="500" />
                                 </label>
@@ -251,6 +249,13 @@
     {
         _formOpen = false;
         _selected = proposal;
+    }
+
+    /// <summary>Enter in an equipment picker only chooses a machine; any other submit is validated and saved.</summary>
+    private async Task SubmitFormAsync(EditContext context)
+    {
+        if (EquipmentPicker.JustChoseWithEnter()) return;
+        if (context.Validate()) await SaveAsync();
     }
 
     private Task SaveAsync() => RunAsync(async () =>

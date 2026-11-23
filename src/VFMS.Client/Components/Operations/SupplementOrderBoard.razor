@@ -1,3 +1,4 @@
+@using VFMS.Contracts.Operations
 @using VFMS.Contracts.Common
 @using VFMS.Contracts.Supplements
 @inject OperationsApiClient Api
@@ -45,10 +46,10 @@
                     case "Processing":
                         <form class="space-y-3" @onsubmit='() => ActAsync(order, "out-for-delivery")' @onsubmit:preventDefault>
                             <fieldset disabled="@_working" class="space-y-3">
-                                <label class="@Ui.Label block" for="courier">Đơn vị vận chuyển
+                                <label class="@Ui.Label block" for="courier">Đơn vị vận chuyển <span class="text-vfms-primary" aria-hidden="true">*</span>
                                     <input id="courier" class="@Ui.Field" @bind="_courier" maxlength="100" required placeholder="VD: GHN" />
                                 </label>
-                                <label class="@Ui.Label block" for="tracking">Mã vận đơn
+                                <label class="@Ui.Label block" for="tracking">Mã vận đơn <span class="text-vfms-primary" aria-hidden="true">*</span>
                                     <input id="tracking" class="@Ui.Field" @bind="_tracking" maxlength="100" required />
                                 </label>
                                 <button type="submit" class="@Ui.PrimaryButton w-full">Giao cho đơn vị vận chuyển</button>
@@ -83,6 +84,7 @@
                 </label>
                 <label class="@Ui.Label" for="order-status">Trạng thái
                     <select id="order-status" class="@Ui.Field" @bind="_status" @bind:after="() => LoadAsync(1)">
+                        <option value="@StatusFilters.ActiveOrders">@OperationsText.WorkCountLabel(StatusFilters.ActiveOrderStatuses, _counts)</option>
                         <option value="">@OperationsText.CountLabel(null, _counts)</option>
                         @foreach (var status in OperationsText.OrderStatuses) { <option value="@status">@OperationsText.CountLabel(status, _counts)</option> }
                     </select>
@@ -169,7 +171,8 @@
         finally { _exporting = false; }
     }
     private SupplementOrderResponse? _selected;
-    private string _search = "", _status = "", _type = "", _courier = "", _tracking = "";
+    // Opens on the orders still to handle (not completed or cancelled); "" shows all.
+    private string _search = "", _status = StatusFilters.ActiveOrders, _type = "", _courier = "", _tracking = "";
     private DateOnly? _from, _to;
     private string? _notice, _error;
     private bool _loading, _working;
