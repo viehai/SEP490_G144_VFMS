@@ -21,7 +21,7 @@ dotnet run --project src/VFMS.Client --launch-profile https --no-build
 - Open the client in **Edge or Chrome**. The camera (Face ID and QR scanning) doesn't work in Claude's built-in browser.
 - After a rebuild, press **Ctrl+F5** so the browser picks up the new code.
 - **When a page shows an error, open the browser console (F12).** Every failed call on these pages logs one line that names it:
-  - Format: `VFMS API <method> <path> -> <status> <code>: <message>`, for example `VFMS API POST api/check-ins/manual -> 409 Conflict ANTI_PASSBACK: …`.
+  - Format: `VFMS API <method> <path> -> <status> <code>: <message>`, for example `VFMS API POST api/check-ins/manual -> 409 Conflict ALREADY_CHECKED_IN: …`.
   - A 4xx line is a warning: a business rule refused the request. No response, a 5xx or a bad body is an error.
   - Codes made on the client: `NETWORK_ERROR` (API not running, TLS or CORS), `TIMEOUT`, `EMPTY_RESPONSE`, `INVALID_RESPONSE`. With `INVALID_RESPONSE` the line also says `(expected <DTO>)`: the API's response no longer matches the client's contract, usually after a change on one side.
   - Any other code comes from the API.
@@ -85,17 +85,20 @@ Open to Staff, Manager, Customer and Member.
 
 **One scan decides the direction.** A member who is outside gets **CHECK-IN**; a member who is inside gets **CHECK-OUT**.
 
-1. Press **Bật camera** and allow camera access.
-2. **Face ID:** look at the camera and press **Quét khuôn mặt**. It tries for about 3 seconds.
-3. **QR:** press **Quét mã QR** and hold the member's QR in front of the camera, for up to 10 seconds.
+**Scanning is hands-free (23/11/2026).** There are no scan buttons.
+1. Open `/kiosk` and allow camera access. The camera starts by itself; the face models take a few seconds to load the first time ("Đang mở camera và tải mô hình nhận diện…"). If the browser refuses the camera, press **Bật camera**.
+2. While it shows "Đang chờ khuôn mặt hoặc mã QR…", stand in front of the camera **or** hold a QR code in the middle of the frame. It checks the camera a few times a second: QR first, then face.
+3. After a successful scan it shows "Mời bạn rời khỏi khung hình để người tiếp theo quét." and waits until that person (same face) or that QR code has been out of view for about 1.5 seconds. **Step out of the frame before the next scan**; otherwise the same person would be checked straight back out.
+4. After a refused scan it waits 3 seconds and tries again. A QR code it already sent is never sent twice.
+
+Test it in Edge with a real camera: check in with your face, step away, come back: you are checked out. Try it with a QR from `/my-qr` on a phone too.
 
 Things that look like errors but are the rules:
-- **Anti-passback:** a new check-in within **15 minutes** of the last check-in is refused (409, "Anti-passback cooldown").
+- **No wait between visits (23/11/2026):** the old 15-minute anti-passback rule is gone. A member can check in again right after checking out. Checking in while already inside is refused (409, "Hội viên này đang ở trong phòng tập. Hãy check-out trước.").
 - **QR codes** work once, expire after **2 minutes**, and are **replaced each time `/my-qr` is opened**. To scan a photo of the code: open `/my-qr` once, take the photo, don't reload, and scan within 2 minutes.
-- "No active membership found or biometric verification failed" means one of these:
-  - the face didn't match;
-  - the QR was used, expired or replaced;
-  - the person has no usable membership (then the message adds "Membership status: X").
+- "Từ chối truy cập: không tìm thấy gói hội viên còn hiệu lực hoặc không xác thực được khuôn mặt/mã QR…" means one of these:
+  - the face didn't match, or the QR was used, expired or replaced (code `SCAN_NOT_RECOGNISED`; for a QR the kiosk adds how to make a new code);
+  - the person has no usable membership (code `ACCESS_DENIED`, and the message adds "Trạng thái gói: …", for example "Chưa có gói Gym").
 
 ### Member pages
 
@@ -109,14 +112,14 @@ Things that look like errors but are the rules:
 2. **Đang có mặt:** who is inside, the occupancy, today's check-ins and the peak flag. **Check-out** on a row asks once, then records the staff member who did it.
    - The list **updates itself every 5 seconds**, including check-ins and check-outs made at the kiosk or another desk. The line under the title shows "Trực tiếp · cập nhật lúc HH:mm:ss", or "Mất kết nối, đang thử lại…" while the API is down. A new row is tinted.
    - A filter that matches no one shows "Không tìm thấy kết quả phù hợp." (MSG-01); the occupancy cards still count everyone.
-3. A second check-in within 15 minutes of the last one is refused (anti-passback).
+3. A member can be checked in again right after being checked out; there is no waiting time.
 
 **Live demo (two front desks):**
 1. Edge window A (normal): sign in as `staff@test.vn`, open `/staff/check-ins`. Don't touch it from now on.
 2. Edge window B (InPrivate): sign in as `manager@test.vn`, open `/staff/check-ins`.
 3. In B, search `0900000011` and press **Check-in**. Within 5 seconds A shows Demo Hội Viên Một, and "Đang có mặt" goes up by 1.
 4. In B, press **Check-out** on that row. Within 5 seconds the row leaves A.
-5. Repeat with `0900000012` and `0900000013`. Each demo member can only check in again 15 minutes after their last check-in (anti-passback), which is why there are three.
+5. Repeat with `0900000012` and `0900000013`, or check the same member in again right away: there is no waiting time any more.
 6. The kiosk works the same way: a scan at `/kiosk` shows up in A within 5 seconds.
 
 ### API (Swagger)
@@ -234,12 +237,33 @@ LEFT JOIN TrainerRoles tr ON tr.Id = p.TrainerRoleId;
 ```
 Every trainer application that existed before the migration is set to PT.
 
-## 8. Known gaps
+## 8. Language and text limits
 
-- **One integration test from dev/viehai fails on SQLite.** `MembershipPurchaseApiTests.InvoicePdfPreservesMaximumPersistedDecimalPrecisionWithLongHistoricalItemName` comes from dev/viehai (commit 0642777, invoice PDF export) and tests that feature at the largest `decimal(18,2)` amount. The test's own SQLite database can't hold that many digits (`9999999999999999.99` comes back as `10000000000000000`), so it fails on main too. It isn't caused by this branch. Expected result: Unit 585, Client 315 and Integration 499 pass, with that 1 failing and 21 skipped (SQL Server-only tests). To run the rest without it:
+**Vietnamese (23/11/2026).** Every message the API sends to the check-in, kiosk, FaceID, yoga and workout plan screens is in Vietnamese, and so are the validation messages of those forms. Error codes (`ALREADY_CHECKED_IN`, `MAT_TAKEN`, …) are unchanged. Teammates' modules are not translated.
+
+Try it: book a mat someone else just took, cancel a yoga booking less than 2 hours before class, or save a yoga class with an end date before the start date. Each message is in Vietnamese.
+
+**Longest text each field accepts** (the API refuses longer text with "Tối đa N ký tự."):
+
+| Field | Max characters |
+|-------|----------------|
+| Yoga class description | 1000 |
+| Yoga class type description | 500 |
+| Yoga class name | 256 |
+| Yoga studio name | 200 |
+| Yoga class type name | 100 |
+| Yoga class image URL | 500 |
+| Workout survey: health conditions | 500 |
+| Workout plan: exercise note | 500 |
+
+## 9. Known gaps
+
+- **One integration test from dev/viehai fails on SQLite.** `MembershipPurchaseApiTests.InvoicePdfPreservesMaximumPersistedDecimalPrecisionWithLongHistoricalItemName` comes from dev/viehai (commit 0642777, invoice PDF export) and tests that feature at the largest `decimal(18,2)` amount. The test's own SQLite database can't hold that many digits (`9999999999999999.99` comes back as `10000000000000000`), so it fails on main too. It isn't caused by this branch. To run the rest without it:
   ```powershell
   dotnet test tests/VFMS.IntegrationTests --filter "FullyQualifiedName!~InvoicePdfPreservesMaximumPersistedDecimalPrecision"
   ```
+
+- **Main's unique phone-number rule broke 105 teammates' integration tests (23/11/2026).** Main added `EnforceApplicationUserIdentity` (one phone number per account). Several test classes create users without a phone, so the second user fails with `UNIQUE constraint failed: ApplicationUsers.PhoneNumber`. Main fails 108 integration tests; this branch fixed its own 3 (`YogaPersistenceTests`), so it fails 105. They are all in teammates' test classes, left to their owners: `PromotionApiTests` (59), `MembershipPlanApiTests` (38, including this branch's yoga plan tests, because the class's shared `TestUser` helper has no phone), `CompetitionApiTests` (5), `MembershipPurchaseApiTests` (2, one is the invoice test above) and `ConsultationPersistenceTests` (1). Expected result now: Unit 678 and Client 496 pass; Integration 483 pass, 105 fail, 42 skipped.
 
 - **Yoga plans can't be renewed yet.** Renewal (`/my-memberships` → gia hạn) still only covers gym plans, so a yoga member buys a new yoga plan instead; it starts after the current one ends.
 - **Old SQL yoga parts removed (20/11/2026).** Before yoga plans existed, a YOGA part was added by SQL to the gym package "Gym 1 Month", so its buyers (the member and the three demo members) also got a yoga membership. That part and those 4 yoga memberships are now soft-deleted (`IsDeleted = 1`, by SQL, because no API removes a membership); nothing used them. The 4 accounts bought "Yoga 1 Tháng" through the real flow instead, so `/my-memberships` shows one Gym card and one Yoga card.
