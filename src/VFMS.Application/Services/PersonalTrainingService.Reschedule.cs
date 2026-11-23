@@ -11,7 +11,7 @@ public sealed partial class PersonalTrainingService
         string actor, int id, DateOnly? from, CancellationToken ct)
     {
         var asTrainer = await User(actor, UserRole.PT, ct) is not null;
-        if (!asTrainer && await User(actor, UserRole.Member, ct) is null)
+        if (!asTrainer && await Purchaser(actor, ct) is null)
             return Forbidden<IReadOnlyList<PTRescheduleSlot>>();
         var contract = await ContractForSession(actor, id, asTrainer, ct);
         if (contract is null)
@@ -59,7 +59,7 @@ public sealed partial class PersonalTrainingService
     public Task<Result<PTSessionResponse>> RequestReschedule(
         string actor, int id, PTRescheduleRequest request, CancellationToken ct) => Write(async () =>
     {
-        if (await User(actor, UserRole.Member, ct) is null)
+        if (await Purchaser(actor, ct) is null)
             return Forbidden<PTSessionResponse>();
         var contract = await ContractForSession(actor, id, false, ct);
         if (contract is null)
@@ -173,7 +173,6 @@ public sealed partial class PersonalTrainingService
     private static bool IsOriginalTime(PTSession session, DateOnly date, TimeOnly start) =>
         date == session.SessionDate && start == session.StartTime;
 
-    // GBR-10: Gym access is checked when attendance is recorded, not when a session moves.
     private bool RescheduleTimeEligible(PTPurchase contract, DateOnly date, TimeOnly start, TimeOnly end, DateTime now) =>
         date >= Today && date >= contract.StartDate && date <= contract.EndDate &&
         Utc(date, start) > now && InHours(contract.PTUser.Gym, start, end) &&

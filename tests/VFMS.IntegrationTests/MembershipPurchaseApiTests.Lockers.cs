@@ -258,10 +258,10 @@ public sealed partial class MembershipPurchaseApiTests
         var checkout = await CreateLockerCheckout(staff, "/api/lockers/staff/rentals",
             new { memberId = "member", lockerId, policyId, paymentMethod = "Cash" });
         var rentalId = checkout.GetProperty("rentalId").GetInt32();
-        Assert.Equal(120_000, checkout.GetProperty("amountDue").GetDecimal());
+        Assert.Equal(100_000, checkout.GetProperty("amountDue").GetDecimal());
         var rentalPath = $"/api/lockers/staff/rentals/{rentalId}";
         using var handover = await staff.PostAsJsonAsync($"{rentalPath}/handover",
-            new { termsAccepted = true, identityVerified = true, cashAmount = 120_000 });
+            new { termsAccepted = true, identityVerified = true, cashAmount = 100_000 });
         Assert.True(handover.StatusCode == HttpStatusCode.OK, await handover.Content.ReadAsStringAsync());
         var rental = await handover.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(_clock.Now.UtcDateTime.Date.AddHours(15), rental.GetProperty("expiresAt").GetDateTime());
@@ -610,7 +610,7 @@ public sealed partial class MembershipPurchaseApiTests
         var id = checkout.GetProperty("rentalId").GetInt32();
         var path = $"/api/lockers/staff/rentals/{id}";
         using var handover = await staff.PostAsJsonAsync($"{path}/handover",
-            new { termsAccepted = true, identityVerified = true, cashAmount = 120_000 });
+            new { termsAccepted = true, identityVerified = true, cashAmount = 100_000 });
         Assert.True(handover.IsSuccessStatusCode, await handover.Content.ReadAsStringAsync());
         var closing = new DateTimeOffset((await handover.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("expiresAt").GetDateTime());
         var nextOpening = new DateTimeOffset(Today.AddDays(1).ToDateTime(new TimeOnly(6, 0)), TimeSpan.FromHours(7));

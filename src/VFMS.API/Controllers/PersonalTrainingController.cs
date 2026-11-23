@@ -87,7 +87,7 @@ public sealed class PersonalTrainingController(IPersonalTrainingService service)
         AsUser(actor => service.Checkout(actor, request, ct));
 
     [HttpPost("purchases/{orderNumber}/payment")]
-    [Authorize(Roles = "Member")]
+    [Authorize(Roles = "Customer,Member")]
     public Task<IActionResult> StartPayment(string orderNumber, PTPaymentRequest request, CancellationToken ct) =>
         AsUser(actor => service.StartPayment(actor, orderNumber, request, ct));
 
@@ -97,21 +97,21 @@ public sealed class PersonalTrainingController(IPersonalTrainingService service)
         AsUser(actor => service.ConfirmCash(actor, orderNumber.Trim().ToUpperInvariant(), request.AmountReceived, ct));
 
     [HttpGet("purchases/{orderNumber}")]
-    [Authorize(Roles = "Member")]
+    [Authorize(Roles = "Customer,Member")]
     public Task<IActionResult> CheckoutStatus(string orderNumber, CancellationToken ct) =>
         AsUser(actor => service.CheckoutStatus(actor, orderNumber, ct));
 
     [HttpGet("contracts")]
-    [Authorize(Roles = "Member,PT")]
+    [Authorize(Roles = "Customer,Member,PT")]
     public Task<IActionResult> Contracts(CancellationToken ct) => AsUser(actor => service.MyContracts(actor, null, ct));
 
     [HttpGet("contracts/page")]
-    [Authorize(Roles = "Member")]
+    [Authorize(Roles = "Customer,Member")]
     public Task<IActionResult> ContractPage([FromQuery] int page, [FromQuery] string? trainerId, [FromQuery] bool? completed,
         CancellationToken ct) => AsUser(actor => service.ContractPage(actor, page, trainerId, ct, completed));
 
     [HttpGet("contracts/{id:int}")]
-    [Authorize(Roles = "Member,PT")]
+    [Authorize(Roles = "Customer,Member,PT")]
     public Task<IActionResult> Contract(int id, CancellationToken ct) => AsUser(actor => service.MyContracts(actor, id, ct));
 
     [HttpGet("assigned-members/page")]
@@ -130,17 +130,17 @@ public sealed class PersonalTrainingController(IPersonalTrainingService service)
         AsUser(actor => service.Propose(actor, id, request, ct));
 
     [HttpPost("sessions/{id:int}/proposal/decision")]
-    [Authorize(Roles = "Member")]
+    [Authorize(Roles = "Customer,Member")]
     public Task<IActionResult> DecideProposal(int id, PTProposalDecision request, CancellationToken ct) =>
         AsUser(actor => service.DecideProposal(actor, id, request, ct));
 
     [HttpGet("sessions/{id:int}/reschedule-options")]
-    [Authorize(Roles = "Member,PT")]
+    [Authorize(Roles = "Customer,Member,PT")]
     public Task<IActionResult> RescheduleOptions(int id, [FromQuery] DateOnly? from, CancellationToken ct) =>
         AsUser(actor => service.RescheduleOptions(actor, id, from, ct));
 
     [HttpPost("sessions/{id:int}/reschedule-request")]
-    [Authorize(Roles = "Member")]
+    [Authorize(Roles = "Customer,Member")]
     public Task<IActionResult> RequestReschedule(int id, PTRescheduleRequest request, CancellationToken ct) =>
         AsUser(actor => service.RequestReschedule(actor, id, request, ct));
 
@@ -155,7 +155,7 @@ public sealed class PersonalTrainingController(IPersonalTrainingService service)
         AsUser(actor => service.RecordAttendance(actor, id, attended, ct));
 
     [HttpPost("sessions/{id:int}/trainer-absence")]
-    [Authorize(Roles = "Member")]
+    [Authorize(Roles = "Customer,Member")]
     public Task<IActionResult> ReportTrainerAbsence(int id, PTTrainerAbsenceReportRequest request, CancellationToken ct) =>
         AsUser(actor => service.ReportTrainerAbsence(actor, id, request, ct));
 
@@ -180,52 +180,52 @@ public sealed class PersonalTrainingController(IPersonalTrainingService service)
         AsUser(actor => service.Note(actor, id, request, ct));
 
     [HttpPost("contracts/{id:int}/freezes")]
-    [Authorize(Roles = "Member")]
+    [Authorize(Roles = "Customer,Member")]
     public Task<IActionResult> RequestFreeze(int id, PTFreezeRequest request, CancellationToken ct) =>
         AsUser(actor => service.RequestFreeze(actor, id, request, ct));
 
     [HttpPost("contracts/{id:int}/freezes/preview")]
-    [Authorize(Roles = "Member")]
+    [Authorize(Roles = "Customer,Member")]
     public Task<IActionResult> PreviewFreezeRequest(int id, PTFreezeRequest request, CancellationToken ct) =>
         AsUser(actor => service.PreviewFreezeRequest(actor, id, request, ct));
 
     [HttpPost("freezes/{id:int}/withdraw")]
-    [Authorize(Roles = "Member")]
+    [Authorize(Roles = "Customer,Member")]
     public Task<IActionResult> WithdrawFreeze(int id, CancellationToken ct) =>
         AsUser(actor => service.WithdrawFreeze(actor, id, ct));
 
     [HttpGet("freezes/{id:int}/slots")]
-    [Authorize(Roles = "Member")]
+    [Authorize(Roles = "Customer,Member")]
     public Task<IActionResult> FreezeSlots(int id, CancellationToken ct) =>
         AsUser(actor => service.FreezeSlots(actor, id, ct));
 
     [HttpPut("freezes/{id:int}/slots")]
-    [Authorize(Roles = "Member")]
+    [Authorize(Roles = "Customer,Member")]
     public Task<IActionResult> ChangeFreezeSlots(int id, PTFreezeSlotChange request, CancellationToken ct) =>
         AsUser(actor => service.ChangeFreezeSlots(actor, id, request, ct));
 
     [HttpGet("contracts/{id:int}/replacement-trainers")]
-    [Authorize(Roles = "Member")]
+    [Authorize(Roles = "Customer,Member")]
     public Task<IActionResult> ReplacementTrainers(int id, CancellationToken ct) =>
         AsUser(actor => service.ReplacementTrainers(actor, id, ct));
 
     [HttpPost("contracts/{id:int}/trainer-change/preview")]
-    [Authorize(Roles = "Member")]
+    [Authorize(Roles = "Customer,Member")]
     public Task<IActionResult> PreviewTrainerChange(int id, PTTrainerChangeRequest request, CancellationToken ct) =>
         AsUser(actor => service.PreviewTrainerChange(actor, id, request, ct));
 
     [HttpPost("contracts/{id:int}/trainer-change")]
-    [Authorize(Roles = "Member")]
+    [Authorize(Roles = "Customer,Member")]
     public Task<IActionResult> ChangeTrainer(int id, PTTrainerChangeRequest request, CancellationToken ct) =>
         AsUser(actor => service.ChangeTrainer(actor, id, request, ct));
 
     [HttpPost("freezes/{id:int}/early-resume/preview")]
-    [Authorize(Roles = "Member")]
+    [Authorize(Roles = "Customer,Member")]
     public Task<IActionResult> PreviewEarlyResume(int id, PTEarlyResumeRequest request, CancellationToken ct) =>
         AsUser(actor => service.PreviewEarlyResume(actor, id, request, ct));
 
     [HttpPost("freezes/{id:int}/early-resume/confirm")]
-    [Authorize(Roles = "Member")]
+    [Authorize(Roles = "Customer,Member")]
     public Task<IActionResult> ConfirmEarlyResume(int id, PTEarlyResumeConfirmation request, CancellationToken ct) =>
         AsUser(actor => service.ConfirmEarlyResume(actor, id, request, ct));
 
@@ -235,7 +235,7 @@ public sealed class PersonalTrainingController(IPersonalTrainingService service)
         AsUser(actor => service.FreezePage(actor, true, processed, page, null, ct));
 
     [HttpGet("contracts/{id:int}/freezes")]
-    [Authorize(Roles = "Member")]
+    [Authorize(Roles = "Customer,Member")]
     public Task<IActionResult> MemberFreezePage(int id, [FromQuery] int page, CancellationToken ct) =>
         AsUser(actor => service.FreezePage(actor, false, false, page, id, ct));
 
@@ -250,7 +250,7 @@ public sealed class PersonalTrainingController(IPersonalTrainingService service)
         AsUser(actor => service.DecideFreeze(actor, id, request, ct));
 
     [HttpPost("sessions/{id:int}/make-up")]
-    [Authorize(Roles = "Member,PT")]
+    [Authorize(Roles = "Customer,Member,PT")]
     public Task<IActionResult> ProposeMakeUp(int id, PTMakeUpRequest request, CancellationToken ct) =>
         AsUser(actor => service.ProposeMakeUp(actor, id, request, ct));
 
@@ -260,12 +260,12 @@ public sealed class PersonalTrainingController(IPersonalTrainingService service)
         AsUser(actor => service.DecideMakeUpRequest(actor, id, request, ct));
 
     [HttpPost("sessions/{id:int}/cancellation-request")]
-    [Authorize(Roles = "Member,PT")]
+    [Authorize(Roles = "Customer,Member,PT")]
     public Task<IActionResult> RequestCancellation(int id, CancellationToken ct) =>
         AsUser(actor => service.RequestCancellation(actor, id, ct));
 
     [HttpPost("contracts/{id:int}/review")]
-    [Authorize(Roles = "Member")]
+    [Authorize(Roles = "Customer,Member")]
     public Task<IActionResult> Review(int id, PTReviewRequest request, CancellationToken ct) =>
         AsUser(actor => service.Review(actor, id, request, ct));
 }

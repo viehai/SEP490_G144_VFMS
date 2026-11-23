@@ -129,13 +129,13 @@ public sealed class ApplicationUserIdentitySqlTests
         var requests = new[]
         {
             TrainerTestDatabase.Request with { Email = " PENDING@EXAMPLE.TEST ", PhoneNumber = "0912000041" },
-            TrainerTestDatabase.Request with { Email = "new-trainer@example.test", PhoneNumber = "(0912) 000-040", CitizenId = "000000000011" }
+            TrainerTestDatabase.Request with { Email = "new-trainer@example.test", PhoneNumber = "(0912) 000-040" }
         };
         foreach (var request in requests)
         {
             var submitted = await fixture.Service.Submit(request, null, default);
             Assert.True(submitted.IsSuccess);
-            var application = await fixture.Db.TrainerApplications.AsNoTracking().SingleAsync(row => row.CitizenId == request.CitizenId);
+            var application = await fixture.Db.TrainerApplications.AsNoTracking().SingleAsync(row => row.TrackingCode == submitted.Data!.TrackingCode);
             Assert.True((await fixture.Service.Review(application.Id, new("Interview", "Interview completed"), Actor, default)).IsSuccess);
             var hiring = await fixture.Service.Review(application.Id, new("Hire", "Verified", "Junior", null, true), Actor, default);
             Assert.Equal("TRAINER_IDENTITY_CONFLICT", hiring.ErrorCode);

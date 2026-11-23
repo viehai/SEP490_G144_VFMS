@@ -26,9 +26,11 @@ public static class PersonalTrainingRules
 
     public const int MakeUpGraceDays = 14;
 
-    /// <summary>GBR-12: the start week begins on a Monday and the hold must be made no later than the Friday before it.</summary>
-    public static bool CanStartOn(DateOnly monday, DateOnly today) =>
-        monday.DayOfWeek == DayOfWeek.Monday && today <= monday.AddDays(-3);
+    /// <summary>Any future start date is allowed; generated sessions also require 24 hours' notice.</summary>
+    public static bool CanStartOn(DateOnly start, DateOnly today) => start > today;
+
+    public static bool HasBookingNotice(DateOnly date, TimeOnly startTime, DateTime nowUtc) =>
+        date.ToDateTime(startTime, DateTimeKind.Utc).AddHours(-7) >= nowUtc.AddHours(24);
 
     /// <summary>GBR-14: make-up units can be used until 14 days after the contract end date.</summary>
     public static DateOnly MakeUpDeadline(DateOnly endDate) => endDate.AddDays(MakeUpGraceDays);

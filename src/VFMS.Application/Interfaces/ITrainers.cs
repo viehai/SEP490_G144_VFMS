@@ -39,10 +39,8 @@ public interface ITrainerRepository : IAuditedRepository
     /// <summary>Applications of one type the user submitted or was hired through.</summary>
     Task<IReadOnlyList<TrainerApplication>> GetApplicationsByUserAsync(string applicationType, string userId,
         CancellationToken cancellationToken = default);
-    /// <summary>GBR-03: Recruitment applications matching the Citizen ID or email; dotted and undotted @gmail.com count as one.</summary>
-    Task<IReadOnlyList<TrainerApplication>> GetRecruitmentHistoryAsync(string email, string citizenId, int? applicationId,
-        CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<TrainerApplication>> GetProfileUpdateHistoryAsync(int applicationId, string email, string citizenId,
+    /// <summary>GBR-03: Recruitment applications matching the account, email or phone; dotted Gmail variants count as one.</summary>
+    Task<IReadOnlyList<TrainerApplication>> GetRecruitmentHistoryAsync(string email, string phoneNumber, int? applicationId, string? userId,
         CancellationToken cancellationToken = default);
     Task<TrainerApplication?> GetHiredRecruitmentAsync(int id, CancellationToken cancellationToken = default);
     /// <summary>Applications the user submitted, was hired through, or that use the user's email.</summary>
@@ -53,8 +51,8 @@ public interface ITrainerRepository : IAuditedRepository
         CancellationToken cancellationToken = default);
 
     // ── Accounts ─────────────────────────────────────────────────
-    /// <summary>GBR-107: Staff, Manager, Admin or active trainer accounts using the email, or an active profile using the Citizen ID.</summary>
-    Task<bool> IsStaffOrActiveTrainerAsync(string email, string citizenId, CancellationToken cancellationToken = default);
+    /// <summary>GBR-107: Staff, Manager, Admin or active trainers matching email or phone.</summary>
+    Task<bool> IsStaffOrActiveTrainerAsync(string email, string phoneNumber, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ApplicationUser>> FindMatchingAccountsAsync(string email, string? phoneNumber,
         CancellationToken cancellationToken = default);
     /// <summary>Users among the IDs holding any of the roles.</summary>
@@ -63,7 +61,7 @@ public interface ITrainerRepository : IAuditedRepository
     Task<bool> HasUnfinishedPTContractAsync(string userId, DateTime now, DateOnly makeUpFrom, CancellationToken cancellationToken = default);
     Task<DateOnly?> GetLatestGymMembershipEndAsync(string userId, DateOnly today, CancellationToken cancellationToken = default);
     Task<DateOnly?> GetLatestLockerRentalEndAsync(string userId, CancellationToken cancellationToken = default);
-    Task<TrainerProfile?> FindProfileForHireAsync(string citizenId, string? userId, CancellationToken cancellationToken = default);
+    Task<TrainerProfile?> FindProfileForHireAsync(string userId, CancellationToken cancellationToken = default);
     Task<bool> HasActiveYogaAssignmentsAsync(string userId, CancellationToken cancellationToken = default);
     Task<bool> UserHasRoleIdAsync(string userId, int roleId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ApplicationUserRole>> GetRoleAssignmentsAsync(string userId, IReadOnlyCollection<string> roleNames,
@@ -88,6 +86,8 @@ public interface ITrainerRepository : IAuditedRepository
         CancellationToken cancellationToken = default);
 
     // ── Readiness (UC 4.12) ──────────────────────────────────────
+    Task<bool> HasRunningPTContractAsync(string trainerUserId, DateOnly today,
+        CancellationToken cancellationToken = default);
     Task<IReadOnlyList<PTPurchase>> GetContractsWithTrainerChangeDeadlineAsync(string trainerUserId,
         CancellationToken cancellationToken = default);
     /// <summary>Active contracts of the trainer with no session taught, completed or disputed yet.</summary>

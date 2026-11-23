@@ -99,7 +99,7 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Empty((await member.GetFromJsonAsync<VFMS.Contracts.Common.PagedResponse<PTContractResponse>>(
             "/api/pt/contracts/page?page=1"))!.Items);
 
-        // A day later the original start week may be past its Friday cutoff (GBR-12), so hold the following week.
+        // Use another future schedule after the first checkout has expired.
         var second = await HoldPT(member, booking with { StartDate = booking.StartDate.AddDays(7) });
         Assert.NotNull(second.ProceedBefore);
         _clock.Now = new DateTimeOffset(second.ProceedBefore!.Value).AddSeconds(1);

@@ -17,24 +17,16 @@ public class TrainerMigrationTests
     {
         await using var fixture = new TrainerTestDatabase(); var db = fixture.Db;
         await db.GetService<IMigrator>().MigrateAsync("20261120101437_AddTrainerRoles");
-        var pt = await db.TrainerRoles.Where(t => t.RoleName == TrainerRole.PT).Select(t => t.Id).SingleAsync();
-        TrainerApplication App(string code, string specialty, TrainerApplicationStatus status) => new()
-        {
-            TrackingCode = code,
-            FullName = code,
-            Email = code + "@example.test",
-            PhoneNumber = "0900000000",
-            CitizenId = "",
-            Specialty = specialty,
-            Gender = "Other",
-            Bio = "Bio",
-            ApplicationStatus = status,
-            SubmittedAt = DateTime.UtcNow,
-            TrainerRoleId = pt
-        };
-        db.TrainerApplications.AddRange(App("open-yoga", "Yoga", TrainerApplicationStatus.Interviewing),
-            App("hired-yoga", "Yoga", TrainerApplicationStatus.Hired), App("open-pt", "PT", TrainerApplicationStatus.Pending));
-        await db.SaveChangesAsync();
+        // Seed the old required CitizenId column explicitly; the current model no longer contains it.
+        await db.Database.ExecuteSqlRawAsync("""
+            DECLARE @now datetime2 = SYSUTCDATETIME();
+            DECLARE @pt int = (SELECT Id FROM TrainerRoles WHERE RoleName = 'PT');
+            INSERT INTO TrainerApplications (TrackingCode, FullName, Email, PhoneNumber, CitizenId, Specialty, Gender, Bio,
+                ApplicationFileUrl, ApplicationStatus, SubmittedAt, SubmissionAttempt, TrainerRoleId, CreatedAt, UpdatedAt, IsDeleted)
+                VALUES ('open-yoga', 'open-yoga', 'open-yoga@example.test', '0900000000', '', 'Yoga', 'Other', 'Bio', '', 'Interviewing', @now, 1, @pt, @now, @now, 0),
+                       ('hired-yoga', 'hired-yoga', 'hired-yoga@example.test', '0900000001', '', 'Yoga', 'Other', 'Bio', '', 'Hired', @now, 1, @pt, @now, @now, 0),
+                       ('open-pt', 'open-pt', 'open-pt@example.test', '0900000002', '', 'PT', 'Other', 'Bio', '', 'Pending', @now, 1, @pt, @now, @now, 0);
+            """);
 
         await db.Database.MigrateAsync();
         var roles = await db.TrainerApplications.AsNoTracking().Select(a => new { a.TrackingCode, a.TrainerRole!.RoleName })
@@ -160,6 +152,8 @@ public class TrainerMigrationTests
         var restrictionForeignKeyCount = await db.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM sys.foreign_keys WHERE name = 'FK_TrainerApplications_ApplicationUsers_RestrictionChangedByUserId'").SingleAsync();
         var restrictionIndexCount = await db.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM sys.indexes WHERE object_id = OBJECT_ID('TrainerApplications') AND name = 'IX_TrainerApplications_RestrictionChangedByUserId'").SingleAsync();
         Assert.Equal(0, restrictionForeignKeyCount); Assert.Equal(0, restrictionIndexCount);
+        var citizenColumnCount = await db.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM sys.columns c JOIN sys.tables t ON t.object_id = c.object_id WHERE t.name IN ('TrainerApplications','TrainerProfiles') AND c.name = 'CitizenId'").SingleAsync();
+        Assert.Equal(0, citizenColumnCount);
         Assert.Equal(2, await db.ApplicationUsers.CountAsync());
     }
 }

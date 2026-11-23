@@ -45,8 +45,7 @@ public sealed class PTBookingRequestValidator : AbstractValidator<PTBookingReque
     public PTBookingRequestValidator()
     {
         RuleFor(x => x.TrainerId).NotEmpty().WithMessage("Mã huấn luyện viên không được để trống.").MaximumLength(450).WithMessage("Mã huấn luyện viên không được vượt quá {MaxLength} ký tự.");
-        RuleFor(x => x.StartDate).Must(date => date.DayOfWeek == DayOfWeek.Monday)
-            .WithMessage("Ngày bắt đầu phải là thứ Hai.");
+        RuleFor(x => x.StartDate).NotEmpty().WithMessage("Vui lòng chọn ngày bắt đầu.");
         RuleFor(x => x.TemplateIds).NotNull().WithMessage("Vui lòng cung cấp danh sách ca tập.")
             .Must(ids => ids.Length is >= 1 and <= 7 && ids.Distinct().Count() == ids.Length)
             .WithMessage("Chọn từ 1 đến 7 ca khác nhau.");

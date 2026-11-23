@@ -43,10 +43,6 @@
                 {
                     <div class="trainer-stack">
                         <p>Hạn gói dự kiến @Date(proposal.ExpiresOn). Các ca dưới đây được giữ chỗ trong lúc chờ quản lý duyệt.</p>
-                        @if (proposal.GymCoverageWarning)
-                        {
-                            <p class="trainer-feedback trainer-error" role="alert">Gói Gym của bạn hết hạn trước buổi cuối. Bạn cần gia hạn gói Gym để vào tập các buổi đó.</p>
-                        }
                         @if (proposal.SessionsNeedingSlot.Count > 0)
                         {
                             <p class="trainer-feedback trainer-error" role="alert">Có @proposal.SessionsNeedingSlot.Count buổi chưa có ca trống. Chọn ngày giờ khác cho các buổi đó@(_changeTrainer ? " hoặc chọn mẫu lịch khác" : "") rồi xem lại.</p>

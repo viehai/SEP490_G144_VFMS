@@ -1,0 +1,134 @@
+# Trainer Contact Identity Verification
+
+Date:2026-11-23. All prior approved PT/locker changes preserved. Kiosk/check-in unchanged.
+
+## Replacement validation rules
+
+- Recruitment email and phone are required and validated with UserIdentityRules. Email is trimmed/lowercased; formatted phone separators are removed while its leading plus/country-prefix convention stays unchanged. Gmail dotted aliases retain their existing equivalence.
+- Known applicants and profile updates use authenticated UserId; linked applications cannot be reassigned to another contact match. Missing/deleted linked accounts are ineligible.
+- Recruitment history and ten-minute cooldown match UserId or email or normalized phone.
+- Staff/Manager/Admin and active trainers are rejected by matching email/phone or the authenticated account role.
+- Rehire reuses the inactive profile for the selected UserId. Guest phone-only/conflicting contact matches still require manager verification and selection.
+- Hiring closes contact-matched guest applications and the same known user applications, never another known user application.
+- CitizenId removed from live DTOs/domain/forms/validators/repository logic and current model. Historical migrations and legacy migration test seeds retain their old schema references.
+
+## Verification
+
+-18 contact integration cases passed after meaningful RED runs against the old behavior.
+-677 unit tests passed;415 client tests passed.
+-Full API suite:514 passed,109 failed,42 skipped (SQL integration environment not configured). The test run preceded the final ownership fixes; those fixes were separately verified by the final18-case suite.
+-Failure categories retain108 known fixture/precision errors plus WalkInCustomerOnboardingApiTests.SimultaneousCustomerSetupHasExactlyOneWinner, an unrelated concurrency failure. No user onboarding production files were changed.
+-Migration20261123163628_ReplaceTrainerCitizenIdWithContacts drops the two CitizenId columns and their indexes, and adds a phone/history index. No database update was executed. Down recreates empty/null columns and cannot recover deleted citizen ID data.
+-EF has-pending-model-changes reports no pending changes; generated SQL inspected. Independent review has no remaining material findings.
+
+## Full API failure names
+
+- VFMS.IntegrationTests.CompetitionApiTests.DisqualifiedParticipantDoesNotCountTowardsTheCapacity
+- VFMS.IntegrationTests.CompetitionApiTests.ManagerCannotConfirmAResultWhileTheCompetitionIsStillRunning
+- VFMS.IntegrationTests.CompetitionApiTests.MemberCanRegisterOnlyOnceAndOnlyInsideTheRegistrationWindow
+- VFMS.IntegrationTests.CompetitionApiTests.RegistrationIsRejectedWhenTheCompetitionIsFull
+- VFMS.IntegrationTests.CompetitionApiTests.StaffRecordsResultAndManagerConfirmsItAndGrantsThePrizeVoucher
+- VFMS.IntegrationTests.ConsultationPersistenceTests.ManagerCanReplyAndCustomerNameRemainsAvailableForSoftDeletedAccount
+- VFMS.IntegrationTests.MembershipPlanApiTests.ActiveSubscriptionPreventsDeletionAndRetainsAccessToInactivePlan
+- VFMS.IntegrationTests.MembershipPlanApiTests.AdminCanFilterAndReadMembershipPlanAuditActions
+- VFMS.IntegrationTests.MembershipPlanApiTests.CreateRejectsInvalidInput(field: "durationInDays", value: -5)
+- VFMS.IntegrationTests.MembershipPlanApiTests.CreateRejectsInvalidInput(field: "durationInDays", value: 0)
+- VFMS.IntegrationTests.MembershipPlanApiTests.CreateRejectsInvalidInput(field: "durationInDays", value: 3,5)
+- VFMS.IntegrationTests.MembershipPlanApiTests.CreateRejectsInvalidInput(field: "durationInDays", value: null)
+- VFMS.IntegrationTests.MembershipPlanApiTests.CreateRejectsInvalidInput(field: "name", value: "   ")
+- VFMS.IntegrationTests.MembershipPlanApiTests.CreateRejectsInvalidInput(field: "name", value: null)
+- VFMS.IntegrationTests.MembershipPlanApiTests.CreateRejectsInvalidInput(field: "price", value: -100)
+- VFMS.IntegrationTests.MembershipPlanApiTests.CreateRejectsInvalidInput(field: "price", value: null)
+- VFMS.IntegrationTests.MembershipPlanApiTests.CreateRejectsInvalidInput(field: "serviceType", value: "PILATES")
+- VFMS.IntegrationTests.MembershipPlanApiTests.CreateRejectsInvalidInput(field: "serviceType", value: "PT")
+- VFMS.IntegrationTests.MembershipPlanApiTests.CreateRejectsInvalidInput(field: "status", value: "1")
+- VFMS.IntegrationTests.MembershipPlanApiTests.CreateRejectsInvalidInput(field: "status", value: "ARCHIVED")
+- VFMS.IntegrationTests.MembershipPlanApiTests.CreateRejectsInvalidInput(field: "status", value: null)
+- VFMS.IntegrationTests.MembershipPlanApiTests.EditingLegacyComboKeepsOriginalCalendarMonthsAndOtherEntitlements
+- VFMS.IntegrationTests.MembershipPlanApiTests.FailedAuditWriteRollsBackNewPackageAndGymComponent
+- VFMS.IntegrationTests.MembershipPlanApiTests.InvalidUpdateIsRejectedAndUnknownPlanReturnsNotFound
+- VFMS.IntegrationTests.MembershipPlanApiTests.ListFiltersPaginatesAndCountsActiveSubscribersInTwoQueries
+- VFMS.IntegrationTests.MembershipPlanApiTests.ManagementEndpointsRequireManagerRole(role: "Admin", expected: Forbidden)
+- VFMS.IntegrationTests.MembershipPlanApiTests.ManagementEndpointsRequireManagerRole(role: "Customer", expected: Forbidden)
+- VFMS.IntegrationTests.MembershipPlanApiTests.ManagementEndpointsRequireManagerRole(role: "Member", expected: Forbidden)
+- VFMS.IntegrationTests.MembershipPlanApiTests.ManagementEndpointsRequireManagerRole(role: null, expected: Unauthorized)
+- VFMS.IntegrationTests.MembershipPlanApiTests.ManagerCanDeactivateAndReactivateAndBothTransitionsAreAudited
+- VFMS.IntegrationTests.MembershipPlanApiTests.ManagerCreatesReadsAndUpdatesPlanWithAuditHistory
+- VFMS.IntegrationTests.MembershipPlanApiTests.ManagerCreatesYogaPlanThatCatalogFiltersByServiceType
+- VFMS.IntegrationTests.MembershipPlanApiTests.PaidPlanWithoutSubscriptionsIsDeactivatedAndKeepsFinancialHistory
+- VFMS.IntegrationTests.MembershipPlanApiTests.PurchaseCatalogReturnsOnlyActivePlansAndRejectsDirectAccessToInactivePlans(role: "Customer")
+- VFMS.IntegrationTests.MembershipPlanApiTests.PurchaseCatalogReturnsOnlyActivePlansAndRejectsDirectAccessToInactivePlans(role: "Member")
+- VFMS.IntegrationTests.MembershipPlanApiTests.PurchaseCatalogReturnsOnlyActivePlansAndRejectsDirectAccessToInactivePlans(role: null)
+- VFMS.IntegrationTests.MembershipPlanApiTests.SoftDeletedOrderItemStillPreventsHardDeletion
+- VFMS.IntegrationTests.MembershipPlanApiTests.UnsoldPlanAndItsComponentsArePermanentlyDeletedAndAudited
+- VFMS.IntegrationTests.MembershipPlanApiTests.UpdateChangingStatusWritesUpdateAndStatusAudits
+- VFMS.IntegrationTests.MembershipPlanApiTests.YogaPlanIsHiddenFromTheCatalogWhileNoYogaClassCanBeBooked(status: Cancelled, deadlineDays: 7, instructorTeaches: True)
+- VFMS.IntegrationTests.MembershipPlanApiTests.YogaPlanIsHiddenFromTheCatalogWhileNoYogaClassCanBeBooked(status: Draft, deadlineDays: 7, instructorTeaches: True)
+- VFMS.IntegrationTests.MembershipPlanApiTests.YogaPlanIsHiddenFromTheCatalogWhileNoYogaClassCanBeBooked(status: null, deadlineDays: 7, instructorTeaches: True)
+- VFMS.IntegrationTests.MembershipPlanApiTests.YogaPlanIsHiddenFromTheCatalogWhileNoYogaClassCanBeBooked(status: Open, deadlineDays: -1, instructorTeaches: True)
+- VFMS.IntegrationTests.MembershipPlanApiTests.YogaPlanIsHiddenFromTheCatalogWhileNoYogaClassCanBeBooked(status: Open, deadlineDays: 7, instructorTeaches: False)
+- VFMS.IntegrationTests.MembershipPurchaseApiTests.InvoicePdfPreservesMaximumPersistedDecimalPrecisionWithLongHistoricalItemName
+- VFMS.IntegrationTests.MembershipPurchaseApiTests.TransactionHistoryRetainsPaidPurchasesForCustomerWhoseMembershipHasExpired
+- VFMS.IntegrationTests.PromotionApiTests.ClientCannotForgeUsageDerivedStatusActorOrSystemTimestamps
+- VFMS.IntegrationTests.PromotionApiTests.CountIncludesOnlyConfirmedHistoryEvenWhenSoftDeletedAndQuotaExhaustionExpires
+- VFMS.IntegrationTests.PromotionApiTests.DatabaseUniqueCodeConstraintRejectsCaseEquivalentDirectWrite
+- VFMS.IntegrationTests.PromotionApiTests.DisablingAndEnablingPreservesRedemptionsFinancialHistoryAndExpiredEligibility
+- VFMS.IntegrationTests.PromotionApiTests.DuplicateNormalizedCodeReturnsConflictAndDoesNotAudit(duplicate: "  SaVe20  ")
+- VFMS.IntegrationTests.PromotionApiTests.DuplicateNormalizedCodeReturnsConflictAndDoesNotAudit(duplicate: "SAVE20")
+- VFMS.IntegrationTests.PromotionApiTests.DuplicateNormalizedCodeReturnsConflictAndDoesNotAudit(duplicate: "save20")
+- VFMS.IntegrationTests.PromotionApiTests.EffectiveStatusUsesServerClockAndExclusiveEndBoundary(minutesSinceStart: -1, status: "Scheduled")
+- VFMS.IntegrationTests.PromotionApiTests.EffectiveStatusUsesServerClockAndExclusiveEndBoundary(minutesSinceStart: 0, status: "Active")
+- VFMS.IntegrationTests.PromotionApiTests.EffectiveStatusUsesServerClockAndExclusiveEndBoundary(minutesSinceStart: 120, status: "Expired")
+- VFMS.IntegrationTests.PromotionApiTests.EffectiveStatusUsesServerClockAndExclusiveEndBoundary(minutesSinceStart: 121, status: "Expired")
+- VFMS.IntegrationTests.PromotionApiTests.EffectiveStatusUsesServerClockAndExclusiveEndBoundary(minutesSinceStart: 60, status: "Active")
+- VFMS.IntegrationTests.PromotionApiTests.EmptyListIsSuccessfulAndDoesNotAuditReads
+- VFMS.IntegrationTests.PromotionApiTests.EnableRequiresExplicitBooleanAndCannotAcceptDerivedStatusInstead
+- VFMS.IntegrationTests.PromotionApiTests.EndMustBeStrictlyAfterStart(minutes: -1)
+- VFMS.IntegrationTests.PromotionApiTests.EndMustBeStrictlyAfterStart(minutes: 0)
+- VFMS.IntegrationTests.PromotionApiTests.EveryManagementEndpointRequiresManager(role: "Admin", expected: Forbidden)
+- VFMS.IntegrationTests.PromotionApiTests.EveryManagementEndpointRequiresManager(role: "Customer", expected: Forbidden)
+- VFMS.IntegrationTests.PromotionApiTests.EveryManagementEndpointRequiresManager(role: "Member", expected: Forbidden)
+- VFMS.IntegrationTests.PromotionApiTests.EveryManagementEndpointRequiresManager(role: "PT", expected: Forbidden)
+- VFMS.IntegrationTests.PromotionApiTests.EveryManagementEndpointRequiresManager(role: "Staff", expected: Forbidden)
+- VFMS.IntegrationTests.PromotionApiTests.EveryManagementEndpointRequiresManager(role: null, expected: Unauthorized)
+- VFMS.IntegrationTests.PromotionApiTests.ExplicitDisabledStateOverridesEveryDateLifecycle(startDays: -1, endDays: 1)
+- VFMS.IntegrationTests.PromotionApiTests.ExplicitDisabledStateOverridesEveryDateLifecycle(startDays: -2, endDays: -1)
+- VFMS.IntegrationTests.PromotionApiTests.ExplicitDisabledStateOverridesEveryDateLifecycle(startDays: 1, endDays: 2)
+- VFMS.IntegrationTests.PromotionApiTests.FailedAuditRollsBackEveryPrivilegedMutation(operation: "create")
+- VFMS.IntegrationTests.PromotionApiTests.FailedAuditRollsBackEveryPrivilegedMutation(operation: "toggle")
+- VFMS.IntegrationTests.PromotionApiTests.FailedAuditRollsBackEveryPrivilegedMutation(operation: "update")
+- VFMS.IntegrationTests.PromotionApiTests.InvalidConfigurationIsRejectedWithoutPartialMutation(field: "code", value: " ")
+- VFMS.IntegrationTests.PromotionApiTests.InvalidConfigurationIsRejectedWithoutPartialMutation(field: "code", value: null)
+- VFMS.IntegrationTests.PromotionApiTests.InvalidConfigurationIsRejectedWithoutPartialMutation(field: "discountType", value: "Unknown")
+- VFMS.IntegrationTests.PromotionApiTests.InvalidConfigurationIsRejectedWithoutPartialMutation(field: "discountType", value: 99)
+- VFMS.IntegrationTests.PromotionApiTests.InvalidConfigurationIsRejectedWithoutPartialMutation(field: "discountType", value: null)
+- VFMS.IntegrationTests.PromotionApiTests.InvalidConfigurationIsRejectedWithoutPartialMutation(field: "discountValue", value: -1)
+- VFMS.IntegrationTests.PromotionApiTests.InvalidConfigurationIsRejectedWithoutPartialMutation(field: "discountValue", value: 0)
+- VFMS.IntegrationTests.PromotionApiTests.InvalidConfigurationIsRejectedWithoutPartialMutation(field: "discountValue", value: 101)
+- VFMS.IntegrationTests.PromotionApiTests.InvalidConfigurationIsRejectedWithoutPartialMutation(field: "discountValue", value: null)
+- VFMS.IntegrationTests.PromotionApiTests.InvalidConfigurationIsRejectedWithoutPartialMutation(field: "endAt", value: null)
+- VFMS.IntegrationTests.PromotionApiTests.InvalidConfigurationIsRejectedWithoutPartialMutation(field: "isEnabled", value: null)
+- VFMS.IntegrationTests.PromotionApiTests.InvalidConfigurationIsRejectedWithoutPartialMutation(field: "maxDiscountAmount", value: -1)
+- VFMS.IntegrationTests.PromotionApiTests.InvalidConfigurationIsRejectedWithoutPartialMutation(field: "maxDiscountAmount", value: 0)
+- VFMS.IntegrationTests.PromotionApiTests.InvalidConfigurationIsRejectedWithoutPartialMutation(field: "maxDiscountAmount", value: null)
+- VFMS.IntegrationTests.PromotionApiTests.InvalidConfigurationIsRejectedWithoutPartialMutation(field: "maxRedemptions", value: -1)
+- VFMS.IntegrationTests.PromotionApiTests.InvalidConfigurationIsRejectedWithoutPartialMutation(field: "maxRedemptions", value: 0)
+- VFMS.IntegrationTests.PromotionApiTests.InvalidConfigurationIsRejectedWithoutPartialMutation(field: "minimumSpend", value: -1)
+- VFMS.IntegrationTests.PromotionApiTests.InvalidConfigurationIsRejectedWithoutPartialMutation(field: "name", value: "  ")
+- VFMS.IntegrationTests.PromotionApiTests.InvalidConfigurationIsRejectedWithoutPartialMutation(field: "name", value: null)
+- VFMS.IntegrationTests.PromotionApiTests.InvalidConfigurationIsRejectedWithoutPartialMutation(field: "startAt", value: null)
+- VFMS.IntegrationTests.PromotionApiTests.ListProjectsCountsInBoundedQueriesWithoutLoadingRedemptionHistory
+- VFMS.IntegrationTests.PromotionApiTests.ManagerCreatesAndReadsCanonicalPromotionWithCompleteConfiguration(type: "Fixed", value: 50000, cap: null)
+- VFMS.IntegrationTests.PromotionApiTests.ManagerCreatesAndReadsCanonicalPromotionWithCompleteConfiguration(type: "Percentage", value: 20, cap: 100000)
+- VFMS.IntegrationTests.PromotionApiTests.ManagerUpdatesConfigurationAndCannotReuseAnotherPromotionsCode
+- VFMS.IntegrationTests.PromotionApiTests.NoOpUpdateOrToggleAndReadsDoNotCreateAuditNoise
+- VFMS.IntegrationTests.PromotionApiTests.NullableGlobalQuotaRemainsUnlimitedAndDoesNotConfigurePerUserQuota
+- VFMS.IntegrationTests.PromotionApiTests.SoftDeletedHistoricalVoucherStillReservesItsCode
+- VFMS.IntegrationTests.PromotionApiTests.UnknownPromotionReturnsNotFoundAndPermanentDeleteIsNotExposed
+- VFMS.IntegrationTests.PromotionApiTests.UnsafeQuotaReductionRejectsUpdateAndPreservesAllConfigurationAndAudit
+- VFMS.IntegrationTests.PromotionApiTests.UnspecifiedOrDefaultTimestampsAreRejected(start: "0001-01-01T00:00:00Z")
+- VFMS.IntegrationTests.PromotionApiTests.UnspecifiedOrDefaultTimestampsAreRejected(start: "2026-11-13T12:00:00")
+- VFMS.IntegrationTests.WalkInCustomerOnboardingApiTests.SimultaneousCustomerSetupHasExactlyOneWinner
+- VFMS.IntegrationTests.YogaPersistenceTests.InstructorTakesAttendanceByQrAndRosterThenSessionCloses
+- VFMS.IntegrationTests.YogaPersistenceTests.ManagerCanCreateAndPublishClassForInstructorWithoutTrainerProfile
+- VFMS.IntegrationTests.YogaPersistenceTests.MembersBookMatsUntilFullThenJoinTheWaitlist

@@ -64,10 +64,6 @@
                 {
                     <p>Huấn luyện viên thay thế cho các buổi còn lại: <strong>@replacement</strong></p>
                 }
-                @if (preview.GymCoverageWarning)
-                {
-                    <p class="trainer-feedback trainer-error" role="alert">Gói Gym của hội viên hết hạn trước buổi cuối. Vẫn có thể duyệt; hội viên cần gia hạn gói Gym để vào tập.</p>
-                }
                 <h3>Lịch đang được giữ sau bảo lưu</h3>
                 <SlotList Slots="preview.Replacements" />
             }

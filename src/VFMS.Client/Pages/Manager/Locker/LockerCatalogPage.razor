@@ -28,9 +28,8 @@
     {
         <div class="@Ui.Card space-y-4">
             <h2 class="text-sm font-extrabold">Bảng giá</h2>
-            <p class="text-xs text-[#6F6966]">Giá mới chỉ áp dụng cho đơn mới. Hợp đồng và đơn đang chờ giữ giá đã chốt. Mọi khoản là số tiền VND nguyên lớn hơn 0.</p>
+            <p class="text-xs text-[#6F6966]">Giá mới chỉ áp dụng cho đơn mới. Hợp đồng và đơn đang chờ giữ giá đã chốt. Thuê ngày chỉ thu cọc chìa. Phí thuê tháng, cọc chìa và phí quá hạn là số tiền VND nguyên lớn hơn 0.</p>
             <form class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" @onsubmit="SavePricingAsync" @onsubmit:preventDefault>
-                <label class="@Ui.Label">Thuê ngày (₫)<input type="number" min="1" step="1" class="@Ui.Field" @bind="_dailyFee" disabled="@_busy" /></label>
                 <label class="@Ui.Label">1 tháng (₫)<input type="number" min="1" step="1" class="@Ui.Field" @bind="_oneMonth" disabled="@_busy" /></label>
                 <label class="@Ui.Label">3 tháng (₫)<input type="number" min="1" step="1" class="@Ui.Field" @bind="_threeMonths" disabled="@_busy" /></label>
                 <label class="@Ui.Label">6 tháng (₫)<input type="number" min="1" step="1" class="@Ui.Field" @bind="_sixMonths" disabled="@_busy" /></label>
@@ -105,7 +104,7 @@
     private LockerCatalog? _catalog;
     private LockerSlot[] _slots = [];
     private LockerSlot? _selected;
-    private decimal _dailyFee, _oneMonth, _threeMonths, _sixMonths, _twelveMonths, _keyDeposit = 100_000, _overdueFee;
+    private decimal _oneMonth, _threeMonths, _sixMonths, _twelveMonths, _keyDeposit = 100_000, _overdueFee;
     private string _zoneName = "", _lockerNumber = "", _rules = "";
     private int _zoneFloor = 1, _lockerZone;
     private string? _error, _numberError;
@@ -137,7 +136,6 @@
     private void Fill(IReadOnlyList<LockerPolicy> prices)
     {
         decimal Fee(string type, int months) => prices.FirstOrDefault(p => p.Type == type && (type == "Daily" || p.Months == months))?.RentalFee ?? 0;
-        _dailyFee = Fee("Daily", 0);
         _oneMonth = Fee("Monthly", 1);
         _threeMonths = Fee("Quarterly", 3);
         _sixMonths = Fee("HalfYearly", 6);
@@ -162,7 +160,7 @@
 
     private Task SavePricingAsync() => RunAsync(async () =>
     {
-        var saved = await Api.SavePricingAsync(new LockerPricingRequest(_dailyFee, _keyDeposit, _oneMonth, _threeMonths, _sixMonths,
+        var saved = await Api.SavePricingAsync(new LockerPricingRequest(0, _keyDeposit, _oneMonth, _threeMonths, _sixMonths,
             _twelveMonths, _overdueFee), _lifetime.Token);
         Fill(saved);
         Toasts.Show("Đã cập nhật bảng giá tủ thành công.");

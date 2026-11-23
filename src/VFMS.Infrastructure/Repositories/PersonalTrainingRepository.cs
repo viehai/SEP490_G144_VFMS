@@ -142,33 +142,6 @@ public sealed class PersonalTrainingRepository(VfmsDbContext db) : AuditedReposi
                 s.SessionStatus != PTSessionStatus.FreezeHold)
             .OrderBy(s => s.SessionDate).ThenBy(s => s.StartTime).ToListAsync(cancellationToken);
 
-    // ── Gym membership coverage (GBR-10) ─────────────────────────
-
-    public Task<MemberMembership?> GetCurrentGymMembershipAsync(string memberId, DateOnly today, CancellationToken cancellationToken = default) =>
-        Context.MemberMemberships.Where(m => m.MemberUserId == memberId && m.MembershipStatus == MembershipStatus.Active &&
-                m.PackageComponent.ComponentType == ComponentType.GYM && m.StartDate <= today && m.EndDate >= today &&
-                !m.MembershipFreezes.Any(f => (f.RequestStatus == FreezeRequestStatus.Approved ||
-                    f.RequestStatus == FreezeRequestStatus.Active || f.RequestStatus == FreezeRequestStatus.Completed) &&
-                    (f.ActualStartDate ?? f.RequestedStartDate) <= today &&
-                    (f.ActualEndDate ?? f.RequestedEndDate) > today))
-            .OrderByDescending(m => m.EndDate).FirstOrDefaultAsync(cancellationToken);
-
-    public Task<bool> HasGymAccessOnAsync(string memberId, DateOnly date, CancellationToken cancellationToken = default) =>
-        Context.MemberMemberships.AnyAsync(m =>
-            m.MemberUserId == memberId && m.PackageComponent.ComponentType == ComponentType.GYM &&
-            (m.MembershipStatus == MembershipStatus.Active || m.MembershipStatus == MembershipStatus.Expired) &&
-            m.StartDate <= date && m.EndDate >= date &&
-            !m.MembershipFreezes.Any(f => (f.RequestStatus == FreezeRequestStatus.Approved ||
-                f.RequestStatus == FreezeRequestStatus.Active || f.RequestStatus == FreezeRequestStatus.Completed) &&
-                (f.ActualStartDate ?? f.RequestedStartDate) <= date &&
-                (f.ActualEndDate ?? f.RequestedEndDate) > date), cancellationToken);
-
-    public Task<DateOnly?> GetLatestGymCoverageEndAsync(string memberId, CancellationToken cancellationToken = default) =>
-        Context.MemberMemberships.Where(m => m.MemberUserId == memberId &&
-                (m.MembershipStatus == MembershipStatus.Active || m.MembershipStatus == MembershipStatus.Scheduled) &&
-                m.PackageComponent.ComponentType == ComponentType.GYM)
-            .MaxAsync(m => (DateOnly?)m.EndDate, cancellationToken);
-
     // ── Packages (UC 4.3) ────────────────────────────────────────
 
     private IQueryable<Package> PTPackages => Context.Packages.Include(p => p.Components)

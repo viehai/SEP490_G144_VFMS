@@ -484,7 +484,6 @@ public class VfmsDbContext : DbContext
             entity.Property(e => e.FullName).HasMaxLength(256).IsRequired();
             entity.Property(e => e.Email).HasMaxLength(256).IsRequired();
             entity.Property(e => e.PhoneNumber).HasMaxLength(20).IsRequired();
-            entity.Property(e => e.CitizenId).HasMaxLength(12).IsRequired();
 
             entity.HasOne(e => e.Applicant)
                 .WithMany(u => u.TrainerApplications)

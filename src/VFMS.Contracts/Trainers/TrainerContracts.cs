@@ -7,7 +7,7 @@ public sealed record TrainerCertificateLinkInput(string Url, string? ReplacesCer
 /// Specialty is free text; a ProfileUpdate may leave it empty to keep the published one.
 /// </summary>
 public sealed record SubmitTrainerApplicationRequest(
-    string FullName, string Email, string PhoneNumber, string CitizenId, DateOnly DateOfBirth,
+    string FullName, string Email, string PhoneNumber, DateOnly DateOfBirth,
     string Gender, string Specialty, int ExperienceYears, string Bio, bool Consent,
     List<TrainerFileInput> Certificates, string ApplicationType = "Recruitment", List<string>? CertificateUrls = null,
     List<TrainerCertificateLinkInput>? CertificateLinks = null, string? TrainerRole = null);
@@ -37,7 +37,7 @@ public sealed record TrainerAccountCandidate(string UserId, string FullName, str
     bool EmailMatches, bool PhoneMatches, bool Eligible = true, bool HasUnfinishedPTContract = false,
     DateOnly? MemberServicesUntil = null);
 public sealed record TrainerApplicationResponse(int Id, string TrackingCode, string Status, string FullName,
-    string Email, string PhoneNumber, string CitizenId, DateOnly? DateOfBirth, string Gender, string Specialty,
+    string Email, string PhoneNumber, DateOnly? DateOfBirth, string Gender, string Specialty,
     int ExperienceYears, string Bio, DateTime SubmittedAt, int SubmissionAttempt, string? ReviewNote,
     string? HiredUserId, IReadOnlyList<TrainerDocumentResponse> Certificates, string ApplicationType = "Recruitment",
     IReadOnlyList<TrainerSubmissionAttempt>? SubmissionHistory = null, string? InterviewNote = null, TrainerAccountMatch? AccountMatch = null,
@@ -49,8 +49,10 @@ public sealed record TrainerProfileResponse(int Id, string UserId, string FullNa
     public TrainerProfileResponse() : this(0, "", "", "", "", "", 0, null, null, 0) { }
     public bool IsAcceptingNewMembers { get; init; }
     public DateOnly? NotAcceptingSince { get; init; }
-    /// <summary>GBR-104: first day of the 60-day count (later than NotAcceptingSince while contracts were still running).</summary>
+    /// <summary>GBR-104: first day not yet included in the accumulated inactivity count.</summary>
     public DateOnly? NotAcceptingCountFrom { get; init; }
+    public int NotAcceptingAccumulatedDays { get; init; }
+    public DateOnly? AcceptingSince { get; init; }
     /// <summary>PT or Yoga. Only a PT sells packages and publishes a weekly timetable (UC 3.4).</summary>
     public string TrainerRole { get; init; } = "";
 }

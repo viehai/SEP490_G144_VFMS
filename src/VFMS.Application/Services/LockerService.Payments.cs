@@ -60,7 +60,7 @@ public sealed partial class LockerService
             EndDate = LocalDate(now),
             ContractStatus = LockerContractStatus.PendingPayment,
             RentalTypeSnapshot = policy.RentalType,
-            RentalPrice = policy.RentalPrice,
+            RentalPrice = policy.RentalType == RentalType.Daily ? 0 : policy.RentalPrice,
             DepositAmount = policy.DepositAmount,
             OverdueDailyFeeSnapshot = policy.OverdueDailyFee
         };

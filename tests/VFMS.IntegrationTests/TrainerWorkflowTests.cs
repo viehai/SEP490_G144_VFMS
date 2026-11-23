@@ -87,7 +87,7 @@ internal sealed class TrainerTestDatabase : IAsyncDisposable
     {
         Assert.True(result.IsSuccess, $"{result.ErrorCode}: {result.ErrorMessage}"); return result.Data!;
     }
-    public static SubmitTrainerApplicationRequest Request => new("Test Trainer", "trainer@example.test", "0900000010", "000000000010", new(2000, 1, 1), "Other", "Strength training", 3, "Strength coach", true, [new("proof.pdf", "%PDF-1.7 synthetic"u8.ToArray())], TrainerRole: "PT");
+    public static SubmitTrainerApplicationRequest Request => new("Test Trainer", "trainer@example.test", "0900000010", new(2000, 1, 1), "Other", "Strength training", 3, "Strength coach", true, [new("proof.pdf", "%PDF-1.7 synthetic"u8.ToArray())], TrainerRole: "PT");
     public async Task<TrainerApplication> Hire()
     {
         Success(await Service.Submit(Request, null, default));
@@ -342,7 +342,7 @@ public class TrainerWorkflowTests
         Assert.Equal(["PT"], await db.ApplicationUserRoles.Where(x => x.UserId == customer.UserId)
             .Select(x => x.Role.RoleName).ToListAsync());
         // UC 3.3: identity comes from the account and TrainerProfile, so the form may leave personal details empty.
-        var update = request with { ApplicationType = "ProfileUpdate", Email = "", CitizenId = "", PhoneNumber = "", FullName = "", Specialty = "Yoga" };
+        var update = request with { ApplicationType = "ProfileUpdate", Email = "", PhoneNumber = "", FullName = "", Specialty = "Yoga" };
         TrainerTestDatabase.Success(await service.Submit(update, customer.UserId, default));
         var firstUpdate = await db.TrainerApplications.SingleAsync(x => x.ApplicationType == "ProfileUpdate");
         TrainerTestDatabase.Success(await service.Review(firstUpdate.Id, new("Reject", "Resubmit certificate"), "manager", default));
@@ -353,7 +353,7 @@ public class TrainerWorkflowTests
         var retried = TrainerTestDatabase.Success(await service.Submit(update, customer.UserId, default));
         Assert.Equal(2, retried.SubmissionAttempt);
         var stored = await db.TrainerApplications.SingleAsync(x => x.TrackingCode == retried.TrackingCode);
-        Assert.Equal((customer.Email, request.CitizenId, customer.PhoneNumber), (stored.Email, stored.CitizenId, stored.PhoneNumber));
+        Assert.Equal((customer.UserId, customer.Email, customer.PhoneNumber), (stored.ApplicantUserId, stored.Email, stored.PhoneNumber));
         var unchangedAccount = await db.ApplicationUsers.SingleAsync(x => x.UserId == customer.UserId);
         Assert.Equal(passwordBefore, unchangedAccount.PasswordHash); Assert.Equal(customer.Email, unchangedAccount.Email);
         Assert.Null(unchangedAccount.PasswordSetupTokenHash); Assert.Equal(AccountStatus.Active, unchangedAccount.AccountStatus);
@@ -516,8 +516,8 @@ public class TrainerWorkflowTests
         Assert.Single(TrainerTestDatabase.Success(await service.Search(new(Search: "Hatha"), default)).Items);
 
         // GBR-107: an active Yoga trainer cannot submit another recruitment, signed in or not.
-        Assert.Equal("TRAINER_NOT_ELIGIBLE", (await service.Submit(yoga with { TrainerRole = "PT", CitizenId = "000000000077" }, null, default)).ErrorCode);
-        Assert.Equal("TRAINER_NOT_ELIGIBLE", (await service.Submit(yoga with { Email = "other@example.test", CitizenId = "000000000078" },
+        Assert.Equal("TRAINER_NOT_ELIGIBLE", (await service.Submit(yoga with { TrainerRole = "PT" }, null, default)).ErrorCode);
+        Assert.Equal("TRAINER_NOT_ELIGIBLE", (await service.Submit(yoga with { Email = "other@example.test", PhoneNumber = "0900000078" },
             profile.PTUserId, default)).ErrorCode);
     }
 
@@ -544,8 +544,7 @@ public class TrainerWorkflowTests
         var receipt = TrainerTestDatabase.Success(await fixture.Service.Submit(TrainerTestDatabase.Request with
         {
             Email = member.Email,
-            PhoneNumber = member.PhoneNumber,
-            CitizenId = "000000000099"
+            PhoneNumber = member.PhoneNumber
         }, member.UserId, default));
         Assert.Equal("Pending", receipt.Status);
     }
@@ -647,22 +646,24 @@ public class TrainerWorkflowTests
     }
 
     [SqlTrainerFact]
-    public async Task RecruitmentCooldownMatchesEitherIdentityAndAllowsPendingResubmissionAfterTenMinutes()
+    public async Task RecruitmentCooldownMatchesEitherContactAndAllowsPendingResubmissionAfterTenMinutes()
     {
         await using var fixture = new TrainerTestDatabase();
         await fixture.Initialize();
         var request = TrainerTestDatabase.Request;
         var service = fixture.Service;
         TrainerTestDatabase.Success(await service.Submit(request, null, default));
-        Assert.Equal("RECRUITMENT_COOLDOWN", (await service.Submit(request with { CitizenId = "000000000011" }, null, default)).ErrorCode);
-        Assert.Equal("RECRUITMENT_COOLDOWN", (await service.Submit(request with { Email = "second@example.test" }, null, default)).ErrorCode);
+        Assert.Equal("RECRUITMENT_COOLDOWN", (await service.Submit(request with { PhoneNumber = "0900000011" }, null, default)).ErrorCode);
+        Assert.Equal("RECRUITMENT_COOLDOWN", (await service.Submit(request with { Email = "second@example.test", PhoneNumber = "(0900) 000-010" }, null, default)).ErrorCode);
+        var unrelated = TrainerTestDatabase.Success(await service.Submit(request with { Email = "unrelated@example.test", PhoneNumber = "0900000012" }, null, default));
+        Assert.Equal(1, unrelated.SubmissionAttempt);
 
-        var original = await fixture.Db.TrainerApplications.SingleAsync();
+        var original = await fixture.Db.TrainerApplications.SingleAsync(application => application.Email == request.Email);
         original.SubmittedAt = DateTime.UtcNow.AddMinutes(-10);
         await fixture.Db.SaveChangesAsync();
         var resubmission = TrainerTestDatabase.Success(await service.Submit(request with { Email = "second@example.test" }, null, default));
         Assert.Equal(2, resubmission.SubmissionAttempt);
-        Assert.Equal(2, await fixture.Db.TrainerApplications.CountAsync());
+        Assert.Equal(3, await fixture.Db.TrainerApplications.CountAsync());
     }
 
     [SqlTrainerFact]
@@ -673,7 +674,7 @@ public class TrainerWorkflowTests
         var db = fixture.Db;
         var service = fixture.Service;
         var request = TrainerTestDatabase.Request with { Email = "trainer.test@gmail.com" };
-        var alias = request with { Email = "trainertest@gmail.com", CitizenId = "000000000011", PhoneNumber = "0900000011" };
+        var alias = request with { Email = "trainertest@gmail.com", PhoneNumber = "0900000011" };
         var gymId = await db.Gyms.Select(gym => gym.Id).SingleAsync();
         db.Add(new ApplicationUser
         {
@@ -860,7 +861,7 @@ public class TrainerWorkflowTests
     }
 
     [SqlTrainerFact]
-    public async Task Employees_cannot_apply_and_hiring_stores_citizen_id_and_closes_other_open_applications()
+    public async Task Employees_cannot_apply_and_hiring_closes_other_applications_with_the_same_phone()
     {
         await using var fixture = new TrainerTestDatabase(); await fixture.Initialize();
         var db = fixture.Db; var service = fixture.Service; var request = TrainerTestDatabase.Request;
@@ -880,9 +881,11 @@ public class TrainerWorkflowTests
         var closed = await db.TrainerApplications.SingleAsync(x => x.Id == first.Id);
         Assert.Equal(TrainerApplicationStatus.Rejected, closed.ApplicationStatus);
         Assert.Contains("Closed automatically", closed.ReviewNote);
-        Assert.Equal(request.CitizenId, (await db.TrainerProfiles.SingleAsync()).CitizenId);
+        var profile = await db.TrainerProfiles.SingleAsync();
+        Assert.Equal(await db.TrainerApplications.Where(application => application.Id == second.Id)
+            .Select(application => application.HiredUserId).SingleAsync(), profile.PTUserId);
 
-        // An active trainer's Citizen ID blocks a new application under another email.
+        // An active trainer's phone blocks a new application under another email.
         TrainerTestDatabase.Success(await service.Setup(new(await fixture.SetupToken(second.Id), "TestPassword1!"), default));
         await db.TrainerApplications.ForEachAsync(x => x.SubmittedAt = DateTime.UtcNow.AddMinutes(-20));
         await db.SaveChangesAsync();
@@ -1150,7 +1153,7 @@ public class TrainerWorkflowTests
         // GBR-66: a recruitment application is screened when submitted, not first at Hire.
         var applications = await db.TrainerApplications.CountAsync();
         var banned = await service.Submit(TrainerTestDatabase.Request with
-        { Email = "other@example.test", PhoneNumber = "0900000061", CitizenId = "000000000061", Specialty = "Scam coaching" }, null, default);
+        { Email = "other@example.test", PhoneNumber = "0900000061", Specialty = "Scam coaching" }, null, default);
         Assert.Equal(["scam"], TrainerContentRules.ProhibitedWords(banned.ErrorCode, banned.ErrorMessage));
         Assert.Equal(applications, await db.TrainerApplications.CountAsync());
     }

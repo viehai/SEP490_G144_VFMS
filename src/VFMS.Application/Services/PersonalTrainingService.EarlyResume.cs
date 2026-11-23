@@ -51,7 +51,7 @@ public sealed partial class PersonalTrainingService
     private async Task<Result<EarlyResumePlan>> PlanEarlyResume(string actor, int id, DateOnly resumeDate,
         IReadOnlyList<PTEarlyResumeMove> moves, DateOnly? expectedResumeDate, CancellationToken ct)
     {
-        if (await User(actor, UserRole.Member, ct) is null)
+        if (await Purchaser(actor, ct) is null)
             return Forbidden<EarlyResumePlan>();
         var purchase = await MemberFreeze(actor, id, ct);
         if (purchase is null)
@@ -143,7 +143,6 @@ public sealed partial class PersonalTrainingService
                 ? SessionResponse(s, now) with { Date = slot.Date, StartTime = slot.StartTime, EndTime = slot.EndTime }
                 : SessionResponse(s, now))
             .OrderBy(s => s.Date).ThenBy(s => s.StartTime).ToArray();
-        // GBR-10: Gym access is checked when attendance is recorded, not when the freeze ends early.
 
         if (scheduledEnd)
             expiresOn = ScheduledEnd(purchase, projectedSessions.Select(s => s.Date));

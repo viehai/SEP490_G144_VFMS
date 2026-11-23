@@ -60,7 +60,6 @@ public sealed class SubmitTrainerApplicationValidator : AbstractValidator<Submit
             RuleFor(x => x.FullName).NotEmpty().WithMessage("Họ tên không được để trống.").MaximumLength(256).WithMessage("Họ tên không được vượt quá {MaxLength} ký tự.");
             RuleFor(x => x.Email).NotEmpty().WithMessage("Email không được để trống.").Must(UserIdentityRules.IsValidEmail).WithMessage("Email không hợp lệ. Vui lòng kiểm tra lại.");
             RuleFor(x => x.PhoneNumber).NotEmpty().WithMessage("Số điện thoại không được để trống.").Must(UserIdentityRules.IsValidPhone).WithMessage("Số điện thoại không hợp lệ. Vui lòng kiểm tra lại.");
-            RuleFor(x => x.CitizenId).NotEmpty().WithMessage("CCCD không được để trống.").Matches(@"^[0-9]{12}$").WithMessage("CCCD không đúng định dạng.");
             RuleFor(x => x.DateOfBirth).Must(d => d < DateOnly.FromDateTime(DateTime.UtcNow) && d.Year >= 1900).WithMessage("Ngày sinh không hợp lệ. Vui lòng kiểm tra lại.");
             RuleFor(x => x.Gender).Must(x => x is "Male" or "Female" or "Other").WithMessage("Giới tính không hợp lệ. Vui lòng kiểm tra lại.");
             RuleFor(x => x.ExperienceYears).InclusiveBetween(0, 80).WithMessage("Số năm kinh nghiệm phải từ {From} đến {To}.");

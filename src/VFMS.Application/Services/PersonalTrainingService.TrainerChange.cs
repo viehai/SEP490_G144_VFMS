@@ -11,7 +11,7 @@ public sealed partial class PersonalTrainingService
     /// <summary>GBR-105: trainers who accept new members and have the package's trainer level.</summary>
     public async Task<Result<IReadOnlyList<PTReplacementTrainer>>> ReplacementTrainers(string actor, int contractId, CancellationToken ct)
     {
-        if (await User(actor, UserRole.Member, ct) is null)
+        if (await Purchaser(actor, ct) is null)
             return Forbidden<IReadOnlyList<PTReplacementTrainer>>();
         var contract = await MemberContract(actor, contractId, ct);
         if (contract is null)
@@ -24,7 +24,7 @@ public sealed partial class PersonalTrainingService
     private async Task<Result<(PTPurchase Contract, FreezePlan Plan)>> PlanTrainerChange(string actor, int contractId,
         PTTrainerChangeRequest request, CancellationToken ct)
     {
-        if (await User(actor, UserRole.Member, ct) is null)
+        if (await Purchaser(actor, ct) is null)
             return Forbidden<(PTPurchase, FreezePlan)>();
         var contract = await MemberContract(actor, contractId, ct);
         if (contract is null)

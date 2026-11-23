@@ -34,7 +34,7 @@ public sealed partial class PersonalTrainingService
     public async Task<Result<PagedResponse<PTFreezeResponse>>> FreezePage(string actor, bool managerView, bool processed,
         int page, int? contractId, CancellationToken ct)
     {
-        var user = await User(actor, managerView ? UserRole.Manager : UserRole.Member, ct);
+        var user = managerView ? await User(actor, UserRole.Manager, ct) : await Purchaser(actor, ct);
         if (user is null)
             return Forbidden<PagedResponse<PTFreezeResponse>>();
         var rows = await repo.GetFreezePageAsync(managerView ? user.GymId : null, managerView ? null : actor,
@@ -65,18 +65,11 @@ public sealed partial class PersonalTrainingService
         .Select(s => s.SessionDate));
 
     private sealed record FreezePlan(string TrainerId, IReadOnlyList<Replacement> Sessions, IReadOnlyList<int> Missing,
-        IReadOnlyList<Replacement> Conflicts, DateOnly End, bool CoverageWarning);
+        IReadOnlyList<Replacement> Conflicts, DateOnly End);
 
     private static bool InFreezeWindow(PTSession s, DateOnly start, DateOnly resume) =>
         s.SessionDate >= start && s.SessionDate < resume &&
         (AwaitingAttendance(s.SessionStatus) || s.SessionStatus == PTSessionStatus.PendingFreeze);
-
-    private async Task<bool> GymCoverageShort(string memberId, DateOnly lastDate, CancellationToken ct)
-    {
-        // GBR-10: a paid Gym Membership that starts later (Scheduled) also counts.
-        var coverageEnd = await repo.GetLatestGymCoverageEndAsync(memberId, ct);
-        return coverageEnd is null || coverageEnd < lastDate;
-    }
 
     /// <summary>
     /// UC 4.8 with the same trainer: each frozen session moves to the Member's chosen slot, or to the next free slot of the
@@ -142,8 +135,7 @@ public sealed partial class PersonalTrainingService
         }
         var end = ScheduledEnd(p, planned.Select(x => x.Slot.Date).Concat(p.Sessions.Where(s => !affected.Contains(s) &&
             (PersonalTrainingRules.Reserved(s.SessionStatus) || PersonalTrainingRules.Used(s.SessionStatus))).Select(s => s.SessionDate)));
-        return Result<FreezePlan>.Success(new(p.PTUserId, planned, missing, [], end,
-            await GymCoverageShort(p.MemberUserId, end, ct)));
+        return Result<FreezePlan>.Success(new(p.PTUserId, planned, missing, [], end));
     }
 
     /// <summary>
@@ -176,8 +168,7 @@ public sealed partial class PersonalTrainingService
         var end = ScheduledEnd(p, planned.Select(x => x.Slot.Date).Concat(p.Sessions
             .Where(s => s.SessionDate < from && (PersonalTrainingRules.Reserved(s.SessionStatus) || PersonalTrainingRules.Used(s.SessionStatus)))
             .Select(s => s.SessionDate)));
-        return Result<FreezePlan>.Success(new(trainerId, planned, [], conflicts, end,
-            await GymCoverageShort(p.MemberUserId, end, ct)));
+        return Result<FreezePlan>.Success(new(trainerId, planned, [], conflicts, end));
     }
 
     /// <summary>GBR-105: an active PT of the same gym and level who accepts new members and teaches no Yoga class.</summary>
@@ -213,7 +204,7 @@ public sealed partial class PersonalTrainingService
     /// <summary>UC 4.8 step 5-6: proposed schedule after the freeze, without holding anything.</summary>
     public async Task<Result<PTFreezeProposal>> PreviewFreezeRequest(string actor, int id, PTFreezeRequest input, CancellationToken ct)
     {
-        if (await User(actor, UserRole.Member, ct) is null)
+        if (await Purchaser(actor, ct) is null)
             return Forbidden<PTFreezeProposal>();
         var p = await MemberContract(actor, id, ct);
         if (p is null)
@@ -224,13 +215,13 @@ public sealed partial class PersonalTrainingService
         var data = plan.Data!;
         return Result<PTFreezeProposal>.Success(new(data.End,
             data.Sessions.Select(r => Planned(r, data.TrainerId)).ToArray(),
-            data.Missing.Concat(data.Conflicts.Select(c => c.Original.Id)).ToArray(), data.CoverageWarning));
+            data.Missing.Concat(data.Conflicts.Select(c => c.Original.Id)).ToArray()));
     }
 
     public Task<Result<PTFreezeResponse>> RequestFreeze(string actor, int id, PTFreezeRequest input, CancellationToken ct) =>
         Write(async () =>
         {
-            if (await User(actor, UserRole.Member, ct) is null)
+            if (await Purchaser(actor, ct) is null)
                 return Forbidden<PTFreezeResponse>();
             // GBR-09: serialize with other holds on the trainer whose slots are held after the freeze, as checkout does.
             var trainerId = input.ReplacementTrainerId ?? await repo.GetContractTrainerIdAsync(id, actor, ct);
@@ -331,7 +322,7 @@ public sealed partial class PersonalTrainingService
         var replacementName = f.ReplacementTrainerId is { } trainerId
             ? await repo.GetUserNameAsync(trainerId, ct)
             : null;
-        return Result<PTFreezePreview>.Success(new(end, slots, await GymCoverageShort(purchase.MemberUserId, end, ct), replacementName));
+        return Result<PTFreezePreview>.Success(new(end, slots, replacementName));
     }
 
     /// <summary>UC 4.9: approve (cancel the frozen sessions, confirm the held slots, optional trainer change) or reject.</summary>
@@ -483,7 +474,7 @@ public sealed partial class PersonalTrainingService
     /// <summary>UC 4.8: withdraw a Pending freeze, or an Approved one before it starts; the freeze is not counted as used.</summary>
     public Task<Result<PTFreezeResponse>> WithdrawFreeze(string actor, int id, CancellationToken ct) => Write(async () =>
     {
-        if (await User(actor, UserRole.Member, ct) is null)
+        if (await Purchaser(actor, ct) is null)
             return Forbidden<PTFreezeResponse>();
         var p = await MemberFreeze(actor, id, ct);
         if (p is null)
@@ -537,7 +528,7 @@ public sealed partial class PersonalTrainingService
     /// <summary>UC 4.8 step 8.4: the schedule held for a pending request; SessionsNeedingSlot lists held slots no longer usable.</summary>
     public async Task<Result<PTFreezeProposal>> FreezeSlots(string actor, int id, CancellationToken ct)
     {
-        if (await User(actor, UserRole.Member, ct) is null)
+        if (await Purchaser(actor, ct) is null)
             return Forbidden<PTFreezeProposal>();
         var p = await MemberFreeze(actor, id, ct);
         if (p is null)
@@ -549,7 +540,7 @@ public sealed partial class PersonalTrainingService
         var unavailable = await UnavailableHolds(p, f, holds, Now, ct);
         var end = LastSessionDate(p);
         return Result<PTFreezeProposal>.Success(new(end, holds.Select(HeldSession).ToArray(),
-            unavailable.Select(h => HeldSession(h).OriginalSessionId).ToArray(), await GymCoverageShort(p.MemberUserId, end, ct)));
+            unavailable.Select(h => HeldSession(h).OriginalSessionId).ToArray()));
     }
 
     /// <summary>
@@ -559,7 +550,7 @@ public sealed partial class PersonalTrainingService
     public Task<Result<PTFreezeResponse>> ChangeFreezeSlots(string actor, int id, PTFreezeSlotChange input, CancellationToken ct) =>
         Write(async () =>
         {
-            if (await User(actor, UserRole.Member, ct) is null)
+            if (await Purchaser(actor, ct) is null)
                 return Forbidden<PTFreezeResponse>();
             // GBR-09: serialize with other holds on the trainer, as when the request was made.
             var trainerId = await repo.GetFreezeHoldTrainerIdAsync(id, actor, ct);

@@ -1,6 +1,6 @@
 @page "/pt-checkout/{OrderNumber}"
 @layout PublicLayout
-@attribute [Authorize(Roles = "Member")]
+@attribute [Authorize(Roles = "Customer,Member")]
 @implements IDisposable
 @using VFMS.Contracts.Memberships
 @using VFMS.Client.Components.Operations

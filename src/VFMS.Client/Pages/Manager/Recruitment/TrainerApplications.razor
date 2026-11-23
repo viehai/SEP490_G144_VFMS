@@ -67,7 +67,6 @@
                     <div><dt>Mã theo dõi</dt><dd class="trainer-copy">@app.TrackingCode</dd></div>
                     <div><dt>Email</dt><dd class="trainer-copy">@app.Email</dd></div>
                     <div><dt>Số điện thoại</dt><dd>@app.PhoneNumber</dd></div>
-                    <div><dt>CCCD</dt><dd>@app.CitizenId</dd></div>
                     <div><dt>Ngày sinh</dt><dd>@app.DateOfBirth?.ToString("dd/MM/yyyy")</dd></div>
                     <div><dt>Giới tính</dt><dd>@(app.Gender switch { "Male" => "Nam", "Female" => "Nữ", _ => "Khác" })</dd></div>
                     <div><dt>Vị trí ứng tuyển</dt><dd>@(app.TrainerRole ?? "—")</dd></div>
@@ -121,7 +120,7 @@
                 {
                     <div class="trainer-stack">
                         <h3>Tài khoản khớp với hồ sơ</h3>
-                        <p class="trainer-muted">Hồ sơ khớp nhiều tài khoản hoặc chỉ trùng số điện thoại. Xác minh danh tính ứng viên rồi chọn đúng tài khoản để liên kết khi tuyển.</p>
+                        <p class="trainer-muted">Cần xác minh tài khoản khớp qua email hoặc số điện thoại. Xác minh danh tính ứng viên rồi chọn đúng tài khoản để liên kết khi tuyển.</p>
                         <ul class="trainer-list">
                             @foreach (var match in matches)
                             {
@@ -167,7 +166,7 @@
                                 }
                                 else if (app.AccountMatch is { Status: "Matched" } match)
                                 {
-                                    <label>Tài khoản khớp theo email
+                                    <label>Tài khoản liên kết với hồ sơ
                                         <input class="trainer-input" value="@match.FullName" readonly />
                                     </label>
                                     <p class="trainer-muted trainer-copy">ID tài khoản: @match.UserId</p>
@@ -376,7 +375,7 @@
         "Ambiguous" when ChosenCandidate(app) is { HasUnfinishedPTContract: true } =>
             "Ứng viên còn hợp đồng PT với tư cách hội viên. Chỉ tuyển được sau khi hợp đồng đó kết thúc.",
         "Ambiguous" when _chosenAccount is not null => null,
-        "Ambiguous" => "Hồ sơ khớp nhiều tài khoản hoặc chỉ trùng số điện thoại. Xác minh danh tính rồi chọn tài khoản đủ điều kiện ở danh sách trên.",
+        "Ambiguous" => "Xác minh danh tính rồi chọn tài khoản khớp đủ điều kiện ở danh sách trên.",
         "Ineligible" => "Tài khoản khớp không phải tài khoản khách hàng/hội viên đang hoạt động nên không thể liên kết.",
         _ => "Chưa xác định được tài khoản. Mở lại hồ sơ để tải kết quả mới nhất."
     };

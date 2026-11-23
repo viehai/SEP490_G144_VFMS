@@ -191,7 +191,6 @@ public sealed partial class MembershipPurchaseApiTests
                 FullName = user.FullName,
                 Email = user.Email,
                 PhoneNumber = user.PhoneNumber,
-                CitizenId = "079200000123",
                 Gender = "Other",
                 Specialty = "PT",
                 ExperienceYears = 2,

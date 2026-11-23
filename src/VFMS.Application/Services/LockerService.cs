@@ -187,7 +187,8 @@ public sealed partial class LockerService(ILockerRepository repo, TimeProvider c
     }
 
     private static LockerPolicy Policy(LockerPricingPolicy p) =>
-        new(p.Id, p.PolicyName, p.RentalType.ToString(), Months(p.RentalType), p.RentalPrice, p.DepositAmount,
+        new(p.Id, p.PolicyName, p.RentalType.ToString(), Months(p.RentalType),
+            p.RentalType == RentalType.Daily ? 0 : p.RentalPrice, p.DepositAmount,
             p.OverdueDailyFee);
 
     private void Audit(string? actor, LockerRentalContract rental, string value, DateTime now) =>

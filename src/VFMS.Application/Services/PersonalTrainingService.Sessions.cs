@@ -126,7 +126,7 @@ public sealed partial class PersonalTrainingService
 
     public async Task<Result<IReadOnlyList<PTContractResponse>>> MyContracts(string actor, int? id, CancellationToken ct)
     {
-        if (await User(actor, UserRole.Member, ct) is null && await User(actor, UserRole.PT, ct) is null)
+        if (await Purchaser(actor, ct) is null && await User(actor, UserRole.PT, ct) is null)
             return Forbidden<IReadOnlyList<PTContractResponse>>();
         var contracts = await repo.GetVisibleContractsAsync(actor, Now, id, ct);
         var reviewed = await ReviewedContracts(actor, ct);
@@ -142,7 +142,7 @@ public sealed partial class PersonalTrainingService
     public async Task<Result<PagedResponse<PTContractResponse>>> ContractPage(string actor, int page, string? trainerId,
         CancellationToken ct, bool? completed = null)
     {
-        if (await User(actor, UserRole.Member, ct) is null)
+        if (await Purchaser(actor, ct) is null)
             return Forbidden<PagedResponse<PTContractResponse>>();
         // UC 4.10: 'My PT Packages' > 'Completed Contracts' lists only completed contracts.
         var contracts = await repo.GetMemberContractPageAsync(actor, Now, trainerId, completed, page, PageSize, ct);
@@ -195,7 +195,6 @@ public sealed partial class PersonalTrainingService
             return Conflict<T>(isMakeUp
                 ? "Lịch ngoài giờ gym, ngoài hạn tập bù, trong thời gian bảo lưu hoặc không đủ số buổi."
                 : "Lịch ngoài giờ gym, sau ngày kết thúc hợp đồng hoặc trong thời gian bảo lưu.");
-        // GBR-10: Gym access matters only when attendance is recorded, so a new date may fall after the membership ends.
         return await ScheduleConflict<T>(p, s.Id, date, start, end, now, ct);
     }
 
@@ -227,7 +226,7 @@ public sealed partial class PersonalTrainingService
         Write(async () =>
         {
             var asTrainer = await User(actor, UserRole.PT, ct) is not null;
-            if (!asTrainer && await User(actor, UserRole.Member, ct) is null)
+            if (!asTrainer && await Purchaser(actor, ct) is null)
                 return Forbidden<PTSessionResponse>();
             var contract = await ContractForSession(actor, id, asTrainer, ct);
             if (contract is null)
@@ -309,7 +308,7 @@ public sealed partial class PersonalTrainingService
     public Task<Result<PTSessionResponse>> RequestCancellation(string actor, int id, CancellationToken ct) => Write(async () =>
     {
         var asTrainer = await User(actor, UserRole.PT, ct) is not null;
-        if (!asTrainer && await User(actor, UserRole.Member, ct) is null)
+        if (!asTrainer && await Purchaser(actor, ct) is null)
             return Forbidden<PTSessionResponse>();
         var contract = await ContractForSession(actor, id, asTrainer, ct);
         if (contract is null)
@@ -348,7 +347,7 @@ public sealed partial class PersonalTrainingService
     /// <summary>The Member answers a PT proposal: reschedule, cancellation or make-up.</summary>
     public Task<Result<PTSessionResponse>> DecideProposal(string actor, int id, PTProposalDecision request, CancellationToken ct) => Write(async () =>
     {
-        if (await User(actor, UserRole.Member, ct) is null)
+        if (await Purchaser(actor, ct) is null)
             return Forbidden<PTSessionResponse>();
         var p = await ContractForSession(actor, id, false, ct);
         if (p is null)
@@ -440,9 +439,6 @@ public sealed partial class PersonalTrainingService
     private static bool AwaitingAttendance(PTSessionStatus status) =>
         status is PTSessionStatus.Scheduled or PTSessionStatus.ReschedulePending or PTSessionStatus.RescheduleRequested;
 
-    private Task<bool> HasGymAccess(string memberId, DateOnly date, CancellationToken ct) =>
-        repo.HasGymAccessOnAsync(memberId, date, ct);
-
     private Task<IReadOnlyList<string>> ManagerIds(string trainerId, CancellationToken ct) =>
         repo.GetGymManagerIdsAsync(trainerId, ct);
 
@@ -483,10 +479,6 @@ public sealed partial class PersonalTrainingService
             return Conflict<PTSessionResponse>(memberReported
                 ? "Chỉ điểm danh buổi bị hội viên báo vắng đến hết ngày hôm sau."
                 : "Chỉ điểm danh sau khi buổi tập kết thúc và trong chính ngày tập.");
-        if (attended && !await HasGymAccess(p.MemberUserId, s.SessionDate, ct))
-            return Result<PTSessionResponse>.Failure(
-                "Hội viên không có quyền vào gym trong ngày tập. Hãy ghi nhận vắng mặt.", "PT_GYM_COVERAGE", 409);
-
         if (s.SessionStatus == PTSessionStatus.PendingFreeze)
         {
             // Protected by a pending freeze: attending uses the session, an absence is never penalised.
@@ -530,7 +522,7 @@ public sealed partial class PersonalTrainingService
     public Task<Result<PTSessionResponse>> ReportTrainerAbsence(string actor, int id,
         PTTrainerAbsenceReportRequest request, CancellationToken ct) => Write(async () =>
     {
-        if (await User(actor, UserRole.Member, ct) is null)
+        if (await Purchaser(actor, ct) is null)
             return Forbidden<PTSessionResponse>();
         var contract = await ContractForSession(actor, id, false, ct);
         if (contract is null)
@@ -726,7 +718,7 @@ public sealed partial class PersonalTrainingService
 
     public Task<Result<int>> Review(string actor, int id, PTReviewRequest request, CancellationToken ct) => Write(async () =>
     {
-        if (await User(actor, UserRole.Member, ct) is null)
+        if (await Purchaser(actor, ct) is null)
             return Forbidden<int>();
         var p = await MemberContract(actor, id, ct);
         if (p is null)

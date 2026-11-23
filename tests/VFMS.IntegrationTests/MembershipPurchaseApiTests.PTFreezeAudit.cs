@@ -160,37 +160,24 @@ public sealed partial class MembershipPurchaseApiTests
     }
 
     [Fact]
-    public async Task CoverageWarningCountsAPaidGymMembershipThatStartsLater()
+    public async Task FreezePlanningDoesNotDependOnGymMembership()
     {
         using var member = Client("member", "Member");
         var (id, contract) = await ActivatedPTContract(member);
         var freeze = new PTFreezeRequest(contract.StartDate, contract.StartDate.AddDays(7), "Travel");
         var path = $"/api/pt/contracts/{id}/freezes/preview";
-        MemberMembership current;
         await using (var scope = _app.Services.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
-            current = await db.MemberMemberships.SingleAsync();
-            current.EndDate = contract.EndDate;
+            db.MemberMemberships.RemoveRange(await db.MemberMemberships.ToListAsync());
             await db.SaveChangesAsync();
         }
-        Assert.True((await (await member.PostAsJsonAsync(path, freeze)).Content.ReadFromJsonAsync<PTFreezeProposal>())!.GymCoverageWarning);
-
-        await using (var scope = _app.Services.CreateAsyncScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
-            db.MemberMemberships.Add(new MemberMembership
-            {
-                OrderItemId = current.OrderItemId,
-                PackageComponentId = current.PackageComponentId,
-                MemberUserId = current.MemberUserId,
-                MembershipStatus = MembershipStatus.Scheduled,
-                StartDate = contract.EndDate.AddDays(1),
-                EndDate = contract.EndDate.AddDays(60)
-            });
-            await db.SaveChangesAsync();
-        }
-        Assert.False((await (await member.PostAsJsonAsync(path, freeze)).Content.ReadFromJsonAsync<PTFreezeProposal>())!.GymCoverageWarning);
+        using var preview = await member.PostAsJsonAsync(path, freeze);
+        Assert.True(preview.StatusCode == HttpStatusCode.OK, await preview.Content.ReadAsStringAsync());
+        var plan = (await preview.Content.ReadFromJsonAsync<PTFreezeProposal>())!;
+        Assert.NotEmpty(plan.Sessions);
+        Assert.Empty(plan.SessionsNeedingSlot);
+        Assert.True(plan.ExpiresOn > contract.EndDate);
     }
 
     [Fact]

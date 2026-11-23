@@ -31,7 +31,7 @@
     }
     else if (_packages is { } packages)
     {
-        <p class="trainer-muted">Bạn cần gói Gym đang hoạt động khi giữ chỗ và quyền vào gym hợp lệ vào ngày tập.</p>
+        <p class="trainer-muted">Bạn có thể mua và tập gói PT mà không cần gói Gym. Đăng ký trước buổi tập đầu tiên ít nhất 24 giờ.</p>
         <div class="pt-plan-grid">
             @foreach (var package in packages.Skip((_page - 1) * 10).Take(10))
             {
@@ -44,15 +44,9 @@
                     <strong class="pt-plan-price">@Money(package.Price)</strong>
                     <AuthorizeView>
                         <Authorized Context="auth">
-                            @if (auth.User.IsInRole("Member"))
+                            @if (auth.User.IsInRole("Member") || auth.User.IsInRole("Customer"))
                             {
                                 <a class="trainer-button trainer-primary pt-plan-action" href="@bookingUrl">Đăng ký gói PT</a>
-                            }
-                            else if (auth.User.IsInRole("Customer"))
-                            {
-                                @* UC 4.2: Customers preview the schedule; holding it needs an active Gym Membership (MSG-31). *@
-                                <a class="trainer-button trainer-primary pt-plan-action" href="@bookingUrl">Xem lịch dự kiến</a>
-                                <a class="trainer-link" href="/#pricing-memberships">Cần gói Gym để đăng ký</a>
                             }
                             else
                             {

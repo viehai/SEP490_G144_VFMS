@@ -72,7 +72,7 @@
             }
             @if (Variant == "member")
             {
-                <AuthorizeView Roles="Member">
+                <AuthorizeView Roles="Customer,Member">
                     <NavLink href="/my-memberships" Match="NavLinkMatch.Prefix" class="workspace-nav-link" ActiveClass="workspace-nav-link--active">Gói của tôi</NavLink>
                     <NavLink href="/my-pt-packages" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active">Gói PT</NavLink>
                 </AuthorizeView>

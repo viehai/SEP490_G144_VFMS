@@ -18,6 +18,8 @@ public sealed partial class PersonalTrainingService
     private static readonly TimeSpan CounterHold = TimeSpan.FromHours(PackageOrderTiming.CounterPaymentHours);
     private static DateTime PaymentDeadline(Order order) =>
         order.CreatedAt.Add(order.Channel == OrderChannel.Counter ? CounterHold : PaymentDuration);
+    private async Task<ApplicationUser?> Purchaser(string actor, CancellationToken ct) =>
+        await User(actor, UserRole.Member, ct) ?? await User(actor, UserRole.Customer, ct);
     private sealed record Booking(PTBookingPreview Preview, Package Package, TrainerProfile Trainer,
         ApplicationUser TrainerUser, PTAvailability[] Pattern);
 
@@ -26,11 +28,11 @@ public sealed partial class PersonalTrainingService
         var now = Now;
         var today = DateOnly.FromDateTime(now.AddHours(7));
         if (!PersonalTrainingRules.CanStartOn(request.StartDate, today))
-            return Invalid<Booking>("Chọn tuần bắt đầu từ thứ Hai tuần sau trở đi; lịch phải được giữ chậm nhất vào thứ Sáu trước đó.");
+            return Invalid<Booking>("Chọn ngày bắt đầu trong tương lai và đăng ký trước buổi tập đầu tiên ít nhất 24 giờ.");
         if (request.TemplateIds.Length == 0 ||
             request.TemplateIds.Distinct().Count() != request.TemplateIds.Length)
             return Invalid<Booking>("Ngày bắt đầu hoặc mẫu lịch không hợp lệ.");
-        var member = await User(actor, UserRole.Member, ct) ?? await User(actor, UserRole.Customer, ct);
+        var member = await Purchaser(actor, ct);
         if (member is null)
             return Forbidden<Booking>();
         var trainer = await User(request.TrainerId, UserRole.PT, ct);
@@ -57,6 +59,8 @@ public sealed partial class PersonalTrainingService
             dates = candidates.Take(count).ToArray();
         if (dates.Length < count || count <= 0)
             return Invalid<Booking>("Không thể xếp đủ số buổi từ ngày bắt đầu đã chọn.");
+        if (!PersonalTrainingRules.HasBookingNotice(dates[0].Date, dates[0].StartTime, now))
+            return Invalid<Booking>("Cần đăng ký trước buổi tập đầu tiên ít nhất 24 giờ.");
         return Result<Booking>.Success(new(new(package.Id, request.TrainerId, dates[^1].Date, package.Price, dates)
         { Skipped = skipped }, package, profile, trainer, pattern));
     }
@@ -91,21 +95,18 @@ public sealed partial class PersonalTrainingService
             : [];
     }
 
-    private async Task<Result<MemberMembership>> ValidateHold(string actor, Booking booking, DateTime now, CancellationToken ct)
+    private async Task<Result<bool>> ValidateHold(string actor, Booking booking, DateTime now, CancellationToken ct)
     {
         var dates = booking.Preview.Sessions;
         if (dates.Count != booking.Package.Components.Single().SessionCount || dates.Any(s =>
-                !InHours(booking.TrainerUser.Gym, s.StartTime, s.EndTime) || Utc(s.Date, s.StartTime) <= now.Add(HoldDuration)))
-            return Conflict<MemberMembership>("Không đủ số buổi hợp lệ, có ca ngoài giờ gym hoặc quá gần giờ bắt đầu.");
-        var today = DateOnly.FromDateTime(now.AddHours(7));
-        var membership = await repo.GetCurrentGymMembershipAsync(actor, today, ct);
-        if (membership is null)
-            return Result<MemberMembership>.Failure("Cần gói Gym đang hoạt động vào ngày đăng ký gói PT.", "PT_GYM_COVERAGE", 409);
+                !InHours(booking.TrainerUser.Gym, s.StartTime, s.EndTime) ||
+                !PersonalTrainingRules.HasBookingNotice(s.Date, s.StartTime, now)))
+            return Conflict<bool>("Không đủ số buổi hợp lệ, có ca ngoài giờ gym hoặc chưa đủ 24 giờ trước buổi tập đầu tiên.");
         if (await HasConflict(booking.Preview.TrainerId, actor, dates, now, ct))
             return await HasMemberBookingConflict(actor, dates, now, ct)
-                ? Result<MemberMembership>.Failure("Lịch dự kiến trùng lịch PT hoặc Yoga của bạn.", "PT_MEMBER_SCHEDULE_CONFLICT", 409)
-                : Result<MemberMembership>.Failure("Ca của PT đã được giữ, đã đặt hoặc trùng lịch Yoga.", "PT_TRAINER_SLOT_UNAVAILABLE", 409);
-        return Result<MemberMembership>.Success(membership);
+                ? Result<bool>.Failure("Lịch dự kiến trùng lịch PT hoặc Yoga của bạn.", "PT_MEMBER_SCHEDULE_CONFLICT", 409)
+                : Result<bool>.Failure("Ca của PT đã được giữ, đã đặt hoặc trùng lịch Yoga.", "PT_TRAINER_SLOT_UNAVAILABLE", 409);
+        return Result<bool>.Success(true);
     }
 
     private async Task<bool> HasMemberBookingConflict(string actor, IReadOnlyList<PTCalendarSlot> slots, DateTime now,
@@ -133,8 +134,8 @@ public sealed partial class PersonalTrainingService
     public async Task<Result<PTWeeklySlot[]>> BookingSlots(string actor, PTBookingSlotsRequest request, CancellationToken ct)
     {
         if (!PersonalTrainingRules.CanStartOn(request.StartDate, Today))
-            return Invalid<PTWeeklySlot[]>("Chọn tuần bắt đầu từ thứ Hai tuần sau trở đi; lịch phải được giữ chậm nhất vào thứ Sáu trước đó.");
-        var member = await User(actor, UserRole.Member, ct) ?? await User(actor, UserRole.Customer, ct);
+            return Invalid<PTWeeklySlot[]>("Chọn ngày bắt đầu trong tương lai và đăng ký trước buổi tập đầu tiên ít nhất 24 giờ.");
+        var member = await Purchaser(actor, ct);
         if (member is null)
             return Forbidden<PTWeeklySlot[]>();
         var trainer = await User(request.TrainerId, UserRole.PT, ct);
@@ -171,12 +172,13 @@ public sealed partial class PersonalTrainingService
             var pattern = patterns[slot.Id];
             var proposed = pattern.Where(s => s.TemplateId == slot.Id).ToArray();
             // A slot that can still complete the schedule is available; its busy dates are moved to the end.
-            if (pattern.Length > 0 && !yogaAssigned && proposed.All(s =>
-                    InHours(trainer.Gym, s.StartTime, s.EndTime) && Utc(s.Date, s.StartTime) > now.Add(HoldDuration)))
+            if (pattern.Length > 0 && !yogaAssigned &&
+                PersonalTrainingRules.HasBookingNotice(pattern[0].Date, pattern[0].StartTime, now) && proposed.All(s =>
+                    InHours(trainer.Gym, s.StartTime, s.EndTime)))
                 return new PTWeeklySlot(slot.Id, slot.DayOfWeek!.Value, slot.StartTime, slot.EndTime, null);
             proposed = candidates[slot.Id].Take(count).Where(s => s.TemplateId == slot.Id).ToArray();
             var reason = yogaAssigned || proposed.Length == 0 || proposed.Any(s =>
-                !InHours(trainer.Gym, s.StartTime, s.EndTime) || Utc(s.Date, s.StartTime) <= now.Add(HoldDuration))
+                !InHours(trainer.Gym, s.StartTime, s.EndTime) || !PersonalTrainingRules.HasBookingNotice(s.Date, s.StartTime, now))
                 ? "Không khả dụng"
                 : proposed.Any(d => trainerBusy.Any(s => s.SessionStatus != PTSessionStatus.CheckoutHold &&
                     s.SessionDate == d.Date && PersonalTrainingRules.Overlaps(d.StartTime, d.EndTime, s.StartTime, s.EndTime)))
@@ -209,7 +211,6 @@ public sealed partial class PersonalTrainingService
             var purchase = new PTPurchase
             {
                 Order = order,
-                MemberMembershipId = eligible.Data!.Id,
                 MemberUserId = actor,
                 PTUserId = request.TrainerId,
                 Status = PTPurchaseStatus.PendingPayment,
@@ -247,7 +248,7 @@ public sealed partial class PersonalTrainingService
     public Task<Result<PTCheckoutResponse>> StartPayment(string actor, string orderNumber, PTPaymentRequest request, CancellationToken ct) =>
         Write(async () =>
         {
-            if (await User(actor, UserRole.Member, ct) is null)
+            if (await Purchaser(actor, ct) is null)
                 return Forbidden<PTCheckoutResponse>();
             var order = await payments.FindOrderAsync(orderNumber, actor, forUpdate: true, ct);
             if (order is null)
@@ -364,7 +365,7 @@ public sealed partial class PersonalTrainingService
 
     public async Task<Result<PTCheckoutResponse>> CheckoutStatus(string actor, string orderNumber, CancellationToken ct)
     {
-        if (await User(actor, UserRole.Member, ct) is null)
+        if (await Purchaser(actor, ct) is null)
             return Forbidden<PTCheckoutResponse>();
         var purchase = await repo.GetMemberContractByOrderNumberAsync(actor, orderNumber, ct);
         if (purchase?.Order is not { } order)

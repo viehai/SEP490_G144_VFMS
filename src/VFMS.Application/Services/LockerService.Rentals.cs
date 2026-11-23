@@ -109,9 +109,10 @@ public sealed partial class LockerService
     private static bool Money(decimal value, bool zeroAllowed = false) =>
         value >= (zeroAllowed ? 0 : 1) && value <= 1_000_000_000_000m && decimal.Truncate(value) == value;
 
-    // GBR-19: every rental type carries the Key Deposit.
+    // Daily rentals collect only the key deposit; monthly rentals also collect their rental fee.
     private static bool ValidPolicy(LockerPricingPolicy policy) =>
-        Money(policy.RentalPrice) && Money(policy.DepositAmount) && Money(policy.OverdueDailyFee, true) &&
+        Money(policy.RentalPrice, policy.RentalType == RentalType.Daily) &&
+        Money(policy.DepositAmount) && Money(policy.OverdueDailyFee, true) &&
         (policy.RentalType == RentalType.Daily || Months(policy.RentalType) > 0);
 
     public Task<Result<IReadOnlyList<LockerPolicy>>> SavePricing(string actor, LockerPricingRequest input, CancellationToken ct) =>
@@ -121,15 +122,16 @@ public sealed partial class LockerService
                 return Forbidden<IReadOnlyList<LockerPolicy>>();
             var tiers = new (RentalType Type, string Name, decimal Price)[]
             {
-                (RentalType.Daily, "Thuê ngày", input.DailyFee),
+                (RentalType.Daily, "Thuê ngày", 0),
                 (RentalType.Monthly, "1 tháng", input.OneMonth),
                 (RentalType.Quarterly, "3 tháng", input.ThreeMonths),
                 (RentalType.HalfYearly, "6 tháng", input.SixMonths),
                 (RentalType.Yearly, "12 tháng", input.TwelveMonths)
             };
-            // UC 5.7 Step 2, MSG-07: every price is a whole VND amount greater than 0.
-            if (tiers.Any(p => !Money(p.Price)) || !Money(input.KeyDeposit) || !Money(input.OverdueDailyFee))
-                return Invalid<IReadOnlyList<LockerPolicy>>("Vui lòng nhập số tiền VND nguyên lớn hơn 0 cho mọi mức giá, cọc chìa và phí quá hạn.");
+            // DailyFee remains in the request for compatibility, but new Daily rentals have no rental fee.
+            if (!Money(input.DailyFee, true) || tiers.Any(p => !Money(p.Price, p.Type == RentalType.Daily)) ||
+                !Money(input.KeyDeposit) || !Money(input.OverdueDailyFee))
+                return Invalid<IReadOnlyList<LockerPolicy>>("Phí thuê tháng, cọc chìa và phí quá hạn phải là số tiền VND nguyên lớn hơn 0.");
 
             var current = await repo.GetActivePoliciesAsync(ct);
             foreach (var previous in current)

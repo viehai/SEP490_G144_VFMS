@@ -6,7 +6,7 @@ namespace VFMS.Contracts.Lockers;
 public sealed record LockerSlot(int Id, string Number, string Zone, int Floor, string Status);
 public sealed record LockerPolicy(int Id, string Name, string Type, int Months, decimal RentalFee,
     decimal Deposit, decimal OverdueDailyFee);
-// UC 5.7: one Key Deposit applies to every rental type; every amount is a whole VND amount greater than 0.
+// One Key Deposit applies to every rental type. DailyFee is retained for compatibility; Daily rental fees are always zero.
 public sealed record LockerPricingRequest(decimal DailyFee, [property: JsonRequired] decimal KeyDeposit,
     decimal OneMonth, decimal ThreeMonths, decimal SixMonths, decimal TwelveMonths,
     [property: JsonRequired] decimal OverdueDailyFee);

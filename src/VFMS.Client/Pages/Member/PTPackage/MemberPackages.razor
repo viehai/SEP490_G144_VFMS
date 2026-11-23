@@ -1,7 +1,7 @@
 @page "/my-pt-packages"
 @page "/trainers/{Id:int}/my-pt-schedule"
 @layout AccountLayout
-@attribute [Authorize(Roles = "Member")]
+@attribute [Authorize(Roles = "Customer,Member")]
 @using VFMS.Client.Components.Operations
 @using VFMS.Contracts.Common
 @inject PersonalTrainingApiClient Api

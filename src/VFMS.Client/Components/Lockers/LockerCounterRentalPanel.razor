@@ -11,7 +11,7 @@
 
     @if (_checkout is { } checkout)
     {
-        <p class="text-sm">Đơn <strong>@checkout.OrderNumber</strong> · <strong>@OperationsText.Money(checkout.AmountDue)</strong> (phí thuê + cọc chìa)</p>
+        <p class="text-sm">Đơn <strong>@checkout.OrderNumber</strong> · <strong>@OperationsText.Money(checkout.AmountDue)</strong> (@(Policies.FirstOrDefault(p => p.Id == _policyId)?.Type == "Daily" ? "cọc chìa" : "phí thuê + cọc chìa"))</p>
         @if (checkout.Status == "Paid")
         {
             <p role="status" class="@Ui.Notice">Đã nhận đủ tiền. Xác minh hội viên rồi giao chìa.</p>
@@ -77,7 +77,7 @@
                     <select class="@Ui.Field" @bind="_policyId" disabled="@_busy">
                         @foreach (var policy in Policies)
                         {
-                            <option value="@policy.Id">@LockerText.Duration(policy) · @OperationsText.Money(policy.RentalFee) + cọc @OperationsText.Money(policy.Deposit)</option>
+                            <option value="@policy.Id">@LockerText.Duration(policy) · @(policy.Type == "Daily" ? $"Chỉ cọc chìa {OperationsText.Money(policy.Deposit)}" : $"{OperationsText.Money(policy.RentalFee)} + cọc {OperationsText.Money(policy.Deposit)}")</option>
                         }
                     </select>
                 </label>
@@ -88,7 +88,7 @@
                     </select>
                 </label>
             </div>
-            <p class="text-xs text-vfms-text-secondary">Thuê theo ngày chỉ tạo được trong giờ mở cửa và hết hạn lúc đóng cửa.</p>
+            <p class="text-xs text-vfms-text-secondary">Thuê theo ngày chỉ thu cọc chìa, tạo trong giờ mở cửa và hết hạn lúc đóng cửa.</p>
             <button type="button" class="@Ui.PrimaryButton" disabled="@(_busy || _policyId == 0)" @onclick="CreateAsync">@(_busy ? "Đang tạo…" : "Tạo hợp đồng")</button>
         }
     }

@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using VFMS.Application.Interfaces;
+using VFMS.Application.Services;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Trainers;
 using VFMS.Domain.Common;
@@ -162,22 +163,19 @@ public sealed class TrainerRepository(VfmsDbContext db, IDataProtectionProvider 
         await Context.TrainerApplications.Where(x => x.ApplicationType == applicationType &&
             (x.ApplicantUserId == userId || x.HiredUserId == userId)).ToListAsync(cancellationToken);
 
-    public async Task<IReadOnlyList<TrainerApplication>> GetRecruitmentHistoryAsync(string email, string citizenId, int? applicationId,
+    public async Task<IReadOnlyList<TrainerApplication>> GetRecruitmentHistoryAsync(string email, string phoneNumber, int? applicationId, string? userId,
         CancellationToken cancellationToken = default)
     {
+        email = UserIdentityRules.NormalizeEmail(email);
+        var phone = UserIdentityRules.TryNormalizePhone(phoneNumber, out var normalized) ? normalized : null;
         var isGmail = email.EndsWith(GmailSuffix, StringComparison.Ordinal);
         var identity = email.Replace(".", "");
         return await Context.TrainerApplications.Where(x => x.ApplicationType == "Recruitment" &&
-            (x.Id == applicationId || (citizenId != "" && x.CitizenId == citizenId) || x.Email.ToLower() == email ||
+            (x.Id == applicationId || (userId != null && (x.ApplicantUserId == userId || x.HiredUserId == userId)) ||
+             (phone != null && x.PhoneNumber == phone) || x.Email.ToLower() == email ||
              (isGmail && x.Email.ToLower().EndsWith(GmailSuffix) && x.Email.ToLower().Replace(".", "") == identity)))
             .ToListAsync(cancellationToken);
     }
-
-    public async Task<IReadOnlyList<TrainerApplication>> GetProfileUpdateHistoryAsync(int applicationId, string email, string citizenId,
-        CancellationToken cancellationToken = default) =>
-        await Context.TrainerApplications.Where(x => x.ApplicationType == "ProfileUpdate" &&
-            (x.Id == applicationId || x.Email.ToLower() == email || (citizenId != "" && x.CitizenId == citizenId)))
-            .ToListAsync(cancellationToken);
 
     public Task<TrainerApplication?> GetHiredRecruitmentAsync(int id, CancellationToken cancellationToken = default) =>
         Context.TrainerApplications.FirstOrDefaultAsync(x => x.Id == id && x.ApplicationType == "Recruitment" &&
@@ -200,38 +198,32 @@ public sealed class TrainerRepository(VfmsDbContext db, IDataProtectionProvider 
 
     // ── Accounts ─────────────────────────────────────────────────
 
-    // Email match that treats dotted and undotted @gmail.com variants as one address (GBR-03).
-    private IQueryable<ApplicationUser> AccountsWithEmail(string email)
+    // Reuse account contact normalization; dotted Gmail variants identify the same mailbox.
+    private IQueryable<ApplicationUser> AccountsWithContacts(string email, string? phoneNumber)
     {
-        email = email.Trim().ToLowerInvariant();
+        email = UserIdentityRules.NormalizeEmail(email);
+        var phone = UserIdentityRules.TryNormalizePhone(phoneNumber ?? "", out var normalized) ? normalized : null;
         var isGmail = email.EndsWith(GmailSuffix, StringComparison.Ordinal);
         var identity = email.Replace(".", "");
-        return Context.ApplicationUsers.Where(user => user.Email.ToLower() == email ||
+        return Context.ApplicationUsers.Where(user => user.Email.ToLower() == email || (phone != null && user.PhoneNumber == phone) ||
             (isGmail && user.Email.ToLower().EndsWith(GmailSuffix) && user.Email.ToLower().Replace(".", "") == identity));
     }
 
-    public async Task<bool> IsStaffOrActiveTrainerAsync(string email, string citizenId, CancellationToken cancellationToken = default) =>
-        await (from u in AccountsWithEmail(email)
+    public async Task<bool> IsStaffOrActiveTrainerAsync(string email, string phoneNumber, CancellationToken cancellationToken = default) =>
+        await (from u in AccountsWithContacts(email, phoneNumber)
                join ur in Context.ApplicationUserRoles on u.UserId equals ur.UserId
                join r in Context.ApplicationRoles on ur.RoleId equals r.Id
                where StaffRoles.Contains(r.RoleName) ||
                    ((r.RoleName == "PT" || r.RoleName == YogaLoginRole) && u.AccountStatus == AccountStatus.Active)
                select u.Id).AnyAsync(cancellationToken) ||
         await (from p in Context.TrainerProfiles
-               join u in Context.ApplicationUsers on p.PTUserId equals u.UserId
-               where p.CitizenId == citizenId && p.IsActive && u.AccountStatus == AccountStatus.Active
+               join u in AccountsWithContacts(email, phoneNumber) on p.PTUserId equals u.UserId
+               where p.IsActive && u.AccountStatus == AccountStatus.Active
                select p.Id).AnyAsync(cancellationToken);
 
     public async Task<IReadOnlyList<ApplicationUser>> FindMatchingAccountsAsync(string email, string? phoneNumber,
         CancellationToken cancellationToken = default)
-    {
-        var isGmail = email.EndsWith(GmailSuffix, StringComparison.Ordinal);
-        var identity = email.Replace(".", "");
-        return await Context.ApplicationUsers.Where(user => user.Email == email ||
-            (phoneNumber != null && user.PhoneNumber == phoneNumber) ||
-            (isGmail && user.Email.ToLower().EndsWith(GmailSuffix) && user.Email.ToLower().Replace(".", "") == identity))
-            .ToListAsync(cancellationToken);
-    }
+        => await AccountsWithContacts(email, phoneNumber).ToListAsync(cancellationToken);
 
     public async Task<IReadOnlyList<string>> GetUsersWithAnyRoleAsync(IReadOnlyCollection<string> userIds,
         IReadOnlyCollection<string> roleNames, CancellationToken cancellationToken = default) =>
@@ -255,8 +247,8 @@ public sealed class TrainerRepository(VfmsDbContext db, IDataProtectionProvider 
                  c.ContractStatus == LockerContractStatus.PendingHandover))
             .OrderByDescending(c => c.EndDate).Select(c => (DateOnly?)c.EndDate).FirstOrDefaultAsync(cancellationToken);
 
-    public Task<TrainerProfile?> FindProfileForHireAsync(string citizenId, string? userId, CancellationToken cancellationToken = default) =>
-        Context.TrainerProfiles.FirstOrDefaultAsync(x => x.CitizenId == citizenId || (userId != null && x.PTUserId == userId),
+    public Task<TrainerProfile?> FindProfileForHireAsync(string userId, CancellationToken cancellationToken = default) =>
+        Context.TrainerProfiles.FirstOrDefaultAsync(x => x.PTUserId == userId,
             cancellationToken);
 
     public Task<bool> HasActiveYogaAssignmentsAsync(string userId, CancellationToken cancellationToken = default) =>
@@ -338,6 +330,8 @@ public sealed class TrainerRepository(VfmsDbContext db, IDataProtectionProvider 
             IsAcceptingNewMembers = profile.AcceptingNewMembers,
             NotAcceptingSince = profile.NotAcceptingSince,
             NotAcceptingCountFrom = profile.NotAcceptingCountFrom ?? profile.NotAcceptingSince,
+            NotAcceptingAccumulatedDays = profile.NotAcceptingAccumulatedDays,
+            AcceptingSince = profile.AcceptingSince,
             TrainerRole = profile.TrainerRole != null ? profile.TrainerRole.RoleName : ""
         };
 
@@ -383,6 +377,11 @@ public sealed class TrainerRepository(VfmsDbContext db, IDataProtectionProvider 
             .Select(x => new TrainerReviewResponse(x.Rating, x.Comment, x.MemberUser.FullName)).ToListAsync(cancellationToken);
 
     // ── Readiness (UC 4.12) ──────────────────────────────────────
+
+    public Task<bool> HasRunningPTContractAsync(string trainerUserId, DateOnly today,
+        CancellationToken cancellationToken = default) =>
+        Context.PTPurchases.Where(p => p.PTUserId == trainerUserId).Where(PersonalTrainingRules.StillRunning(today))
+            .AnyAsync(cancellationToken);
 
     public async Task<IReadOnlyList<PTPurchase>> GetContractsWithTrainerChangeDeadlineAsync(string trainerUserId,
         CancellationToken cancellationToken = default) =>

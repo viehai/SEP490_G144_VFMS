@@ -53,13 +53,6 @@ public interface IPersonalTrainingRepository : IAuditedRepository
     Task<IReadOnlyList<PTSession>> GetTeachingSessionsAsync(string trainerUserId, DateOnly from, DateOnly through,
         CancellationToken cancellationToken = default);
 
-    // ── Gym membership coverage (GBR-10) ─────────────────────────
-    /// <summary>The member's active Gym Membership covering today and not frozen today.</summary>
-    Task<MemberMembership?> GetCurrentGymMembershipAsync(string memberId, DateOnly today, CancellationToken cancellationToken = default);
-    Task<bool> HasGymAccessOnAsync(string memberId, DateOnly date, CancellationToken cancellationToken = default);
-    /// <summary>The latest end date of an active or scheduled Gym Membership.</summary>
-    Task<DateOnly?> GetLatestGymCoverageEndAsync(string memberId, CancellationToken cancellationToken = default);
-
     // ── Packages (UC 4.3) ────────────────────────────────────────
     Task<IReadOnlyList<Package>> GetPTPackagesAsync(bool activeOnly, CancellationToken cancellationToken = default);
     Task<Package?> GetPTPackageAsync(int id, bool activeOnly, CancellationToken cancellationToken = default);

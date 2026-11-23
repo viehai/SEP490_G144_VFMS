@@ -88,7 +88,7 @@ public sealed partial class PersonalTrainingService(IPersonalTrainingRepository 
             NotifiedAt = Now
         });
 
-    /// <summary>GBR-104: removes the PT role after more than 60 consecutive 'Not Accepting' days, once no contract is still running,
+    /// <summary>GBR-104: removes the PT role after more than 60 accumulated 'Not Accepting' days, once no contract is still running,
     /// including its 14-day make-up period (GBR-14).</summary>
     public async Task ExpireInactiveTrainers(DateOnly today, CancellationToken ct)
     {
@@ -96,14 +96,13 @@ public sealed partial class PersonalTrainingService(IPersonalTrainingRepository 
         var ptRoleId = await repo.GetRoleIdAsync(nameof(UserRole.PT), ct);
         foreach (var profile in profiles)
         {
-            // GBR-104: while a contract is still running the 60 days have not started; they count from the day the last one ends.
-            // shortcut: the start moves forward once per daily sweep, so a missed sweep day starts the count that much earlier.
-            if (await repo.HasRunningContractAsync(profile.PTUserId, today, ct))
-            {
-                profile.NotAcceptingCountFrom = today;
+            // Running contracts pause accrual; a brief return to accepting preserves already accumulated days.
+            // shortcut: contract pauses are observed by the daily sweep, as in the previous inactivity policy.
+            var running = await repo.HasRunningContractAsync(profile.PTUserId, today, ct);
+            TrainerReadinessRules.AccumulateInactiveDays(profile, today, running);
+            if (running)
                 continue;
-            }
-            if (!TrainerReadinessRules.HasExpired(profile.NotAcceptingCountFrom ?? profile.NotAcceptingSince, today))
+            if (!TrainerReadinessRules.HasExpired(profile))
                 continue;
             profile.IsActive = false;
             if (ptRoleId is { } roleId)
@@ -113,7 +112,7 @@ public sealed partial class PersonalTrainingService(IPersonalTrainingRepository 
             }
             Audit(profile.PTUserId, nameof(TrainerProfile), profile.Id, "PTInactivityExpired");
             Notify(profile.PTUserId, "Quyền PT đã kết thúc",
-                "Bạn đã ở trạng thái không nhận học viên mới quá 60 ngày liên tục và không còn hợp đồng đang chạy.",
+                "Bạn đã tích lũy quá 60 ngày không nhận học viên mới và không còn hợp đồng đang chạy.",
                 nameof(TrainerProfile), profile.Id);
         }
         await repo.SaveChangesAsync(ct);

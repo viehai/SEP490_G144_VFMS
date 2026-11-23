@@ -109,7 +109,7 @@ public sealed record PTFreezeRequest(DateOnly StartDate, DateOnly ResumeDate, st
     PTEarlyResumeMove[]? Moves = null, string? ReplacementTrainerId = null, int[]? ReplacementTemplateIds = null);
 /// <summary>Proposed sessions after the freeze; SessionsNeedingSlot lists frozen sessions with no free slot yet.</summary>
 public sealed record PTFreezeProposal(DateOnly ExpiresOn, IReadOnlyList<PTPlannedSession> Sessions,
-    IReadOnlyList<int> SessionsNeedingSlot, bool GymCoverageWarning);
+    IReadOnlyList<int> SessionsNeedingSlot);
 public sealed record PTPlannedSession(int OriginalSessionId, DateOnly Date, TimeOnly StartTime, TimeOnly EndTime, string TrainerId);
 /// <summary>UC 4.13: move the remaining sessions to another trainer with a new weekly pattern from StartDate.</summary>
 public sealed record PTTrainerChangeRequest(string TrainerId, DateOnly StartDate, int[] TemplateIds);
@@ -130,9 +130,9 @@ public sealed record PTFreezeResponse(int Id, int ContractId, string MemberId, s
 }
 /// <summary>UC 4.8 step 8.4: new slots for held sessions of a pending freeze, keyed by the frozen session id.</summary>
 public sealed record PTFreezeSlotChange(PTEarlyResumeMove[] Moves);
-/// <summary>GymCoverageWarning: the Gym Membership ends before the last proposed session; approval is still allowed (UC 4.9).</summary>
+/// <summary>The proposed post-freeze schedule for Manager review.</summary>
 public sealed record PTFreezePreview(DateOnly ExpiresOn, IReadOnlyList<PTCalendarSlot> Replacements,
-    bool GymCoverageWarning = false, string? ReplacementTrainerName = null);
+    string? ReplacementTrainerName = null);
 public sealed record PTEarlyResumeMove(int SessionId, DateOnly Date, TimeOnly StartTime);
 public sealed record PTEarlyResumeRequest(DateOnly ResumeDate, PTEarlyResumeMove[]? Moves = null);
 public sealed record PTEarlyResumeConfirmation(DateOnly ResumeDate, DateOnly CurrentResumeDate,

@@ -141,23 +141,25 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
             return Error<TrainerApplicationReceipt>("TRAINER_FORBIDDEN", "Cần tài khoản khách hàng hoặc hội viên để thực hiện thao tác này.", 403);
 
         var email = UserIdentityRules.NormalizeEmail(r.Email);
-        var citizen = (r.CitizenId ?? "").Trim();
-        string phoneNumber;
+        var phoneNumber = "";
         var now = DateTime.UtcNow;
-        if (!update && (trainer || await IsEmployee(email, citizen, ct)))
+        if (!update && !UserIdentityRules.TryNormalizePhone(r.PhoneNumber, out phoneNumber))
+            return Error<TrainerApplicationReceipt>("TRAINER_VALIDATION", "Số điện thoại không hợp lệ.", 400);
+        if (!update && (trainer ||
+            actor != null && (await repo.GetUsersWithAnyRoleAsync([actor], StaffRoles, ct)).Count > 0 ||
+            await IsEmployee(email, phoneNumber, ct)))
             return Error<TrainerApplicationReceipt>("TRAINER_NOT_ELIGIBLE", "Tài khoản nhân viên, quản lý, quản trị viên và huấn luyện viên đang hoạt động không được ứng tuyển.");
         int? trainerRoleId;
         if (update)
         {
             var owner = await repo.GetUserAsync(actor!, ct);
             var profile = await repo.GetProfileByUserAsync(actor!, activeOnly: true, ct);
-            if (profile?.CitizenId == null)
-                return Error<TrainerApplicationReceipt>("TRAINER_IDENTITY_MISSING", "Hồ sơ huấn luyện viên chưa có CCCD đã xác minh. Vui lòng liên hệ quản lý.");
+            if (profile == null)
+                return Error<TrainerApplicationReceipt>("TRAINER_NOT_FOUND", "Không tìm thấy hồ sơ huấn luyện viên.", 404);
             if (owner == null)
                 return Error<TrainerApplicationReceipt>("TRAINER_FORBIDDEN", "Cần quyền huấn luyện viên để thực hiện thao tác này.", 403);
             // UC 3.3: identity and personal details come from the signed-in account and its TrainerProfile, not the form.
             email = UserIdentityRules.NormalizeEmail(owner.Email);
-            citizen = profile.CitizenId;
             phoneNumber = owner.PhoneNumber;
             r = r with
             {
@@ -177,8 +179,6 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
         }
         else
         {
-            if (!UserIdentityRules.TryNormalizePhone(r.PhoneNumber, out phoneNumber))
-                return Error<TrainerApplicationReceipt>("TRAINER_VALIDATION", "Số điện thoại không hợp lệ.", 400);
             if (r.Certificates.Any(file => file.ReplacesCertificateId != null) ||
                 (r.CertificateLinks ?? []).Any(link => link.ReplacesCertificateId != null))
                 return Error<TrainerApplicationReceipt>("TRAINER_CERTIFICATE_TARGET_INVALID", "Hồ sơ ứng tuyển không được thay thế chứng chỉ đã công bố.", 400);
@@ -188,7 +188,7 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
         }
         var history = update
             ? await repo.GetApplicationsByUserAsync(r.ApplicationType, actor!, ct)
-            : await repo.GetRecruitmentHistoryAsync(email, citizen, null, ct);
+            : await repo.GetRecruitmentHistoryAsync(email, phoneNumber, null, actor, ct);
         if (update && history.Any(x => IsOpen(x.ApplicationStatus)))
             return Error<TrainerApplicationReceipt>("TRAINER_CHANGE_PENDING", "Bạn đang có yêu cầu cập nhật hồ sơ chờ duyệt.");
         var last = history.MaxBy(x => x.SubmittedAt);
@@ -209,7 +209,6 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
             FullName = r.FullName.Trim(),
             Email = email,
             PhoneNumber = phoneNumber,
-            CitizenId = citizen,
             DateOfBirth = r.DateOfBirth,
             Gender = r.Gender,
             Specialty = (r.Specialty ?? "").Trim(),
@@ -271,9 +270,11 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
             return Error<TrainerApplicationResponse>("TRAINER_NOT_FOUND", "Không tìm thấy hồ sơ ứng tuyển.", 404);
 
         var email = a.Email.Trim().ToLowerInvariant();
-        var related = a.ApplicationType == "Recruitment"
-            ? await repo.GetRecruitmentHistoryAsync(email, a.CitizenId, a.Id, ct)
-            : await repo.GetProfileUpdateHistoryAsync(a.Id, email, a.CitizenId, ct);
+        IReadOnlyList<TrainerApplication> related = a.ApplicationType == "Recruitment"
+            ? await repo.GetRecruitmentHistoryAsync(email, a.PhoneNumber, a.Id, a.ApplicantUserId ?? a.HiredUserId, ct)
+            : a.ApplicantUserId is { } ownerId
+                ? await repo.GetApplicationsByUserAsync("ProfileUpdate", ownerId, ct)
+                : [a];
         var history = related
             .OrderByDescending(x => x.SubmittedAt).ThenByDescending(x => x.Id)
             .Select(x => new TrainerSubmissionAttempt(x.Id, x.SubmissionAttempt, x.SubmittedAt, x.ApplicationStatus.ToString())).ToList();
@@ -331,14 +332,17 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
     private static readonly string[] EmployeeRoles = [.. StaffRoles, .. TrainerLoginRoles];
 
     // GBR-107: Staff, Manager, Admin and active Trainer (PT or Yoga) accounts cannot apply.
-    private Task<bool> IsEmployee(string email, string citizenId, CancellationToken ct) =>
-        repo.IsStaffOrActiveTrainerAsync(email, citizenId, ct);
+    private Task<bool> IsEmployee(string email, string phoneNumber, CancellationToken ct) =>
+        repo.IsStaffOrActiveTrainerAsync(email, phoneNumber, ct);
 
-    private Task<IReadOnlyList<ApplicationUser>> FindMatchingAccounts(TrainerApplication application, CancellationToken ct)
+    private async Task<IReadOnlyList<ApplicationUser>> FindMatchingAccounts(TrainerApplication application, CancellationToken ct)
     {
+        // An authenticated applicant's UserId stays authoritative even if their contacts later change or are reused.
+        if (application.ApplicantUserId is { } userId)
+            return await repo.GetUserAsync(userId, ct) is { } applicant ? [applicant] : [];
         var email = UserIdentityRules.NormalizeEmail(application.Email);
         var hasPhone = UserIdentityRules.TryNormalizePhone(application.PhoneNumber, out var phoneNumber);
-        return repo.FindMatchingAccountsAsync(email, hasPhone ? phoneNumber : null, ct);
+        return await repo.FindMatchingAccountsAsync(email, hasPhone ? phoneNumber : null, ct);
     }
 
     // Only an active Customer/Member account can be linked on hire (UC-3.2 step 7, GBR-107).
@@ -375,13 +379,15 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
         user.Email.EndsWith("@gmail.com", StringComparison.OrdinalIgnoreCase) &&
         string.Equals(user.Email.Replace(".", ""), application.Email.Replace(".", ""), StringComparison.OrdinalIgnoreCase);
 
-    // UC 3.2 step 8.2: only an email match is automatic; a phone-only match needs the Manager to verify and pick it.
+    // Known accounts use UserId; a guest's phone-only match needs the Manager to verify and pick it.
     private static TrainerAccountMatch DescribeAccountMatch(IReadOnlyList<ApplicationUser> matches,
         IReadOnlySet<string> ineligible, TrainerApplication application) => matches.Count switch
         {
+            0 when application.ApplicantUserId != null => new("Ineligible"),
             0 => new("None"),
             1 when ineligible.Contains(matches[0].UserId) => new("Ineligible"),
-            1 when EmailMatches(matches[0], application) => new("Matched", matches[0].UserId, matches[0].FullName),
+            1 when application.ApplicantUserId == matches[0].UserId || EmailMatches(matches[0], application) =>
+                new("Matched", matches[0].UserId, matches[0].FullName),
             _ => new("Ambiguous", Matches: matches.OrderBy(user => user.UserId).Select(user =>
                 new TrainerAccountCandidate(user.UserId, user.FullName, user.Email, user.PhoneNumber,
                     EmailMatches(user, application),
@@ -463,13 +469,11 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
                 user = matches.SingleOrDefault();
             }
             var userId = user?.UserId;
-            var previous = await repo.FindProfileForHireAsync(a.CitizenId, userId, ct);
+            var previous = userId == null ? null : await repo.FindProfileForHireAsync(userId, ct);
             // A trainer removed under GBR-104 keeps an inactive profile; hiring the same person again reactivates it.
-            var rehire = previous is { IsActive: false } && previous.PTUserId == userId && previous.CitizenId == a.CitizenId;
+            var rehire = previous is { IsActive: false } && previous.PTUserId == userId;
             if (previous != null && !rehire)
-                return previous.CitizenId == a.CitizenId
-                    ? Error<TrainerApplicationResponse>("TRAINER_IDENTITY_CONFLICT", "CCCD này đã được sử dụng cho hồ sơ huấn luyện viên khác.")
-                    : Error<TrainerApplicationResponse>("TRAINER_PROFILE_EXISTS", "Tài khoản đã có hồ sơ huấn luyện viên.");
+                return Error<TrainerApplicationResponse>("TRAINER_PROFILE_EXISTS", "Tài khoản đã có hồ sơ huấn luyện viên.");
             // UC 3.2 step 7: the login role comes from the applied Trainer Role (PT -> PT, Yoga -> YogaInstructor).
             var trainerRole = await repo.GetTrainerRoleAsync(a.TrainerRoleId, ct);
             var role = trainerRole?.Role;
@@ -506,7 +510,7 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
             // UC 3.2 step 7: a hired account holds only its trainer login role; its member history stays.
             foreach (var memberRole in await repo.GetRoleAssignmentsAsync(user.UserId, MemberRoles, ct))
                 repo.Remove(memberRole);
-            var profile = previous ?? new TrainerProfile { PTUserId = user!.UserId, CitizenId = a.CitizenId };
+            var profile = previous ?? new TrainerProfile { PTUserId = user!.UserId };
             profile.Bio = a.Bio;
             profile.Specialty = a.Specialty;
             profile.TrainerRoleId = a.TrainerRoleId;
@@ -519,14 +523,18 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
             profile.AcceptingNewMembers = true;
             profile.NotAcceptingSince = null;
             profile.NotAcceptingCountFrom = null;
+            profile.NotAcceptingAccumulatedDays = 0;
+            profile.AcceptingSince = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7));
             if (previous == null)
                 repo.Add(profile);
             await repo.SaveChangesAsync(ct);
             a.HiredUserId = user!.UserId;
             a.ApplicationStatus = TrainerApplicationStatus.Hired;
             // GBR-107: hiring closes the person's other open recruitment applications.
-            var others = (await repo.GetRecruitmentHistoryAsync(a.Email.Trim().ToLowerInvariant(), a.CitizenId, null, ct))
-                .Where(x => x.Id != a.Id && IsOpen(x.ApplicationStatus)).ToList();
+            var others = (await repo.GetRecruitmentHistoryAsync(UserIdentityRules.NormalizeEmail(a.Email), a.PhoneNumber, null, user.UserId, ct))
+                .Where(x => x.Id != a.Id && IsOpen(x.ApplicationStatus) &&
+                    (x.ApplicantUserId == null || x.ApplicantUserId == user.UserId) &&
+                    (x.HiredUserId == null || x.HiredUserId == user.UserId)).ToList();
             foreach (var other in others)
             {
                 var otherBefore = other.ApplicationStatus.ToString();
@@ -625,9 +633,8 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
             if (profile.AcceptingNewMembers != accepting)
             {
                 var before = profile.AcceptingNewMembers.ToString();
-                profile.AcceptingNewMembers = accepting;
-                profile.NotAcceptingSince = accepting ? null : today;
-                profile.NotAcceptingCountFrom = accepting ? null : today;
+                var running = accepting && await repo.HasRunningPTContractAsync(actor, today, ct);
+                TrainerReadinessRules.SetAccepting(profile, accepting, today, running);
                 if (!accepting)
                     notified = await OfferTrainerChange(actor, now, today, ct);
                 else
@@ -685,7 +692,7 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
         if (Records<TrainerStoredFile>(stored.CertificatesJson).Count == 0 && !string.IsNullOrWhiteSpace(stored.CertificateUrl))
             certificates = [new TrainerDocumentResponse("legacy", "Chứng chỉ", "application/octet-stream", stored.CertificateUrl)];
         // UC 3.4 step 7: a frozen contract is still the member's package, so its schedule stays reachable.
-        var hasActiveContract = await HasRole(actor, "Member", ct) &&
+        var hasActiveContract = (await HasRole(actor, "Member", ct) || await HasRole(actor, "Customer", ct)) &&
             await repo.HasRunningContractWithTrainerAsync(actor!, p.UserId, today, ct);
         const int pageSize = 10;
         // GBR-108: only PT contract reviews (UC 4.10) belong to a trainer.

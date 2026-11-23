@@ -1,5 +1,6 @@
 using VFMS.Contracts.Trainers;
 using VFMS.Application.Services;
+using VFMS.Domain.Entities;
 
 namespace VFMS.UnitTests;
 
@@ -49,7 +50,7 @@ public class TrainerValidationTests
     [Fact]
     public void Application_requires_consent_and_certificate()
     {
-        var r = new SubmitTrainerApplicationRequest("Test Applicant", "applicant@example.test", "0900000000", "000000000001", new DateOnly(2000, 1, 1), "Other", "Strength", 3, "Coach", false, [], TrainerRole: "PT");
+        var r = new SubmitTrainerApplicationRequest("Test Applicant", "applicant@example.test", "0900000000", new DateOnly(2000, 1, 1), "Other", "Strength", 3, "Coach", false, [], TrainerRole: "PT");
         var v = new SubmitTrainerApplicationValidator(); Assert.False(v.Validate(r).IsValid);
         Assert.True(v.Validate(r with { Consent = true, Certificates = [new("proof.pdf", "%PDF-1.7"u8.ToArray())] }).IsValid);
     }
@@ -57,7 +58,7 @@ public class TrainerValidationTests
     public void Profile_update_accepts_new_or_replacement_https_certificate_links()
     {
         var request = new SubmitTrainerApplicationRequest("Test Applicant", "applicant@example.test", "0900000000",
-            "000000000001", new(2000, 1, 1), "Other", "PT", 3, "Coach", true, [], "ProfileUpdate",
+            new(2000, 1, 1), "Other", "PT", 3, "Coach", true, [], "ProfileUpdate",
             CertificateLinks: [new("https://certificates.example.test/new"),
                 new("https://certificates.example.test/revised", "old-certificate")]);
         var validator = new SubmitTrainerApplicationValidator();
@@ -83,7 +84,7 @@ public class TrainerValidationTests
     public void Recruitment_needs_a_trainer_role_and_free_text_specialization(string type, string? role, string specialty, bool valid)
     {
         var request = new SubmitTrainerApplicationRequest("Test Applicant", "applicant@example.test", "0900000000",
-            "000000000001", new(2000, 1, 1), "Other", specialty, 3, "Coach", true,
+            new(2000, 1, 1), "Other", specialty, 3, "Coach", true,
             [new("proof.pdf", "%PDF-1.7"u8.ToArray())], type, TrainerRole: role);
         Assert.Equal(valid, new SubmitTrainerApplicationValidator().Validate(request).IsValid);
         Assert.False(new SubmitTrainerApplicationValidator().Validate(request with { Specialty = new string('x', 201) }).IsValid);
@@ -110,7 +111,6 @@ public class TrainerValidationTests
             FullName = "Applicant",
             Email = "a@example.test",
             PhoneNumber = "0900000000",
-            CitizenId = "000000000001",
             Specialty = "PT",
             InterviewNote = "private",
             ApplicationStatus = VFMS.Domain.Enums.TrainerApplicationStatus.Interviewing,
@@ -151,7 +151,7 @@ public class TrainerValidationTests
     [InlineData("", false)]
     public void Application_type_is_explicit_and_profile_update_needs_only_certificates_and_consent(string type, bool valid)
     {
-        var request = new SubmitTrainerApplicationRequest("Test Applicant", "applicant@example.test", "0900000000", "000000000001",
+        var request = new SubmitTrainerApplicationRequest("Test Applicant", "applicant@example.test", "0900000000",
             new(2000, 1, 1), "Other", "Strength", 3, "Coach", true, [new("proof.pdf", "%PDF-1.7"u8.ToArray())], type,
             TrainerRole: "PT");
         var validator = new SubmitTrainerApplicationValidator();
@@ -162,7 +162,6 @@ public class TrainerValidationTests
         Assert.True(validator.Validate(request with
         {
             ApplicationType = "ProfileUpdate",
-            CitizenId = "",
             PhoneNumber = "",
             FullName = "",
             Bio = "",
@@ -170,7 +169,8 @@ public class TrainerValidationTests
             Gender = "",
             Specialty = ""
         }).IsValid);
-        Assert.False(validator.Validate(request with { ApplicationType = "Recruitment", CitizenId = "" }).IsValid);
+        Assert.False(validator.Validate(request with { ApplicationType = "Recruitment", Email = "" }).IsValid);
+        Assert.False(validator.Validate(request with { ApplicationType = "Recruitment", PhoneNumber = "" }).IsValid);
     }
 
     [Fact]
@@ -185,11 +185,15 @@ public class TrainerValidationTests
     }
 
     [Fact]
-    public void Trainer_loses_the_role_only_after_more_than_60_not_accepting_days()
+    public void Trainer_loses_the_role_only_after_more_than_60_accumulated_not_accepting_days()
     {
-        var today = new DateOnly(2026, 11, 15);
-        Assert.False(TrainerReadinessRules.HasExpired(null, today));
-        Assert.False(TrainerReadinessRules.HasExpired(today.AddDays(-60), today));
-        Assert.True(TrainerReadinessRules.HasExpired(today.AddDays(-61), today));
+        var profile = new TrainerProfile();
+        Assert.False(TrainerReadinessRules.HasExpired(profile));
+        profile.NotAcceptingAccumulatedDays = 60;
+        Assert.False(TrainerReadinessRules.HasExpired(profile));
+        profile.NotAcceptingAccumulatedDays = 61;
+        Assert.True(TrainerReadinessRules.HasExpired(profile));
+        profile.AcceptingNewMembers = true;
+        Assert.False(TrainerReadinessRules.HasExpired(profile));
     }
 }

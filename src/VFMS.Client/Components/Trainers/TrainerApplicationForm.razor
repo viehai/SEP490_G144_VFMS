@@ -38,7 +38,6 @@ else
                     <label>Họ và tên<input class="trainer-input" autocomplete="name" maxlength="256" required @bind="_name" />@FieldError("FullName")</label>
                     <label>Email<input class="trainer-input" type="email" autocomplete="email" maxlength="256" required @bind="_email" readonly="@LockEmail" />@FieldError("Email")</label>
                     <label>Số điện thoại<input class="trainer-input" type="tel" autocomplete="tel" required maxlength="16" @bind="_phone" />@FieldError("PhoneNumber")</label>
-                    <label>CCCD<input class="trainer-input" inputmode="numeric" required maxlength="12" minlength="12" @bind="_citizenId" />@FieldError("CitizenId")</label>
                     <label>Ngày sinh<input class="trainer-input" type="date" autocomplete="bday" required @bind="_birthDate" />@FieldError("DateOfBirth")</label>
                     <label>Giới tính
                         <select class="trainer-input" required @bind="_gender">
@@ -137,7 +136,7 @@ else
     private const long MaxFileBytes = 5 * 1024 * 1024;
     private readonly List<SelectedCertificate> _files = [];
     private readonly List<CertificateLink> _links = [new()];
-    private string _name = "", _email = "", _phone = "", _citizenId = "", _gender = "", _specialty = "", _trainerRole = "", _bio = "";
+    private string _name = "", _email = "", _phone = "", _gender = "", _specialty = "", _trainerRole = "", _bio = "";
     private DateOnly? _birthDate;
     private int _experience, _fileVersion;
     private bool _consent, _busy;
@@ -208,7 +207,7 @@ else
     {
         if (_busy) return;
         _error = null;
-        var request = new SubmitTrainerApplicationRequest(_name.Trim(), _email.Trim(), _phone.Trim(), _citizenId.Trim(),
+        var request = new SubmitTrainerApplicationRequest(_name.Trim(), _email.Trim(), _phone.Trim(),
             _birthDate ?? default, _gender, _specialty.Trim(), _experience, _bio.Trim(), _consent,
             _files.Select(file => file.Input with { ReplacesCertificateId = string.IsNullOrEmpty(file.Replaces) ? null : file.Replaces }).ToList(),
             IsUpdate ? "ProfileUpdate" : "Recruitment",
@@ -245,8 +244,7 @@ else
             _error = ex.ErrorCode switch
             {
                 "TRAINER_CHANGE_PENDING" => "Bạn đang có yêu cầu cập nhật chờ quản lý duyệt.",
-                "TRAINER_NOT_ELIGIBLE" => "Bạn không đủ điều kiện ứng tuyển: email hoặc CCCD thuộc tài khoản nhân viên hoặc huấn luyện viên đang hoạt động.",
-                "TRAINER_IDENTITY_MISSING" => "Hồ sơ huấn luyện viên chưa có CCCD đã xác minh. Liên hệ quản lý để cập nhật.",
+                "TRAINER_NOT_ELIGIBLE" => "Bạn không đủ điều kiện ứng tuyển: email hoặc số điện thoại thuộc tài khoản nhân viên hoặc huấn luyện viên đang hoạt động.",
                 "TRAINER_RECRUITMENT_CLOSED" => "Phòng tập đang tạm dừng nhận hồ sơ ứng tuyển. Vui lòng quay lại sau.",
                 "TRAINER_FORBIDDEN" => IsUpdate ? "Chỉ huấn luyện viên đang hoạt động mới gửi được yêu cầu này."
                     : "Tài khoản đang đăng nhập không được nộp hồ sơ ứng tuyển. Đăng xuất hoặc dùng tài khoản khách hàng.",
@@ -260,7 +258,7 @@ else
     }
 
     private static readonly HashSet<string> SimpleFields =
-        ["FullName", "Email", "PhoneNumber", "CitizenId", "DateOfBirth", "Gender", "TrainerRole", "Specialty", "ExperienceYears", "Bio", "Consent"];
+        ["FullName", "Email", "PhoneNumber", "DateOfBirth", "Gender", "TrainerRole", "Specialty", "ExperienceYears", "Bio", "Consent"];
 
     private static string FieldKey(string property) => SimpleFields.Contains(property) ? property : "Certificates";
 
@@ -275,7 +273,6 @@ else
         "FullName" => "Nhập họ tên hợp lệ, tối đa 256 ký tự.",
         "Email" => "Nhập email hợp lệ.",
         "PhoneNumber" => "Nhập số điện thoại gồm 9–15 chữ số, có thể bắt đầu bằng dấu +.",
-        "CitizenId" => "CCCD phải có đúng 12 chữ số.",
         "DateOfBirth" => "Ngày sinh phải từ năm 1900 và trước hôm nay.",
         "Gender" => "Chọn giới tính.",
         "TrainerRole" => "Chọn vị trí ứng tuyển PT hoặc Yoga.",

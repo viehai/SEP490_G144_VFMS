@@ -1993,7 +1993,7 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
-                    b.Property<int>("MemberMembershipId")
+                    b.Property<int?>("MemberMembershipId")
                         .HasColumnType("int");
 
                     b.Property<string>("MemberUserId")
@@ -3100,11 +3100,6 @@ namespace VFMS.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<string>("CitizenId")
-                        .IsRequired()
-                        .HasMaxLength(12)
-                        .HasColumnType("nvarchar(12)");
-
                     b.Property<DateTime?>("ConsentAt")
                         .HasColumnType("datetime2");
 
@@ -3196,9 +3191,9 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.HasIndex("TrainerRoleId");
 
-                    b.HasIndex("CitizenId", "SubmittedAt");
-
                     b.HasIndex("Email", "SubmittedAt");
+
+                    b.HasIndex("PhoneNumber", "SubmittedAt");
 
                     b.HasIndex(new[] { "ApplicantUserId" }, "PendingProfileUpdate")
                         .IsUnique()
@@ -3219,6 +3214,9 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<bool>("AcceptingNewMembers")
                         .HasColumnType("bit");
 
+                    b.Property<DateOnly?>("AcceptingSince")
+                        .HasColumnType("date");
+
                     b.Property<string>("AvatarJson")
                         .HasColumnType("nvarchar(max)");
 
@@ -3235,10 +3233,6 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<string>("CertificatesJson")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("CitizenId")
-                        .HasMaxLength(12)
-                        .HasColumnType("nvarchar(12)");
 
                     b.Property<string>("CommissionTier")
                         .HasMaxLength(100)
@@ -3266,6 +3260,9 @@ namespace VFMS.Infrastructure.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<int>("NotAcceptingAccumulatedDays")
+                        .HasColumnType("int");
+
                     b.Property<DateOnly?>("NotAcceptingCountFrom")
                         .HasColumnType("date");
 
@@ -3288,10 +3285,6 @@ namespace VFMS.Infrastructure.Migrations
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("CitizenId")
-                        .IsUnique()
-                        .HasFilter("[CitizenId] IS NOT NULL");
 
                     b.HasIndex("PTUserId")
                         .IsUnique();
@@ -4630,8 +4623,7 @@ namespace VFMS.Infrastructure.Migrations
                     b.HasOne("VFMS.Domain.Entities.MemberMembership", "MemberMembership")
                         .WithMany()
                         .HasForeignKey("MemberMembershipId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("VFMS.Domain.Entities.ApplicationUser", "Member")
                         .WithMany("PTPurchasesAsMember")
