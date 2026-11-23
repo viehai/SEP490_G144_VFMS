@@ -27,7 +27,7 @@
             {
                 <p class="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"><span class="font-semibold">Quản lý yêu cầu sửa:</span> @feedback</p>
             }
-            <EditForm Model="_form" OnValidSubmit="SaveAsync" class="mt-4" novalidate>
+            <EditForm Model="_form" OnSubmit="SubmitFormAsync" class="mt-4" novalidate>
                 <OperationsValidation TRequest="PurchaseProposalRequest" Validator="_validator" CreateRequest="CreateRequest" @ref="_validation" />
                 <ValidationSummary />
                 <fieldset disabled="@_working" class="mt-4 space-y-4">
@@ -61,12 +61,10 @@
                                 <label class="@Ui.Label">Đơn giá dự kiến (₫) <span class="text-vfms-primary" aria-hidden="true">*</span>
                                     <input aria-required="true" type="number" class="@Ui.Field" @bind="item.EstimatedUnitPrice" min="1" step="1000" />
                                 </label>
-                                <label class="@Ui.Label sm:col-span-2">Thiết bị liên quan
-                                    <select class="@Ui.Field" @bind="item.EquipmentId">
-                                        <option value="">Không có (mua mới)</option>
-                                        @foreach (var equipment in _equipment) { <option value="@equipment.Id">@equipment.Name@(equipment.Code is { } code ? $" · {code}" : "")</option> }
-                                    </select>
-                                </label>
+                                <EquipmentPicker Class="sm:col-span-2" Id="@($"proposal-item-{number}-equipment")" Label="Thiết bị liên quan"
+                                                 Equipment="_equipment" EmptyText="Không có (mua mới)" Placeholder="Không có (mua mới), hoặc gõ tên, mã máy"
+                                                 Value="@(int.TryParse(item.EquipmentId, out var linked) ? linked : null)"
+                                                 ValueChanged="(int? id) => item.EquipmentId = id?.ToString() ?? string.Empty" />
                                 <label class="@Ui.Label sm:col-span-5">Ghi chú
                                     <input class="@Ui.Field" @bind="item.Reason" maxlength="500" />
                                 </label>
@@ -244,6 +242,13 @@
     {
         _formOpen = false;
         _selected = proposal;
+    }
+
+    /// <summary>Enter in an equipment picker only chooses a machine; any other submit is validated and saved.</summary>
+    private async Task SubmitFormAsync(EditContext context)
+    {
+        if (EquipmentPicker.JustChoseWithEnter()) return;
+        if (context.Validate()) await SaveAsync();
     }
 
     private Task SaveAsync() => RunAsync(async () =>

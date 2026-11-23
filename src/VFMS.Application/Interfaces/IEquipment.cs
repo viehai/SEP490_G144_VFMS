@@ -21,7 +21,7 @@ public sealed record EquipmentIssueStats(
 
 public sealed record EquipmentIssueQuery(
     EquipmentIssueStatus? Status, int? EquipmentId, string? ReportedByUserId, string? Search, EquipmentIssueSort Sort,
-    int Page, int PageSize);
+    int Page, int PageSize, bool OpenOnly = false);
 
 public interface IEquipmentRepository : IAuditedRepository
 {

@@ -9,42 +9,8 @@
     <OperationsValidation TRequest="ReportEquipmentIssueRequest" Validator="_validator" CreateRequest="() => CreateRequest(false)" @ref="_validation" />
     <ValidationSummary />
     <fieldset disabled="@_working" class="mt-2 grid gap-4 sm:grid-cols-2">
-        @* One searchable picker: type a name, code or brand and choose from the list under it (WAI-ARIA combobox). *@
-        <div class="relative">
-            <label class="@Ui.Label" for="@ComboId">Thiết bị <span class="text-vfms-primary" aria-hidden="true">*</span></label>
-            <input id="@ComboId" type="text" role="combobox" class="@Ui.Field" autocomplete="off" maxlength="100"
-                   aria-required="true" aria-autocomplete="list" aria-controls="@ListId"
-                   aria-expanded="@(_open ? "true" : "false")" aria-activedescendant="@ActiveOptionId"
-                   placeholder="@(_loading ? "Đang tải thiết bị..." : "Gõ tên, mã hoặc hãng, VD: máy chạy, TM-0002")"
-                   value="@_query" @oninput="QueryChanged" @onfocus="OpenList" @onclick="OpenList" @onblur="CloseList" @onkeydown="KeyDown" />
-            @if (_open)
-            {
-                <ul id="@ListId" role="listbox" aria-label="Danh sách thiết bị"
-                    class="absolute left-0 right-0 z-20 mt-1 max-h-72 overflow-auto rounded-lg border border-[#D8D1CD] bg-white py-1 shadow-lg">
-                    @if (_matches.Count == 0)
-                    {
-                        <li class="px-3 py-2 text-sm text-[#6F6966]">Không tìm thấy thiết bị phù hợp.</li>
-                    }
-                    @for (var i = 0; i < _matches.Count; i++)
-                    {
-                        var index = i;
-                        var item = _matches[i];
-                        <li id="@OptionId(index)" role="option" aria-selected="@(item.Id == _form.EquipmentId ? "true" : "false")"
-                            class="flex cursor-pointer items-center justify-between gap-3 px-3 py-2 text-sm @(index == _active ? "bg-[#F3E4E2]" : "hover:bg-[#ECE8E4]")"
-                            @onmousedown="() => Pick(item)" @onmousedown:preventDefault>
-                            <span class="min-w-0">
-                                <span class="block truncate font-semibold text-[#242424]">@item.Name</span>
-                                <span class="block truncate text-xs text-[#6F6966]">@string.Join(" · ", new[] { item.Code, item.Brand, item.CategoryName }.Where(text => !string.IsNullOrWhiteSpace(text)))</span>
-                            </span>
-                            @if (item.Status != "Operational")
-                            {
-                                <span class="@OperationsText.Badge(item.Status) shrink-0">@OperationsText.Label(item.Status)</span>
-                            }
-                        </li>
-                    }
-                </ul>
-            }
-        </div>
+        <EquipmentPicker Id="@ComboId" Required="true" Equipment="_equipment" Loading="_loading"
+                         Value="@(_form.EquipmentId == 0 ? null : _form.EquipmentId)" ValueChanged="EquipmentChanged" />
         <label class="@Ui.Label" for="@($"{IdPrefix}-type")">Loại sự cố <span class="text-vfms-primary" aria-hidden="true">*</span>
             <InputSelect aria-required="true" id="@($"{IdPrefix}-type")" class="@Ui.Field" @bind-Value="_form.IncidentType">
                 @foreach (var type in OperationsText.IncidentTypes) { <option value="@type">@OperationsText.Label(type)</option> }
@@ -88,17 +54,10 @@
     private EditContext _editContext = default!;
     private OperationsValidation<ReportEquipmentIssueRequest>? _validation;
     private List<EquipmentResponse> _equipment = [];
-    private List<EquipmentResponse> _matches = [];
-    private string _query = "";
     private string? _error;
-    private int _active = -1;
-    private bool _working, _duplicate, _open, _loading = true;
-    private DateTime _pickerEnterAt = DateTime.MinValue;
+    private bool _working, _duplicate, _loading = true;
 
     private string ComboId => $"{IdPrefix}-equipment";
-    private string ListId => $"{IdPrefix}-equipment-list";
-    private string OptionId(int index) => $"{IdPrefix}-equipment-option-{index}";
-    private string? ActiveOptionId => _open && _active >= 0 && _active < _matches.Count ? OptionId(_active) : null;
 
     protected override async Task OnInitializedAsync()
     {
@@ -108,7 +67,6 @@
             // Every machine that is not retired; the list is filtered on the page as the user types.
             var page = await Api.GetEquipmentAsync(new(null, null, null, 1, 100), _lifetime.Token);
             _equipment = page.Items.Where(item => item.Status != "Retired").ToList();
-            _matches = _equipment;
         }
         catch (AuthApiException error) { _error = error.Message; }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
@@ -118,55 +76,7 @@
     private ReportEquipmentIssueRequest CreateRequest(bool confirmDuplicate) => new(_form.EquipmentId, _form.IncidentType,
         _form.Description.Trim(), string.IsNullOrWhiteSpace(_form.ImageUrl) ? null : _form.ImageUrl.Trim(), confirmDuplicate);
 
-    private void QueryChanged(ChangeEventArgs args)
-    {
-        _query = args.Value?.ToString() ?? "";
-        // Typing again after a choice clears it, so the form never sends a machine the text no longer names.
-        var chosen = _equipment.FirstOrDefault(item => item.Id == _form.EquipmentId);
-        if (_form.EquipmentId != 0 && (chosen is null || _query != EquipmentSearch.Display(chosen))) SetEquipment(0);
-        _matches = _equipment.Where(item => EquipmentSearch.Matches(item, _query)).ToList();
-        _active = _matches.Count > 0 ? 0 : -1;
-        _open = true;
-    }
-
-    private void OpenList()
-    {
-        if (_open) return;
-        // With a machine already chosen, show the whole list again so it is easy to switch.
-        _matches = _form.EquipmentId != 0 ? _equipment : _equipment.Where(item => EquipmentSearch.Matches(item, _query)).ToList();
-        _active = Math.Max(0, _matches.FindIndex(item => item.Id == _form.EquipmentId));
-        _open = true;
-    }
-
-    private void CloseList() => _open = false;
-
-    private void KeyDown(KeyboardEventArgs args)
-    {
-        switch (args.Key)
-        {
-            case "ArrowDown":
-                if (!_open) OpenList();
-                else if (_matches.Count > 0) _active = (_active + 1) % _matches.Count;
-                break;
-            case "ArrowUp":
-                if (_open && _matches.Count > 0) _active = (_active - 1 + _matches.Count) % _matches.Count;
-                break;
-            case "Enter":
-                _pickerEnterAt = DateTime.UtcNow; // Enter here chooses a machine; it must not send the form (see HandleSubmitAsync).
-                if (_open && _active >= 0 && _active < _matches.Count) Pick(_matches[_active]);
-                break;
-            case "Escape":
-                _open = false;
-                break;
-        }
-    }
-
-    private void Pick(EquipmentResponse item)
-    {
-        SetEquipment(item.Id);
-        _query = EquipmentSearch.Display(item);
-        _open = false;
-    }
+    private void EquipmentChanged(int? id) => SetEquipment(id ?? 0);
 
     private void SetEquipment(int id)
     {
@@ -177,11 +87,7 @@
     private async Task HandleSubmitAsync()
     {
         // The browser sends the form right after Enter is pressed in a text box; Enter in the picker only chooses.
-        if (DateTime.UtcNow - _pickerEnterAt < TimeSpan.FromMilliseconds(500))
-        {
-            _pickerEnterAt = DateTime.MinValue;
-            return;
-        }
+        if (EquipmentPicker.JustChoseWithEnter()) return;
         if (_editContext.Validate()) await SubmitAsync(false);
     }
 

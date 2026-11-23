@@ -42,7 +42,7 @@
                         <p class="text-sm text-vfms-text-secondary">@row.Description</p>
                         @if (row.ResolutionNote is { } note)
                         {
-                            <p class="text-xs text-vfms-text"><span class="font-semibold">Phản hồi:</span> @note</p>
+                            <p class="text-xs text-vfms-text"><span class="font-semibold">Phản hồi:</span> @OperationsText.Note(note)</p>
                         }
                     </li>
                 }

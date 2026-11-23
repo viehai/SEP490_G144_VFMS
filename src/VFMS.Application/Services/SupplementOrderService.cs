@@ -283,7 +283,9 @@ public sealed class SupplementOrderService : ISupplementOrderService
         SupplementOrderListRequest request, string? customerUserId, IReadOnlyCollection<SupplementOrderStatus>? statuses,
         CancellationToken cancellationToken)
     {
-        if (!string.IsNullOrWhiteSpace(request.Status))
+        if (string.Equals(request.Status?.Trim(), StatusFilters.ActiveOrders, StringComparison.OrdinalIgnoreCase))
+            statuses = statuses is null ? OngoingStatuses : statuses.Intersect(OngoingStatuses).ToArray();
+        else if (!string.IsNullOrWhiteSpace(request.Status))
         {
             if (!EquipmentService.TryParse(request.Status, out SupplementOrderStatus parsed))
                 return Result<PagedResponse<SupplementOrderResponse>>.Failure("Status filter is invalid.", "SUPPLEMENT_ORDER_INVALID_STATUS");

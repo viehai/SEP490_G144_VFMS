@@ -164,6 +164,8 @@ public sealed class EquipmentRepository : AuditedRepositoryBase, IEquipmentRepos
         var query = IssuesWithDetails().AsNoTracking();
         if (filter.Status.HasValue)
             query = query.Where(i => i.IssueStatus == filter.Status);
+        if (filter.OpenOnly)
+            query = query.Where(i => OpenStatuses.Contains(i.IssueStatus));
         if (filter.EquipmentId.HasValue)
             query = query.Where(i => i.EquipmentId == filter.EquipmentId);
         if (filter.ReportedByUserId is { } reporter)

@@ -1,3 +1,4 @@
+@using VFMS.Contracts.Operations
 @using VFMS.Contracts.Common
 @using VFMS.Contracts.Supplements
 @inject OperationsApiClient Api
@@ -83,6 +84,7 @@
                 </label>
                 <label class="@Ui.Label" for="order-status">Trạng thái
                     <select id="order-status" class="@Ui.Field" @bind="_status" @bind:after="() => LoadAsync(1)">
+                        <option value="@StatusFilters.ActiveOrders">@OperationsText.WorkCountLabel(StatusFilters.ActiveOrderStatuses, _counts)</option>
                         <option value="">@OperationsText.CountLabel(null, _counts)</option>
                         @foreach (var status in OperationsText.OrderStatuses) { <option value="@status">@OperationsText.CountLabel(status, _counts)</option> }
                     </select>
@@ -169,7 +171,8 @@
         finally { _exporting = false; }
     }
     private SupplementOrderResponse? _selected;
-    private string _search = "", _status = "", _type = "", _courier = "", _tracking = "";
+    // Opens on the orders still to handle (not completed or cancelled); "" shows all.
+    private string _search = "", _status = StatusFilters.ActiveOrders, _type = "", _courier = "", _tracking = "";
     private DateOnly? _from, _to;
     private string? _notice, _error;
     private bool _loading, _working;

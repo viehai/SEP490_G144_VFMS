@@ -1,3 +1,4 @@
+@using VFMS.Contracts.Operations
 @using VFMS.Contracts.Common
 @using VFMS.Contracts.Equipment
 @inject OperationsApiClient Api
@@ -49,7 +50,7 @@
                 }
                 @if (issue.ResolutionNote is { } resolution)
                 {
-                    <p class="text-sm"><span class="font-semibold">Kết quả:</span> @resolution@(issue.ResolvedAt is { } at ? $" ({OperationsText.Local(at)})" : "")</p>
+                    <p class="text-sm"><span class="font-semibold">Kết quả:</span> @OperationsText.Note(resolution)@(issue.ResolvedAt is { } at ? $" ({OperationsText.Local(at)})" : "")</p>
                 }
                 @if (issue.SafetyConfirmations.Count > 0)
                 {
@@ -67,26 +68,39 @@
             <div>
                 @if (Actions(issue) is { Count: > 0 } actions)
                 {
-                    <form @onsubmit="() => RunActionAsync(issue)" @onsubmit:preventDefault>
-                        <fieldset disabled="@_working" class="space-y-3">
-                            <label class="@Ui.Label block" for="issue-action">Thao tác <span class="text-vfms-primary" aria-hidden="true">*</span>
-                                <select aria-required="true" id="issue-action" class="@Ui.Field" @bind="_action">
-                                    @foreach (var action in actions) { <option value="@action.Path">@action.Label</option> }
-                                </select>
+                    @* One button per action; the note box is shared by the actions that need it (marked "cần ghi chú"). *@
+                    <fieldset disabled="@_working" class="space-y-3">
+                        <legend class="@Ui.Label mb-1">Thao tác</legend>
+                        @if (actions.Any(a => a.NeedsNote))
+                        {
+                            <label class="@Ui.Label block" for="issue-note">Ghi chú
+                                <textarea id="issue-note" @ref="_noteBox" class="@Ui.Field" rows="3" @bind="_note" @bind:event="oninput" maxlength="1000"
+                                          aria-describedby="issue-note-hint" placeholder="VD: Đã siết lại chốt, thử tải 100 kg không trượt."></textarea>
                             </label>
-                            @if (NeedsNote)
+                            <p id="issue-note-hint" class="text-xs text-vfms-text-secondary">Các thao tác ghi "cần ghi chú" sẽ lưu nội dung này vào kết quả xử lý.</p>
+                        }
+                        @if (_action == "repair/dispose")
+                        {
+                            <div role="alert" class="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                                <p>Thiết bị sẽ chuyển sang "Đã thanh lý" và không thể sử dụng lại.</p>
+                                <div class="mt-2 flex gap-2">
+                                    <button type="button" class="@Ui.DangerButton" @onclick="() => ConfirmDisposeAsync(issue)">Xác nhận thanh lý</button>
+                                    <button type="button" class="@Ui.Button" @onclick="() => _action = string.Empty">Thôi</button>
+                                </div>
+                            </div>
+                        }
+                        <div class="flex flex-wrap gap-2">
+                            @foreach (var action in actions)
                             {
-                                <label class="@Ui.Label block" for="issue-note">Ghi chú <span class="text-vfms-primary" aria-hidden="true">*</span>
-                                    <textarea id="issue-note" class="@Ui.Field" rows="3" @bind="_note" maxlength="1000" required></textarea>
-                                </label>
+                                var button = action.Path == "repair/dispose" ? Ui.DangerButton : action == actions[0] ? Ui.PrimaryButton : Ui.Button;
+                                <button type="button" class="@button" @onclick="() => RunActionAsync(issue, action, confirmed: false)">
+                                    @action.Label
+                                    @if (action.NeedsNote) { <span class="text-[11px] font-normal opacity-80">(cần ghi chú)</span> }
+                                </button>
                             }
-                            @if (_action == "repair/dispose")
-                            {
-                                <p class="text-xs text-red-700">Thiết bị sẽ chuyển sang "Đã thanh lý" và không thể sử dụng lại.</p>
-                            }
-                            <button type="submit" class="@Ui.PrimaryButton">@(_working ? "Đang lưu..." : "Xác nhận")</button>
-                        </fieldset>
-                    </form>
+                        </div>
+                        @if (_working) { <p role="status" class="text-xs text-vfms-text-secondary">Đang lưu...</p> }
+                    </fieldset>
                 }
                 else
                 {
@@ -107,6 +121,7 @@
                 </label>
                 <label class="@Ui.Label" for="issue-status">Trạng thái
                     <select id="issue-status" class="@Ui.Field" @bind="_status" @bind:after="() => LoadAsync(1)">
+                        <option value="@StatusFilters.OpenIssues">@OperationsText.WorkCountLabel(StatusFilters.OpenIssueStatuses, _counts)</option>
                         <option value="">@OperationsText.CountLabel(null, _counts)</option>
                         @foreach (var status in OperationsText.IssueStatuses) { <option value="@status">@OperationsText.CountLabel(status, _counts)</option> }
                     </select>
@@ -135,7 +150,14 @@
                     @foreach (var row in list.Items)
                     {
                         <tr @key="row.Id">
-                            <th scope="row" class="whitespace-nowrap font-normal">@OperationsText.Local(row.ReportedAt)</th>
+                            <th scope="row" class="whitespace-nowrap font-normal">
+                                @OperationsText.Local(row.ReportedAt)
+                                @if (OperationsText.IssueAge(row.Status, row.ReportedAt, DateTime.UtcNow) is { } age)
+                                {
+                                    var overdue = OperationsText.IssueOverdue(row.Status, row.IncidentType, row.ReportedAt, DateTime.UtcNow);
+                                    <span class="block text-xs @(overdue ? "font-bold text-[#DC2626]" : "text-vfms-text-muted")">@age@(overdue ? " · quá hạn" : "")</span>
+                                }
+                            </th>
                             <td class="font-semibold">@row.EquipmentName<span class="block text-xs font-normal text-vfms-text-muted">@(row.EquipmentCode is { } rowCode ? $"{rowCode} · " : "")@OperationsText.Label(row.EquipmentStatus)</span></td>
                             <td><span class="@OperationsText.Badge(row.IncidentType)">@OperationsText.Label(row.IncidentType)</span></td>
                             <td>@(row.ReportedByName ?? "—")</td>
@@ -157,7 +179,8 @@
 @code {
     /// <summary>"Staff" or "Manager".</summary>
     [Parameter, EditorRequired] public string Role { get; set; } = "Staff";
-    [Parameter] public string InitialStatus { get; set; } = "";
+    /// <summary>Opens on the issues still to handle; "" shows all.</summary>
+    [Parameter] public string InitialStatus { get; set; } = StatusFilters.OpenIssues;
 
     private sealed record IssueAction(string Path, string Label, bool NeedsNote);
     private const int PageSize = 20;
@@ -166,11 +189,11 @@
     private VFMS.Contracts.Operations.StatusCountsResponse? _counts;
     private EquipmentIssueResponse? _selected;
     // Safety issues first by default, so the riskiest equipment is handled first.
-    private string _status = "", _search = "", _sort = "severity", _action = "", _note = "";
+    private string _status = StatusFilters.OpenIssues, _search = "", _sort = "severity", _action = "", _note = "";
     private string? _notice, _error;
     private bool _loading, _working, _reporting;
     private bool Busy => _loading || _working;
-    private bool NeedsNote => _selected is { } issue && Actions(issue).FirstOrDefault(a => a.Path == _action)?.NeedsNote == true;
+    private ElementReference _noteBox;
 
     protected override Task OnInitializedAsync()
     {
@@ -213,7 +236,7 @@
     private void Select(EquipmentIssueResponse issue)
     {
         _selected = issue;
-        _action = Actions(issue).FirstOrDefault()?.Path ?? "";
+        _action = ""; // set only while "Thanh lý thiết bị" waits for confirmation
         _note = "";
         _notice = _error = null;
     }
@@ -239,13 +262,23 @@
         finally { if (!token.IsCancellationRequested) _loading = false; }
     }
 
-    private async Task RunActionAsync(EquipmentIssueResponse issue)
+    private Task ConfirmDisposeAsync(EquipmentIssueResponse issue) =>
+        RunActionAsync(issue, Actions(issue).First(a => a.Path == "repair/dispose"), confirmed: true);
+
+    private async Task RunActionAsync(EquipmentIssueResponse issue, IssueAction action, bool confirmed)
     {
-        if (Busy || string.IsNullOrEmpty(_action)) return;
-        var action = Actions(issue).First(a => a.Path == _action);
+        if (Busy) return;
         if (action.NeedsNote && string.IsNullOrWhiteSpace(_note))
         {
-            _error = "Vui lòng nhập ghi chú.";
+            _error = $"Vui lòng nhập ghi chú trước khi chọn “{action.Label}”.";
+            await _noteBox.FocusAsync();
+            return;
+        }
+        // Retiring cannot be undone: the first click asks, "Xác nhận thanh lý" does it.
+        if (action.Path == "repair/dispose" && !confirmed)
+        {
+            _action = action.Path;
+            _error = null;
             return;
         }
         _working = true;

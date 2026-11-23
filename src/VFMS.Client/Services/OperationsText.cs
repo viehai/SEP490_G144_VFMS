@@ -85,6 +85,23 @@ public static class OperationsText
         return $"{label} ({count})";
     }
 
+    /// <summary>How long an open issue has waited, e.g. "Mở 9 ngày"; null once it is closed (Resolved or MarkedSafe).</summary>
+    public static string? IssueAge(string status, DateTime reportedAtUtc, DateTime nowUtc)
+    {
+        if (status is "Resolved" or "MarkedSafe") return null;
+        var age = nowUtc - reportedAtUtc;
+        return age.TotalHours < 1 ? "Mới báo" : age.TotalDays < 1 ? $"Mở {(int)age.TotalHours} giờ" : $"Mở {(int)age.TotalDays} ngày";
+    }
+
+    /// <summary>An open issue that has waited too long: a Safety issue after 1 day, any other after 3 days.</summary>
+    public static bool IssueOverdue(string status, string incidentType, DateTime reportedAtUtc, DateTime nowUtc) =>
+        status is not ("Resolved" or "MarkedSafe")
+        && nowUtc - reportedAtUtc >= (incidentType == "Safety" ? TimeSpan.FromDays(1) : TimeSpan.FromDays(3));
+
+    /// <summary>The "work still to do" filter option, e.g. "Cần xử lý (5)": the total of the given statuses.</summary>
+    public static string WorkCountLabel(IEnumerable<string> statuses, VFMS.Contracts.Operations.StatusCountsResponse? counts) =>
+        counts is null ? "Cần xử lý" : $"Cần xử lý ({statuses.Sum(status => counts.Counts.GetValueOrDefault(status))})";
+
     /// <summary>Vietnamese text for an API error code, or null to keep the server's message.</summary>
     public static string? ErrorMessage(string? code) => code switch
     {
@@ -145,6 +162,19 @@ public static class OperationsText
         "GYM_SETTINGS_INVALID_HOURS" => "Giờ mở cửa phải sớm hơn giờ đóng cửa.",
         "GYM_SETTINGS_INVALID_RENEWAL_WINDOW" => "Số ngày gia hạn không được âm.",
         _ => null
+    };
+
+    /// <summary>
+    /// An issue's resolution note for display. Notes saved before 23/11/2026 begin with an English prefix
+    /// ("Escalated: ", "Not safe after repair: ", "Disposed: "); show the Vietnamese one the service writes now.
+    /// </summary>
+    public static string? Note(string? note) => note switch
+    {
+        null => null,
+        _ when note.StartsWith("Escalated: ", StringComparison.Ordinal) => "Chuyển quản lý: " + note["Escalated: ".Length..],
+        _ when note.StartsWith("Not safe after repair: ", StringComparison.Ordinal) => "Chưa an toàn sau sửa chữa: " + note["Not safe after repair: ".Length..],
+        _ when note.StartsWith("Disposed: ", StringComparison.Ordinal) => "Thanh lý: " + note["Disposed: ".Length..],
+        _ => note
     };
 
     /// <summary>Vietnamese names for the properties FluentValidation names in its default messages.</summary>
