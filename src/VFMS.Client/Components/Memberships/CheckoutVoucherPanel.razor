@@ -1,4 +1,3 @@
-@using System.Globalization
 @using VFMS.Contracts.Memberships
 
 <section class="space-y-4" aria-labelledby="checkout-voucher-title" aria-busy="@(IsApplying || IsRemoving ? "true" : "false")">
@@ -42,9 +41,9 @@
         <p role="status" class="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">@Notice</p>
     }
     <dl class="space-y-3 border-t border-vfms-border pt-4 text-sm">
-        <div class="flex flex-wrap items-baseline justify-between gap-2"><dt class="text-vfms-text-secondary">Tạm tính</dt><dd class="font-semibold text-vfms-text">@Money(Purchase.Subtotal)</dd></div>
-        <div class="flex flex-wrap items-baseline justify-between gap-2"><dt class="text-vfms-text-secondary">Giảm giá</dt><dd class="font-semibold text-vfms-primary">@(Purchase.DiscountAmount > 0 ? "−" : "")@Money(Purchase.DiscountAmount)</dd></div>
-        <div class="flex flex-wrap items-baseline justify-between gap-2 border-t border-vfms-border pt-3"><dt class="text-base font-semibold text-vfms-text">Tổng thanh toán</dt><dd class="font-heading text-2xl font-extrabold text-vfms-primary">@Money(Purchase.AmountDue)</dd></div>
+        <div class="flex flex-wrap items-baseline justify-between gap-2"><dt class="text-vfms-text-secondary">Tạm tính</dt><dd class="font-semibold text-vfms-text">@Vnd.Format(Purchase.Subtotal)</dd></div>
+        <div class="flex flex-wrap items-baseline justify-between gap-2"><dt class="text-vfms-text-secondary">Giảm giá</dt><dd class="font-semibold text-vfms-primary">@(Purchase.DiscountAmount > 0 ? "−" : "")@Vnd.Format(Purchase.DiscountAmount)</dd></div>
+        <div class="flex flex-wrap items-baseline justify-between gap-2 border-t border-vfms-border pt-3"><dt class="text-base font-semibold text-vfms-text">Tổng thanh toán</dt><dd class="font-heading text-2xl font-extrabold text-vfms-primary">@Vnd.Format(Purchase.AmountDue)</dd></div>
     </dl>
 </section>
 
@@ -61,7 +60,6 @@
     private string _code = "";
     private string? _localError;
     private const string SecondaryButton = "min-h-[44px] rounded-lg border border-vfms-border bg-vfms-surface px-3 py-2 text-sm font-semibold text-vfms-text hover:bg-vfms-muted disabled:opacity-50";
-    private static string Money(decimal value) => value.ToString("#,0", CultureInfo.GetCultureInfo("vi-VN")) + " ₫";
     private async Task ApplyAsync()
     {
         if (IsBusy) return;

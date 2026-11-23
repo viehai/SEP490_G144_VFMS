@@ -1,16 +1,17 @@
 @page "/pt/trainer-profile"
 @layout StaffPTLayout
-@attribute [Authorize(Roles = "PT")]
+@attribute [Authorize(Roles = "PT,YogaInstructor")]
 @using VFMS.Contracts.Users
 @using VFMS.Contracts.Common
 @using VFMS.Client.Components.Operations
 @inject TrainerApiClient Api
-<PageTitle>Hồ sơ PT của tôi | Victor Fitness</PageTitle>
+@inject ToastService Toasts
+<PageTitle>Hồ sơ của tôi | Victor Fitness</PageTitle>
 
 <section class="workspace-page trainer-page trainer-stack">
-    <PageHeader Overline="VFMS / PT" Title="Hồ sơ PT của tôi"
-                Description="Cập nhật giới thiệu, ảnh đại diện, trạng thái nhận học viên và chứng chỉ." />
-    <TrainerFeedback Error="@_error" Message="@_message" />
+    <PageHeader Overline="VFMS / HUẤN LUYỆN VIÊN" Title="Hồ sơ của tôi"
+                Description="Cập nhật giới thiệu, ảnh đại diện và chứng chỉ; PT quản lý thêm trạng thái nhận học viên." />
+    <TrainerFeedback Error="@_error" />
     @if (_loading) { <p role="status">Đang tải hồ sơ…</p> }
     else if (_profile is { } detail)
     {
@@ -18,21 +19,25 @@
             <section id="pt-basic-profile" class="trainer-panel trainer-stack trainer-anchor">
                 <div class="trainer-row">
                     <TrainerAvatar Trainer="detail.Profile" />
-                    <div><h2>@detail.Profile.FullName</h2><p class="trainer-muted">@detail.Profile.Specialty · @detail.Profile.Level · @detail.Profile.ExperienceYears năm kinh nghiệm</p>
+                    <div><h2>@detail.Profile.FullName</h2><p class="trainer-muted">@detail.Profile.TrainerRole · @detail.Profile.Specialty · @detail.Profile.Level · @detail.Profile.ExperienceYears năm kinh nghiệm</p>
                     <p class="trainer-muted">@(detail.Profile.AverageRating > 0 ? $"{detail.Profile.AverageRating:0.0} / 5 sao" : "Chưa có đánh giá")</p></div>
                 </div>
+                @* UC 4.12: accepting status belongs to Trainer Role PT only. *@
+                @if (detail.Profile.TrainerRole == "PT")
+                {
                 <div class="trainer-row trainer-between">
                     <div>
                         <strong>@(detail.Profile.IsAcceptingNewMembers ? "Đang nhận học viên mới" : "Không nhận học viên mới")</strong>
                         @if (!detail.Profile.IsAcceptingNewMembers && detail.Profile.NotAcceptingSince is { } since)
                         {
-                            <p class="trainer-muted">Từ ngày @since.ToString("dd/MM/yyyy"). Quá 60 ngày liên tục sẽ mất quyền PT khi không còn hợp đồng đang chạy.</p>
+                            <p class="trainer-muted">Từ ngày @since.ToString("dd/MM/yyyy"). 60 ngày được tính từ ngày @((detail.Profile.NotAcceptingCountFrom ?? since).ToString("dd/MM/yyyy")); nếu còn hợp đồng đang chạy, mốc này lùi tới ngày hợp đồng cuối kết thúc. Vẫn không nhận học viên quá 60 ngày thì mất quyền PT.</p>
                         }
                     </div>
                     <button type="button" class="trainer-button" disabled="@_saving" @onclick="ToggleReadinessAsync">
                         @(detail.Profile.IsAcceptingNewMembers ? "Ngừng nhận học viên" : "Sẵn sàng nhận học viên")
                     </button>
                 </div>
+                }
                 <form class="trainer-stack" @onsubmit="SaveAsync" @onsubmit:preventDefault>
                     <fieldset class="trainer-stack" disabled="@_saving">
                         <label>Giới thiệu<textarea class="trainer-input" rows="5" maxlength="4000" @bind="_bio"></textarea></label>
@@ -63,10 +68,6 @@
                 {
                     <p class="trainer-feedback trainer-error" role="alert">Không tải được thông tin tài khoản. Tải lại trang để gửi hồ sơ chứng chỉ.</p>
                 }
-                else if (_identity is null)
-                {
-                    <p class="trainer-feedback trainer-error" role="alert">Tài khoản cần có hồ sơ ứng tuyển đã tuyển để xác minh CCCD trước khi cập nhật chứng chỉ.</p>
-                }
                 else
                 {
                     <p class="trainer-muted">Manager duyệt trước khi thay đổi được công bố.</p>
@@ -81,7 +82,7 @@
                     </div>
                     @if (_editingCredentials)
                     {
-                        <TrainerApplicationForm @key="_credentialFormVersion" Profile="detail.Profile" Identity="_identity"
+                        <TrainerApplicationForm @key="_credentialFormVersion" Profile="detail.Profile"
                             Published="detail.Certificates" Replacement="_replacement"
                             Email="@_account.Email" Phone="@_account.PhoneNumber" Submitted="ReloadHistoryAsync" />
                     }
@@ -115,7 +116,6 @@
 @code {
     private TrainerPublicDetail? _profile;
     private UserProfileResponse? _account;
-    private TrainerApplicationResponse? _identity;
     private PagedResponse<TrainerApplicationResponse>? _history;
     private TrainerFileInput? _avatar;
     private TrainerDocumentResponse? _replacement;
@@ -125,7 +125,7 @@
     private IReadOnlyList<string> _bannedWords = [];
     private int _avatarVersion;
     private bool _loading = true, _saving, _historyLoading;
-    private string? _error, _message, _historyError;
+    private string? _error, _historyError;
 
     protected override async Task OnInitializedAsync()
     {
@@ -133,8 +133,6 @@
         {
             await LoadProfileAsync();
             _account = await Api.AccountAsync();
-            var recruitment = await Api.ApplicationsAsync(new(Status: "Hired", ApplicationType: "Recruitment"), mine: true);
-            _identity = recruitment.Items.FirstOrDefault(item => item.HiredUserId == _account.UserId);
         }
         catch (AuthApiException ex) { _error = ex.Message; }
         finally { _loading = false; }
@@ -170,7 +168,7 @@
     private async Task AvatarAsync(InputFileChangeEventArgs args)
     {
         _saving = true;
-        _error = _message = null;
+        _error = null;
         _avatar = null;
         try
         {
@@ -197,7 +195,7 @@
     private async Task SaveAsync()
     {
         if (_saving || _profile is not { } profile) return;
-        _error = _message = null;
+        _error = null;
         var bio = _bio.Trim();
         var request = new UpdateTrainerProfileRequest(bio == (profile.Profile.Bio ?? "") ? null : bio, _avatar);
         if (!new TrainerProfileValidator().Validate(request).IsValid)
@@ -211,7 +209,7 @@
         {
             await Api.UpdateAsync(request);
             _avatar = null;
-            _message = "Đã lưu hồ sơ PT.";
+            Toasts.Show("Đã cập nhật hồ sơ huấn luyện viên thành công."); // MSG-03
             await LoadProfileAsync();
         }
         catch (AuthApiException ex)
@@ -226,15 +224,15 @@
     {
         if (_saving || _profile is not { } detail) return;
         _saving = true;
-        _error = _message = null;
+        _error = null;
         try
         {
             var status = await Api.SetReadinessAsync(!detail.Profile.IsAcceptingNewMembers);
             await LoadProfileAsync();
-            _message = status.IsAcceptingNewMembers ? "Đã chuyển sang nhận học viên mới."
+            Toasts.Show(status.IsAcceptingNewMembers ? "Đã chuyển sang nhận học viên mới."
                 : status.ContractsNotified > 0
                     ? $"Đã ngừng nhận học viên mới. {status.ContractsNotified} hội viên chưa bắt đầu tập được mời đổi huấn luyện viên trong 1 tuần."
-                    : "Đã ngừng nhận học viên mới.";
+                    : "Đã ngừng nhận học viên mới.");
         }
         catch (AuthApiException ex) { _error = ex.Message; }
         finally { _saving = false; }

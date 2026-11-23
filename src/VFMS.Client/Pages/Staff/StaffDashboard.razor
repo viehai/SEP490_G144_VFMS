@@ -38,6 +38,16 @@
             <h2 id="staff-actions-title" class="workspace-heading text-base font-extrabold text-[#242424]">QUICK ACTIONS</h2>
         </div>
         <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <AuthorizeView Roles="Staff">
+                <a href="/staff/customers/create"
+                   class="flex min-h-[100px] items-center justify-between gap-4 border border-[#B83A3A] bg-[#F3E4E2]/60 p-5 text-left text-[#242424] hover:bg-[#F3E4E2] rounded-xl transition-all">
+                    <span>
+                        <span class="workspace-heading block text-xs font-extrabold text-[#B83A3A]">TẠO TÀI KHOẢN KHÁCH HÀNG</span>
+                        <span class="mt-1.5 block text-xs text-[#6F6966]">Tạo nhanh tài khoản Customer và gửi link thiết lập mật khẩu 48 giờ</span>
+                    </span>
+                    <span class="text-xl text-[#B83A3A]" aria-hidden="true">↗</span>
+                </a>
+            </AuthorizeView>
             @foreach (var action in Actions)
             {
                 <a href="@action.Href" class="flex min-h-[100px] items-center justify-between gap-4 border border-[#D8D1CD] bg-[#F8F5F2] p-5 text-[#242424] transition-all hover:border-[#B83A3A] hover:bg-[#F3EDEA] rounded-xl">
@@ -87,7 +97,7 @@
     private static readonly ActionItem[] Actions =
     [
         new("/staff/check-ins", "MANUAL CHECK-IN", "Check-in, check-out hội viên tại quầy"),
-        new("/staff/membership-cash-receipt", "THU TIỀN MẶT", "Xác nhận tiền mặt mua gói tập"),
+        new("/staff/membership-cash-receipt", "ĐƠN GÓI TẬP", "Xem đơn Gym, Yoga, PT và xác nhận thanh toán tại quầy"),
         new("/staff/equipment-issues", "SỰ CỐ THIẾT BỊ", "Tiếp nhận và xử lý báo hỏng"),
         new("/staff/consultations", "TƯ VẤN KHÁCH HÀNG", "Trả lời yêu cầu tư vấn"),
         new("/staff/yoga", "LỚP YOGA", "Buổi yoga và điểm danh"),

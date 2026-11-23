@@ -28,7 +28,7 @@ public sealed class AuthService : IAuthService
 
     public async Task<Result<LoginResponse>> LoginAsync(LoginRequest request, string? ipAddress, CancellationToken cancellationToken = default)
     {
-        var user = await _authRepository.GetUserByEmailOrPhoneAsync(request.Email.Trim(), cancellationToken);
+        var user = await _authRepository.GetUserByEmailOrPhoneAsync(request.Email, cancellationToken);
         if (user is null || !_passwordHasher.Verify(request.Password, user.PasswordHash))
             return Result<LoginResponse>.Failure("Invalid email or password.", "AUTH_INVALID_CREDENTIALS", 401);
 
@@ -61,8 +61,16 @@ public sealed class AuthService : IAuthService
 
     public async Task<Result<RegisterResponse>> RegisterAsync(RegisterRequest request, CancellationToken cancellationToken = default)
     {
-        if (await _authRepository.EmailExistsAsync(request.Email, cancellationToken))
+        var email = UserIdentityRules.NormalizeEmail(request.Email);
+        if (!UserIdentityRules.IsValidEmail(email))
+            return Result<RegisterResponse>.Failure("Invalid email format.", "USER_INVALID_EMAIL");
+        if (!UserIdentityRules.TryNormalizePhone(request.PhoneNumber, out var phoneNumber))
+            return Result<RegisterResponse>.Failure("Invalid phone number format.", "USER_INVALID_PHONE");
+
+        if (await _authRepository.EmailExistsAsync(email, cancellationToken))
             return Result<RegisterResponse>.Failure("Email is already in use.", "AUTH_EMAIL_EXISTS", 409);
+        if (await _authRepository.PhoneNumberExistsAsync(phoneNumber, cancellationToken))
+            return Result<RegisterResponse>.Failure("A user with this phone number already exists.", "USER_PHONE_EXISTS", 409);
 
         var customerRole = await _authRepository.GetRoleByNameAsync("Customer", cancellationToken);
         if (customerRole is null)
@@ -77,13 +85,15 @@ public sealed class AuthService : IAuthService
             UserId = Guid.NewGuid().ToString(),
             GymId = defaultGym.Id,
             FullName = request.FullName,
-            Email = request.Email,
-            PhoneNumber = request.PhoneNumber,
+            Email = email,
+            PhoneNumber = phoneNumber,
             PasswordHash = _passwordHasher.Hash(request.Password),
             AccountStatus = AccountStatus.Active
         };
 
-        await _authRepository.CreateUserAsync(newUser, customerRole.Id, cancellationToken);
+        var created = await _authRepository.CreateUserAsync(newUser, customerRole.Id, cancellationToken);
+        if (!created.IsSuccess)
+            return Result<RegisterResponse>.Failure(created.ErrorMessage!, created.ErrorCode!, created.StatusCode);
 
         return Result<RegisterResponse>.Success(new RegisterResponse(
             UserId: newUser.UserId,

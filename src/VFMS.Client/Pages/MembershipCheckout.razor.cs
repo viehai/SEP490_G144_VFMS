@@ -1,4 +1,3 @@
-using System.Globalization;
 using Microsoft.AspNetCore.Components;
 using VFMS.Client.Services;
 using VFMS.Contracts.Memberships;
@@ -26,7 +25,7 @@ public partial class MembershipCheckout : IDisposable
     private Task ApplyVoucherAsync(string code) => _checkout?.ApplyVoucherAsync(code) ?? Task.CompletedTask;
     private Task RemoveVoucherAsync() => _checkout?.RemoveVoucherAsync() ?? Task.CompletedTask;
     private Task CompleteNoChargeAsync() => _checkout?.CompleteNoChargeAsync() ?? Task.CompletedTask;
-    private static string Money(decimal value) => value.ToString("#,0", CultureInfo.GetCultureInfo("vi-VN")) + " ₫";
+    private static string Money(decimal value) => Vnd.Format(value);
 
     private async Task PollAsync(MembershipCheckoutState checkout, CancellationToken ct)
     {

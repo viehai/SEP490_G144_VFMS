@@ -10,7 +10,7 @@ namespace VFMS.Client.Auth;
 
 public sealed record StoredAuthSession(LoginResponse User, DateTimeOffset ExpiresAt, bool RememberMe);
 
-public sealed class AuthSession(IJSRuntime js, AuthApiClient api) : AuthenticationStateProvider
+public sealed class AuthSession(IJSRuntime js, AuthApiClient api, MembershipCart? cart = null) : AuthenticationStateProvider
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private StoredAuthSession? _session;
@@ -21,17 +21,23 @@ public sealed class AuthSession(IJSRuntime js, AuthApiClient api) : Authenticati
     {
         try
         {
-            if (await GetAccessTokenAsync() is null || _session is null) return Anonymous;
-            var user = _session.User;
-            var claims = new List<Claim>
-            {
-                new(ClaimTypes.NameIdentifier, user.UserId), new(ClaimTypes.Name, user.FullName),
-                new(ClaimTypes.Email, user.Email)
-            };
-            claims.AddRange(user.Roles.Select(role => new Claim(ClaimTypes.Role, role)));
-            return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity(claims, "VFMS")));
+            await GetAccessTokenAsync();
+            return ToAuthenticationState(_session);
         }
         catch (AuthApiException) { return Anonymous; }
+    }
+
+    private static AuthenticationState ToAuthenticationState(StoredAuthSession? session)
+    {
+        if (session is null) return Anonymous;
+        var user = session.User;
+        var claims = new List<Claim>
+        {
+            new(ClaimTypes.NameIdentifier, user.UserId), new(ClaimTypes.Name, user.FullName),
+            new(ClaimTypes.Email, user.Email)
+        };
+        claims.AddRange(user.Roles.Select(role => new Claim(ClaimTypes.Role, role)));
+        return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity(claims, "VFMS")));
     }
 
     public async Task SignInAsync(LoginRequest request)
@@ -40,6 +46,7 @@ public sealed class AuthSession(IJSRuntime js, AuthApiClient api) : Authenticati
         try
         {
             var user = await api.LoginAsync(request);
+            if (_session?.User.UserId != user.UserId) cart?.Clear();
             await SaveAsync(new(user, DateTimeOffset.UtcNow.AddSeconds(user.ExpiresIn), request.RememberMe));
         }
         finally { _gate.Release(); }
@@ -67,13 +74,58 @@ public sealed class AuthSession(IJSRuntime js, AuthApiClient api) : Authenticati
 
     public async Task<string?> GetAccessTokenAsync()
     {
+        AuthenticationState? changed = null;
+        string? token;
         await _gate.WaitAsync();
         try
         {
-            return await GetAccessTokenCoreAsync();
+            var before = _session;
+            token = await GetAccessTokenCoreAsync();
+            if (before is not null && (_session is null || !before.User.Roles.ToHashSet().SetEquals(_session.User.Roles)))
+                changed = ToAuthenticationState(_session);
         }
         finally { _gate.Release(); }
+        if (changed is not null) NotifyAuthenticationStateChanged(Task.FromResult(changed));
+        return token;
     }
+
+    public async Task SyncMemberRoleAsync(CancellationToken cancellationToken)
+    {
+        if (_loaded && (_session is null || !CanPromote(_session))) return;
+        try
+        {
+            var token = await GetAccessTokenAsync();
+            if (token is null || _session is not { } session || !CanPromote(session)) return;
+
+            var profile = await api.GetProfileAsync(token, cancellationToken);
+            if (profile.Roles.Contains("Member"))
+                await RefreshMemberRoleAsync(session.User.UserId, cancellationToken);
+        }
+        catch (AuthApiException) { /* A temporary profile failure can be retried on the next check. */ }
+    }
+
+    public async Task RefreshMemberRoleAsync(string? expectedUserId, CancellationToken cancellationToken)
+    {
+        AuthenticationState? changed = null;
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (_session is not { } session || !CanPromote(session) ||
+                (expectedUserId is not null && expectedUserId != session.User.UserId)) return;
+
+            // Once a refresh starts, persist the rotated token even if the user leaves the page.
+            var user = await api.RefreshAsync(session.User.RefreshToken);
+            await SaveAsync(new(user, DateTimeOffset.UtcNow.AddSeconds(user.ExpiresIn), session.RememberMe));
+            if (!session.User.Roles.ToHashSet().SetEquals(user.Roles))
+                changed = ToAuthenticationState(_session);
+        }
+        catch (AuthApiException) { /* The activation already succeeded. Keep the session and retry the role sync later. */ }
+        finally { _gate.Release(); }
+        if (changed is not null) NotifyAuthenticationStateChanged(Task.FromResult(changed));
+    }
+
+    private static bool CanPromote(StoredAuthSession session) =>
+        session.User.Roles.Contains("Customer") && !session.User.Roles.Contains("Member");
 
     public async Task<bool> SignOutAsync()
     {
@@ -94,6 +146,7 @@ public sealed class AuthSession(IJSRuntime js, AuthApiClient api) : Authenticati
             }
             finally
             {
+                cart?.Clear();
                 await js.InvokeVoidAsync("vfmsAuthStorage.clear");
                 _session = null;
                 _loaded = true;
@@ -135,6 +188,7 @@ public sealed class AuthSession(IJSRuntime js, AuthApiClient api) : Authenticati
             }
             catch (AuthApiException error) when (error.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
             {
+                cart?.Clear();
                 await js.InvokeVoidAsync("vfmsAuthStorage.clear");
                 _session = null;
                 return null;

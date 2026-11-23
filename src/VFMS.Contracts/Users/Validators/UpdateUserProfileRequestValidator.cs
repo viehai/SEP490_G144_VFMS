@@ -1,4 +1,5 @@
 using FluentValidation;
+using VFMS.Contracts.Common;
 
 namespace VFMS.Contracts.Users.Validators;
 
@@ -10,8 +11,7 @@ public sealed class UpdateUserProfileRequestValidator : AbstractValidator<Update
             .NotEmpty().MaximumLength(256);
 
         RuleFor(x => x.PhoneNumber)
-            .NotEmpty().MaximumLength(20)
-            .Matches(@"^[0-9+\-\s()]{7,20}$");
+            .NotEmpty().Must(UserIdentityRules.IsValidPhone).WithMessage("Invalid phone number format.");
 
         RuleFor(x => x.AvatarUrl)
             .MaximumLength(2048)

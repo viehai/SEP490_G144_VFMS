@@ -2,6 +2,7 @@
 @layout ManagerAdminLayout
 @attribute [Authorize(Roles = "Manager")]
 @inject PersonalTrainingApiClient Api
+@inject ToastService Toasts
 @using VFMS.Contracts.Common
 @using VFMS.Client.Components.Operations
 <PageTitle>Duyệt bảo lưu PT | Victor Fitness</PageTitle>
@@ -9,7 +10,7 @@
 <section class="workspace-page trainer-page trainer-stack">
     <PageHeader Overline="VFMS / PERSONAL TRAINING" Title="Duyệt bảo lưu PT"
                 Description="Xem khoảng bảo lưu, lịch giữ chỗ sau bảo lưu và huấn luyện viên thay thế trước khi duyệt." />
-    <TrainerFeedback Error="@_error" Message="@_message" />
+    <TrainerFeedback Error="@_error" />
     <div class="trainer-row" role="group" aria-label="Trạng thái xử lý đơn bảo lưu">
         <button type="button" class="trainer-button" aria-pressed="@(!_processed ? "true" : "false")"
                 disabled="@_busy" @onclick="() => SwitchTabAsync(false)">Đơn chờ</button>
@@ -22,12 +23,14 @@
     else if (_requests is { } requests)
     {
         <div class="trainer-panel trainer-list-card trainer-scroll"><table class="workspace-table">
-            <thead><tr><th>Hợp đồng</th><th>Hội viên</th><th>PT</th><th>Bắt đầu</th><th>Tập lại</th><th>Số ngày</th><th>Lý do</th><th>@(_processed ? "Kết quả" : "Thao tác")</th></tr></thead>
+            <thead><tr><th>Hợp đồng</th><th>Hội viên</th><th>PT</th><th>Bắt đầu</th><th>Tập lại</th><th>Số ngày</th><th>Lý do</th><th>Lịch đề xuất</th><th>HLV thay thế</th><th>@(_processed ? "Kết quả" : "Thao tác")</th></tr></thead>
             <tbody>@foreach (var item in requests.Items)
             {
                 <tr @key="item.Id"><td>#@item.ContractId</td><td>@(item.MemberName ?? item.MemberId)</td><td>@(item.TrainerName ?? item.TrainerId)</td>
                     <td>@Date(item.StartDate)</td><td>@Date(item.ResumeDate)</td><td>@(item.ResumeDate.DayNumber - item.StartDate.DayNumber)</td>
                     <td class="trainer-copy">@item.Reason</td>
+                    <td>@(item.ProposedSlots.Count == 0 ? "—" : string.Join(", ", item.ProposedSlots.Select(x => $"{Date(x.Date)} {x.StartTime:HH:mm}")))</td>
+                    <td>@(item.ReplacementTrainerName ?? "—")</td>
                     <td>
                         @if (_processed)
                         {
@@ -51,7 +54,8 @@
     {
         <section class="trainer-panel trainer-stack">
             <h2>Yêu cầu #@selected.Id · Hợp đồng #@selected.ContractId</h2>
-            <p>@Date(selected.StartDate) đến trước @Date(selected.ResumeDate)</p>
+            <p>@Date(selected.StartDate) đến trước @Date(selected.ResumeDate) · @(selected.ResumeDate.DayNumber - selected.StartDate.DayNumber) ngày</p>
+            <p class="trainer-muted">Chính sách bảo lưu của hợp đồng: tối thiểu @selected.MinimumDays ngày, tối đa @selected.MaximumDays ngày, một lần cho mỗi hợp đồng.</p>
             <p class="trainer-copy">@selected.Reason</p>
             @if (_preview is { } preview)
             {
@@ -82,7 +86,7 @@
     private PTFreezeResponse? _selected;
     private PTFreezePreview? _preview;
     private string _reason = "";
-    private string? _error, _message;
+    private string? _error;
     private bool _busy, _processed;
 
     protected override Task OnInitializedAsync() => LoadAsync();
@@ -119,7 +123,7 @@
             await Api.DecideFreezeAsync(request.Id, new(approve, approve ? null : _reason.Trim()));
             _selected = null;
             _preview = null;
-            _message = approve ? "Đã duyệt bảo lưu PT." : "Đã từ chối bảo lưu PT.";
+            Toasts.Show(approve ? "Đã duyệt bảo lưu PT." : "Đã từ chối bảo lưu PT.");
             var page = _requests?.Page ?? 1;
             _requests = null;
             _requests = await Api.ManagerFreezePageAsync(false, page);
@@ -130,7 +134,7 @@
     {
         if (_busy) return;
         _busy = true;
-        _message = _error = null;
+        _error = null;
         try { await action(); }
         catch (AuthApiException ex) { _error = ex.Message; }
         finally { _busy = false; }

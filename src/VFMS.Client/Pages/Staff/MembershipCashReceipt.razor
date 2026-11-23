@@ -1,88 +1,273 @@
 @page "/staff/membership-cash-receipt"
 @layout StaffPTLayout
 @using Microsoft.AspNetCore.Authorization
+@using VFMS.Client.Components.Memberships
+@using VFMS.Client.Components.Operations
 @using VFMS.Contracts.Memberships
 @attribute [Authorize(Roles = "Staff")]
-@inject MembershipPlanApiClient Plans
-@implements IDisposable
 
-<PageTitle>Xác nhận tiền mặt | Victor Fitness</PageTitle>
+<PageTitle>Đơn gói tập | Victor Fitness</PageTitle>
 
-<section class="workspace-page space-y-5" aria-labelledby="cash-receipt-title">
-    <div>
-        <h1 id="cash-receipt-title" class="text-2xl font-bold text-[#242424]">Xác nhận tiền mặt mua gói tập</h1>
-        <p class="mt-1 text-sm text-[#6F6966]">Nhập mã đơn và số tiền thực tế đã nhận tại quầy.</p>
-    </div>
-    <form @onsubmit="ConfirmAsync" @onsubmit:preventDefault>
-        <fieldset disabled="@_submitting" class="max-w-md space-y-4 rounded-xl border border-[#D8D1CD] bg-[#F8F5F2] p-6 shadow-sm">
-            <label class="block text-sm font-semibold text-[#242424]">
-                Mã đơn
-                <input class="mt-1 block w-full rounded-lg border border-[#D8D1CD] bg-[#F8F5F2] px-3.5 py-2.5 text-sm text-[#242424] outline-none transition focus:border-[#B83A3A] focus:ring-2 focus:ring-[#B83A3A]/20" @bind="_orderNumber" required maxlength="50" placeholder="VD: ORD-123456" />
-            </label>
-            <label class="block text-sm font-semibold text-[#242424]">
-                Số tiền đã nhận (₫)
-                <input type="number" class="mt-1 block w-full rounded-lg border border-[#D8D1CD] bg-[#F8F5F2] px-3.5 py-2.5 text-sm text-[#242424] outline-none transition focus:border-[#B83A3A] focus:ring-2 focus:ring-[#B83A3A]/20" @bind="_amount" required min="1" step="1" placeholder="Nhập số tiền..." />
-            </label>
-            <div class="pt-2">
-                <button type="submit" class="w-full rounded-lg bg-[#B83A3A] hover:bg-[#9F3030] active:bg-[#7F2929] px-5 py-2.5 text-sm font-semibold text-white transition shadow-sm disabled:opacity-50">
-                    @(_submitting ? "Đang xác nhận..." : "Xác nhận đã nhận tiền")
-                </button>
+<div class="workspace-page space-y-5">
+    <PageHeader Overline="Lễ tân" Title="Đơn gói tập"
+                Description="Theo dõi đơn Gym, Yoga và PT của cơ sở. Chọn đơn chờ tiền mặt để xác nhận thu tiền.">
+        <button type="button" class="@Ui.Button min-h-[44px]" disabled="@Busy" @onclick="RefreshAsync">Làm mới</button>
+    </PageHeader>
+
+    @if (_notice is not null)
+    {
+        <p role="status" tabindex="-1" @ref="_noticeElement" class="@Ui.Notice">@_notice</p>
+    }
+    @if (_selected is null && _actionError is not null)
+    {
+        <p role="alert" class="@Ui.Error">@_actionError</p>
+    }
+
+    @if (_selected is { } order)
+    {
+        <section class="@Ui.Card space-y-4" aria-labelledby="package-order-detail">
+            <div class="flex flex-wrap items-start justify-between gap-3 border-b border-vfms-border pb-4">
+                <div>
+                    <h2 id="package-order-detail" class="break-words font-heading text-lg font-bold text-vfms-text"
+                        tabindex="-1" @ref="_detailHeading">Đơn @order.OrderNumber</h2>
+                    <p class="mt-1 text-sm text-vfms-text-secondary">@order.PurchaserName · @TransactionDisplay.Date(order.CreatedAt)</p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <TransactionStatusBadge Status="@order.Status" />
+                    <button type="button" class="@Ui.Button min-h-[44px]" disabled="@_confirming" @onclick="CloseDetails">Đóng</button>
+                </div>
             </div>
-        </fieldset>
-    </form>
-    @if (_error is not null)
-    {
-        <div class="max-w-md rounded-xl border border-red-200 bg-red-50 p-4">
-            <p role="alert" class="text-sm text-red-900">@_error</p>
+
+            <div class="grid gap-5 lg:grid-cols-2">
+                <div>
+                    <h3 class="text-sm font-bold text-vfms-text">Gói trong đơn</h3>
+                    <ul class="mt-2 divide-y divide-vfms-border text-sm">
+                        @foreach (var line in order.Items.GroupBy(item => (item.Name, item.Amount)))
+                        {
+                            <li class="flex flex-wrap justify-between gap-2 py-2">
+                                <span class="break-words">@line.Key.Name @if (line.Count() > 1) { <span>× @line.Count()</span> }</span>
+                                <span class="whitespace-nowrap font-semibold">@OperationsText.Money(line.Key.Amount * line.Count())</span>
+                            </li>
+                        }
+                    </ul>
+                </div>
+
+                <div class="space-y-4">
+                    <dl class="grid gap-3 rounded-lg border border-vfms-border bg-vfms-bg p-4 text-sm sm:grid-cols-2">
+                        <div><dt class="text-xs text-vfms-text-secondary">Phương thức</dt><dd class="mt-1 font-semibold">@MethodLabel(order.Method)</dd></div>
+                        <div><dt class="text-xs text-vfms-text-secondary">Giao dịch</dt><dd class="mt-1 font-semibold">@PaymentLabel(order.PaymentStatus)</dd></div>
+                        <div><dt class="text-xs text-vfms-text-secondary">Phải trả</dt><dd class="mt-1 font-bold">@AmountLabel(order.AmountDue)</dd></div>
+                        @if (order.Status != "Pending" || order.AmountReceived > 0)
+                        {
+                            <div><dt class="text-xs text-vfms-text-secondary">Đã nhận</dt><dd class="mt-1 font-semibold">@AmountLabel(order.AmountReceived)</dd></div>
+                        }
+                        @if (order.Status == "Pending")
+                        {
+                            <div>
+                                <dt class="text-xs text-vfms-text-secondary">@(order.Method is null ? "Hạn chọn phương thức" : "Hạn thanh toán")</dt>
+                                <dd class="mt-1">@TransactionDisplay.Date(order.PaymentDeadline)</dd>
+                            </div>
+                        }
+                        @if (order.PaidAt is { } paidAt)
+                        {
+                            <div><dt class="text-xs text-vfms-text-secondary">Thời gian nhận tiền</dt><dd class="mt-1">@TransactionDisplay.Date(paidAt)</dd></div>
+                        }
+                        @if (order.InvoiceNumber is { } invoice)
+                        {
+                            <div><dt class="text-xs text-vfms-text-secondary">Hóa đơn</dt><dd class="mt-1 break-words font-semibold">@invoice</dd></div>
+                        }
+                        @if (RefundLabel(order.RefundStatus) is { } refund)
+                        {
+                            <div><dt class="text-xs text-vfms-text-secondary">Hoàn tiền</dt><dd class="mt-1">@refund</dd></div>
+                        }
+                    </dl>
+
+                    @if (order is { CanConfirmCash: true, AmountDue: { } due })
+                    {
+                        var tendered = CashTendered;
+                        var invalid = tendered is null || tendered < due;
+                        <form @onsubmit="ConfirmCashAsync" @onsubmit:preventDefault>
+                            <fieldset class="space-y-3" disabled="@Busy">
+                                <legend class="sr-only">Xác nhận thu tiền đơn @order.OrderNumber</legend>
+                                <label class="@Ui.Label block" for="package-cash-amount">
+                                    Khách đưa (₫) <span aria-hidden="true" class="text-red-700">*</span>
+                                    <input id="package-cash-amount" type="text" inputmode="numeric" class="@Ui.Field min-h-[44px] tabular-nums"
+                                           @bind:get="_amount" @bind:set="SetCashTendered" @bind:event="oninput"
+                                           data-vnd-input="whole" required maxlength="38"
+                                           aria-invalid="@(invalid ? "true" : "false")" aria-describedby="package-cash-feedback package-cash-error" />
+                                </label>
+                                <div id="package-cash-feedback" aria-live="polite">
+                                    @if (tendered is not { } cash)
+                                    {
+                                        <p class="text-sm text-red-800">Nhập số tiền hợp lệ, ví dụ @Vnd.FormatAmount(due).</p>
+                                    }
+                                    else if (cash < due)
+                                    {
+                                        <p class="text-sm font-semibold text-red-800">Còn thiếu @OperationsText.Money(due - cash).</p>
+                                    }
+                                    else if (cash > due)
+                                    {
+                                        <p class="text-sm font-semibold text-vfms-text">Trả lại khách @OperationsText.Money(cash - due).</p>
+                                    }
+                                </div>
+                                <button type="submit" class="@Ui.PrimaryButton min-h-[44px] disabled:opacity-60" disabled="@invalid">
+                                    @(_confirming ? "Đang xác nhận…" : "Xác nhận đã nhận tiền")
+                                </button>
+                            </fieldset>
+                        </form>
+                    }
+                    <div id="package-cash-error">
+                        @if (_actionError is not null)
+                        {
+                            <p role="alert" class="@Ui.Error">@_actionError</p>
+                        }
+                    </div>
+                </div>
+            </div>
+        </section>
+    }
+
+    <section class="@Ui.ListCard" aria-labelledby="package-order-list" aria-busy="@_loading">
+        <div class="@Ui.ListHeader space-y-4">
+            <h2 id="package-order-list" class="text-base font-bold text-vfms-text" tabindex="-1" @ref="_listHeading">Danh sách đơn</h2>
+            <div class="flex flex-wrap gap-2" role="group" aria-label="Lọc nhanh theo trạng thái đơn">
+                @foreach (var status in OrderStatuses)
+                {
+                    var selected = status == _active.Status;
+                    <button type="button" aria-pressed="@(selected ? "true" : "false")" disabled="@Busy"
+                            class="@Ui.Button min-h-[44px] @(selected ? "ring-2 ring-inset ring-vfms-primary text-vfms-primary" : "")"
+                            @onclick="() => SelectStatusAsync(status)">@(status is null ? "Tất cả" : TransactionDisplay.Status(status))</button>
+                }
+            </div>
+
+            <form @onsubmit="ApplyFiltersAsync" @onsubmit:preventDefault>
+                <fieldset disabled="@Busy" class="space-y-3">
+                    <legend class="sr-only">Bộ lọc đơn gói tập</legend>
+                    <div class="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(200px,2fr)_1fr_1fr]">
+                        <label class="@Ui.Label sm:col-span-2 lg:col-span-1" for="package-order-search">Tìm kiếm
+                            <input id="package-order-search" class="@Ui.Field min-h-[44px]" type="search" maxlength="100" @bind="_draft.Search"
+                                   placeholder="Mã đơn, tên khách, số điện thoại hoặc tên gói" />
+                        </label>
+                        <label class="@Ui.Label" for="package-order-type">Loại gói
+                            <select id="package-order-type" class="@Ui.Field min-h-[44px]" @bind="_draft.ServiceType">
+                                <option value="">Tất cả loại gói</option>
+                                <option value="GYM">Gym</option><option value="YOGA">Yoga</option><option value="PT">PT</option>
+                            </select>
+                        </label>
+                        <label class="@Ui.Label" for="package-order-method">Phương thức thanh toán
+                            <select id="package-order-method" class="@Ui.Field min-h-[44px]" @bind="_draft.Method">
+                                <option value="">Tất cả phương thức</option>
+                                @foreach (var method in PaymentMethods)
+                                {
+                                    <option value="@method">@TransactionDisplay.Method(method)</option>
+                                }
+                                <option value="@StaffPackageOrderQuery.UnselectedMethod">Chưa chọn phương thức</option>
+                            </select>
+                        </label>
+                    </div>
+
+                    <details class="rounded-lg border border-vfms-border bg-vfms-surface px-3 py-1">
+                        <summary class="min-h-[36px] cursor-pointer py-2 text-xs font-semibold text-vfms-text">Khoảng ngày và trạng thái giao dịch</summary>
+                        <div class="grid gap-3 pb-3 sm:grid-cols-3">
+                            <label for="package-order-from" class="@Ui.Label">Đặt từ ngày
+                                <input id="package-order-from" class="@Ui.Field min-h-[44px]" type="date" @bind="_draft.From" />
+                            </label>
+                            <label for="package-order-to" class="@Ui.Label">Đặt đến ngày
+                                <input id="package-order-to" class="@Ui.Field min-h-[44px]" type="date" @bind="_draft.To" />
+                            </label>
+                            <label for="package-order-payment-status" class="@Ui.Label">Trạng thái giao dịch
+                                <select id="package-order-payment-status" class="@Ui.Field min-h-[44px]" @bind="_draft.PaymentStatus">
+                                    <option value="">Tất cả trạng thái</option>
+                                    @foreach (var paymentStatus in PaymentStatuses)
+                                    {
+                                        <option value="@paymentStatus">@TransactionDisplay.Status(paymentStatus)</option>
+                                    }
+                                    <option value="@StaffPackageOrderQuery.UnrecordedPayment">Chưa tạo giao dịch</option>
+                                </select>
+                            </label>
+                        </div>
+                    </details>
+                    @if (_filterError is not null)
+                    {
+                        <p role="alert" class="text-sm text-red-800">@_filterError</p>
+                    }
+                    <div class="flex flex-wrap gap-2">
+                        <button type="submit" class="@Ui.PrimaryButton min-h-[44px] disabled:opacity-60">Áp dụng bộ lọc</button>
+                        @if (HasFilters(_draft) || HasFilters(_active))
+                        {
+                            <button type="button" class="@Ui.Button min-h-[44px]" @onclick="ResetFiltersAsync">Xóa bộ lọc</button>
+                        }
+                    </div>
+                </fieldset>
+            </form>
         </div>
-    }
-    @if (_confirmed is { } purchase)
-    {
-        <div class="max-w-md rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-            <p role="status" class="text-sm font-medium text-emerald-900">@purchase.Message · Đơn <strong>#@purchase.OrderNumber</strong> · Hóa đơn <strong>#@purchase.InvoiceNumber</strong></p>
-        </div>
-    }
-</section>
 
-@code {
-    private readonly CancellationTokenSource _lifetime = new();
-    private string _orderNumber = "";
-    private decimal? _amount;
-    private bool _submitting;
-    private string? _error;
-    private MembershipPurchaseResponse? _confirmed;
-
-    private async Task ConfirmAsync()
-    {
-        if (_submitting || _amount is not > 0 || string.IsNullOrWhiteSpace(_orderNumber))
-            return;
-        _submitting = true;
-        _confirmed = null;
-        _error = null;
-        var ct = _lifetime.Token;
-        try
+        @if (_loadError is not null)
         {
-            _confirmed = await Plans.ConfirmCashAsync(_orderNumber.Trim().ToUpperInvariant(), new(_amount.Value), ct);
-            _orderNumber = "";
-            _amount = null;
+            <div class="space-y-3 p-5">
+                <p role="alert" class="@Ui.Error">@_loadError</p>
+                <button type="button" class="@Ui.Button min-h-[44px]" disabled="@Busy" @onclick="RefreshAsync">Thử lại</button>
+            </div>
         }
-        catch (AuthApiException ex)
+        else if (_loading && _orders is null)
         {
-            _error = ex.Message;
+            <p role="status" class="p-5 text-sm text-vfms-text-secondary">Đang tải đơn gói tập…</p>
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        else if (_orders is { Items.Count: > 0 } page)
         {
-            // The user left the receipt form.
+            <div role="region" aria-label="Bảng đơn gói tập" tabindex="0" class="overflow-x-auto focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-vfms-primary">
+                <table class="workspace-table min-w-[780px]">
+                    <thead>
+                        <tr>
+                            <th scope="col">Mã đơn</th><th scope="col">Người mua</th><th scope="col">Gói tập</th>
+                            <th scope="col">Thanh toán</th><th scope="col" class="text-right">Phải trả</th>
+                            <th scope="col">Trạng thái đơn</th><th scope="col"><span class="sr-only">Thao tác</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in page.Items)
+                        {
+                            <tr @key="row.OrderId">
+                                <th scope="row" class="font-semibold">
+                                    <span class="block min-w-32 break-all">@row.OrderNumber</span>
+                                    <span class="mt-1 block whitespace-nowrap text-xs font-normal text-vfms-text-secondary">@TransactionDisplay.Date(row.CreatedAt)</span>
+                                </th>
+                                <td class="min-w-24 break-words">@row.PurchaserName</td>
+                                <td class="min-w-24">
+                                    <span class="font-semibold">@(row.Items.FirstOrDefault()?.Name ?? "Gói tập")</span>
+                                    @if (row.Items.Count > 1)
+                                    {
+                                        <span class="text-xs text-vfms-text-secondary">+@(row.Items.Count - 1) gói</span>
+                                    }
+                                    @if (row.ServiceTypes.Count > 0)
+                                    {
+                                        <span class="mt-1 block text-xs text-vfms-text-secondary">@string.Join(" · ", row.ServiceTypes.Select(ServiceLabel))</span>
+                                    }
+                                </td>
+                                <td class="min-w-28">
+                                    <span class="font-medium">@MethodLabel(row.Method)</span>
+                                    <span class="mt-1 block text-xs text-vfms-text-secondary">@(RefundLabel(row.RefundStatus) ?? PaymentLabel(row.PaymentStatus))</span>
+                                </td>
+                                <td class="whitespace-nowrap text-right font-semibold tabular-nums">@AmountLabel(row.AmountDue)</td>
+                                <td><TransactionStatusBadge Status="@row.Status" /></td>
+                                <td class="whitespace-nowrap">
+                                    <button type="button" class="@Ui.Button min-h-[44px] @(row.CanConfirmCash ? "text-vfms-primary" : "")"
+                                            disabled="@Busy" aria-label="@($"{(row.CanConfirmCash ? "Thu tiền" : "Xem chi tiết")} đơn {row.OrderNumber}")"
+                                            @onclick="() => OpenDetails(row)">@(row.CanConfirmCash ? "Thu tiền" : "Chi tiết")</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <Pager Page="page.Page" PageSize="page.PageSize" TotalCount="page.TotalCount" Noun="đơn"
+                   AriaLabel="Phân trang đơn gói tập" Disabled="Busy" OnPage="LoadPageAsync" />
         }
-        finally
+        else
         {
-            _submitting = false;
+            <p role="status" class="p-5 text-sm text-vfms-text-secondary">
+                @(HasFilters(_active) ? "Không có đơn phù hợp. Thử đổi hoặc xóa bộ lọc." : "Cơ sở chưa có đơn gói tập.")
+            </p>
         }
-    }
-
-    public void Dispose()
-    {
-        _lifetime.Cancel();
-        _lifetime.Dispose();
-    }
-}
+    </section>
+</div>

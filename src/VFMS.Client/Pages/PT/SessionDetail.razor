@@ -2,7 +2,9 @@
 @layout StaffPTLayout
 @attribute [Authorize(Roles = "PT")]
 @inject PersonalTrainingApiClient Api
+@inject ToastService Toasts
 @using VFMS.Client.Components.Operations
+@using VFMS.Client.Components.PersonalTraining
 
 <PageTitle>Chi tiết ca học PT | Victor Fitness</PageTitle>
 <section class="workspace-page trainer-page trainer-stack">
@@ -30,6 +32,12 @@
                     }
                 </div>
             }
+            @if (_contract?.Status == "Active" && session.Status == "Scheduled" &&
+                 session.Date.ToDateTime(session.StartTime) - DateTime.UtcNow.AddHours(7) >= TimeSpan.FromHours(12))
+            {
+                @* UC 4.7: the request is made from the contract's schedule, where the slot picker lives. *@
+                <a class="trainer-button" href="@($"/pt/assigned-members/{ContractId}")">Đổi lịch / hủy buổi</a>
+            }
             @if (session.Status == "Disputed")
             {
                 <p class="trainer-feedback" role="status">Hội viên báo PT vắng mặt trong khi bạn ghi có mặt. Manager sẽ xem xét và thông báo kết quả.</p>
@@ -51,7 +59,7 @@
                         <label>Ngày tập mới<input class="trainer-input" type="date" min="@Today.ToString("yyyy-MM-dd")" @bind="_makeUpDate" /></label>
                         <label>Giờ bắt đầu
                             <select class="trainer-input" @bind="_makeUpHour">
-                                @for (var hour = 5; hour <= 22; hour++) { <option value="@hour">@($"{hour:00}:00")</option> }
+                                @foreach (var hour in ContractPanel.MakeUpStartHours(_contract)) { <option value="@hour">@($"{hour:00}:00")</option> }
                             </select>
                         </label>
                     </fieldset>
@@ -97,12 +105,16 @@
     private Task AttendanceAsync(bool attended) => RunAsync(async () =>
         await Api.AttendanceAsync(SessionId, attended), "Đã lưu điểm danh.");
 
+    // MSG-03 as a toast.
     private Task SaveNoteAsync() => RunAsync(async () =>
-        await Api.NoteAsync(SessionId, new(_note.Trim())), "Đã lưu ghi chú.");
+    {
+        await Api.NoteAsync(SessionId, new(_note.Trim()));
+        Toasts.Show("Đã cập nhật ghi chú buổi tập thành công.");
+    }, null);
     private Task ProposeMakeUpAsync() => RunAsync(async () =>
         await Api.ProposeMakeUpAsync(SessionId, new(_makeUpDate, new TimeOnly(_makeUpHour, 0))), "Đã gửi đề xuất buổi bù.");
 
-    private async Task RunAsync(Func<Task> action, string message)
+    private async Task RunAsync(Func<Task> action, string? message)
     {
         if (_busy) return;
         _busy = true;

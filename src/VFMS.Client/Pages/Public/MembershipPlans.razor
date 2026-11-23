@@ -1,10 +1,10 @@
 @page "/membership-plans"
 @layout PublicLayout
-@using System.Globalization
 @using VFMS.Contracts.Common
 @using VFMS.Contracts.Packages
 @inject MembershipPlanApiClient PlanApi
 @inject NavigationManager Navigation
+@inject MembershipCart Cart
 
 <PageTitle>Gói Tập & Hội Viên | Victor Fitness</PageTitle>
 
@@ -28,6 +28,11 @@
                 Lựa chọn hình thức tập luyện phù hợp với mục tiêu của bạn.
             </p>
         </header>
+
+        @if (Cart.Count > 0)
+        {
+            <p class="mb-4 text-right" role="status"><a href="/membership-cart" class="inline-flex min-h-[44px] items-center rounded-lg border border-vfms-primary px-4 text-sm font-bold text-vfms-primary hover:bg-vfms-primary-soft">Xem giỏ hàng (@Cart.Count gói)</a></p>
+        }
 
         <!-- ============================================================== -->
         <!-- 2. FILTER TABS (GYM | YOGA | PT)                               -->
@@ -159,7 +164,7 @@
                             <!-- Price Display (VND Locale) -->
                             <div class="py-5 border-b border-[#ECE8E4]">
                                 <div class="font-['Montserrat',sans-serif] text-2xl sm:text-3xl font-black text-[#242424]">
-                                    @FormatVnd(package.Price)
+                                    @Vnd.Format(package.Price)
                                 </div>
                             </div>
 
@@ -292,17 +297,18 @@
                                     </a>
                                 </NotAuthorized>
                                 <Authorized Context="auth">
-                                    @if (string.Equals(package.ComponentType, "GYM", StringComparison.OrdinalIgnoreCase))
+                                    @if (package.ComponentType is "GYM" or "YOGA" && (auth.User.IsInRole("Customer") || auth.User.IsInRole("Member")))
                                     {
-                                        <a href="/#pricing-memberships"
-                                           class="w-full min-h-[44px] flex items-center justify-center bg-[#B83A3A] hover:bg-[#9F3030] text-white px-4 py-3 font-['Montserrat',sans-serif] font-bold text-xs uppercase tracking-wider rounded-lg transition-colors text-center shadow-sm">
-                                            ĐĂNG KÝ GÓI TẬP
-                                        </a>
+                                        <button type="button" disabled="@(Cart.Count >= MembershipCart.MaximumItems)" aria-label="Thêm @package.Name vào giỏ"
+                                                @onclick="() => Cart.Add(package.Id, package.Name, package.Price)"
+                                                class="w-full min-h-[44px] bg-[#B83A3A] hover:bg-[#9F3030] text-white px-4 py-3 font-['Montserrat',sans-serif] font-bold text-xs uppercase tracking-wider rounded-lg transition-colors disabled:opacity-50">
+                                            Thêm vào giỏ
+                                        </button>
                                     }
-                                    else if (string.Equals(package.ComponentType, "YOGA", StringComparison.OrdinalIgnoreCase))
+                                    @if (string.Equals(package.ComponentType, "YOGA", StringComparison.OrdinalIgnoreCase))
                                     {
                                         <a href="/yoga/schedule"
-                                           class="w-full min-h-[44px] flex items-center justify-center bg-[#B83A3A] hover:bg-[#9F3030] text-white px-4 py-3 font-['Montserrat',sans-serif] font-bold text-xs uppercase tracking-wider rounded-lg transition-colors text-center shadow-sm">
+                                           class="mt-2 flex min-h-[44px] items-center justify-center text-xs font-bold text-vfms-primary hover:underline">
                                             XEM LỊCH HỌC YOGA
                                         </a>
                                     }
@@ -311,13 +317,6 @@
                                         <a href="/trainers"
                                            class="w-full min-h-[44px] flex items-center justify-center bg-[#B83A3A] hover:bg-[#9F3030] text-white px-4 py-3 font-['Montserrat',sans-serif] font-bold text-xs uppercase tracking-wider rounded-lg transition-colors text-center shadow-sm">
                                             CHỌN HUẤN LUYỆN VIÊN
-                                        </a>
-                                    }
-                                    else
-                                    {
-                                        <a href="/#pricing-memberships"
-                                           class="w-full min-h-[44px] flex items-center justify-center bg-[#B83A3A] hover:bg-[#9F3030] text-white px-4 py-3 font-['Montserrat',sans-serif] font-bold text-xs uppercase tracking-wider rounded-lg transition-colors text-center shadow-sm">
-                                            XEM CHI TIẾT
                                         </a>
                                     }
                                 </Authorized>
@@ -360,7 +359,6 @@
 
 @code {
     private const int PageSize = 9;
-    private static readonly CultureInfo VietnameseCulture = CultureInfo.GetCultureInfo("vi-VN");
 
     [SupplyParameterFromQuery(Name = "type")]
     public string? TypeQuery { get; set; }
@@ -452,7 +450,4 @@
             "PT" => "HUẤN LUYỆN VIÊN PT",
             _ => "GÓI GYM"
         };
-
-    private static string FormatVnd(decimal amount) =>
-        amount.ToString("#,0.##", VietnameseCulture) + " ₫";
 }

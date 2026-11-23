@@ -36,7 +36,64 @@ public sealed class BusinessReportService : IBusinessReportService
     public async Task<Result<BusinessReportResponse>> GetReportAsync(int id, CancellationToken cancellationToken = default)
     {
         var report = await _repository.GetAsync(id, cancellationToken);
-        return report is null ? NotFound() : Result<BusinessReportResponse>.Success(ToResponse(report));
+        return report is null
+            ? NotFound()
+            : Result<BusinessReportResponse>.Success(await WithPreviousPeriodAsync(ToResponse(report), cancellationToken));
+    }
+
+    /// <summary>
+    /// The same metrics for several periods in a row, ending with the period that contains the chosen date.
+    /// Calculated from the current data and not saved, so a trend never changes a saved report (GBR-63).
+    /// </summary>
+    public async Task<Result<BusinessReportTrendResponse>> GetTrendAsync(
+        BusinessReportTrendRequest request, CancellationToken cancellationToken = default)
+    {
+        if (!TryGetPeriod(request.PeriodType, request.Date, out var start, out var end, out _))
+            return Result<BusinessReportTrendResponse>.Failure("Period type must be Day, Week or Month.", "BUSINESS_REPORT_INVALID_PERIOD");
+        if (end > DateOnly.FromDateTime(DateTime.UtcNow + GymOffset))
+            return Result<BusinessReportTrendResponse>.Failure(
+                $"The selected period ends on {end:yyyy-MM-dd}, which is in the future. Choose a period that has ended.",
+                "BUSINESS_REPORT_PERIOD_IN_FUTURE");
+
+        var type = PeriodTypeOf(start, end);
+        var count = Math.Clamp(request.Count, 2, 12);
+        var points = new List<ReportTrendPoint>(count);
+        for (var i = 0; i < count; i++)
+        {
+            var source = await _repository.GetSourceDataAsync(start, end, ToUtc(start), ToUtc(end.AddDays(1)), cancellationToken);
+            points.Add(new ReportTrendPoint(start, end, ToResponses(BuildMetrics(source))));
+            (start, end) = PreviousPeriod(type, start);
+        }
+        points.Reverse();
+        return Result<BusinessReportTrendResponse>.Success(new BusinessReportTrendResponse(type, points));
+    }
+
+    /// <summary>
+    /// Adds the previous period's value to each metric. A saved report of the previous period is used when there is
+    /// one; otherwise the previous period is calculated from the current data and marked as such.
+    /// </summary>
+    private async Task<BusinessReportResponse> WithPreviousPeriodAsync(BusinessReportResponse report, CancellationToken cancellationToken)
+    {
+        if (report.PeriodType == "Custom")
+            return report;
+        var (start, end) = PreviousPeriod(report.PeriodType, report.PeriodStart);
+        IReadOnlyDictionary<string, decimal> previous;
+        string from;
+        if (await _repository.FindByPeriodAsync(start, end, cancellationToken) is { } saved)
+        {
+            previous = saved.Metrics.ToDictionary(m => m.MetricType.ToString(), m => m.MetricValue);
+            from = BusinessReportResponse.FromSnapshot;
+        }
+        else
+        {
+            var source = await _repository.GetSourceDataAsync(start, end, ToUtc(start), ToUtc(end.AddDays(1)), cancellationToken);
+            previous = BuildMetrics(source).ToDictionary(m => m.MetricType.ToString(), m => m.MetricValue);
+            from = BusinessReportResponse.FromCurrentData;
+        }
+        var metrics = report.Metrics
+            .Select(m => m with { PreviousValue = previous.TryGetValue(m.MetricType, out var value) ? value : null })
+            .ToArray();
+        return report with { Metrics = metrics, PreviousPeriodStart = start, PreviousPeriodEnd = end, PreviousSource = from };
     }
 
     public async Task<Result<BusinessReportResponse>> GenerateAsync(
@@ -76,7 +133,7 @@ public sealed class BusinessReportService : IBusinessReportService
         await AuditedWriter.SaveNewAsync(_repository, report, audit, null, cancellationToken);
 
         var saved = await _repository.GetAsync(report.Id, cancellationToken) ?? report;
-        return Result<BusinessReportResponse>.Success(ToResponse(saved), 201);
+        return Result<BusinessReportResponse>.Success(await WithPreviousPeriodAsync(ToResponse(saved), cancellationToken), 201);
     }
 
     // ── Helpers ──────────────────────────────────────────────────
@@ -106,17 +163,17 @@ public sealed class BusinessReportService : IBusinessReportService
         {
             case "day":
                 start = end = date;
-                name = $"Daily report {date:yyyy-MM-dd}";
+                name = BusinessReportNames.For("Day", start, end);
                 return true;
             case "week":
                 start = date.AddDays(-(((int)date.DayOfWeek + 6) % 7)); // Monday
                 end = start.AddDays(6);
-                name = $"Weekly report {start:yyyy-MM-dd} to {end:yyyy-MM-dd}";
+                name = BusinessReportNames.For("Week", start, end);
                 return true;
             case "month":
                 start = new DateOnly(date.Year, date.Month, 1);
                 end = start.AddMonths(1).AddDays(-1);
-                name = $"Monthly report {start:yyyy-MM}";
+                name = BusinessReportNames.For("Month", start, end);
                 return true;
             default:
                 start = end = default;
@@ -124,6 +181,14 @@ public sealed class BusinessReportService : IBusinessReportService
                 return false;
         }
     }
+
+    /// <summary>The period just before the one starting on <paramref name="start"/>: the day, week or month before.</summary>
+    public static (DateOnly Start, DateOnly End) PreviousPeriod(string periodType, DateOnly start) => periodType switch
+    {
+        "Week" => (start.AddDays(-7), start.AddDays(-1)),
+        "Month" => (start.AddMonths(-1), start.AddDays(-1)),
+        _ => (start.AddDays(-1), start.AddDays(-1)),
+    };
 
     internal static string PeriodTypeOf(DateOnly start, DateOnly end) =>
         start == end ? "Day"
@@ -138,12 +203,14 @@ public sealed class BusinessReportService : IBusinessReportService
         new(r.Id, r.ReportName, PeriodTypeOf(r.PeriodStart, r.PeriodEnd), r.PeriodStart, r.PeriodEnd,
             r.GeneratedByUserId, r.GeneratedByUser?.FullName, r.GeneratedAt);
 
+    private static ReportMetricResponse[] ToResponses(IEnumerable<ReportMetric> metrics) => metrics
+        .OrderBy(m => m.MetricType)
+        .Select(m => new ReportMetricResponse(m.MetricType.ToString(), m.MetricName, m.MetricValue, m.ValueType.ToString()))
+        .ToArray();
+
     private static BusinessReportResponse ToResponse(BusinessReportSnapshot r)
     {
-        var metrics = r.Metrics
-            .OrderBy(m => m.MetricType)
-            .Select(m => new ReportMetricResponse(m.MetricType.ToString(), m.MetricName, m.MetricValue, m.ValueType.ToString()))
-            .ToArray();
+        var metrics = ToResponses(r.Metrics);
         return new BusinessReportResponse(r.Id, r.ReportName, PeriodTypeOf(r.PeriodStart, r.PeriodEnd), r.PeriodStart, r.PeriodEnd,
             r.GeneratedByUserId, r.GeneratedByUser?.FullName, r.GeneratedAt,
             HasData: metrics.Any(m => m.Value != 0), metrics);

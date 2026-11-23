@@ -160,7 +160,8 @@ public class VfmsDbContext : DbContext
         modelBuilder.Entity<ApplicationUser>(entity =>
         {
             entity.HasKey(e => e.UserId);
-            entity.HasIndex(e => e.Email).IsUnique();
+            entity.HasIndex(e => e.Email).IsUnique().HasFilter("[IsDeleted] = 0");
+            entity.HasIndex(e => e.PhoneNumber).IsUnique().HasFilter("[IsDeleted] = 0");
             entity.Property(e => e.UserId).HasMaxLength(128);
             entity.Property(e => e.FullName).HasMaxLength(256).IsRequired();
             entity.Property(e => e.Email).HasMaxLength(256).IsRequired();
@@ -169,6 +170,30 @@ public class VfmsDbContext : DbContext
             entity.Property(e => e.ResetTokenHash).HasMaxLength(64);
             entity.HasIndex(e => e.ResetTokenHash).IsUnique();
             entity.Property(e => e.AccountStatus).HasConversion<string>().HasMaxLength(50);
+            entity.Property(e => e.AccountStatusBeforeLock).HasConversion<string>().HasMaxLength(50);
+
+            if (Database.IsSqlServer())
+            {
+                entity.Property(e => e.Email).UseCollation("Latin1_General_100_CI_AS_KS_WS_SC");
+                entity.ToTable(table =>
+                {
+                    table.HasCheckConstraint("CK_ApplicationUsers_CanonicalEmail", """
+                        [IsDeleted] = 1 OR (DATALENGTH([Email]) > 0 AND
+                            UNICODE(LEFT([Email], 1)) NOT IN (9,10,11,12,13,32,133,160,5760,8192,8193,8194,8195,8196,8197,8198,8199,8200,8201,8202,8232,8233,8239,8287,12288) AND
+                            UNICODE(RIGHT([Email], 1)) NOT IN (9,10,11,12,13,32,133,160,5760,8192,8193,8194,8195,8196,8197,8198,8199,8200,8201,8202,8232,8233,8239,8287,12288))
+                        """.ReplaceLineEndings("\n"));
+                    table.HasCheckConstraint("CK_ApplicationUsers_CanonicalPhoneNumber", """
+                        [IsDeleted] = 1 OR (DATALENGTH([PhoneNumber]) = 2 * LEN([PhoneNumber]) AND
+                            LEN([PhoneNumber]) - CASE WHEN LEFT([PhoneNumber], 1) = N'+' THEN 1 ELSE 0 END >= 7 AND
+                            (CASE WHEN LEFT([PhoneNumber], 1) = N'+' THEN SUBSTRING([PhoneNumber], 2, 20) ELSE [PhoneNumber] END)
+                                COLLATE Latin1_General_100_BIN2 NOT LIKE N'%[^0-9]%')
+                        """.ReplaceLineEndings("\n"));
+                });
+            }
+            else if (Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite")
+            {
+                entity.Property(e => e.Email).UseCollation("NOCASE");
+            }
 
             entity.HasOne(e => e.Gym)
                 .WithMany(g => g.Users)
@@ -534,6 +559,8 @@ public class VfmsDbContext : DbContext
             entity.Property(e => e.StatusBeforeTrainerAbsenceReport).HasConversion<string>().HasMaxLength(32);
             entity.Property(e => e.TrainerAbsenceReason).HasMaxLength(1000);
             entity.Property(e => e.TrainerAbsenceReviewNote).HasMaxLength(1000);
+            entity.Property(e => e.NoteAuthorUserId).HasMaxLength(450);
+            entity.Property(e => e.TrainerAbsenceReviewedByUserId).HasMaxLength(450);
             entity.Property(e => e.CreditUnits).HasDefaultValue(1);
             entity.Property(e => e.ProposedAdjustmentType).HasConversion<string>().HasMaxLength(20);
             entity.HasIndex(e => new { e.PTUserId, e.SessionDate, e.StartTime });
@@ -1101,6 +1128,8 @@ public class VfmsDbContext : DbContext
             entity.Property(e => e.Size).HasMaxLength(50);
             entity.Property(e => e.Flavour).HasMaxLength(100);
             entity.HasIndex(e => e.Brand);
+            entity.ToTable(t => t.HasCheckConstraint(
+                "CK_SupplementProducts_StockQuantity", "[StockQuantity] IS NULL OR [StockQuantity] >= 0"));
         });
 
         // ── SupplementOrder ───────────────────────────────────────

@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using VFMS.Client.Auth;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Equipment;
+using VFMS.Contracts.Operations;
 using VFMS.Contracts.Procurement;
 using VFMS.Contracts.Supplements;
 
@@ -26,7 +27,21 @@ public sealed class OperationsApiClient(HttpClient http, AuthSession session) : 
     public Task<PagedResponse<EquipmentResponse>> GetEquipmentAsync(EquipmentListRequest request, CancellationToken ct = default) =>
         SendAsync<PagedResponse<EquipmentResponse>>(HttpMethod.Get, WithQuery(EquipmentPath,
             ("search", request.Search), ("categoryId", Number(request.CategoryId)), ("status", request.Status),
+            ("brand", request.Brand), ("sort", request.Sort),
             ("page", Number(request.Page)), ("pageSize", Number(request.PageSize))), ct);
+
+    /// <summary>UC-70: public, so it works signed out too.</summary>
+    public async Task<GymDetailsResponse> GetGymDetailsAsync(CancellationToken ct = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "api/gym-details");
+        return await AuthApiClient.SendAsync<GymDetailsResponse>(http, request, ct);
+    }
+
+    public Task<EquipmentIssueSummaryResponse> GetEquipmentIssueSummaryAsync(int id, CancellationToken ct = default) =>
+        SendAsync<EquipmentIssueSummaryResponse>(HttpMethod.Get, $"{EquipmentPath}/{id}/issue-summary", ct);
+
+    public Task<List<string>> GetEquipmentBrandsAsync(CancellationToken ct = default) =>
+        SendAsync<List<string>>(HttpMethod.Get, $"{EquipmentPath}/brands", ct);
 
     public Task<EquipmentResponse> CreateEquipmentAsync(EquipmentRequest request, CancellationToken ct = default) =>
         SendAsync<EquipmentResponse>(HttpMethod.Post, EquipmentPath, ct, JsonContent.Create(request));
@@ -77,6 +92,7 @@ public sealed class OperationsApiClient(HttpClient http, AuthSession session) : 
     public Task<PagedResponse<EquipmentIssueResponse>> GetIssuesAsync(EquipmentIssueListRequest request, bool mine = false, CancellationToken ct = default) =>
         SendAsync<PagedResponse<EquipmentIssueResponse>>(HttpMethod.Get, WithQuery(mine ? $"{IssuesPath}/mine" : IssuesPath,
             ("status", request.Status), ("equipmentId", Number(request.EquipmentId)),
+            ("search", request.Search), ("sort", request.Sort),
             ("page", Number(request.Page)), ("pageSize", Number(request.PageSize))), ct);
 
     /// <summary>
@@ -88,6 +104,17 @@ public sealed class OperationsApiClient(HttpClient http, AuthSession session) : 
             note is null ? null : JsonContent.Create(new EquipmentIssueActionRequest(note)));
 
     // ── Purchase proposals ───────────────────────────────────────
+    // ── Counts per status (work board filters) ───────────────────
+    public Task<StatusCountsResponse> GetIssueCountsAsync(CancellationToken ct = default) =>
+        SendAsync<StatusCountsResponse>(HttpMethod.Get, $"{IssuesPath}/counts", ct);
+
+    public Task<StatusCountsResponse> GetOrderCountsAsync(CancellationToken ct = default) =>
+        SendAsync<StatusCountsResponse>(HttpMethod.Get, $"{OrdersPath}/counts", ct);
+
+    /// <summary>The Staff member's own proposals (<paramref name="mine"/>) or the Manager's sent proposals.</summary>
+    public Task<StatusCountsResponse> GetProposalCountsAsync(bool mine, CancellationToken ct = default) =>
+        SendAsync<StatusCountsResponse>(HttpMethod.Get, mine ? $"{ProposalsPath}/mine/counts" : $"{ProposalsPath}/counts", ct);
+
     public Task<PagedResponse<PurchaseProposalResponse>> GetProposalsAsync(PurchaseProposalListRequest request, bool mine, CancellationToken ct = default) =>
         SendAsync<PagedResponse<PurchaseProposalResponse>>(HttpMethod.Get, WithQuery(mine ? $"{ProposalsPath}/mine" : ProposalsPath,
             ("status", request.Status), ("search", request.Search),
@@ -109,8 +136,12 @@ public sealed class OperationsApiClient(HttpClient http, AuthSession session) : 
         SendAsync<PagedResponse<SupplementProductResponse>>(HttpMethod.Get, WithQuery(manage ? $"{ProductsPath}/manage" : ProductsPath,
             ("search", request.Search), ("category", request.Category), ("status", request.Status),
             ("brand", request.Brand), ("minPrice", Number(request.MinPrice)), ("maxPrice", Number(request.MaxPrice)),
-            ("sort", request.Sort),
+            ("sort", request.Sort), ("lowStock", request.LowStock ? "true" : null),
             ("page", Number(request.Page)), ("pageSize", Number(request.PageSize))), ct);
+
+    /// <summary>Restock (Add), stock count (Set) or StopTracking (Manager).</summary>
+    public Task<SupplementProductResponse> AdjustProductStockAsync(int id, SupplementStockRequest request, CancellationToken ct = default) =>
+        SendAsync<SupplementProductResponse>(HttpMethod.Post, $"{ProductsPath}/{id}/stock", ct, JsonContent.Create(request));
 
     /// <summary>One product as the store sees it; throws with 404 when it is Inactive or gone.</summary>
     public Task<SupplementProductResponse> GetProductAsync(int id, CancellationToken ct = default) =>

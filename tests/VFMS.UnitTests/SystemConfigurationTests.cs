@@ -84,10 +84,10 @@ public sealed class SystemConfigurationTests
     // ── Business Reports (UC-86) ─────────────────────────────────
 
     [Theory]
-    [InlineData("Day", "2026-11-04", "2026-11-04", "2026-11-04", "Daily report 2026-11-04")]
-    [InlineData("week", "2026-10-28", "2026-10-26", "2026-11-01", "Weekly report 2026-10-26 to 2026-11-01")]
-    [InlineData("Week", "2026-11-01", "2026-10-26", "2026-11-01", "Weekly report 2026-10-26 to 2026-11-01")]
-    [InlineData("Month", "2026-02-14", "2026-02-01", "2026-02-28", "Monthly report 2026-02")]
+    [InlineData("Day", "2026-11-04", "2026-11-04", "2026-11-04", "Báo cáo ngày 04/11/2026")]
+    [InlineData("week", "2026-10-28", "2026-10-26", "2026-11-01", "Báo cáo tuần 26/10 – 01/11/2026")]
+    [InlineData("Week", "2026-11-01", "2026-10-26", "2026-11-01", "Báo cáo tuần 26/10 – 01/11/2026")]
+    [InlineData("Month", "2026-02-14", "2026-02-01", "2026-02-28", "Báo cáo tháng 02/2026")]
     public async Task PeriodIsExpandedFromTheChosenDate(string type, string date, string start, string end, string name)
     {
         var repo = new ReportRepo();
@@ -175,6 +175,80 @@ public sealed class SystemConfigurationTests
         Assert.False(new GenerateBusinessReportRequestValidator().Validate(new GenerateBusinessReportRequest("Quarter", new DateOnly(2026, 1, 1))).IsValid);
     }
 
+    [Theory]
+    [InlineData("Day", "2026-11-04", "2026-11-03", "2026-11-03")]
+    [InlineData("Week", "2026-10-26", "2026-10-19", "2026-10-25")]
+    [InlineData("Month", "2026-03-01", "2026-02-01", "2026-02-28")]
+    [InlineData("Month", "2026-01-01", "2025-12-01", "2025-12-31")]
+    public void PreviousPeriodIsTheDayWeekOrMonthBefore(string type, string start, string prevStart, string prevEnd) =>
+        Assert.Equal((DateOnly.Parse(prevStart), DateOnly.Parse(prevEnd)), BusinessReportService.PreviousPeriod(type, DateOnly.Parse(start)));
+
+    [Fact]
+    public async Task ReportComparesWithTheSavedReportOfThePreviousMonth()
+    {
+        var repo = new ReportRepo { SourceFor = start => Revenue(start.Month == 8 ? 3_000_000m : 4_500_000m) };
+        var service = new BusinessReportService(repo);
+        await service.GenerateAsync(new("Month", new DateOnly(2026, 8, 5)), Manager, null);
+        repo.SourceFor = start => Revenue(start.Month == 8 ? 9_999_999m : 4_500_000m); // August changed after it was saved
+
+        var september = (await service.GenerateAsync(new("Month", new DateOnly(2026, 9, 1)), Manager, null)).Data!;
+
+        var revenue = september.Metrics.Single(m => m.MetricType == "TotalRevenue");
+        Assert.Equal(4_500_000m, revenue.Value);
+        Assert.Equal(3_000_000m, revenue.PreviousValue); // the saved August report, not today's data
+        Assert.Equal(BusinessReportResponse.FromSnapshot, september.PreviousSource);
+        Assert.Equal((new DateOnly(2026, 8, 1), new DateOnly(2026, 8, 31)), (september.PreviousPeriodStart, september.PreviousPeriodEnd));
+    }
+
+    [Fact]
+    public async Task WithoutASavedPreviousReportThePreviousPeriodIsCalculated()
+    {
+        var repo = new ReportRepo { SourceFor = start => Revenue(start.Day == 2 ? 2_000_000m : 500_000m) };
+        var service = new BusinessReportService(repo);
+        var created = (await service.GenerateAsync(new("Day", new DateOnly(2026, 11, 2)), Manager, null)).Data!;
+
+        var report = (await service.GetReportAsync(created.Id)).Data!;
+
+        Assert.Equal(BusinessReportResponse.FromCurrentData, report.PreviousSource);
+        Assert.Equal(500_000m, report.Metrics.Single(m => m.MetricType == "TotalRevenue").PreviousValue);
+        Assert.Contains((new DateOnly(2026, 11, 1), new DateOnly(2026, 11, 1)), repo.SourceCalls);
+    }
+
+    [Fact]
+    public async Task TrendListsConsecutivePeriodsOldestFirst()
+    {
+        var repo = new ReportRepo { SourceFor = start => Revenue(start.Month * 1_000_000m) };
+
+        var trend = (await new BusinessReportService(repo).GetTrendAsync(new("Month", new DateOnly(2026, 6, 15), 4))).Data!;
+
+        Assert.Equal("Month", trend.PeriodType);
+        Assert.Equal([new DateOnly(2026, 3, 1), new DateOnly(2026, 4, 1), new DateOnly(2026, 5, 1), new DateOnly(2026, 6, 1)],
+            trend.Points.Select(p => p.PeriodStart));
+        Assert.Equal(new DateOnly(2026, 6, 30), trend.Points[^1].PeriodEnd);
+        Assert.Equal([3_000_000m, 4_000_000m, 5_000_000m, 6_000_000m],
+            trend.Points.Select(p => p.Metrics.Single(m => m.MetricType == "TotalRevenue").Value));
+        Assert.Empty(repo.Reports); // a trend saves nothing
+    }
+
+    [Fact]
+    public async Task TrendRejectsAPeriodThatHasNotEnded()
+    {
+        var service = new BusinessReportService(new ReportRepo());
+        Assert.Equal("BUSINESS_REPORT_PERIOD_IN_FUTURE", (await service.GetTrendAsync(new("Week", GymToday.AddDays(8)))).ErrorCode);
+        Assert.Equal("BUSINESS_REPORT_INVALID_PERIOD", (await service.GetTrendAsync(new("Year", new DateOnly(2026, 1, 1)))).ErrorCode);
+    }
+
+    [Theory]
+    [InlineData("Month", 6, true)]
+    [InlineData("week", 12, true)]
+    [InlineData("Day", 1, false)]
+    [InlineData("Day", 13, false)]
+    [InlineData("Quarter", 6, false)]
+    public void TrendValidatorChecksTypeAndCount(string type, int count, bool valid) =>
+        Assert.Equal(valid, new BusinessReportTrendRequestValidator().Validate(new BusinessReportTrendRequest(type, new DateOnly(2026, 6, 1), count)).IsValid);
+
+    private static ReportSourceData Revenue(decimal amount) => new(amount, 0, 0, 0, 0, 0, 0, 0, 0);
+
     // ── Fakes ────────────────────────────────────────────────────
 
     private abstract class AuditedFake : IAuditedRepository
@@ -204,6 +278,9 @@ public sealed class SystemConfigurationTests
     {
         public List<BusinessReportSnapshot> Reports { get; } = [];
         public ReportSourceData Source { get; set; } = new(100m, 0, 0, 0, 0, 0, 0, 0, 0);
+        /// <summary>When set, the source data depends on the period start (to tell periods apart).</summary>
+        public Func<DateOnly, ReportSourceData>? SourceFor { get; set; }
+        public List<(DateOnly Start, DateOnly End)> SourceCalls { get; } = [];
         public DateTime LastStartUtc { get; private set; }
         public DateTime LastEndUtc { get; private set; }
 
@@ -226,9 +303,13 @@ public sealed class SystemConfigurationTests
         public Task<ReportSourceData> GetSourceDataAsync(
             DateOnly start, DateOnly end, DateTime startUtc, DateTime endUtcExclusive, CancellationToken cancellationToken = default)
         {
-            LastStartUtc = startUtc;
-            LastEndUtc = endUtcExclusive;
-            return Task.FromResult(Source);
+            if (SourceCalls.Count == 0) // the report's own period; later calls are for the comparison
+            {
+                LastStartUtc = startUtc;
+                LastEndUtc = endUtcExclusive;
+            }
+            SourceCalls.Add((start, end));
+            return Task.FromResult(SourceFor?.Invoke(start) ?? Source);
         }
     }
 }

@@ -30,12 +30,15 @@ public sealed record EquipmentRequest(
 /// <summary>Status: Operational, UnderMaintenance, Damaged, Retired. A note is required to retire.</summary>
 public sealed record EquipmentStatusRequest(string Status, string? Note = null);
 
+/// <summary>Sort: name (default), code, newest, purchase_date (newest purchase first). Brand matches exactly.</summary>
 public sealed record EquipmentListRequest(
     string? Search = null,
     int? CategoryId = null,
     string? Status = null,
     int Page = 1,
-    int PageSize = 20
+    int PageSize = 20,
+    string? Brand = null,
+    string? Sort = null
 );
 
 public sealed record EquipmentResponse(
@@ -52,8 +55,29 @@ public sealed record EquipmentResponse(
     string? DescriptionUrl,
     string? Note,
     DateTime CreatedAt,
-    DateTime UpdatedAt
+    DateTime UpdatedAt,
+    int RecentIssueCount = 0
 );
+
+/// <summary>
+/// Issue history of one piece of equipment. Open issues are Reported, InProgress or Escalated; closed ones are
+/// Resolved or MarkedSafe. <see cref="RepeatedIssues"/> is true when it had at least
+/// <see cref="RepeatedIssueThreshold"/> reports in the last <see cref="RecentDays"/> days.
+/// </summary>
+public sealed record EquipmentIssueSummaryResponse(
+    int EquipmentId,
+    int TotalIssues,
+    int OpenIssues,
+    int RecentIssues,
+    int SafetyIssues,
+    DateTime? LastReportedAt,
+    DateTime? LastClosedAt,
+    bool RepeatedIssues
+)
+{
+    public const int RecentDays = 90;
+    public const int RepeatedIssueThreshold = 3;
+}
 
 // ── Issues (UC-71, UC-72, UC-73) ───────────────────────────────
 
@@ -69,12 +93,17 @@ public sealed record ReportEquipmentIssueRequest(
     bool ConfirmDuplicate = false
 );
 
-/// <summary>Status: Reported, InProgress, Escalated, Resolved, MarkedSafe.</summary>
+/// <summary>
+/// Status: Reported, InProgress, Escalated, Resolved, MarkedSafe. Search matches the equipment name or code.
+/// Sort: newest (default) or severity (Safety, then Damage, Malfunction, Other; newest first within each).
+/// </summary>
 public sealed record EquipmentIssueListRequest(
     string? Status = null,
     int? EquipmentId = null,
     int Page = 1,
-    int PageSize = 20
+    int PageSize = 20,
+    string? Search = null,
+    string? Sort = null
 );
 
 /// <summary>Resolution note, escalation reason, or repair note, depending on the action.</summary>

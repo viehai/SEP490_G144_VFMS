@@ -79,20 +79,27 @@
                     </div>
                     <div class="min-w-0">
                         <label class="@Label" for="promotion-DiscountValue">Giá trị giảm (@(form.DiscountType == PromotionDiscountType.Percentage ? "%" : "₫"))</label>
-                        <InputNumber id="promotion-DiscountValue" class="@Field" @bind-Value="form.DiscountValue" min="0" step="0.01" required aria-describedby="promotion-DiscountValue-error" />
+                        @if (form.DiscountType == PromotionDiscountType.Percentage)
+                        {
+                            <PromotionPercentageInput id="promotion-DiscountValue" class="@Field" @bind-Value="form.DiscountValue" min="0" step="0.01" required aria-describedby="promotion-DiscountValue-error" />
+                        }
+                        else
+                        {
+                            <InputVnd id="promotion-DiscountValue" class="@Field" @bind-Value="form.DiscountValue" required aria-describedby="promotion-DiscountValue-error" />
+                        }
                         <div id="promotion-DiscountValue-error"><ValidationMessage For="@(() => form.DiscountValue)" /></div>
                     </div>
                     @if (form.DiscountType == PromotionDiscountType.Percentage)
                     {
                         <div class="min-w-0">
                             <label class="@Label" for="promotion-MaxDiscountAmount">Giảm tối đa (₫)</label>
-                            <InputNumber id="promotion-MaxDiscountAmount" class="@Field" @bind-Value="form.MaxDiscountAmount" min="0" step="0.01" required aria-describedby="promotion-MaxDiscountAmount-error" />
+                            <InputVnd id="promotion-MaxDiscountAmount" class="@Field" @bind-Value="form.MaxDiscountAmount" required aria-describedby="promotion-MaxDiscountAmount-error" />
                             <div id="promotion-MaxDiscountAmount-error"><ValidationMessage For="@(() => form.MaxDiscountAmount)" /></div>
                         </div>
                     }
                     <div class="min-w-0">
                         <label class="@Label" for="promotion-MinimumSpend">Đơn hàng tối thiểu (₫, tùy chọn)</label>
-                        <InputNumber id="promotion-MinimumSpend" class="@Field" @bind-Value="form.MinimumSpend" min="0" step="0.01" aria-describedby="promotion-MinimumSpend-error" />
+                        <InputVnd id="promotion-MinimumSpend" class="@Field" @bind-Value="form.MinimumSpend" aria-describedby="promotion-MinimumSpend-error" />
                         <div id="promotion-MinimumSpend-error"><ValidationMessage For="@(() => form.MinimumSpend)" /></div>
                     </div>
                     <div class="min-w-0">
@@ -154,8 +161,8 @@
                                 <span class="self-start shrink-0 @BadgeClass(row.Status)">@StatusLabel(row.Status)</span>
                             </div>
                             <dl class="mt-4 grid min-w-0 gap-4 text-sm sm:grid-cols-2 xl:grid-cols-4">
-                                <div><dt class="text-vfms-text-secondary">Giảm giá</dt><dd class="mt-1 font-semibold">@DiscountLabel(row)</dd>@if (row.MaxDiscountAmount is { } cap) { <dd class="mt-1 text-xs text-vfms-text-secondary">Tối đa @Money(cap)</dd> }</div>
-                                <div><dt class="text-vfms-text-secondary">Đơn hàng tối thiểu</dt><dd class="mt-1">@(row.MinimumSpend is { } minimum ? Money(minimum) : "Không yêu cầu")</dd></div>
+                                <div><dt class="text-vfms-text-secondary">Giảm giá</dt><dd class="mt-1 font-semibold">@DiscountLabel(row)</dd>@if (row.MaxDiscountAmount is { } cap) { <dd class="mt-1 text-xs text-vfms-text-secondary">Tối đa @Vnd.Format(cap)</dd> }</div>
+                                <div><dt class="text-vfms-text-secondary">Đơn hàng tối thiểu</dt><dd class="mt-1">@(row.MinimumSpend is { } minimum ? Vnd.Format(minimum) : "Không yêu cầu")</dd></div>
                                 <div><dt class="text-vfms-text-secondary">Thời hạn (UTC+7)</dt><dd class="mt-1"><time datetime="@row.StartAt.ToString("O")">@DateLabel(row.StartAt)</time><span class="block text-xs text-vfms-text-secondary">đến <time datetime="@row.EndAt.ToString("O")">@DateLabel(row.EndAt)</time></span></dd></div>
                                 <div><dt class="text-vfms-text-secondary">Lượt sử dụng / tổng hạn mức</dt><dd class="mt-1 font-semibold">@row.UsedCount / @(row.MaxRedemptions?.ToString() ?? "Không giới hạn")</dd></div>
                             </dl>

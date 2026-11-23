@@ -178,6 +178,26 @@ public sealed class PurchaseProposalTests
 
     // ── Helpers ──────────────────────────────────────────────────
 
+    [Fact]
+    public async Task StaffCountsTheirOwnProposalsAndTheManagerSeesNoDrafts()
+    {
+        var repo = new Repo();
+        var service = Service(repo);
+        await service.CreateAsync(Request(submit: false), Staff, null);
+        await service.CreateAsync(Request(), Staff, null);
+        await service.CreateAsync(Request(), OtherStaff, null);
+
+        var mine = (await service.GetMyCountsAsync(Staff)).Data!;
+        var review = (await service.GetReviewCountsAsync()).Data!;
+
+        Assert.Equal(1, mine.Counts["Draft"]);
+        Assert.Equal(1, mine.Counts["Submitted"]);
+        Assert.Equal(2, mine.Total);
+        Assert.False(review.Counts.ContainsKey("Draft"));
+        Assert.Equal(2, review.Counts["Submitted"]);
+        Assert.Equal(2, review.Total);
+    }
+
     private static PurchaseProposalService Service(Repo repo)
     {
         var config = new TypeAdapterConfig();
@@ -218,6 +238,13 @@ public sealed class PurchaseProposalTests
 
         public Task<IReadOnlyList<string>> GetActiveUserIdsInRoleAsync(string roleName, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<string>>(roleName == "Manager" ? [Manager] : []);
+
+        public Task<IReadOnlyDictionary<PurchaseProposalStatus, int>> CountByStatusAsync(
+            string? proposedByUserId, bool excludeDrafts, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyDictionary<PurchaseProposalStatus, int>>(_proposals
+                .Where(p => proposedByUserId == null || p.ProposedByUserId == proposedByUserId)
+                .Where(p => !excludeDrafts || p.ProposalStatus != PurchaseProposalStatus.Draft)
+                .GroupBy(p => p.ProposalStatus).ToDictionary(g => g.Key, g => g.Count()));
 
         public Task<(IReadOnlyList<PurchaseProposal> Items, int TotalCount)> SearchAsync(
             string? proposedByUserId, PurchaseProposalStatus? status, bool excludeDrafts, string? search,

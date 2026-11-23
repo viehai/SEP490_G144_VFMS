@@ -2,6 +2,7 @@ using MapsterMapper;
 using VFMS.Application.Interfaces;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Equipment;
+using VFMS.Contracts.Operations;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
 
@@ -60,8 +61,14 @@ public sealed class EquipmentIssueService : IEquipmentIssueService
             IssueStatus = EquipmentIssueStatus.Reported,
             ReportedAt = DateTime.UtcNow
         };
+        // A Safety report takes a working machine out of use straight away, so nobody uses it before Staff check it.
+        // Resolving the issue or marking it safe puts the machine back to Operational.
+        var takenOutOfUse = incidentType == IncidentType.Safety && equipment.EquipmentStatus == EquipmentStatus.Operational;
+        if (takenOutOfUse)
+            equipment.EquipmentStatus = EquipmentStatus.Damaged;
         var audit = AuditedWriter.Audit(reporterUserId, AuditActionType.Create, IssueEntity, ipAddress,
-            newValue: $"EquipmentId={equipment.Id}; Type={incidentType}; Status={issue.IssueStatus}");
+            newValue: $"EquipmentId={equipment.Id}; Type={incidentType}; Status={issue.IssueStatus}"
+                      + (takenOutOfUse ? $"; EquipmentStatus={EquipmentStatus.Damaged}" : ""));
         var notifications = await NotifyRoleAsync(StaffRole, reporterUserId, "New equipment issue",
             $"{equipment.EquipmentName}: {incidentType} reported.", cancellationToken);
 
@@ -75,18 +82,26 @@ public sealed class EquipmentIssueService : IEquipmentIssueService
         EquipmentIssueListRequest request, string? onlyReportedByUserId, CancellationToken cancellationToken = default)
     {
         EquipmentIssueStatus? status = null;
-        if (!string.IsNullOrWhiteSpace(request.Status))
+        var openOnly = string.Equals(request.Status?.Trim(), StatusFilters.OpenIssues, StringComparison.OrdinalIgnoreCase);
+        if (!openOnly && !string.IsNullOrWhiteSpace(request.Status))
         {
             if (!EquipmentService.TryParse(request.Status, out EquipmentIssueStatus parsed))
                 return Result<PagedResponse<EquipmentIssueResponse>>.Failure("Status filter is invalid.", "EQUIPMENT_ISSUE_INVALID_STATUS");
             status = parsed;
         }
 
+        var sort = string.Equals(request.Sort?.Trim(), "severity", StringComparison.OrdinalIgnoreCase)
+            ? EquipmentIssueSort.Severity : EquipmentIssueSort.Newest;
+        var search = string.IsNullOrWhiteSpace(request.Search) ? null : request.Search.Trim();
         var (items, total) = await _repository.SearchIssuesAsync(
-            status, request.EquipmentId, onlyReportedByUserId, request.Page, request.PageSize, cancellationToken);
+            new EquipmentIssueQuery(status, request.EquipmentId, onlyReportedByUserId, search, sort, request.Page, request.PageSize, openOnly),
+            cancellationToken);
         return Result<PagedResponse<EquipmentIssueResponse>>.Success(new PagedResponse<EquipmentIssueResponse>(
             request.Page, request.PageSize, total, items.Select(_mapper.Map<EquipmentIssueResponse>).ToArray()));
     }
+
+    public async Task<Result<StatusCountsResponse>> GetIssueCountsAsync(CancellationToken cancellationToken = default) =>
+        Result<StatusCountsResponse>.Success(StatusCounts.From(await _repository.CountIssuesByStatusAsync(null, cancellationToken)));
 
     public async Task<Result<EquipmentIssueResponse>> GetIssueAsync(
         int id, string? onlyReportedByUserId, CancellationToken cancellationToken = default)
@@ -133,7 +148,7 @@ public sealed class EquipmentIssueService : IEquipmentIssueService
                 return RepairOnly();
             issue.IssueStatus = EquipmentIssueStatus.Escalated;
             issue.HandledByUserId = staffUserId;
-            issue.ResolutionNote = "Escalated: " + note.Trim();
+            issue.ResolutionNote = "Chuyển quản lý: " + note.Trim();
             if (issue.Equipment.EquipmentStatus != EquipmentStatus.Retired)
                 issue.Equipment.EquipmentStatus = EquipmentStatus.Damaged; // out of use until repaired
             var notify = await NotifyRoleAsync(ManagerRole, staffUserId, "Equipment issue escalated",
@@ -150,6 +165,10 @@ public sealed class EquipmentIssueService : IEquipmentIssueService
             if (await IsRepairAsync(issue, cancellationToken))
                 return RepairOnly();
             Close(issue, EquipmentIssueStatus.MarkedSafe, note, staffUserId);
+            // Back in use if a Safety report had taken it out, unless another open issue still keeps it out.
+            if (issue.Equipment.EquipmentStatus == EquipmentStatus.Damaged
+                && !await _repository.HasOpenIssueAsync(issue.EquipmentId, issue.Id, cancellationToken))
+                issue.Equipment.EquipmentStatus = EquipmentStatus.Operational;
             return await Done(NotifyReporter(issue, staffUserId, "Your equipment report was checked", note));
         });
 
@@ -184,7 +203,7 @@ public sealed class EquipmentIssueService : IEquipmentIssueService
         {
             if (issue.IssueStatus != EquipmentIssueStatus.InProgress || !await IsRepairAsync(issue, cancellationToken))
                 return InvalidState(issue, "Only issues under repair can be marked not safe.");
-            issue.ResolutionNote = "Not safe after repair: " + note.Trim();
+            issue.ResolutionNote = "Chưa an toàn sau sửa chữa: " + note.Trim();
             issue.Equipment.EquipmentStatus = EquipmentStatus.Damaged; // issue stays InProgress for another repair
             return await Done();
         });
@@ -199,7 +218,7 @@ public sealed class EquipmentIssueService : IEquipmentIssueService
             issue.IssueStatus = EquipmentIssueStatus.Resolved;
             issue.HandledByUserId = managerUserId;
             issue.ResolvedAt = DateTime.UtcNow;
-            issue.ResolutionNote = "Disposed: " + note.Trim();
+            issue.ResolutionNote = "Thanh lý: " + note.Trim();
             issue.Equipment.EquipmentStatus = EquipmentStatus.Retired;
             return await Done(NotifyReporter(issue, managerUserId, "Reported equipment retired", note));
         });

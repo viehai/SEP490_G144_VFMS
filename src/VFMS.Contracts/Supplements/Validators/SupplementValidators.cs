@@ -50,9 +50,33 @@ public sealed class SupplementProductRequestValidator : AbstractValidator<Supple
         RuleFor(x => x.Brand).MaximumLength(100);
         RuleFor(x => x.Size).MaximumLength(50);
         RuleFor(x => x.Flavour).MaximumLength(100);
+        RuleFor(x => x.StockQuantity)
+            .InclusiveBetween(0, SupplementStock.MaxQuantity).When(x => x.StockQuantity.HasValue)
+            .WithMessage($"Stock must be between 0 and {SupplementStock.MaxQuantity}.");
         RuleFor(x => x.Status)
             .Must(s => SupplementRules.IsOneOf(s, SupplementRules.ProductStatuses))
             .WithMessage("Status must be Active, Inactive or OutOfStock.");
+    }
+}
+
+public sealed class SupplementStockRequestValidator : AbstractValidator<SupplementStockRequest>
+{
+    private static readonly string[] Actions = [SupplementStock.Add, SupplementStock.Set, SupplementStock.StopTracking];
+
+    public SupplementStockRequestValidator()
+    {
+        RuleFor(x => x.Action)
+            .Must(a => SupplementRules.IsOneOf(a, Actions))
+            .WithMessage("Action must be Add, Set or StopTracking.");
+        RuleFor(x => x.Quantity)
+            .InclusiveBetween(1, SupplementStock.MaxQuantity)
+            .When(x => string.Equals(x.Action?.Trim(), SupplementStock.Add, StringComparison.OrdinalIgnoreCase))
+            .WithMessage($"Quantity to add must be between 1 and {SupplementStock.MaxQuantity}.");
+        RuleFor(x => x.Quantity)
+            .InclusiveBetween(0, SupplementStock.MaxQuantity)
+            .When(x => string.Equals(x.Action?.Trim(), SupplementStock.Set, StringComparison.OrdinalIgnoreCase))
+            .WithMessage($"Stock must be between 0 and {SupplementStock.MaxQuantity}.");
+        RuleFor(x => x.Note).MaximumLength(500);
     }
 }
 
@@ -132,7 +156,8 @@ public sealed class SupplementOrderListRequestValidator : AbstractValidator<Supp
     public SupplementOrderListRequestValidator()
     {
         RuleFor(x => x.Status)
-            .Must(s => SupplementRules.IsBlankOrOneOf(s, SupplementRules.OrderStatuses))
+            .Must(s => SupplementRules.IsBlankOrOneOf(s, SupplementRules.OrderStatuses)
+                || string.Equals(s?.Trim(), VFMS.Contracts.Operations.StatusFilters.ActiveOrders, StringComparison.OrdinalIgnoreCase))
             .WithMessage("Status filter is invalid.");
         RuleFor(x => x.FulfillmentType)
             .Must(t => SupplementRules.IsBlankOrOneOf(t, SupplementRules.FulfillmentTypes))

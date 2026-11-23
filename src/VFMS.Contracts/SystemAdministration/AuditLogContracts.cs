@@ -1,8 +1,8 @@
 namespace VFMS.Contracts.SystemAdministration;
 
 /// <summary>
-/// Audit log filters (UC-87). Dates are UTC. A <see cref="To"/> value with no time part
-/// includes the whole day.
+/// Audit log filters (UC-87). Dates are gym time (UTC+7), as everywhere else in the system; a <see cref="To"/> value
+/// with no time part includes the whole day. <see cref="Actor"/> matches part of the actor's name or email.
 /// </summary>
 public sealed record AuditLogListRequest(
     DateTime? From = null,
@@ -11,7 +11,8 @@ public sealed record AuditLogListRequest(
     string? ActionType = null,
     string? Entity = null,
     int Page = 1,
-    int PageSize = 20
+    int PageSize = 20,
+    string? Actor = null
 );
 
 public sealed record AuditLogResponse(

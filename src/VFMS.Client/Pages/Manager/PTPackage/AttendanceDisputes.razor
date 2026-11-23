@@ -40,6 +40,7 @@
             else
             {
                 <p>Kết quả: <strong>@DecisionName(item.Decision)</strong>@(item.ReviewNote is { } review ? $" · {review}" : "")</p>
+                @if (item.ReviewerName is { } reviewer) { <p class="trainer-muted">Manager quyết định: @reviewer</p> }
             }
         </article>
     }

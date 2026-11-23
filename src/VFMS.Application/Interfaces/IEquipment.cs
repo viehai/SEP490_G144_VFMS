@@ -1,9 +1,27 @@
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Equipment;
+using VFMS.Contracts.Operations;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
 
 namespace VFMS.Application.Interfaces;
+
+/// <summary>Equipment list order. PurchaseDate puts the newest purchase first and equipment without a date last.</summary>
+public enum EquipmentSort { Name, Code, Newest, PurchaseDate }
+
+/// <summary>Issue list order. Severity: Safety, then Damage, Malfunction, Other; newest first within each.</summary>
+public enum EquipmentIssueSort { Newest, Severity }
+
+public sealed record EquipmentQuery(
+    string? Search, int? CategoryId, EquipmentStatus? Status, string? Brand, EquipmentSort Sort, int Page, int PageSize);
+
+/// <summary>Issue counts of one piece of equipment; Recent counts reports since the given time.</summary>
+public sealed record EquipmentIssueStats(
+    int Total, int Open, int Recent, int Safety, DateTime? LastReportedAt, DateTime? LastClosedAt);
+
+public sealed record EquipmentIssueQuery(
+    EquipmentIssueStatus? Status, int? EquipmentId, string? ReportedByUserId, string? Search, EquipmentIssueSort Sort,
+    int Page, int PageSize, bool OpenOnly = false);
 
 public interface IEquipmentRepository : IAuditedRepository
 {
@@ -17,8 +35,9 @@ public interface IEquipmentRepository : IAuditedRepository
 
     // Equipment
     Task<(IReadOnlyList<Equipment> Items, int TotalCount)> SearchEquipmentAsync(
-        string? search, int? categoryId, EquipmentStatus? status, int page, int pageSize,
-        CancellationToken cancellationToken = default);
+        EquipmentQuery query, CancellationToken cancellationToken = default);
+    /// <summary>Distinct brands of the equipment in the list, A to Z.</summary>
+    Task<IReadOnlyList<string>> GetBrandsAsync(CancellationToken cancellationToken = default);
     Task<Equipment?> GetEquipmentAsync(int id, CancellationToken cancellationToken = default);
     Task<bool> EquipmentCodeExistsAsync(string code, int? excludingId, CancellationToken cancellationToken = default);
     /// <summary>Highest number used in codes "PREFIX-NNNN" (deleted equipment included, so numbers are never reused); 0 when none.</summary>
@@ -28,9 +47,15 @@ public interface IEquipmentRepository : IAuditedRepository
     // Issues
     Task<bool> HasOpenIssueAsync(int equipmentId, int? excludingIssueId, CancellationToken cancellationToken = default);
     Task<(IReadOnlyList<EquipmentIssueReport> Items, int TotalCount)> SearchIssuesAsync(
-        EquipmentIssueStatus? status, int? equipmentId, string? reportedByUserId, int page, int pageSize,
-        CancellationToken cancellationToken = default);
+        EquipmentIssueQuery query, CancellationToken cancellationToken = default);
     Task<EquipmentIssueReport?> GetIssueAsync(int id, CancellationToken cancellationToken = default);
+    /// <summary>Issues per status; only the given reporter's issues when <paramref name="reportedByUserId"/> is set.</summary>
+    Task<IReadOnlyDictionary<EquipmentIssueStatus, int>> CountIssuesByStatusAsync(
+        string? reportedByUserId, CancellationToken cancellationToken = default);
+    Task<EquipmentIssueStats> GetIssueStatsAsync(int equipmentId, DateTime recentSinceUtc, CancellationToken cancellationToken = default);
+    /// <summary>Reports since the given time for each listed equipment; equipment with none is left out.</summary>
+    Task<IReadOnlyDictionary<int, int>> CountRecentIssuesAsync(
+        IReadOnlyCollection<int> equipmentIds, DateTime sinceUtc, CancellationToken cancellationToken = default);
     Task<bool> UserHasRoleAsync(string userId, string roleName, CancellationToken cancellationToken = default);
 }
 
@@ -47,7 +72,9 @@ public interface IEquipmentService
 
     Task<Result<PagedResponse<EquipmentResponse>>> GetEquipmentListAsync(
         EquipmentListRequest request, CancellationToken cancellationToken = default);
+    Task<Result<IReadOnlyList<string>>> GetBrandsAsync(CancellationToken cancellationToken = default);
     Task<Result<EquipmentResponse>> GetEquipmentAsync(int id, CancellationToken cancellationToken = default);
+    Task<Result<EquipmentIssueSummaryResponse>> GetIssueSummaryAsync(int id, CancellationToken cancellationToken = default);
     Task<Result<EquipmentResponse>> CreateEquipmentAsync(
         EquipmentRequest request, string actorUserId, string? ipAddress, CancellationToken cancellationToken = default);
     Task<Result<EquipmentResponse>> UpdateEquipmentAsync(
@@ -63,6 +90,8 @@ public interface IEquipmentIssueService
         ReportEquipmentIssueRequest request, string reporterUserId, string? ipAddress, CancellationToken cancellationToken = default);
     Task<Result<PagedResponse<EquipmentIssueResponse>>> GetIssuesAsync(
         EquipmentIssueListRequest request, string? onlyReportedByUserId, CancellationToken cancellationToken = default);
+    /// <summary>Issues per status for the Staff and Manager boards.</summary>
+    Task<Result<StatusCountsResponse>> GetIssueCountsAsync(CancellationToken cancellationToken = default);
     /// <summary>Returns the issue; when <paramref name="onlyReportedByUserId"/> is set, other users' issues are not found.</summary>
     Task<Result<EquipmentIssueResponse>> GetIssueAsync(
         int id, string? onlyReportedByUserId, CancellationToken cancellationToken = default);

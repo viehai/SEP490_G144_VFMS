@@ -1,6 +1,7 @@
 @page "/manager/business-reports"
 @page "/admin/business-reports"
 @layout ManagerAdminLayout
+@using VFMS.Client.Components.Operations
 @using System.Globalization
 @using System.Net
 @using Microsoft.AspNetCore.Authorization
@@ -9,6 +10,7 @@
 @using VFMS.Contracts.SystemAdministration.Validators
 @attribute [Authorize(Roles = "Manager,Admin")]
 @inject SystemAdministrationApiClient Api
+@inject IJSRuntime JS
 @implements IDisposable
 
 <PageTitle>Báo cáo kinh doanh | Victor Fitness</PageTitle>
@@ -32,7 +34,7 @@
     <section class="rounded-[12px] border border-vfms-border bg-vfms-surface p-5 sm:p-6 shadow-sm" aria-labelledby="generate-title">
         <h2 id="generate-title" class="text-base font-bold text-vfms-text">Tạo báo cáo</h2>
         <EditForm Model="_generate" OnValidSubmit="() => GenerateAsync(false)" class="mt-4" novalidate>
-            <ContractValidation TRequest="GenerateBusinessReportRequest" Validator="_generateValidator" CreateRequest="CreateGenerateRequest" @ref="_generateValidation" />
+            <OperationsValidation TRequest="GenerateBusinessReportRequest" Validator="_generateValidator" CreateRequest="CreateGenerateRequest" @ref="_generateValidation" />
             <ValidationSummary />
             <fieldset disabled="@_working" class="mt-4 flex flex-wrap items-end gap-3">
                 <label class="text-xs font-semibold text-vfms-text" for="report-period">
@@ -45,7 +47,7 @@
                 </label>
                 <label class="text-xs font-semibold text-vfms-text" for="report-date">
                     Một ngày trong kỳ
-                    <InputDate id="report-date" class="@Field" @bind-Value="_generate.Date" />
+                    <InputDate id="report-date" ParsingErrorMessage="Nhập ngày hợp lệ." class="@Field" @bind-Value="_generate.Date" />
                 </label>
                 <button type="submit" class="@PrimaryButton">@(_working ? "Đang tạo..." : "Tạo báo cáo")</button>
             </fieldset>
@@ -67,10 +69,13 @@
         <section class="rounded-[12px] border border-vfms-border bg-vfms-surface p-5 sm:p-6 shadow-sm" aria-labelledby="report-title">
             <div class="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                    <h2 id="report-title" class="text-base font-bold text-vfms-text">@report.ReportName</h2>
+                    <h2 id="report-title" class="text-base font-bold text-vfms-text">@BusinessReportNames.For(report.PeriodType, report.PeriodStart, report.PeriodEnd)</h2>
                     <p class="mt-1 text-xs text-vfms-text-secondary">@PeriodLabel(report.PeriodType) · @report.PeriodStart.ToString("dd/MM/yyyy") – @report.PeriodEnd.ToString("dd/MM/yyyy") · Tạo bởi @(report.GeneratedByName ?? "—") lúc @report.GeneratedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</p>
                 </div>
-                <button type="button" class="@Button" @onclick="() => _selected = null">Đóng chi tiết</button>
+                <div class="flex flex-wrap gap-2">
+                    <button type="button" class="@Button" disabled="@_exporting" @onclick="ExportCsvAsync">@(_exporting ? "Đang xuất..." : "Xuất CSV")</button>
+                    <button type="button" class="@Button" @onclick="CloseReport">Đóng chi tiết</button>
+                </div>
             </div>
             @if (!report.HasData)
             {
@@ -79,12 +84,73 @@
             <dl class="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 @foreach (var metric in report.Metrics)
                 {
+                    var change = ReportInsights.Compare(metric);
                     <div class="rounded-[12px] border border-vfms-border bg-vfms-surface-alt p-5">
                         <dt class="text-xs font-semibold text-vfms-text-secondary">@MetricLabel(metric)</dt>
-                        <dd class="mt-3 text-2xl font-extrabold tracking-tight text-vfms-primary">@FormatValue(metric)</dd>
+                        <dd class="mt-3 text-2xl font-extrabold tracking-tight text-vfms-primary">@ReportInsights.Format(metric)</dd>
+                        @if (change is not null)
+                        {
+                            <dd class="mt-2 text-xs font-semibold @ChangeColor(change)">@change.Text</dd>
+                            <dd class="mt-0.5 text-[11px] text-vfms-text-secondary">Kỳ trước: @ReportInsights.Format(metric.PreviousValue!.Value, metric.ValueType)</dd>
+                        }
                     </div>
                 }
             </dl>
+            @if (report.PreviousPeriodStart is { } prevStart && report.PreviousPeriodEnd is { } prevEnd)
+            {
+                <p class="mt-3 text-xs text-vfms-text-secondary">
+                    So sánh với kỳ trước @prevStart.ToString("dd/MM/yyyy") – @prevEnd.ToString("dd/MM/yyyy")
+                    (@(report.PreviousSource == BusinessReportResponse.FromSnapshot ? "theo báo cáo đã lưu của kỳ đó" : "tính từ dữ liệu hiện tại vì kỳ đó chưa có báo cáo")).
+                </p>
+            }
+
+            <div class="mt-6 border-t border-vfms-border pt-5" aria-busy="@_trendLoading">
+                <div class="flex flex-wrap items-end justify-between gap-3">
+                    <div>
+                        <h3 class="text-sm font-bold text-vfms-text">Xu hướng @TrendCount kỳ gần nhất</h3>
+                        <p class="mt-1 text-xs text-vfms-text-secondary">Tính từ dữ liệu hiện tại, không lưu thành báo cáo.</p>
+                    </div>
+                    <label class="text-xs font-semibold text-vfms-text" for="trend-metric">
+                        Chỉ số
+                        <select id="trend-metric" class="@Field" @bind="_trendMetric">
+                            @foreach (var metric in report.Metrics) { <option value="@metric.MetricType">@MetricLabel(metric)</option> }
+                        </select>
+                    </label>
+                </div>
+                @if (_trendLoading)
+                {
+                    <p role="status" class="mt-4 text-sm">Đang tính xu hướng...</p>
+                }
+                else if (_trendError is not null)
+                {
+                    <p role="alert" class="mt-4 text-sm text-red-700">@_trendError</p>
+                }
+                else if (TrendBars() is { Count: > 0 } emptyBars && emptyBars.All(b => b.Height == 0))
+                {
+                    <p role="status" class="mt-4 text-sm text-vfms-text-secondary">Chỉ số này bằng 0 trong cả @emptyBars.Count kỳ.</p>
+                }
+                else if (TrendBars() is { Count: > 0 } bars)
+                {
+                    <figure class="mt-4">
+                        <div class="flex h-48 items-end gap-2 sm:gap-4" role="img" aria-label="@TrendDescription(bars)">
+                            @foreach (var bar in bars)
+                            {
+                                <div class="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1" title="@bar.Label: @bar.Value">
+                                    <span class="truncate text-[10px] font-semibold text-vfms-text-secondary">@bar.Value</span>
+                                    <div class="w-full max-w-14 rounded-t-md @(bar.Current ? "bg-vfms-primary" : "bg-[#D8C8C2]")" style="height: @bar.Height.ToString("0.#", CultureInfo.InvariantCulture)%"></div>
+                                </div>
+                            }
+                        </div>
+                        <div class="mt-2 flex gap-2 border-t border-vfms-border pt-2 sm:gap-4" aria-hidden="true">
+                            @foreach (var bar in bars)
+                            {
+                                <span class="min-w-0 flex-1 truncate text-center text-[10px] @(bar.Current ? "font-bold text-vfms-text" : "text-vfms-text-secondary")">@bar.Label</span>
+                            }
+                        </div>
+                        <figcaption class="mt-2 text-[11px] text-vfms-text-secondary">Cột đậm là kỳ của báo cáo này.</figcaption>
+                    </figure>
+                }
+            </div>
         </section>
     }
 
@@ -92,16 +158,16 @@
         <div class="border-b border-vfms-border p-5 bg-vfms-surface-alt/40">
             <h2 id="history-title" class="mb-3 text-sm font-bold text-vfms-text">Lịch sử báo cáo</h2>
             <EditForm Model="_filter" OnValidSubmit="() => LoadAsync(1)" novalidate>
-                <ContractValidation TRequest="BusinessReportListRequest" Validator="_listValidator" CreateRequest="() => CreateListRequest(1)" />
+                <OperationsValidation TRequest="BusinessReportListRequest" Validator="_listValidator" CreateRequest="() => CreateListRequest(1)" />
                 <ValidationSummary />
                 <fieldset disabled="@_loading" class="flex flex-wrap items-end gap-3">
                     <label class="text-xs font-semibold text-vfms-text" for="filter-from">
                         Từ ngày
-                        <InputDate id="filter-from" class="@Field" @bind-Value="_filter.From" />
+                        <InputDate id="filter-from" ParsingErrorMessage="Nhập ngày hợp lệ." class="@Field" @bind-Value="_filter.From" />
                     </label>
                     <label class="text-xs font-semibold text-vfms-text" for="filter-to">
                         Đến ngày
-                        <InputDate id="filter-to" class="@Field" @bind-Value="_filter.To" />
+                        <InputDate id="filter-to" ParsingErrorMessage="Nhập ngày hợp lệ." class="@Field" @bind-Value="_filter.To" />
                     </label>
                     <button type="submit" class="@Button">Áp dụng</button>
                 </fieldset>
@@ -122,12 +188,12 @@
                         @foreach (var row in list.Items)
                         {
                             <tr @key="row.Id">
-                                <th scope="row">@row.ReportName</th>
+                                <th scope="row">@BusinessReportNames.For(row.PeriodType, row.PeriodStart, row.PeriodEnd)</th>
                                 <td>@PeriodLabel(row.PeriodType)</td>
                                 <td class="whitespace-nowrap">@row.PeriodStart.ToString("dd/MM/yyyy") – @row.PeriodEnd.ToString("dd/MM/yyyy")</td>
                                 <td>@(row.GeneratedByName ?? "—")</td>
                                 <td class="whitespace-nowrap">@row.GeneratedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
-                                <td><button type="button" class="@Button" aria-label="Xem @row.ReportName" @onclick="() => OpenAsync(row.Id)">Xem</button></td>
+                                <td><button type="button" class="@Button" aria-label="Xem @BusinessReportNames.For(row.PeriodType, row.PeriodStart, row.PeriodEnd)" @onclick="() => OpenAsync(row.Id)">Xem</button></td>
                             </tr>
                         }
                     </tbody>
@@ -153,18 +219,23 @@
     private const string Field = "mt-1 block w-full rounded-lg border border-vfms-border bg-vfms-surface px-3 py-2 text-sm font-normal text-vfms-text focus:border-vfms-primary focus:ring-2 focus:ring-vfms-primary/20 outline-none";
     private const string Button = "rounded-lg border border-vfms-border-strong bg-vfms-surface px-3 py-1.5 text-xs font-semibold text-vfms-text hover:bg-[#F3EDEA] transition";
     private const string PrimaryButton = "rounded-lg bg-vfms-primary px-4 py-2 text-sm font-semibold text-white hover:bg-vfms-primary-hover active:bg-vfms-primary-dark transition shadow-sm";
-    private static readonly NumberFormatInfo NumberFormat = new() { NumberGroupSeparator = ".", NumberDecimalSeparator = "," };
 
     private readonly CancellationTokenSource _lifetime = new();
     private readonly GenerateModel _generate = new();
     private readonly FilterModel _filter = new();
     private readonly GenerateBusinessReportRequestValidator _generateValidator = new();
     private readonly BusinessReportListRequestValidator _listValidator = new();
-    private ContractValidation<GenerateBusinessReportRequest>? _generateValidation;
+    private OperationsValidation<GenerateBusinessReportRequest>? _generateValidation;
     private PagedResponse<BusinessReportSummaryResponse>? _page;
     private BusinessReportResponse? _selected;
-    private string? _notice, _error;
-    private bool _working, _loading, _confirmNew;
+    private BusinessReportTrendResponse? _trend;
+    private string _trendMetric = "TotalRevenue";
+    private string? _notice, _error, _trendError;
+    private bool _working, _loading, _confirmNew, _trendLoading, _exporting;
+    private const int TrendCount = 6;
+
+    /// <summary>One bar of the trend chart.</summary>
+    private sealed record TrendBar(string Label, string Value, double Height, bool Current);
 
     protected override Task OnInitializedAsync() => LoadAsync(1);
 
@@ -180,7 +251,8 @@
         {
             _selected = await Api.GenerateReportAsync(CreateGenerateRequest() with { ConfirmNew = confirmNew }, _lifetime.Token);
             _confirmNew = false;
-            _notice = $"Đã tạo báo cáo {_selected.ReportName}.";
+            _ = LoadTrendAsync(_selected);
+            _notice = $"Đã tạo {BusinessReportNames.For(_selected.PeriodType, _selected.PeriodStart, _selected.PeriodEnd).ToLowerInvariant()}.";
             await LoadAsync(1);
         }
         catch (AuthApiException error) when (error.StatusCode == HttpStatusCode.Conflict) { _confirmNew = true; }
@@ -206,9 +278,80 @@
     private async Task OpenAsync(int id)
     {
         _error = null;
-        try { _selected = await Api.GetReportAsync(id, _lifetime.Token); }
+        try
+        {
+            _selected = await Api.GetReportAsync(id, _lifetime.Token);
+            await LoadTrendAsync(_selected);
+        }
         catch (AuthApiException error) { _error = error.Message; }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+    }
+
+    private void CloseReport()
+    {
+        _selected = null;
+        _trend = null;
+    }
+
+    private async Task LoadTrendAsync(BusinessReportResponse report)
+    {
+        _trend = null;
+        _trendError = null;
+        if (report.PeriodType == "Custom") return;
+        _trendLoading = true;
+        StateHasChanged();
+        try { _trend = await Api.GetReportTrendAsync(new(report.PeriodType, report.PeriodStart, TrendCount), _lifetime.Token); }
+        catch (AuthApiException error) { _trendError = error.Message; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        finally
+        {
+            _trendLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private List<TrendBar> TrendBars()
+    {
+        if (_trend is null || _selected is null) return [];
+        var points = _trend.Points
+            .Select(p => (Point: p, Metric: p.Metrics.FirstOrDefault(m => m.MetricType == _trendMetric)))
+            .Where(x => x.Metric is not null)
+            .ToList();
+        var heights = ReportInsights.BarHeights(points.Select(x => x.Metric!.Value).ToArray());
+        return points.Select((x, i) => new TrendBar(
+            ReportInsights.PeriodLabel(_trend.PeriodType, x.Point.PeriodStart),
+            ReportInsights.Format(x.Metric!),
+            heights[i],
+            x.Point.PeriodStart == _selected.PeriodStart)).ToList();
+    }
+
+    private static string TrendDescription(IEnumerable<TrendBar> bars) =>
+        "Biểu đồ cột: " + string.Join("; ", bars.Select(b => $"{b.Label} {b.Value}"));
+
+    private static string ChangeColor(ReportInsights.Change change) => change.Direction switch
+    {
+        ReportInsights.Trend.Same => "text-vfms-text-secondary",
+        _ when change.IsGood => "text-[#16A34A]",
+        _ => "text-[#DC2626]",
+    };
+
+    /// <summary>Downloads the open report as a CSV file that Excel opens with Vietnamese text intact.</summary>
+    private async Task ExportCsvAsync()
+    {
+        if (_selected is not { } report || _exporting) return;
+        _exporting = true;
+        _error = null;
+        try
+        {
+            using var stream = new MemoryStream(ReportInsights.ToCsv(report, MetricLabel));
+            using var reference = new DotNetStreamReference(stream);
+            // The shared browser download helper loaded by index.html (it is not specific to invoices).
+            await JS.InvokeVoidAsync("vfmsInvoices.download", _lifetime.Token, ReportInsights.CsvFileName(report), "text/csv", reference);
+            _notice = $"Đã xuất {ReportInsights.CsvFileName(report)}.";
+        }
+        catch (JSException) { _error = "Trình duyệt không tải được tệp CSV. Vui lòng thử lại."; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        finally { _exporting = false; }
     }
 
     private static int PageCount(PagedResponse<BusinessReportSummaryResponse> page) => Math.Max(1, (int)Math.Ceiling((double)page.TotalCount / page.PageSize));
@@ -225,13 +368,6 @@
         "SupplementSales" => "Doanh số TPBS",
         "EquipmentIssues" => "Sự cố thiết bị",
         _ => metric.MetricName
-    };
-
-    private static string FormatValue(ReportMetricResponse metric) => metric.ValueType switch
-    {
-        "Currency" => $"{metric.Value.ToString("#,##0.##", NumberFormat)} ₫",
-        "Percentage" => $"{metric.Value.ToString("0.##", NumberFormat)}%",
-        _ => metric.Value.ToString("#,##0", NumberFormat)
     };
 
     public void Dispose()

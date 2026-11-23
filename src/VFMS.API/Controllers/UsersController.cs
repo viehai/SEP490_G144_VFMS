@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using VFMS.API.Extensions;
 using VFMS.Application.Interfaces;
 using VFMS.Contracts.Users;
@@ -25,13 +26,66 @@ public sealed class UsersController : ControllerBase
     [Authorize(Roles = "Staff,Manager")]
     [ProducesResponseType(typeof(WalkInCustomerResponse), 201)]
     [ProducesResponseType(400)]
+    [ProducesResponseType(401)]
+    [ProducesResponseType(403)]
     [ProducesResponseType(409)]
+    [ProducesResponseType(503)]
     public async Task<IActionResult> CreateWalkInCustomer(
         [FromBody] WalkInCustomerRequest request,
         CancellationToken cancellationToken)
     {
-        var result = await _userAdministrationService.CreateWalkInCustomerAsync(request, cancellationToken);
+        if (!TryGetUserId(out var actorUserId))
+            return Unauthorized();
+
+        Response.Headers.CacheControl = "no-store";
+        var result = await _userAdministrationService.CreateWalkInCustomerAsync(
+            request,
+            actorUserId,
+            HttpContext.Connection.RemoteIpAddress?.ToString(),
+            cancellationToken);
         return this.ToActionResult(result);
+    }
+
+    [HttpPost("{userId}/resend-setup-email")]
+    [Authorize(Roles = "Staff,Manager")]
+    [EnableRateLimiting(PasswordRecoveryModule.CustomerResendPolicy)]
+    [ProducesResponseType(typeof(ResendSetupEmailResponse), 200)]
+    [ProducesResponseType(401)]
+    [ProducesResponseType(403)]
+    [ProducesResponseType(409)]
+    [ProducesResponseType(429)]
+    [ProducesResponseType(503)]
+    public async Task<IActionResult> ResendCustomerSetupEmail(
+        string userId,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetUserId(out var actorUserId))
+            return Unauthorized();
+
+        Response.Headers.CacheControl = "no-store";
+        var result = await _userAdministrationService.ResendCustomerSetupEmailAsync(
+            userId,
+            actorUserId,
+            HttpContext.Connection.RemoteIpAddress?.ToString(),
+            cancellationToken);
+        return this.ToActionResult(result);
+    }
+
+    [HttpPost("find-pending-customer")]
+    [Authorize(Roles = "Staff,Manager")]
+    [EnableRateLimiting(PasswordRecoveryModule.CustomerLookupPolicy)]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None, Order = -3000)]
+    [ProducesResponseType(typeof(WalkInCustomerResponse), 200)]
+    [ProducesResponseType(400)]
+    [ProducesResponseType(404)]
+    public async Task<IActionResult> FindPendingCustomer(
+        [FromBody] FindPendingCustomerRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetUserId(out _))
+            return Unauthorized();
+
+        return this.ToActionResult(await _userAdministrationService.FindPendingCustomerAsync(request, cancellationToken));
     }
 
     [HttpGet("me")]

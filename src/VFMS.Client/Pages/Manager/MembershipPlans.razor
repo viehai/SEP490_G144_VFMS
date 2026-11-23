@@ -1,7 +1,6 @@
 @page "/manager/membership-plans"
 @layout ManagerAdminLayout
 @using Microsoft.AspNetCore.Authorization
-@using System.Globalization
 @using VFMS.Contracts.Common
 @using VFMS.Contracts.Memberships
 @using VFMS.Contracts.Memberships.Validators
@@ -70,7 +69,7 @@
                     </label>
                     <label class="text-sm font-semibold text-[#242424]" for="plan-price">
                         Giá (₫)
-                        <InputNumber id="plan-price" class="@Field" @bind-Value="form.Price" min="0" step="0.01" required ParsingErrorMessage="Giá phải là một số hợp lệ." />
+                        <InputVnd id="plan-price" class="@Field" @bind-Value="form.Price" required ParsingErrorMessage="Giá phải là một số hợp lệ." />
                     </label>
                     <label class="text-sm font-semibold text-[#242424] sm:col-span-2" for="plan-description">
                         Mô tả
@@ -91,7 +90,7 @@
             <dl class="mt-4 grid gap-4 text-sm sm:grid-cols-2">
                 <div><dt class="font-semibold text-[#6F6966]">Loại dịch vụ</dt><dd class="font-bold text-[#242424]">@ServiceLabel(plan.ServiceType)</dd></div>
                 <div><dt class="font-semibold text-[#6F6966]">Thời hạn</dt><dd class="font-bold text-[#242424]">@Duration(plan)</dd></div>
-                <div><dt class="font-semibold text-[#6F6966]">Giá</dt><dd class="font-bold text-[#B83A3A]">@Money(plan.Price)</dd></div>
+                <div><dt class="font-semibold text-[#6F6966]">Giá</dt><dd class="font-bold text-[#B83A3A]">@Vnd.Format(plan.Price)</dd></div>
                 <div><dt class="font-semibold text-[#6F6966]">Trạng thái</dt><dd class="font-semibold text-[#242424]">@StatusLabel(plan.Status)</dd></div>
                 <div><dt class="font-semibold text-[#6F6966]">Lượt đăng ký đang hoạt động</dt><dd class="font-bold text-[#242424]">@plan.SubscriberCount</dd></div>
                 <div class="sm:col-span-2"><dt class="font-semibold text-[#6F6966]">Mô tả</dt><dd class="whitespace-pre-wrap break-words text-[#242424]">@(plan.Description ?? "—")</dd></div>
@@ -161,7 +160,7 @@
                                 <th scope="row" class="max-w-56 break-words">@row.Name</th>
                                 <td>@ServiceLabel(row.ServiceType)</td>
                                 <td>@Duration(row)</td>
-                                <td class="whitespace-nowrap font-semibold text-[#B83A3A]">@Money(row.Price)</td>
+                                <td class="whitespace-nowrap font-semibold text-[#B83A3A]">@Vnd.Format(row.Price)</td>
                                 <td>@row.SubscriberCount</td>
                                 <td><span class="inline-block whitespace-nowrap rounded-md border px-2.5 py-1 text-[11px] font-semibold @(IsActive(row.Status) ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-[#D8D1CD] bg-[#ECE8E4] text-[#6F6966]")">@StatusLabel(row.Status)</span></td>
                                 <td>
@@ -197,7 +196,6 @@
     private const string Field = "mt-1 block w-full rounded-lg border border-[#D8D1CD] bg-[#F8F5F2] px-3 py-2 text-sm font-normal text-[#242424] focus:border-[#B83A3A] focus:ring-2 focus:ring-[#B83A3A]/20 outline-none";
     private const string Button = "rounded-lg border border-[#C9C0BB] bg-[#F8F5F2] px-3 py-1.5 text-xs font-semibold text-[#242424] hover:bg-[#F3EDEA] transition";
     private const string PrimaryButton = "rounded-lg bg-[#B83A3A] px-4 py-2 text-sm font-semibold text-white hover:bg-[#9F3030] active:bg-[#7F2929] transition shadow-sm";
-    private static readonly NumberFormatInfo CurrencyFormat = new() { NumberGroupSeparator = ".", NumberDecimalSeparator = "," };
 
     private readonly CancellationTokenSource _lifetime = new();
     private readonly MembershipPlanRequestValidator _validator = new();
@@ -357,7 +355,6 @@
     private static string StatusLabel(string status) => IsActive(status) ? "Đang mở bán" : "Ngừng bán";
     private static string ServiceLabel(string type) =>
         string.Equals(type, MembershipPlanServiceTypes.Yoga, StringComparison.OrdinalIgnoreCase) ? "Yoga" : "Gym";
-    private static string Money(decimal value) => $"{value.ToString("#,##0.##", CurrencyFormat)} ₫";
     private static string Duration(MembershipPlanResponse plan) => plan.DurationInMonths is > 0 ? $"{plan.DurationInMonths} tháng"
         : plan.DurationInDays is { } days ? $"{days} ngày" : "—";
 

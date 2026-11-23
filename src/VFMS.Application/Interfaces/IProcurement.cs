@@ -1,4 +1,5 @@
 using VFMS.Contracts.Common;
+using VFMS.Contracts.Operations;
 using VFMS.Contracts.Procurement;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
@@ -11,6 +12,9 @@ public interface IPurchaseProposalRepository : IAuditedRepository
         string? proposedByUserId, PurchaseProposalStatus? status, bool excludeDrafts, string? search,
         int page, int pageSize, CancellationToken cancellationToken = default);
     Task<PurchaseProposal?> GetAsync(int id, CancellationToken cancellationToken = default);
+    /// <summary>Proposals per status, for one Staff member's own proposals or (excluding drafts) for the Manager.</summary>
+    Task<IReadOnlyDictionary<PurchaseProposalStatus, int>> CountByStatusAsync(
+        string? proposedByUserId, bool excludeDrafts, CancellationToken cancellationToken = default);
     Task<bool> ProposalNumberExistsAsync(string proposalNumber, CancellationToken cancellationToken = default);
     /// <summary>Returns which of the given equipment IDs exist.</summary>
     Task<IReadOnlySet<int>> GetExistingEquipmentIdsAsync(IReadOnlyCollection<int> ids, CancellationToken cancellationToken = default);
@@ -22,6 +26,7 @@ public interface IPurchaseProposalService
     // Staff (UC-74)
     Task<Result<PagedResponse<PurchaseProposalResponse>>> GetMyProposalsAsync(
         PurchaseProposalListRequest request, string staffUserId, CancellationToken cancellationToken = default);
+    Task<Result<StatusCountsResponse>> GetMyCountsAsync(string staffUserId, CancellationToken cancellationToken = default);
     Task<Result<PurchaseProposalResponse>> CreateAsync(
         PurchaseProposalRequest request, string staffUserId, string? ipAddress, CancellationToken cancellationToken = default);
     Task<Result<PurchaseProposalResponse>> UpdateDraftAsync(
@@ -36,6 +41,8 @@ public interface IPurchaseProposalService
     // Manager (UC-75)
     Task<Result<PagedResponse<PurchaseProposalResponse>>> GetForReviewAsync(
         PurchaseProposalListRequest request, CancellationToken cancellationToken = default);
+    /// <summary>Sent proposals per status (drafts are not counted, the Manager cannot see them).</summary>
+    Task<Result<StatusCountsResponse>> GetReviewCountsAsync(CancellationToken cancellationToken = default);
     Task<Result<PurchaseProposalResponse>> ApproveAsync(
         int id, string? note, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default);
     Task<Result<PurchaseProposalResponse>> RejectAsync(

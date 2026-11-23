@@ -55,7 +55,8 @@ public static class DbInitializer
 
             // 3. Seed Admin account
             const string adminEmail = "admin@vfms.vn";
-            if (!await context.ApplicationUsers.AnyAsync(u => u.Email == adminEmail))
+            // Reusable archived contacts must not cause an archived bootstrap Admin to be recreated.
+            if (!await context.ApplicationUsers.IgnoreQueryFilters().AnyAsync(u => u.Email.Trim() == adminEmail))
             {
                 var adminRole = await context.ApplicationRoles.FirstAsync(r => r.RoleName == "Admin");
                 var adminUser = new ApplicationUser
