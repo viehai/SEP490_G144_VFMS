@@ -149,7 +149,7 @@ How to tell which plan you got:
 | Page | Sign in as | Try |
 |---|---|---|
 | `/manager/yoga` | Manager | Studios (create, edit, deactivate), class types, classes (create, publish, cancel), sessions |
-| `/yoga/schedule` | anyone | A week timetable (days across, start times down; a day-by-day list on phones) with free mats, filters and next/previous week |
+| `/yoga/schedule` | anyone | A week timetable (days across, start times down; a day-by-day list on phones) with free mats, filters and next/previous week. A week with no classes still shows the empty grid. `?date=yyyy-MM-dd&classId=N` opens the week of that date with class N outlined in red |
 | `/pt/yoga` | YogaInstructor | This week's assigned sessions with booked members, and **Điểm danh** per session |
 | `/yoga/my-bookings` | Member | Upcoming (with cancel), past (Có mặt / Vắng) and waitlist tabs |
 | `/staff/yoga` | Staff | The day's sessions; **Điểm danh** opens the roster |
@@ -165,7 +165,7 @@ How to tell which plan you got:
   - the status pill on the "YOGA STUDIO" row: **HẾT HẠN** (grey) once the class's registration deadline has passed; **HẾT CHỖ** (red) when the class is Full or has no free mat, so new bookings go on the waitlist; the labels are kept short so the pill stays on one line beside "YOGA STUDIO" even on a tablet; **SẮP ĐẦY** (amber) when at most 20% of the mats are free; otherwise **CÒN CHỖ** (green).
   - the class type and instructor, the weekday chips (T2…CN) with the time for each time slot, the studio and floor, and the difficulty in Vietnamese (Cơ bản / Trung bình / Nâng cao).
   - free mats ("Còn 8 / 10 chỗ") and the registration deadline in gym time.
-  - **Đăng ký lớp**: signed in it goes to `/yoga/schedule` to pick a mat; signed out it goes to `/auth/register`. After the deadline there is no button, only "Đã hết hạn đăng ký".
+  - **Đăng ký lớp**: signed in it goes to `/yoga/schedule` on the week of the class's first session, with the class outlined, to pick a mat; signed out it goes to `/auth/register`. After the deadline there is no button, only "Đã hết hạn đăng ký".
   - There is no price on a class card: classes have no price of their own, you pay for the yoga plan. The old sample price lines ("1.450.000 ₫ / tháng (12 buổi)") were invented.
   - To support the deadline pill, the schedule response (`YogaSessionResponse`) now also carries `registrationDeadline` (UTC).
   - In the local database there are five classes (see section 2): Hatha Morning shows **HẾT HẠN** (its registration closed on 18/11), the other four show **CÒN CHỖ** until their registration closes between 27/11 and 06/12.
@@ -210,7 +210,7 @@ The demo lists that were written into the pages are gone. Each figure loads on i
 
 | Page | Shows | From |
 |------|-------|------|
-| Home, **CÁC LỚP HỌC NỔI BẬT** | Up to 4 real yoga classes of the next 4 weeks (open ones first), with the status pill, type, minutes, sessions per week and difficulty; each card opens `/yoga/schedule`. Classes have no photo field yet, so the 4 old photos are reused in turn. | `GET /api/yoga/schedule` |
+| Home, **CÁC LỚP HỌC NỔI BẬT** | Up to 4 real yoga classes of the next 4 weeks (open ones first), with the status pill, type, minutes, sessions per week and difficulty; each card opens `/yoga/schedule` on the week of that class's first session, with the class outlined. Classes have no photo field yet, so the 4 old photos are reused in turn. | `GET /api/yoga/schedule` |
 | `/staff/dashboard` | People inside now and today's check-ins; equipment issues waiting (Reported); open consultations; the 8 latest check-ins not checked out (an older one shows its date). Quick actions open the real pages. | `api/check-ins/active`, `api/equipment-issues?status=Reported`, `api/consultations?status=Open` |
 | `/manager/dashboard` | Revenue and active memberships from the **newest generated business report** (none yet: "—" and a hint to make one); waiting freeze reviews plus submitted purchase proposals; the 5 newest trainer feedback items waiting for review. | `api/business-reports`, `api/manager/membership-freeze-requests`, `api/purchase-proposals?status=Submitted`, `api/feedback/manager?status=Pending` |
 | `/admin/dashboard` | Staff accounts, locked accounts, audit entries since midnight; the 8 latest audit entries. | `api/admin/users`, `api/admin/audit-logs` |
@@ -238,6 +238,8 @@ LEFT JOIN TrainerRoles tr ON tr.Id = p.TrainerRoleId;
 Every trainer application that existed before the migration is set to PT.
 
 ## 8. Language and text limits
+
+**Yoga messages (23/11/2026).** On the yoga pages (Yoga Management, timetable, my yoga bookings, sessions, attendance, assigned classes, the class cards), success and error messages have no box or background: a green tick icon with green text, or a red warning icon with red text. To see one, book a class on `/yoga/schedule`, or stop the API and reload the timetable. Teammates' pages keep the shared `Alerts` and toast styles. Clicking a class name in **Lịch yoga của tôi** opens the timetable on the week of its next session, with the class outlined.
 
 **Vietnamese (23/11/2026).** Every message the API sends to the check-in, kiosk, FaceID, yoga and workout plan screens is in Vietnamese, and so are the validation messages of those forms. Error codes (`ALREADY_CHECKED_IN`, `MAT_TAKEN`, …) are unchanged. Teammates' modules are not translated.
 

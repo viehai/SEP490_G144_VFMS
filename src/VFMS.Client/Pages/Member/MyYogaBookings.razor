@@ -19,7 +19,7 @@
         <a href="/yoga/schedule" class="text-sm font-semibold text-[#B83A3A] underline underline-offset-4">Xem thời khóa biểu →</a>
     </header>
 
-    <Alerts Notice="@_notice" Error="@_error" />
+    <StatusMessage Notice="@_notice" Error="@_error" />
 
     <div class="flex flex-wrap gap-2" role="tablist" aria-label="Loại lịch">
         @foreach (var (key, label) in Tabs)
@@ -48,7 +48,7 @@
                         <li @key="b.BookingId" class="@Ui.Card">
                             <div class="flex flex-wrap items-start justify-between gap-3">
                                 <div>
-                                    <p class="text-base font-bold">@b.ClassName</p>
+                                    <a href="@VFMS.Client.Components.Memberships.YogaClassCard.ScheduleLink(b.YogaClassId, b.NextDate)" class="text-base font-bold hover:text-[#B83A3A] hover:underline underline-offset-4">@b.ClassName</a>
                                     <p class="text-xs text-[#6F6966]">Buổi tới: @b.NextDate.ToString("dddd dd/MM/yyyy") · @b.StartTime.ToString("HH:mm")–@b.EndTime.ToString("HH:mm") · @b.StudioName@(b.MatNumber is { } mat ? $" · thảm {mat}" : "")</p>
                                 </div>
                                 <StatusBadge Status="@b.Status" Label="Đã đặt" />

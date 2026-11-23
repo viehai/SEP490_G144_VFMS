@@ -20,7 +20,7 @@
         <button type="button" class="border border-[#D8D1CD] bg-[#F8F5F2] hover:bg-[#ECE8E4] px-4 py-2 text-xs font-bold uppercase rounded-lg text-[#242424] transition-colors" @onclick="() => Move(7)" aria-label="Tuần sau">→</button>
         <label class="text-xs font-semibold text-[#242424]">Độ khó
             <select class="ml-2 border border-[#D8D1CD] bg-[#F8F5F2] px-3 py-2 text-sm rounded-lg text-[#242424] focus:border-[#B83A3A] outline-none" @bind="_difficulty" @bind:after="Load">
-                <option value="">Tất cả</option><option value="Beginner">Cơ bản</option><option value="Intermediate">Trung cấp</option><option value="Advanced">Nâng cao</option>
+                <option value="">Tất cả</option><option value="Beginner">Cơ bản</option><option value="Intermediate">Trung bình</option><option value="Advanced">Nâng cao</option>
             </select>
         </label>
         <label class="text-xs font-semibold text-[#242424]">Huấn luyện viên
@@ -33,15 +33,11 @@
 
     @if (_error is not null)
     {
-        <p role="alert" class="border border-red-200 bg-red-50 px-4 py-3 text-sm text-[#DC2626] rounded-xl">@_error</p>
+        <StatusMessage Error="@_error" />
     }
     else if (_loading)
     {
         <p class="text-sm text-[#6F6966]">Đang tải…</p>
-    }
-    else if (_sessions.Count == 0)
-    {
-        <p class="border border-[#D8D1CD] bg-[#F8F5F2] px-5 py-6 text-sm rounded-xl text-[#6F6966]">Không tìm thấy buổi học phù hợp.</p>
     }
     else
     {
@@ -86,18 +82,33 @@
                             }
                         </tr>
                     }
+                    @if (_sessions.Count == 0)
+                    {
+                        <tr>
+                            <th scope="row" class="border-t border-[#D8D1CD] px-2 py-3 align-top font-semibold text-[#8C8581]">–</th>
+                            @foreach (var day in Week)
+                            {
+                                <td class="@($"h-24 border-l border-t border-[#D8D1CD] {(day == _today ? "bg-[#F3E4E2]/40" : "")}")"></td>
+                            }
+                        </tr>
+                    }
                 </tbody>
             </table>
         </div>
 
         @* Phones: the same sessions, one day after another. *@
         <div class="space-y-4 md:hidden">
-            @foreach (var day in _sessions.GroupBy(x => x.ScheduledDate))
+            @foreach (var day in Week)
             {
+                var daySessions = _sessions.Where(x => x.ScheduledDate == day).ToList();
                 <section>
-                    <h2 class="@($"mb-2 font-['Montserrat'] text-xs font-extrabold uppercase tracking-wider {(day.Key == _today ? "text-[#B83A3A]" : "text-[#242424]")}")">@DayName(day.Key) @day.Key.ToString("dd/MM")</h2>
+                    <h2 class="@($"mb-2 font-['Montserrat'] text-xs font-extrabold uppercase tracking-wider {(day == _today ? "text-[#B83A3A]" : "text-[#242424]")}")">@DayName(day) @day.ToString("dd/MM")</h2>
                     <div class="space-y-2">
-                        @foreach (var x in day) { @SessionCard(x) }
+                        @foreach (var x in daySessions) { @SessionCard(x) }
+                        @if (daySessions.Count == 0)
+                        {
+                            <p class="rounded-lg border border-dashed border-[#D8D1CD] px-3 py-2 text-xs text-[#8C8581]">Không có buổi học</p>
+                        }
                     </div>
                 </section>
             }
@@ -119,7 +130,7 @@
 
             @if (_bookingResult is { } result)
             {
-                <p role="status" class="@Ui.Notice">@result</p>
+                <StatusMessage Notice="@result" />
                 <div class="flex justify-end gap-2">
                     <a href="/yoga/my-bookings" class="@Ui.PrimaryButton">Lịch yoga của tôi</a>
                     <button type="button" class="@Ui.Button" @onclick="CloseBooking">Đóng</button>
@@ -154,7 +165,7 @@
                 {
                     <p class="text-sm text-[#242424]">Lớp đã đủ chỗ. Bạn sẽ được vào danh sách chờ miễn phí và được báo khi có chỗ trống.</p>
                 }
-                <Alerts Error="@_bookingError" />
+                <StatusMessage Error="@_bookingError" />
                 <div class="flex justify-end gap-2">
                     <button type="button" class="@Ui.Button" @onclick="CloseBooking">Hủy</button>
                     <button type="button" class="@Ui.PrimaryButton disabled:opacity-50" disabled="@_bookingBusy" @onclick="ConfirmBooking">
@@ -245,10 +256,10 @@
     private RenderFragment SessionCard(YogaSessionResponse s)
     {
         var (status, label, canBook, mine) = State(s);
-        var tone = mine ? "border-[#B83A3A] bg-[#F3E4E2]" : s.FreeSeats > 0 ? "border-[#D8D1CD] bg-white" : "border-amber-200 bg-amber-50";
+        var tone = (s.YogaClassId == ClassId ? "ring-2 ring-[#B83A3A] ring-offset-1 " : "") + (mine ? "border-[#B83A3A] bg-[#F3E4E2]" : s.FreeSeats > 0 ? "border-[#D8D1CD] bg-white" : "border-amber-200 bg-amber-50");
         return @<article class="@($"mb-1.5 space-y-1.5 rounded-lg border p-2 last:mb-0 {tone}")" aria-label="@($"{s.ClassName}, {DayName(s.ScheduledDate)} {s.StartTime:HH:mm}, {label}")">
             <p class="font-semibold leading-tight text-[#242424]">@s.ClassName</p>
-            <p class="text-[11px] leading-snug text-[#6F6966]">@s.StartTime.ToString("HH:mm")–@s.EndTime.ToString("HH:mm") · @s.DifficultyLevel<br />@s.StudioName (tầng @s.FloorNumber) · @s.InstructorName</p>
+            <p class="text-[11px] leading-snug text-[#6F6966]">@s.StartTime.ToString("HH:mm")–@s.EndTime.ToString("HH:mm") · @VFMS.Client.Components.Memberships.YogaClassCard.LevelName(s.DifficultyLevel)<br />@s.StudioName (tầng @s.FloorNumber) · @s.InstructorName</p>
             <StatusBadge Status="@status" Label="@label" />
             @if (_isMember)
             {
@@ -288,6 +299,10 @@
 }
 
 @code {
+    // Set by links from a class card or "my bookings": open the timetable on that class's week and highlight it.
+    [SupplyParameterFromQuery(Name = "date")] public string? Date { get; set; }
+    [SupplyParameterFromQuery(Name = "classId")] public int? ClassId { get; set; }
+
     private DateOnly _from, _today;
     private string _difficulty = string.Empty, _instructor = string.Empty;
     private bool _loading = true;
@@ -298,7 +313,8 @@
     protected override async Task OnInitializedAsync()
     {
         _today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7));
-        _from = _today.AddDays(-(((int)_today.DayOfWeek + 6) % 7));
+        var start = DateOnly.TryParseExact(Date, "yyyy-MM-dd", out var d) ? d : _today;
+        _from = start.AddDays(-(((int)start.DayOfWeek + 6) % 7));
         _isMember = AuthState is not null && (await AuthState).User.IsInRole("Member");
         try { _instructors = await Api.GetAsync<List<YogaInstructorResponse>>("api/yoga/instructors"); }
         catch (ApiException) { /* filter stays empty; VfmsApiClient already logged which call failed */ }
