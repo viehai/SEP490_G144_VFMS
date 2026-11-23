@@ -112,7 +112,7 @@
                             <button type="button" class="relative block aspect-[4/3] w-full bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-vfms-primary" aria-label="Xem chi tiết @product.Name" @onclick="() => _detail = product">
                                 @if (product.ImageUrl is { } image && !_brokenImages.Contains(product.Id))
                                 {
-                                    <img src="@image" alt="@product.Name" class="h-full w-full object-contain p-3" loading="lazy" @onerror="() => _brokenImages.Add(product.Id)" />
+                                    <img src="@Api.ImageSrc(image)" alt="@product.Name" class="h-full w-full object-contain p-3" loading="lazy" @onerror="() => _brokenImages.Add(product.Id)" />
                                 }
                                 else
                                 {

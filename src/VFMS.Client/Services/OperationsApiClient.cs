@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Components.Forms;
 using VFMS.Client.Auth;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Equipment;
@@ -22,6 +23,27 @@ public sealed class OperationsApiClient(HttpClient http, AuthSession session) : 
     private const string ProposalsPath = "api/purchase-proposals";
     private const string ProductsPath = "api/supplement-products";
     private const string OrdersPath = "api/supplement-orders";
+    private const string ImagesPath = "api/images";
+
+    // ── Images (equipment and supplement photos) ─────────────────
+
+    /// <summary>Uploads a PNG, JPEG or WebP image (at most 5 MB); the returned Url is what the record stores.</summary>
+    public Task<UploadedImageResponse> UploadImageAsync(IBrowserFile file, CancellationToken ct = default)
+    {
+        var form = new MultipartFormDataContent();
+        var stream = new StreamContent(file.OpenReadStream(UploadedImages.MaximumBytes, ct));
+        stream.Headers.ContentType = new MediaTypeHeaderValue(string.IsNullOrEmpty(file.ContentType) ? "application/octet-stream" : file.ContentType);
+        form.Add(stream, "file", file.Name);
+        return SendAsync<UploadedImageResponse>(HttpMethod.Post, ImagesPath, ct, form);
+    }
+
+    /// <summary>The address to show an image: uploaded images are served by the API, outside links are used as they are.</summary>
+    public string? ImageSrc(string? url) =>
+        UploadedImages.IsUploadedPath(url) ? new Uri(http.BaseAddress!, url!.TrimStart('/')).ToString() : url;
+
+    /// <summary>The address that downloads the image file (uploaded images are sent as an attachment).</summary>
+    public string? ImageDownloadHref(string? url) =>
+        UploadedImages.IsUploadedPath(url) ? ImageSrc(url) + "?download=true" : url;
 
     // ── Equipment ────────────────────────────────────────────────
     public Task<PagedResponse<EquipmentResponse>> GetEquipmentAsync(EquipmentListRequest request, CancellationToken ct = default) =>

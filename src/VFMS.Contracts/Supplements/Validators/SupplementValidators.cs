@@ -9,7 +9,7 @@ internal static class SupplementRules
         ["Pending", "Processing", "ReadyForPickup", "OutForDelivery", "Completed", "Cancelled"];
     public static readonly string[] FulfillmentTypes = ["GymPickup", "HomeDelivery"];
     public static readonly string[] ProductSorts = ["name", "price_asc", "price_desc", "newest"];
-    private static readonly string[] ImageExtensions = [".png", ".jpg", ".jpeg"];
+    private static readonly string[] ImageExtensions = [".png", ".jpg", ".jpeg", ".webp"];
 
     public static bool IsOneOf(string? value, string[] allowed) =>
         value is not null && allowed.Contains(value.Trim(), StringComparer.OrdinalIgnoreCase);
@@ -20,7 +20,9 @@ internal static class SupplementRules
     public static bool HasText(string? value) => !string.IsNullOrWhiteSpace(value);
 
     /// <summary>An absolute http(s) link whose path ends in .png, .jpg or .jpeg.</summary>
+    /// <summary>An uploaded image ("/api/images/{key}") or an http(s) link to a png, jpg, jpeg or webp file.</summary>
     public static bool IsImageUrl(string? url) =>
+        VFMS.Contracts.Common.UploadedImages.IsUploadedPath(url?.Trim()) ||
         Uri.TryCreate(url?.Trim(), UriKind.Absolute, out var parsed) &&
         (parsed.Scheme == Uri.UriSchemeHttps || parsed.Scheme == Uri.UriSchemeHttp) &&
         ImageExtensions.Any(ext => parsed.AbsolutePath.EndsWith(ext, StringComparison.OrdinalIgnoreCase));
@@ -43,7 +45,7 @@ public sealed class SupplementProductRequestValidator : AbstractValidator<Supple
         // Separate rule: a When() inside the chain above would also switch off the "required" check.
         RuleFor(x => x.ImageUrl)
             .Must(SupplementRules.IsImageUrl).When(x => SupplementRules.HasText(x.ImageUrl))
-            .WithMessage("The image must be an http(s) link to a png, jpg or jpeg file.");
+            .WithMessage("The image must be an uploaded image or an http(s) link to a png, jpg, jpeg or webp file.");
         RuleFor(x => x.UnitPrice).InclusiveBetween(1m, 1_000_000_000m)
             .WithMessage("Unit price must be at least 1 VND.");
         RuleFor(x => x.Category).MaximumLength(100);

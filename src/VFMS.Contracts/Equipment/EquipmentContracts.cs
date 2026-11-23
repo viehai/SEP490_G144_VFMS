@@ -24,7 +24,8 @@ public sealed record EquipmentRequest(
     DateOnly? PurchaseDate = null,
     decimal? PurchasePrice = null,
     string? DescriptionUrl = null,
-    string? Note = null
+    string? Note = null,
+    string? ImageUrl = null
 );
 
 /// <summary>Status: Operational, UnderMaintenance, Damaged, Retired. A note is required to retire.</summary>
@@ -56,7 +57,8 @@ public sealed record EquipmentResponse(
     string? Note,
     DateTime CreatedAt,
     DateTime UpdatedAt,
-    int RecentIssueCount = 0
+    int RecentIssueCount = 0,
+    string? ImageUrl = null
 );
 
 /// <summary>

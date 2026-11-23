@@ -30,16 +30,8 @@
                     <label class="@Ui.Label sm:col-span-2" for="product-name">Tên sản phẩm <span class="text-vfms-primary" aria-hidden="true">*</span>
                         <InputText id="product-name" class="@Ui.Field" @bind-Value="_form.Name" maxlength="200" required />
                     </label>
-                    <div class="row-span-5 flex items-start justify-center">
-                        @if (!string.IsNullOrWhiteSpace(_form.ImageUrl) && _brokenPreview != _form.ImageUrl)
-                        {
-                            <img src="@_form.ImageUrl" alt="Ảnh xem trước" class="h-36 w-36 rounded-lg border border-vfms-border object-contain bg-white" @onerror="() => _brokenPreview = _form.ImageUrl" />
-                        }
-                        else
-                        {
-                            <div class="flex h-36 w-36 items-center justify-center rounded-lg border border-dashed border-vfms-border px-3 text-center text-xs text-vfms-text-muted">@(string.IsNullOrWhiteSpace(_form.ImageUrl) ? "Chưa có ảnh" : "Không tải được ảnh từ link này")</div>
-                        }
-                    </div>
+                    <ImageUpload Class="row-span-5 self-start" Id="product-image-file" Required="true" Alt="Ảnh sản phẩm"
+                                 Value="@_form.ImageUrl" ValueChanged="(string? url) => _form.ImageUrl = url ?? string.Empty" />
                     <label class="@Ui.Label" for="product-brand">Thương hiệu
                         <InputSelect id="product-brand" class="@Ui.Field" @bind-Value="_form.Brand">
                             <option value="">Chọn thương hiệu</option>
@@ -78,8 +70,8 @@
                             @foreach (var status in OperationsText.ProductStatuses) { <option value="@status">@OperationsText.Label(status)</option> }
                         </InputSelect>
                     </label>
-                    <label class="@Ui.Label sm:col-span-2" for="product-image">Link ảnh (png, jpg, jpeg) <span class="text-vfms-primary" aria-hidden="true">*</span>
-                        <InputText aria-required="true" id="product-image" class="@Ui.Field" @bind-Value="_form.ImageUrl" placeholder="https://.../anh.jpg" />
+                    <label class="@Ui.Label sm:col-span-2" for="product-image">Hoặc dán link ảnh (png, jpg, jpeg, webp)
+                        <InputText id="product-image" class="@Ui.Field" @bind-Value="_form.ImageLink" placeholder="https://.../anh.jpg (để trống nếu đã tải ảnh lên)" />
                     </label>
                     <label class="@Ui.Label sm:col-span-3" for="product-description">Mô tả <span class="text-vfms-primary" aria-hidden="true">*</span>
                         <InputTextArea aria-required="true" id="product-description" class="@Ui.Field" rows="3" @bind-Value="_form.Description" maxlength="2000" />
@@ -206,7 +198,7 @@
                                     <div class="flex items-center gap-3">
                                         @if (row.ImageUrl is { } image && !_brokenImages.Contains(row.Id))
                                         {
-                                            <img src="@image" alt="" class="h-10 w-10 flex-none rounded-md border border-vfms-border bg-white object-contain" loading="lazy" @onerror="() => _brokenImages.Add(row.Id)" />
+                                            <img src="@Api.ImageSrc(image)" alt="" class="h-10 w-10 flex-none rounded-md border border-vfms-border bg-white object-contain" loading="lazy" @onerror="() => _brokenImages.Add(row.Id)" />
                                         }
                                         else
                                         {
@@ -294,7 +286,6 @@
     private bool HasFilters => !string.IsNullOrWhiteSpace(_search) || _filterBrand != "" || _filterCategory != "" || _filterStatus != ""
         || !string.IsNullOrWhiteSpace(_minPriceText) || !string.IsNullOrWhiteSpace(_maxPriceText) || _sort != "name" || _lowStock;
     private int? _editingId;
-    private string? _brokenPreview;
     private readonly HashSet<int> _brokenImages = [];
     private string _search = "", _filterCategory = "", _filterStatus = "";
     private string? _notice, _error;
@@ -505,6 +496,12 @@
         public string Name { get; set; } = "";
         public string Description { get; set; } = "";
         public string ImageUrl { get; set; } = "";
+        /// <summary>The link box shows only outside links; an uploaded image is shown by the upload area instead.</summary>
+        public string ImageLink
+        {
+            get => VFMS.Contracts.Common.UploadedImages.IsUploadedPath(ImageUrl) ? "" : ImageUrl;
+            set => ImageUrl = value ?? "";
+        }
         public string? Category { get; set; }
         public string? Brand { get; set; }
         public string? Size { get; set; }

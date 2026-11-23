@@ -56,6 +56,10 @@ public sealed class EquipmentRequestValidator : AbstractValidator<EquipmentReque
             .MaximumLength(2048)
             .Must(EquipmentRules.IsHttpUrl).WithMessage("Description URL must be a valid HTTP or HTTPS URL.");
         RuleFor(x => x.Note).MaximumLength(1000);
+        RuleFor(x => x.ImageUrl)
+            .MaximumLength(500)
+            .Must(url => EquipmentRules.IsHttpUrl(url) || VFMS.Contracts.Common.UploadedImages.IsUploadedPath(url))
+            .WithMessage("The image must be an uploaded image or an HTTP or HTTPS link.");
     }
 }
 

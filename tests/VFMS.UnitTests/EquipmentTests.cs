@@ -99,6 +99,24 @@ public sealed class EquipmentTests
     }
 
     [Fact]
+    public async Task ChangingOnlyThePhotoShowsInTheAuditLog()
+    {
+        var repo = new Repo();
+        var cat = repo.SeedCategory("Treadmills", "TM");
+        var service = new EquipmentService(repo, Mapper());
+        var created = await service.CreateEquipmentAsync(new EquipmentRequest("Treadmill", cat.Id, Code: "TM-0001"), Manager, null);
+        const string photo = "/api/images/0f8fad5bd9cb469fa165708f3a5e1c22";
+
+        var updated = await service.UpdateEquipmentAsync(created.Data!.Id,
+            new EquipmentRequest("Treadmill", cat.Id, Code: "TM-0001", ImageUrl: photo), Manager, null);
+
+        Assert.Equal(photo, updated.Data!.ImageUrl);
+        var audit = Assert.Single(repo.Audits, a => a.ActionType == AuditActionType.Update);
+        Assert.DoesNotContain(photo, audit.OldValue);
+        Assert.Contains($"Image={photo}", audit.NewValue);
+    }
+
+    [Fact]
     public async Task BlankCodeIsGeneratedFromTheCategoryPrefix()
     {
         var repo = new Repo();

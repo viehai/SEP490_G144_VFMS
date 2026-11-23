@@ -30,6 +30,17 @@ public sealed class OperationsApiClientTests
         return new OperationsApiClient(http, new AuthSession(new Storage(stored), new AuthApiClient(http)));
     }
 
+    [Theory]
+    [InlineData("/api/images/0f8fad5bd9cb469fa165708f3a5e1c22", "https://api.example.test/api/images/0f8fad5bd9cb469fa165708f3a5e1c22", "https://api.example.test/api/images/0f8fad5bd9cb469fa165708f3a5e1c22?download=true")]
+    [InlineData("https://cdn.example.com/whey.png", "https://cdn.example.com/whey.png", "https://cdn.example.com/whey.png")]
+    [InlineData(null, null, null)]
+    public void UploadedImagesAreLoadedFromTheApi(string? stored, string? src, string? download)
+    {
+        var api = Client(new { });
+        Assert.Equal(src, api.ImageSrc(stored));
+        Assert.Equal(download, api.ImageDownloadHref(stored));
+    }
+
     [Fact]
     public async Task EquipmentListSendsBrandAndSort()
     {

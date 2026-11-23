@@ -17,6 +17,8 @@ public class Equipment : BaseEntity
     public string? EquipmentBrand { get; set; }
     public EquipmentStatus EquipmentStatus { get; set; } = EquipmentStatus.Operational;
     public string? EquipmentDescriptionUrl { get; set; }
+    /// <summary>Photo of the machine: an uploaded image ("/api/images/{key}") or an http(s) link.</summary>
+    public string? ImageUrl { get; set; }
     public DateOnly? PurchaseDate { get; set; }
     public decimal? PurchasePrice { get; set; }
     public string? Note { get; set; }

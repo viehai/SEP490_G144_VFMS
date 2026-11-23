@@ -107,6 +107,7 @@ public class VfmsDbContext : DbContext
     //  Supplement Store (Module 11)
     // ─────────────────────────────────────────────────────────────
     public DbSet<SupplementProduct> SupplementProducts { get; set; }
+    public DbSet<UploadedImage> UploadedImages { get; set; }
     public DbSet<SupplementOrder> SupplementOrders { get; set; }
     public DbSet<SupplementOrderItem> SupplementOrderItems { get; set; }
     public DbSet<SupplementOrderDelivery> SupplementOrderDeliveries { get; set; }
@@ -1013,6 +1014,7 @@ public class VfmsDbContext : DbContext
             entity.Property(e => e.PurchasePrice).HasColumnType("decimal(18,2)");
             entity.Property(e => e.EquipmentModel).HasMaxLength(100);
             entity.Property(e => e.EquipmentBrand).HasMaxLength(100);
+            entity.Property(e => e.ImageUrl).HasMaxLength(500);
 
             entity.HasOne(e => e.Gym)
                 .WithMany(g => g.Equipments)
@@ -1118,6 +1120,17 @@ public class VfmsDbContext : DbContext
         });
 
         // ── SupplementProduct ─────────────────────────────────────
+        // ── UploadedImage (equipment and supplement photos) ──────
+        modelBuilder.Entity<UploadedImage>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.ImageKey).IsUnique();
+            entity.Property(e => e.FileName).HasMaxLength(255).IsRequired();
+            entity.Property(e => e.ContentType).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Content).IsRequired();
+            entity.Property(e => e.UploadedByUserId).HasMaxLength(450).IsRequired();
+        });
+
         modelBuilder.Entity<SupplementProduct>(entity =>
         {
             entity.HasKey(e => e.Id);
