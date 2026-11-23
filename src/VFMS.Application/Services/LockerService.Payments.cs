@@ -26,14 +26,21 @@ public sealed partial class LockerService
         await commerce.LockUsersAsync([memberId], ct);
         var member = await Actor(memberId, UserRole.Member, ct);
         var now = Now.UtcDateTime;
-        if (member is null || member.GymId != user.GymId || !await Eligible(memberId, now, ct))
-            return Conflict<LockerCheckout>("Hội viên cần có gói Gym đang hiệu lực.");
+        if (member is null || member.GymId != user.GymId)
+            return Missing<LockerCheckout>();
+        if (!await Eligible(memberId, now, ct))
+            return MembershipRequired<LockerCheckout>();
+        if (await repo.HasAllocationAsync(now, null, memberId, null, ct))
+            return AlreadyHolding<LockerCheckout>();
+        var unpaid = await repo.GetUnpaidAmountAsync(memberId, ct);
+        if (unpaid > 0)
+            return UnpaidAmount<LockerCheckout>(unpaid);
         var locker = await repo.GetGymLockerAsync(lockerId, user.GymId, ct);
-        if (locker is null)
+        if (locker is null || locker.LockerStatus == LockerStatus.Inactive)
             return Missing<LockerCheckout>();
         if (locker.LockerStatus is LockerStatus.Maintenance or LockerStatus.Damaged or LockerStatus.Rented ||
-            await repo.HasAllocationAsync(now, lockerId, memberId, null, ct))
-            return Conflict<LockerCheckout>("Tủ đã được giữ hoặc hội viên đã có tủ.");
+            await repo.HasAllocationAsync(now, lockerId, null, null, ct))
+            return Conflict<LockerCheckout>("Tủ không còn trống.");
 
         var policy = await repo.GetActivePolicyAsync(policyId, ct);
         if (policy is null || !ValidPolicy(policy) ||
@@ -55,8 +62,7 @@ public sealed partial class LockerService
             RentalTypeSnapshot = policy.RentalType,
             RentalPrice = policy.RentalPrice,
             DepositAmount = policy.DepositAmount,
-            OverdueDailyFeeSnapshot = policy.OverdueDailyFee,
-            KeyReplacementFeeSnapshot = policy.KeyReplacementFee
+            OverdueDailyFeeSnapshot = policy.OverdueDailyFee
         };
         var charge = BuildCharge(rental, LockerPaymentPurpose.Rental, method, channel,
             rental.RentalPrice + rental.DepositAmount, now);
@@ -68,8 +74,56 @@ public sealed partial class LockerService
         await repo.SaveChangesAsync(ct);
         Audit(actor, rental, "LockerCheckoutHeld", now);
         await repo.SaveChangesAsync(ct);
-        return Result<LockerCheckout>.Success(Checkout(charge, now, qr), 201);
+        // GBR-109: an online rental shows the QR only after 'Proceed to Payment'.
+        return Result<LockerCheckout>.Success(Checkout(charge, now, NeedsProceed(charge) ? null : qr), 201);
     }, ct);
+
+    private static bool NeedsProceed(PaymentTransaction charge) =>
+        charge.LockerPurpose == LockerPaymentPurpose.Rental && charge.Order.Channel == OrderChannel.Online &&
+        charge.PaymentStartedAt is null;
+
+    private static DateTime ProceedDeadline(PaymentTransaction charge) =>
+        (charge.PaymentExpiresAt ?? HoldDeadline(charge)) - PaymentWindow + ProceedWindow;
+
+    public Task<Result<LockerCheckout>> Proceed(string actor, string number, CancellationToken ct) =>
+        Write(async () =>
+        {
+            var member = await Actor(actor, UserRole.Member, ct);
+            if (member is null)
+                return Forbidden<LockerCheckout>();
+            var order = await commerce.FindOrderAsync(number, actor, forUpdate: true, ct);
+            var charge = order is null ? null : await LoadCharge(order.Id, ct);
+            if (charge is null || charge.LockerRentalContract!.Locker.LockerZone.GymId != member.GymId)
+                return Missing<LockerCheckout>();
+            var now = Now.UtcDateTime;
+            if (charge.LockerPurpose != LockerPaymentPurpose.Rental || order!.Channel != OrderChannel.Online)
+                return Conflict<LockerCheckout>("Chỉ đơn thuê tủ online mới cần bắt đầu thanh toán.");
+            if (charge.PaymentStartedAt is null)
+            {
+                if (!Pending(charge, now))
+                    return Conflict<LockerCheckout>("Đơn không còn chờ thanh toán.");
+                if (ProceedDeadline(charge) <= now)
+                {
+                    await CancelUnstarted(charge, now, ct);
+                    await repo.SaveChangesAsync(ct);
+                    return Result<LockerCheckout>.Failure(
+                        "Đã quá 10 phút để bắt đầu thanh toán. Đơn đã bị hủy, vui lòng thuê lại.",
+                        "LOCKER_PAYMENT_WINDOW_CLOSED", 409);
+                }
+                charge.PaymentStartedAt = now;
+                await repo.SaveChangesAsync(ct);
+            }
+            var qr = Pending(charge, now) && PaymentDeadline(charge) > now ? Qr(charge) : null;
+            return Result<LockerCheckout>.Success(Checkout(charge, now, qr));
+        }, ct);
+
+    private async Task CancelUnstarted(PaymentTransaction charge, DateTime now, CancellationToken ct)
+    {
+        charge.Order.OrderStatus = OrderStatus.Cancelled;
+        charge.PaymentStatus = PaymentStatus.Cancelled;
+        await ReleaseInitialHold(charge, now, ct);
+        Audit(null, charge.LockerRentalContract!, $"LockerProceedWindowExpired:{charge.Order.OrderNumber}", now);
+    }
 
     public async Task<Result<LockerCheckout>> GetCheckout(string actor, UserRole role, string number, CancellationToken ct)
     {
@@ -81,7 +135,7 @@ public sealed partial class LockerService
             return Missing<LockerCheckout>();
         var now = Now.UtcDateTime;
         return Result<LockerCheckout>.Success(Checkout(charge, now,
-            Pending(charge, now) && PaymentDeadline(charge) > now ? Qr(charge) : null));
+            Pending(charge, now) && PaymentDeadline(charge) > now && !NeedsProceed(charge) ? Qr(charge) : null));
     }
 
     public Task<Result<LockerCheckout>> CancelCheckout(string actor, UserRole role, string number, CancellationToken ct) =>
@@ -182,7 +236,6 @@ public sealed partial class LockerService
         {
             var quote = CalculateSettlement(rental, false, now);
             return InUse(rental) && RentalExpiry(rental) == charge.RentalExpiryAtQuote &&
-                quote.KeyReplacementFee == charge.KeyReplacementFee &&
                 (rental.ReturnedAt is null || quote.OverdueFees == charge.OverdueFees) &&
                 !rental.Payments.Any(p => p.Id != charge.Id && IsPaidSettlement(p));
         }
@@ -211,14 +264,14 @@ public sealed partial class LockerService
         {
             case LockerPaymentPurpose.Rental:
                 rental.CancelledAt = null;
+                // GBR-106: the key is collected by closing time on the second calendar day after payment.
                 if (charge.Order.Channel == OrderChannel.Online)
-                {
-                    rental.CollectBy = Midnight(LocalDate(paidAt.UtcDateTime).AddDays(2));
-                    SetMonthlyTerm(rental, LocalDate(rental.CollectBy.Value), Months(Type(rental)));
-                }
+                    rental.CollectBy = AtClose(LocalDate(paidAt.UtcDateTime).AddDays(2), rental.Locker.LockerZone.Gym);
                 rental.ContractStatus = LockerContractStatus.PendingHandover;
                 rental.Locker.LockerStatus = LockerStatus.Reserved;
-                Notify(rental, "Đã thanh toán thuê tủ", $"Mang mã {rental.ContractNumber} đến lễ tân để nhận chìa.", now.UtcDateTime);
+                Notify(rental, "Đã thanh toán thuê tủ", rental.CollectBy is { } deadline
+                    ? FormattableString.Invariant($"Mang mã {rental.ContractNumber} đến lễ tân nhận chìa trước {Local(deadline):HH:mm dd/MM/yyyy}.")
+                    : $"Mang mã {rental.ContractNumber} đến lễ tân để nhận chìa.", now.UtcDateTime);
                 break;
             case LockerPaymentPurpose.Renewal:
                 var previousExpiry = RentalExpiry(rental);
@@ -229,8 +282,7 @@ public sealed partial class LockerService
                 rental.ExpiresAt = Midnight(rental.EndDate.AddDays(1));
                 rental.ContractStatus = LockerContractStatus.Active;
                 rental.FinalNoticeAt = null;
-                rental.FinalNoticeEmailSentAt = null;
-                rental.FinalNoticeRetryAt = null;
+                rental.ReminderSentAt = null;
                 Notify(rental, "Đã gia hạn thuê tủ", "Thời hạn thuê tủ đã được cập nhật.", now.UtcDateTime);
                 break;
             case LockerPaymentPurpose.Settlement:
@@ -296,7 +348,8 @@ public sealed partial class LockerService
         return new(charge.LockerRentalContractId!.Value, order.OrderNumber, status, charge.AmountDue, Utc(PaymentDeadline(charge)),
             qr, charge.Invoice?.InvoiceNumber, charge.RefundAmount ?? 0, charge.RefundReason,
             charge.RefundStatus == "Refunded" && charge.RefundResolvedAt is { } refunded ? Utc(refunded) : null,
-            Utc(HoldDeadline(charge)));
+            Utc(HoldDeadline(charge)),
+            NeedsProceed(charge) && order.OrderStatus == OrderStatus.Pending ? Utc(ProceedDeadline(charge)) : null);
     }
 
     private static Result<LockerCheckout> PaymentUnavailable() =>

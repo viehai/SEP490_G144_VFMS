@@ -33,13 +33,11 @@ public sealed class LockersController(ILockerService service) : ControllerBase
 
     [HttpGet("rules")]
     [Authorize(Roles = "Member")]
-    public IActionResult Rules() => Ok(new[]
-    {
-        "Mỗi hội viên được giữ hoặc thuê tối đa một tủ.",
-        "Thuê ngày tại quầy có cọc chìa và hết hạn vào giờ đóng cửa.",
-        "Thuê theo tháng không thu cọc chìa. Đơn online cần nhận chìa trong 24 giờ sau thanh toán.",
-        "Trả tủ và chìa tại lễ tân. Hợp đồng có thể phát sinh phí quá hạn hoặc phí mất, hỏng chìa."
-    });
+    public Task<IActionResult> Rules(CancellationToken ct) => AsUser(actor => service.Rules(actor, UserRole.Member, ct));
+
+    [HttpGet("my-outstanding")]
+    [Authorize(Roles = "Member")]
+    public Task<IActionResult> MyOutstanding(CancellationToken ct) => AsUser(actor => service.MyOutstanding(actor, ct));
 
     [HttpPost("rentals")]
     [Authorize(Roles = "Member")]
@@ -50,6 +48,11 @@ public sealed class LockersController(ILockerService service) : ControllerBase
     [Authorize(Roles = "Member")]
     public Task<IActionResult> Order(string number, CancellationToken ct) =>
         AsUser(actor => service.GetCheckout(actor, UserRole.Member, number, ct));
+
+    [HttpPost("orders/{number}/proceed")]
+    [Authorize(Roles = "Member")]
+    public Task<IActionResult> Proceed(string number, CancellationToken ct) =>
+        AsUser(actor => service.Proceed(actor, number, ct));
 
     [HttpPost("orders/{number}/cancel")]
     [Authorize(Roles = "Member")]
@@ -154,24 +157,48 @@ public sealed class LockersController(ILockerService service) : ControllerBase
     public Task<IActionResult> Terminate(int id, LockerTerminationRequest request, CancellationToken ct) =>
         AsUser(actor => service.Terminate(actor, id, request, ct));
 
-    [HttpGet("staff/refunds")]
-    [Authorize(Roles = "Staff,Manager")]
-    public Task<IActionResult> Refunds(CancellationToken ct) => AsUser(actor => service.Refunds(actor, DeskRole, ct));
-
-    [HttpPost("staff/orders/{number}/refund")]
-    [Authorize(Roles = "Staff,Manager")]
-    public Task<IActionResult> ConfirmRefund(string number, LockerRefundRequest request, CancellationToken ct) =>
-        AsUser(actor => service.ConfirmRefund(actor, DeskRole, number, request, ct));
-
-    [HttpPost("staff/rentals/{id:int}/final-notice")]
+    [HttpGet("staff/unpaid")]
     [Authorize(Roles = "Staff")]
-    public Task<IActionResult> FinalNotice(int id, CancellationToken ct) =>
-        AsUser(actor => service.SendNotice(actor, id, ct));
+    public Task<IActionResult> Unpaid([FromQuery] string? search, CancellationToken ct) =>
+        AsUser(actor => service.Unpaid(actor, search, ct));
+
+    [HttpPost("staff/rentals/{id:int}/outstanding/collect")]
+    [Authorize(Roles = "Staff")]
+    public Task<IActionResult> CollectOutstanding(int id, LockerCashRequest request, CancellationToken ct) =>
+        AsUser(actor => service.CollectOutstanding(actor, id, request.Amount, ct));
+
+    [HttpGet("staff/rules")]
+    [Authorize(Roles = "Staff,Manager")]
+    public Task<IActionResult> DeskRules(CancellationToken ct) => AsUser(actor => service.Rules(actor, DeskRole, ct));
 
     [HttpPost("staff/rentals/{id:int}/clearance")]
     [Authorize(Roles = "Staff")]
     public Task<IActionResult> RequestClearance(int id, LockerClearanceRequest request, CancellationToken ct) =>
         AsUser(actor => service.RequestClearance(actor, id, request, ct));
+
+    [HttpGet("manager/catalog")]
+    [Authorize(Roles = "Manager")]
+    public Task<IActionResult> Catalog(CancellationToken ct) => AsUser(actor => service.Catalog(actor, ct));
+
+    [HttpPost("manager/zones")]
+    [Authorize(Roles = "Manager")]
+    public Task<IActionResult> AddZone(LockerZoneRequest request, CancellationToken ct) =>
+        AsUser(actor => service.AddZone(actor, request, ct));
+
+    [HttpPost("manager/lockers")]
+    [Authorize(Roles = "Manager")]
+    public Task<IActionResult> AddLocker(LockerCreateRequest request, CancellationToken ct) =>
+        AsUser(actor => service.AddLocker(actor, request, ct));
+
+    [HttpPost("manager/lockers/{id:int}/deactivate")]
+    [Authorize(Roles = "Manager")]
+    public Task<IActionResult> DeactivateLocker(int id, CancellationToken ct) =>
+        AsUser(actor => service.DeactivateLocker(actor, id, ct));
+
+    [HttpPut("manager/rules")]
+    [Authorize(Roles = "Manager")]
+    public Task<IActionResult> SaveRules(LockerRulesRequest request, CancellationToken ct) =>
+        AsUser(actor => service.SaveRules(actor, request, ct));
 
     [HttpGet("manager/clearances")]
     [Authorize(Roles = "Manager")]

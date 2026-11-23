@@ -1,0 +1,44 @@
+@using VFMS.Client.Components.Operations
+@using VFMS.Contracts.Lockers
+@inject LockerApiClient Api
+@inject ToastService Toasts
+@* UC 5.4 Step 1 / 1.1: set a locker to Maintenance, or release it once the lock is inspected and safe (GBR-111). *@
+
+<div class="space-y-3">
+    <h3 class="text-sm font-extrabold">Bảo trì · Tủ @Slot.Number</h3>
+    <Alerts Error="@_error" />
+    @if (Slot.Status == "Maintenance")
+    {
+        <label class="flex items-center gap-2 text-sm"><input type="checkbox" @bind="_safe" disabled="@_busy" /> Khóa đã kiểm tra và an toàn</label>
+        <button type="button" class="@Ui.PrimaryButton" disabled="@(_busy || !_safe)" @onclick="() => SetAsync(false)">Đưa về "Còn trống"</button>
+    }
+    else
+    {
+        <p class="text-xs text-vfms-text-secondary">Tủ đang có hợp đồng còn hạn sẽ báo hội viên chọn tủ thay thế; hợp đồng được chuyển tại mục Hợp đồng. Tủ đang giữ chỗ hoặc quá hạn không đặt bảo trì được.</p>
+        <button type="button" class="@Ui.Button" disabled="@_busy" @onclick="() => SetAsync(true)">Đặt bảo trì</button>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public LockerSlot Slot { get; set; } = null!;
+    [Parameter] public EventCallback OnDone { get; set; }
+    private bool _safe, _busy;
+    private string? _error;
+
+    protected override void OnParametersSet() => _safe = false;
+
+    private async Task SetAsync(bool maintenance)
+    {
+        if (_busy) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            await Api.SetMaintenanceAsync(Slot.Id, new LockerMaintenanceRequest(maintenance, _safe));
+            Toasts.Show(maintenance ? "Đã cập nhật tủ bảo trì thành công." : "Đã cập nhật tủ thành công.");
+            await OnDone.InvokeAsync();
+        }
+        catch (ApiException ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+}

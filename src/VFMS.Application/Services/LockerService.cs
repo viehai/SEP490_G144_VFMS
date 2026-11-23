@@ -12,6 +12,13 @@ public sealed partial class LockerService(ILockerRepository repo, TimeProvider c
     private static readonly TimeSpan LocalOffset = TimeSpan.FromHours(7);
     private static readonly TimeSpan PaymentWindow = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan HoldWindow = TimeSpan.FromMinutes(20);
+    // GBR-109: the Member must click 'Proceed to Payment' within the first 10 minutes of an online rental.
+    private static readonly TimeSpan ProceedWindow = TimeSpan.FromMinutes(10);
+
+    /// <summary>RefundReason of the key deposit paid back at termination (UC 5.3); not a checkout refund.</summary>
+    public const string DepositReturnReason = "KeyDepositReturn";
+    private const string LegacyDepositReturnReason = "DailyDepositReturn";
+    public static bool IsDepositReturn(string? reason) => reason is DepositReturnReason or LegacyDepositReturnReason;
 
     private DateTimeOffset Now => clock.GetUtcNow();
     private static DateTime Utc(DateTime value) => DateTime.SpecifyKind(value, DateTimeKind.Utc);
@@ -25,6 +32,10 @@ public sealed partial class LockerService(ILockerRepository repo, TimeProvider c
         var time = TimeOnly.FromDateTime(Local(now));
         return gym.OpenTime is { } open && gym.CloseTime is { } close && open <= time && time < close;
     }
+
+    // GBR-112: closing time of the local date; 23:59 when the gym profile has no Close Time.
+    private static DateTime AtClose(DateOnly localDate, Gym gym) =>
+        localDate.ToDateTime(gym.CloseTime ?? new TimeOnly(23, 59), DateTimeKind.Utc).Subtract(LocalOffset);
 
     private static void SetMonthlyTerm(LockerRentalContract rental, DateOnly start, int months)
     {
@@ -45,6 +56,16 @@ public sealed partial class LockerService(ILockerRepository repo, TimeProvider c
     private static Result<T> Invalid<T>(string message) => Result<T>.Failure(message, "LOCKER_VALIDATION");
     private static Result<T> Conflict<T>(string message) => Result<T>.Failure(message, "LOCKER_CONFLICT", 409);
     private static Result<T> Missing<T>() => Result<T>.Failure("Không tìm thấy dữ liệu tủ.", "LOCKER_NOT_FOUND", 404);
+    // MSG-44, MSG-46, MSG-47 and MSG-39 (spec v3): each keeps its own error code.
+    private static Result<T> MembershipRequired<T>() => Result<T>.Failure(
+        "Hội viên cần có gói Gym đang hiệu lực để thuê, gia hạn hoặc nhận tủ.", "LOCKER_MEMBERSHIP_REQUIRED", 409);
+    private static Result<T> UnpaidAmount<T>(decimal amount) => Result<T>.Failure(FormattableString.Invariant(
+        $"Bạn còn khoản phí tủ chưa thanh toán {amount:N0} VND. Vui lòng thanh toán tại quầy lễ tân trước khi thuê tủ mới."),
+        "LOCKER_UNPAID_AMOUNT", 409);
+    private static Result<T> Held<T>(string number) => Result<T>.Failure(
+        $"Tủ {number} đang được giữ hoặc có hợp đồng. Hãy xử lý trước khi thay đổi tủ này.", "LOCKER_HELD", 409);
+    private static Result<T> AlreadyHolding<T>() => Result<T>.Failure(
+        "Mỗi hội viên chỉ được thuê tối đa 1 tủ tại một thời điểm.", "LOCKER_ALREADY_HELD", 409);
     private static Result<T> Forbidden<T>() => Result<T>.Failure("Tài khoản không có quyền thực hiện.", "LOCKER_FORBIDDEN", 403);
 
     private static int Months(RentalType type) => type switch
@@ -69,8 +90,15 @@ public sealed partial class LockerService(ILockerRepository repo, TimeProvider c
         return until < expiry ? 0 : LocalDate(until).DayNumber - LocalDate(expiry).DayNumber + 1;
     }
 
-    private static DateTime ClearanceAt(LockerRentalContract rental) =>
-        RentalExpiry(rental).AddDays(7);
+    // GBR-20: monthly after the 7-day grace period; Daily from opening time on the day after the rental day.
+    private static DateTime ClearanceAt(LockerRentalContract rental)
+    {
+        if (Type(rental) != RentalType.Daily)
+            return RentalExpiry(rental).AddDays(7);
+        var gym = rental.Locker.LockerZone.Gym;
+        return LocalDate(RentalExpiry(rental)).AddDays(1)
+            .ToDateTime(gym.OpenTime ?? TimeOnly.MinValue, DateTimeKind.Utc).Subtract(LocalOffset);
+    }
 
     private static decimal OverdueFees(LockerRentalContract rental, DateTime now) =>
         Type(rental) == RentalType.Daily ? 0 :
@@ -132,10 +160,10 @@ public sealed partial class LockerService(ILockerRepository repo, TimeProvider c
             DepositHeld: inUse ? rental.DepositAmount : 0,
             HandedOverAt: rental.HandedOverAt is { } handover ? Utc(handover) : null,
             ExpiresAt: hasTerm ? Utc(RentalExpiry(rental)) : null,
-            CollectBy: null,
+            CollectBy: pendingHandover && rental.CollectBy is { } collectBy ? Utc(collectBy) : null,
             OverdueDays: overdue,
             OverdueFees: overdue > 0 ? OverdueFees(rental, now) : 0,
-            ClearanceAfter: overdue > 0 && !daily && rental.ReturnedAt is null ? Utc(ClearanceAt(rental)) : null,
+            ClearanceAfter: overdue > 0 && rental.ReturnedAt is null ? Utc(ClearanceAt(rental)) : null,
             CanRenew: !daily && inUse && rental.ReturnedAt is null && overdue <= 7 &&
                 rental.Locker.LockerStatus is not (LockerStatus.Maintenance or LockerStatus.Damaged),
             PickupInstructions: pendingHandover ? "Mang mã hợp đồng hoặc hóa đơn đến lễ tân để nhận chìa khóa." : null,
@@ -144,21 +172,23 @@ public sealed partial class LockerService(ILockerRepository repo, TimeProvider c
             RenewalDue: status == "Active" && !daily && rental.ReturnedAt is null && RentalExpiry(rental) - now <= TimeSpan.FromDays(7),
             TermMonths: lastRenewal?.RenewalMonths ?? Months(rentalType),
             SettledAt: rental.SettledAt is { } settled ? Utc(settled) : null,
-            RefundedDeposit: initial is { RefundReason: "DailyDepositReturn", RefundStatus: "Refunded" }
+            RefundedDeposit: initial is { RefundStatus: "Refunded" } && IsDepositReturn(initial.RefundReason)
                 ? initial.RefundAmount ?? 0
                 : 0,
             SettlementInvoiceNumber: settlement?.Invoice?.InvoiceNumber,
             ReplacementLockerId: rental.ReplacementLockerId,
             StartDate: hasTerm ? rental.StartDate : null,
             LastRentalDate: hasTerm ? rental.EndDate : null,
-            AutomaticStartAt: pendingHandover && rental.CollectBy is { } automaticStart ? Utc(automaticStart) : null,
             DailyKeyOutstanding: status == "Overdue" && daily && rental.ReturnedAt is null && rental.KeyLossConfirmedAt is null,
-            ReturnedAt: rental.ReturnedAt is { } returned ? Utc(returned) : null);
+            ReturnedAt: rental.ReturnedAt is { } returned ? Utc(returned) : null,
+            ReminderSentAt: rental.ReminderSentAt is { } reminder ? Utc(reminder) : null,
+            OverdueNoticeSentAt: rental.FinalNoticeAt is { } notice ? Utc(notice) : null,
+            OutstandingPaidAt: rental.OutstandingPaidAt is { } paidAt ? Utc(paidAt) : null);
     }
 
     private static LockerPolicy Policy(LockerPricingPolicy p) =>
         new(p.Id, p.PolicyName, p.RentalType.ToString(), Months(p.RentalType), p.RentalPrice, p.DepositAmount,
-            p.OverdueDailyFee, p.KeyReplacementFee);
+            p.OverdueDailyFee);
 
     private void Audit(string? actor, LockerRentalContract rental, string value, DateTime now) =>
         repo.Add(new AuditLog

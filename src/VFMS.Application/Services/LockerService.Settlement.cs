@@ -23,24 +23,24 @@ public sealed partial class LockerService
         Audit(actor, rental, "LockerKeyLossConfirmed", now);
     }
 
-    private static LockerSettlementQuote CalculateSettlement(LockerRentalContract rental, bool damaged, DateTime now)
-    {
-        damaged |= rental.KeyLossConfirmedAt is not null;
-        if (Type(rental) == RentalType.Daily)
-        {
-            return new(
-                OverdueFees: 0,
-                KeyReplacementFee: 0,
-                DepositHeld: rental.DepositAmount,
-                RefundAmount: damaged ? 0 : rental.DepositAmount,
-                AdditionalAmountDue: 0,
-                ForfeitedDeposit: damaged ? rental.DepositAmount : 0,
-                ReturnedAt: rental.ReturnedAt is { } returned ? Utc(returned) : null);
-        }
+    // GBR-20: a monthly locker overdue by more than 7 days is cleared by Staff and Manager, never returned normally.
+    private static bool PastGrace(LockerRentalContract rental, DateTime now) =>
+        Type(rental) != RentalType.Daily && rental.ReturnedAt is null && OverdueDays(rental, now) > 7;
 
-        var overdue = OverdueFees(rental, now);
-        var key = damaged ? rental.KeyReplacementFeeSnapshot ?? rental.LockerPricingPolicy.KeyReplacementFee : 0;
-        return SettleAmounts(rental, overdue, key);
+    private static Result<T> MustClear<T>() => Conflict<T>(
+        "Hợp đồng quá hạn hơn 7 ngày, cần xử lý theo quy trình dọn tủ có Manager xác nhận.");
+
+    private static LockerSettlementQuote CalculateSettlement(LockerRentalContract rental, bool damaged, DateTime now) =>
+        SettleAmounts(rental, OverdueFees(rental, now), damaged || rental.KeyLossConfirmedAt is not null, now);
+
+    // GBR-19: the deposit is returned in full unless the key is lost or damaged, or a Daily key comes back after closing time.
+    // GBR-20: the overdue fee is collected in cash before the contract closes, so it never reduces the deposit.
+    private static LockerSettlementQuote SettleAmounts(LockerRentalContract rental, decimal overdue, bool damaged, DateTime now)
+    {
+        var lateDaily = Type(rental) == RentalType.Daily && (rental.ReturnedAt ?? now) > RentalExpiry(rental);
+        var forfeited = damaged || lateDaily;
+        return new(overdue, rental.DepositAmount, forfeited ? 0 : rental.DepositAmount, overdue,
+            forfeited ? rental.DepositAmount : 0, rental.ReturnedAt is { } returned ? Utc(returned) : null);
     }
 
     public Task<Result<LockerSettlementQuote>> ConfirmKeyLoss(string actor, int id, CancellationToken ct) =>
@@ -55,6 +55,8 @@ public sealed partial class LockerService
             if (!InUse(rental))
                 return Conflict<LockerSettlementQuote>("Chỉ xác nhận chìa bị mất hoặc hỏng cần thay cho hợp đồng đang thuê hoặc quá hạn.");
             var now = Now.UtcDateTime;
+            if (PastGrace(rental, now))
+                return MustClear<LockerSettlementQuote>();
             if (rental.KeyLossConfirmedAt is null)
             {
                 if (HasPendingOrPaidSettlement(rental, now))
@@ -64,13 +66,6 @@ public sealed partial class LockerService
             }
             return Result<LockerSettlementQuote>.Success(CalculateSettlement(rental, false, now));
         }, ct);
-
-    private static LockerSettlementQuote SettleAmounts(LockerRentalContract rental, decimal overdue, decimal key)
-    {
-        var deposit = Type(rental) == RentalType.Daily ? rental.DepositAmount : 0;
-        return new(overdue, key, deposit, Math.Max(0, deposit - overdue - key), Math.Max(0, overdue + key - deposit),
-            ReturnedAt: rental.ReturnedAt is { } returned ? Utc(returned) : null);
-    }
 
     public Task<Result<LockerSettlementQuote>> RecordReturn(string actor, int id, LockerReturnRequest request,
         CancellationToken ct) => Write(async () =>
@@ -87,6 +82,8 @@ public sealed partial class LockerService
             return Invalid<LockerSettlementQuote>("Cần xác nhận tủ đã trống.");
 
         var now = Now.UtcDateTime;
+        if (PastGrace(rental, now))
+            return MustClear<LockerSettlementQuote>();
         if (request.KeyLostOrDamaged && rental.KeyLossConfirmedAt is null)
         {
             if (HasPendingOrPaidSettlement(rental, now))
@@ -164,7 +161,6 @@ public sealed partial class LockerService
         var charge = BuildCharge(rental, LockerPaymentPurpose.Settlement, method, OrderChannel.Counter,
             quote.AdditionalAmountDue, now);
         charge.OverdueFees = quote.OverdueFees;
-        charge.KeyReplacementFee = quote.KeyReplacementFee;
         charge.RentalExpiryAtQuote = RentalExpiry(rental);
         var qr = Qr(charge);
         if (method == PaymentMethod.VietQR && qr is null)
@@ -193,7 +189,10 @@ public sealed partial class LockerService
                 return Conflict<LockerRentalView>("Hợp đồng đã đóng, chưa nhận chìa hoặc còn giao dịch đang chờ.");
             if (!request.LockerEmpty)
                 return Invalid<LockerRentalView>("Cần xác nhận tủ đã trống.");
+            if (PastGrace(rental, now))
+                return MustClear<LockerRentalView>();
 
+            var damaged = request.KeyLostOrDamaged || rental.KeyLossConfirmedAt is not null;
             var quote = CalculateSettlement(rental, request.KeyLostOrDamaged, now);
             var paidOrders = rental.Payments.Where(IsPaidSettlement).Take(2).ToArray();
             if (paidOrders.Length > 1)
@@ -202,9 +201,9 @@ public sealed partial class LockerService
             if (paid is not null)
             {
                 if (paid.Order.OrderNumber != request.SettlementOrderNumber ||
-                    paid.RentalExpiryAtQuote != RentalExpiry(rental) || paid.KeyReplacementFee != quote.KeyReplacementFee)
+                    paid.RentalExpiryAtQuote != RentalExpiry(rental))
                     return Conflict<LockerRentalView>("Khoản đã thu không khớp biên bản trả tủ.");
-                quote = SettleAmounts(rental, paid.OverdueFees ?? 0, paid.KeyReplacementFee ?? 0);
+                quote = SettleAmounts(rental, paid.OverdueFees ?? 0, damaged, now);
             }
             else if (quote.AdditionalAmountDue > 0)
             {
@@ -220,7 +219,7 @@ public sealed partial class LockerService
                 if (initial is null || initial.RefundStatus is not null)
                     return Conflict<LockerRentalView>("Không tìm thấy khoản cọc có thể hoàn.");
                 initial.RefundAmount = quote.RefundAmount;
-                initial.RefundReason = "DailyDepositReturn";
+                initial.RefundReason = DepositReturnReason;
                 repo.ResolveRefund(initial, actor, method, request.RefundReference?.Trim(), now);
             }
             if (request.KeyLostOrDamaged && rental.KeyLossConfirmedAt is null)
@@ -231,49 +230,15 @@ public sealed partial class LockerService
             rental.CancelledAt = now;
             rental.SettledAt = now;
             rental.SettledByUserId = actor;
-            rental.FineAmount = quote.OverdueFees + quote.KeyReplacementFee + quote.ForfeitedDeposit;
+            rental.FineAmount = quote.OverdueFees + quote.ForfeitedDeposit;
             rental.Locker.LockerStatus = rental.KeyLossConfirmedAt is not null || !request.LockSafe
                 ? LockerStatus.Maintenance : LockerStatus.Available;
             Audit(actor, rental, FormattableString.Invariant(
-                $"LockerTerminated:Overdue={quote.OverdueFees}:Replacement={quote.KeyReplacementFee}:Refund={quote.RefundAmount}:Forfeited={quote.ForfeitedDeposit}"), now);
-            Notify(rental, "Đã trả tủ", FormattableString.Invariant(
-                $"Hợp đồng {rental.ContractNumber} đã kết thúc. Số tiền hoàn cọc: {quote.RefundAmount:N0} VND."), now);
+                $"LockerTerminated:Overdue={quote.OverdueFees}:Refund={quote.RefundAmount}:Forfeited={quote.ForfeitedDeposit}"), now);
+            Notify(rental, "Đã trả tủ", quote.ForfeitedDeposit > 0
+                ? FormattableString.Invariant($"Hợp đồng {rental.ContractNumber} đã kết thúc. Cọc chìa {quote.ForfeitedDeposit:N0} VND bị mất.")
+                : FormattableString.Invariant($"Hợp đồng {rental.ContractNumber} đã kết thúc. Số tiền hoàn cọc: {quote.RefundAmount:N0} VND."), now);
             await repo.SaveChangesAsync(ct);
             return Result<LockerRentalView>.Success(View(rental, now));
         }, ct);
-
-    public async Task<Result<IReadOnlyList<LockerCheckout>>> Refunds(string actor, UserRole role, CancellationToken ct)
-    {
-        var user = await Actor(actor, role, ct);
-        if (user is null)
-            return Forbidden<IReadOnlyList<LockerCheckout>>();
-        var pending = await repo.GetPendingRefundsAsync(user.GymId, 100, ct);
-        var now = Now.UtcDateTime;
-        return Result<IReadOnlyList<LockerCheckout>>.Success(pending.Select(p => Checkout(p, now)).ToArray());
-    }
-
-    public Task<Result<LockerCheckout>> ConfirmRefund(string actor, UserRole role, string orderNumber,
-        LockerRefundRequest input, CancellationToken ct) => Write(async () =>
-    {
-        var user = await Actor(actor, role, ct);
-        if (user is null)
-            return Forbidden<LockerCheckout>();
-        var order = await commerce.FindOrderAsync(orderNumber, null, forUpdate: true, ct);
-        var charge = order is null ? null : await LoadCharge(order.Id, ct);
-        if (charge is null || charge.LockerRentalContract!.Locker.LockerZone.GymId != user.GymId)
-            return Missing<LockerCheckout>();
-        var now = Now.UtcDateTime;
-        if (charge.RefundStatus == "Refunded")
-            return Result<LockerCheckout>.Success(Checkout(charge, now));
-        if (charge.RefundAmount is not > 0)
-            return Conflict<LockerCheckout>("Đơn không có khoản cần hoàn.");
-        if (ParseRefund(input.Method) is not { } method ||
-            (method == PaymentMethod.BankTransfer && string.IsNullOrWhiteSpace(input.Reference)))
-            return Invalid<LockerCheckout>("Cần ghi nhận cách hoàn tiền và mã tham chiếu nếu chuyển khoản.");
-        await repo.LoadSourcePaymentAsync(charge, ct);
-        repo.ResolveRefund(charge, actor, method, input.Reference?.Trim(), now);
-        Audit(actor, charge.LockerRentalContract!, $"LockerRefundConfirmed:{charge.Order.OrderNumber}", now);
-        await repo.SaveChangesAsync(ct);
-        return Result<LockerCheckout>.Success(Checkout(charge, now));
-    }, ct);
 }

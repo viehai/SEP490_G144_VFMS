@@ -1,0 +1,24 @@
+@using VFMS.Client.Components.Operations
+@using VFMS.Contracts.Lockers
+@* A counter order waiting for money: cash is confirmed by Staff, VietQR is confirmed by the bank callback. *@
+<div class="space-y-3">
+    <p class="text-sm">Đơn <strong>@Order.OrderNumber</strong> · <strong>@OperationsText.Money(Order.AmountDue)</strong></p>
+    @if (Method == "Cash")
+    {
+        <button type="button" class="@Ui.PrimaryButton" disabled="@Busy" @onclick="OnCash">Đã thu @OperationsText.Money(Order.AmountDue) tiền mặt</button>
+    }
+    else
+    {
+        <LockerQr Checkout="Order" Now="Now" />
+    }
+    <button type="button" class="@Ui.DangerButton" disabled="@Busy" @onclick="OnCancel">Hủy đơn</button>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public LockerCheckout Order { get; set; } = null!;
+    [Parameter] public string Method { get; set; } = "Cash";
+    [Parameter] public DateTime Now { get; set; } = DateTime.UtcNow;
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public EventCallback OnCash { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+}

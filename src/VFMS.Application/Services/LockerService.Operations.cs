@@ -44,18 +44,38 @@ public sealed partial class LockerService
                 ReleaseReplacement(rental);
                 Audit(null, rental, "LockerReplacementExpired", now);
             }
-            var paidDaily = await repo.GetPaidDailyAwaitingHandoverAsync(100, ct);
-            foreach (var rental in paidDaily)
+            foreach (var charge in await repo.GetUnstartedChargesAsync(now, 100, ct))
+                await CancelUnstarted(charge, now, ct);
+
+            // GBR-106: a Daily key is collected on the paid day, an online monthly key by the pickup deadline.
+            foreach (var rental in await repo.GetAwaitingHandoverAsync(100, ct))
             {
-                var charge = rental.Payments.Single(p => p.LockerPurpose == LockerPaymentPurpose.Rental);
-                if (charge.PaidAt is not { } paidAt || rental.Locker.LockerZone.Gym.CloseTime is not { } close ||
-                    now < Midnight(LocalDate(paidAt)).Add(close.ToTimeSpan()))
+                var charge = rental.Payments.SingleOrDefault(p => p.LockerPurpose == LockerPaymentPurpose.Rental);
+                var deadline = Type(rental) == RentalType.Daily
+                    ? charge?.PaidAt is { } paidAt ? AtClose(LocalDate(paidAt), rental.Locker.LockerZone.Gym) : (DateTime?)null
+                    : rental.CollectBy;
+                if (charge is null || deadline is null || now < deadline)
                     continue;
                 rental.ContractStatus = LockerContractStatus.Cancelled;
                 rental.CancelledAt = now;
+                rental.CollectBy = null;
                 await ReleaseLocker(rental, now, ct);
-                repo.RequestRefund(charge, "DailyKeyNotHandedOver", now);
-                Audit(null, rental, "LockerDailyHandoverExpired:RefundRequested", now);
+                // GBR-102: the payment becomes an Unapplied Transaction that the front desk resolves.
+                repo.RequestRefund(charge, "KeyNotCollected", now);
+                Audit(null, rental, "LockerHandoverExpired:UnappliedTransaction", now);
+            }
+
+            // GBR-20: one in-app reminder 7 days before expiry and one overdue notice on overdue day 5.
+            foreach (var rental in await repo.GetDueRemindersAsync(now, 100, ct))
+            {
+                rental.ReminderSentAt = now;
+                Notify(rental, "Tủ sắp hết hạn", FormattableString.Invariant(
+                    $"Tủ {rental.Locker.LockerNumber} hết hạn vào {Local(RentalExpiry(rental).AddDays(-1)):dd/MM/yyyy}. Hãy gia hạn để tiếp tục sử dụng."), now);
+            }
+            foreach (var rental in await repo.GetDueOverdueNoticesAsync(now, 100, ct))
+            {
+                rental.FinalNoticeAt = now;
+                Notify(rental, "Thông báo quá hạn thuê tủ", NoticeText(rental, now), now);
             }
             await repo.SaveChangesAsync(ct);
             return Result<bool>.Success(true);
@@ -64,51 +84,8 @@ public sealed partial class LockerService
             throw new InvalidOperationException(result.ErrorCode);
     }
 
-    public Task<Result<LockerRentalView>> SendNotice(string actor, int id, CancellationToken ct) => Write(async () =>
-    {
-        var staff = await Actor(actor, UserRole.Staff, ct);
-        if (staff is null)
-            return Forbidden<LockerRentalView>();
-        var rental = await StaffRental(staff, id, ct);
-        if (rental is null)
-            return Missing<LockerRentalView>();
-        var now = Now.UtcDateTime;
-        if (rental.ReturnedAt is not null || Status(rental, now) != "Overdue" ||
-            Type(rental) == RentalType.Daily || OverdueDays(rental, now) > 7)
-            return Conflict<LockerRentalView>("Chỉ gửi thông báo cuối cho hợp đồng quá hạn từ 1 đến 7 ngày.");
-        if (rental.FinalNoticeAt is null)
-        {
-            rental.FinalNoticeAt = now;
-            Notify(rental, "Thông báo quá hạn thuê tủ", NoticeText(rental, now), now);
-            Audit(actor, rental, "LockerFinalNoticeQueued", now);
-            await repo.SaveChangesAsync(ct);
-        }
-        return Result<LockerRentalView>.Success(View(rental, now));
-    }, ct);
-
     private static string NoticeText(LockerRentalContract rental, DateTime now) => FormattableString.Invariant(
         $"Tủ {rental.Locker.LockerNumber} đã quá hạn {OverdueDays(rental, now)} ngày. Phí hiện tại {OverdueFees(rental, now):N0} VND. Hạn xử lý {Local(ClearanceAt(rental)):dd/MM/yyyy HH:mm}.");
-
-    public async Task SendPendingNoticeEmail(IEmailService email, CancellationToken ct)
-    {
-        var now = Now.UtcDateTime;
-        var claimed = await Write(async () =>
-        {
-            var rental = await repo.GetNextPendingNoticeAsync(now, ct);
-            if (rental is not null)
-            {
-                rental.FinalNoticeRetryAt = now.AddMinutes(2);
-                await repo.SaveChangesAsync(ct);
-            }
-            return Result<LockerRentalContract?>.Success(rental);
-        }, ct);
-        if (claimed.Data is not { } delivery)
-            return;
-        await email.SendAsync(delivery.Customer.Email, "Thông báo quá hạn thuê tủ",
-            NoticeText(delivery, delivery.FinalNoticeAt!.Value), ct);
-        var sent = Now.UtcDateTime;
-        await repo.MarkNoticeEmailSentAsync(delivery.Id, delivery.FinalNoticeAt, delivery.FinalNoticeRetryAt, sent, ct);
-    }
 
     public Task<Result<int>> RequestClearance(string actor, int id, LockerClearanceRequest request, CancellationToken ct) =>
         Write(async () =>
@@ -120,9 +97,10 @@ public sealed partial class LockerService
             if (rental is null)
                 return Missing<int>();
             var now = Now.UtcDateTime;
-            if (rental.ReturnedAt is not null || Status(rental, now) != "Overdue" ||
-                Type(rental) == RentalType.Daily || now < ClearanceAt(rental))
-                return Conflict<int>("Chỉ xử lý thuê tháng sau khi hết đủ 7 ngày quá hạn.");
+            if (rental.ReturnedAt is not null || Status(rental, now) != "Overdue" || now < ClearanceAt(rental))
+                return Conflict<int>(Type(rental) == RentalType.Daily
+                    ? "Chỉ xử lý thuê ngày từ giờ mở cửa của ngày hôm sau."
+                    : "Chỉ xử lý thuê tháng sau khi hết đủ 7 ngày quá hạn.");
             if (request.Inventory is null || request.Inventory.Length > 100 ||
                 request.NoBelongings != (request.Inventory.Length == 0) ||
                 request.Inventory.Any(i => i is null || string.IsNullOrWhiteSpace(i.Name) ||
@@ -173,14 +151,16 @@ public sealed partial class LockerService
             var now = Now.UtcDateTime;
             if (incident.VerifiedAt is not null)
                 return Result<LockerRentalView>.Success(View(rental, now));
-            if (rental.ReturnedAt is not null || Status(rental, now) != "Overdue" ||
-                Type(rental) == RentalType.Daily || now < ClearanceAt(rental) ||
+            if (rental.ReturnedAt is not null || Status(rental, now) != "Overdue" || now < ClearanceAt(rental) ||
                 rental.Payments.Any(p => Pending(p, now) || IsPaidSettlement(p)))
                 return Conflict<LockerRentalView>("Hợp đồng đã thay đổi hoặc còn giao dịch phải xử lý.");
 
-            rental.OutstandingAmount = OverdueFees(rental, now) +
-                (rental.KeyReplacementFeeSnapshot ?? rental.LockerPricingPolicy.KeyReplacementFee);
-            rental.FineAmount = rental.OutstandingAmount;
+            // GBR-20: the deposit is forfeited; a monthly overdue fee (capped at 7 days) becomes an unpaid amount (GBR-110).
+            // A Daily rental has no overdue fee, so nothing is owed.
+            var owed = Type(rental) == RentalType.Daily ? 0 :
+                Math.Min(OverdueDays(rental, now), 7) * (rental.OverdueDailyFeeSnapshot ?? rental.LockerPricingPolicy.OverdueDailyFee);
+            rental.OutstandingAmount = owed > 0 ? owed : null;
+            rental.FineAmount = owed + rental.DepositAmount;
             ReleaseReplacement(rental);
             rental.SettledAt = now;
             rental.SettledByUserId = actor;
@@ -203,14 +183,15 @@ public sealed partial class LockerService
         if (staff is null)
             return Forbidden<LockerSlot>();
         var locker = await repo.GetGymLockerAsync(lockerId, staff.GymId, ct);
-        if (locker is null)
+        if (locker is null || locker.LockerStatus == LockerStatus.Inactive)
             return Missing<LockerSlot>();
         var now = Now.UtcDateTime;
         var allocation = await repo.GetAllocationForLockerAsync(lockerId, now, ct);
         if (allocation is not null)
         {
+            // GBR-111: only an Active contract that is not overdue may move to a replacement locker.
             if (!request.Maintenance || allocation.LockerId != lockerId || !InUse(allocation) || OverdueDays(allocation, now) > 0)
-                return Conflict<LockerSlot>("Cần xử lý lượt giữ hoặc hợp đồng hiện tại trước khi đổi trạng thái bảo trì.");
+                return Held<LockerSlot>(locker.LockerNumber);
             if (locker.LockerStatus != LockerStatus.Maintenance)
                 Notify(allocation, "Tủ đang thuê cần bảo trì", "Vui lòng chọn một tủ còn trống để chuyển hợp đồng hiện tại.", now);
         }
@@ -230,4 +211,48 @@ public sealed partial class LockerService
         await repo.SaveChangesAsync(ct);
         return Result<LockerSlot>.Success(Slot(locker, SlotStatus(locker, null, now)));
     }, ct);
+
+    public async Task<Result<LockerOutstanding>> MyOutstanding(string actor, CancellationToken ct) =>
+        await Actor(actor, UserRole.Member, ct) is null
+            ? Forbidden<LockerOutstanding>()
+            : Result<LockerOutstanding>.Success(new(await repo.GetUnpaidAmountAsync(actor, ct)));
+
+    public async Task<Result<IReadOnlyList<LockerStaffRental>>> Unpaid(string actor, string? search, CancellationToken ct)
+    {
+        var staff = await Actor(actor, UserRole.Staff, ct);
+        if (staff is null)
+            return Forbidden<IReadOnlyList<LockerStaffRental>>();
+        search = search?.Trim();
+        if (search?.Length > 100)
+            return Invalid<IReadOnlyList<LockerStaffRental>>("Từ khóa tìm kiếm tối đa 100 ký tự.");
+        var now = Now.UtcDateTime;
+        var data = await repo.GetUnpaidRentalsAsync(staff.GymId, search, ct);
+        return Result<IReadOnlyList<LockerStaffRental>>.Success(data.Select(r =>
+            new LockerStaffRental(View(r, now), r.CustomerUserId, r.Customer.FullName, r.Customer.PhoneNumber)).ToArray());
+    }
+
+    // UC 5.3 Step 3: Staff collects the unpaid amount in cash and releases the belongings; this lifts the rental block (GBR-110).
+    public Task<Result<LockerRentalView>> CollectOutstanding(string actor, int id, decimal amount, CancellationToken ct) =>
+        Write(async () =>
+        {
+            var staff = await Actor(actor, UserRole.Staff, ct);
+            if (staff is null)
+                return Forbidden<LockerRentalView>();
+            var rental = await StaffRental(staff, id, ct);
+            if (rental is null)
+                return Missing<LockerRentalView>();
+            var now = Now.UtcDateTime;
+            if (rental.ContractStatus != LockerContractStatus.Abandoned || rental.OutstandingAmount is not > 0)
+                return Conflict<LockerRentalView>("Hợp đồng không có khoản phí cần thu.");
+            if (rental.OutstandingPaidAt is not null)
+                return Result<LockerRentalView>.Success(View(rental, now));
+            if (amount != rental.OutstandingAmount)
+                return Conflict<LockerRentalView>(FormattableString.Invariant(
+                    $"Số tiền thu phải đúng {rental.OutstandingAmount:N0} VND."));
+            rental.OutstandingPaidAt = now;
+            Audit(actor, rental, "LockerOutstandingCollected", now);
+            Notify(rental, "Đã thu phí tủ", "Khoản phí tủ quá hạn đã được thanh toán tại quầy.", now);
+            await repo.SaveChangesAsync(ct);
+            return Result<LockerRentalView>.Success(View(rental, now));
+        }, ct);
 }

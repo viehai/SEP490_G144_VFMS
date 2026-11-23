@@ -1,0 +1,206 @@
+@page "/manager/lockers"
+@layout ManagerAdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using VFMS.Client.Components.Operations
+@using VFMS.Client.Components.Lockers
+@using VFMS.Contracts.Lockers
+@attribute [Authorize(Roles = "Manager")]
+@inject LockerApiClient Api
+@inject ToastService Toasts
+@implements IDisposable
+
+<PageTitle>Danh mục tủ & bảng giá | Victor Fitness</PageTitle>
+
+<section class="workspace-page space-y-6 font-['Inter',sans-serif] text-[#242424]" aria-labelledby="locker-catalog-title" aria-busy="@_loading.ToString().ToLowerInvariant()">
+    <PageHeader Overline="VFMS / QUẢN LÝ TỦ" Title="Danh mục tủ & bảng giá" Description="Quản lý khu, tủ, bảng giá, cọc chìa, phí quá hạn và nội quy tủ.">
+        <div class="flex flex-wrap gap-2">
+            <a href="/manager/locker-clearances" class="@Ui.PrimaryButton">Xác nhận dọn tủ</a>
+            <a href="/manager/dashboard" class="@Ui.Button">← Tổng quan</a>
+        </div>
+    </PageHeader>
+    <Alerts Error="@_error" />
+
+    @if (_loading)
+    {
+        <p role="status" class="text-sm text-[#6F6966]">Đang tải…</p>
+    }
+    else if (_catalog is { } catalog)
+    {
+        <div class="@Ui.Card space-y-4">
+            <h2 class="text-sm font-extrabold">Bảng giá</h2>
+            <p class="text-xs text-[#6F6966]">Giá mới chỉ áp dụng cho đơn mới. Hợp đồng và đơn đang chờ giữ giá đã chốt. Mọi khoản là số tiền VND nguyên lớn hơn 0.</p>
+            <form class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" @onsubmit="SavePricingAsync" @onsubmit:preventDefault>
+                <label class="@Ui.Label">Thuê ngày (₫)<input type="number" min="1" step="1" class="@Ui.Field" @bind="_dailyFee" disabled="@_busy" /></label>
+                <label class="@Ui.Label">1 tháng (₫)<input type="number" min="1" step="1" class="@Ui.Field" @bind="_oneMonth" disabled="@_busy" /></label>
+                <label class="@Ui.Label">3 tháng (₫)<input type="number" min="1" step="1" class="@Ui.Field" @bind="_threeMonths" disabled="@_busy" /></label>
+                <label class="@Ui.Label">6 tháng (₫)<input type="number" min="1" step="1" class="@Ui.Field" @bind="_sixMonths" disabled="@_busy" /></label>
+                <label class="@Ui.Label">12 tháng (₫)<input type="number" min="1" step="1" class="@Ui.Field" @bind="_twelveMonths" disabled="@_busy" /></label>
+                <label class="@Ui.Label">Cọc chìa (₫)<input type="number" min="1" step="1" class="@Ui.Field" @bind="_keyDeposit" disabled="@_busy" /></label>
+                <label class="@Ui.Label">Phí quá hạn mỗi ngày (₫)<input type="number" min="1" step="1" class="@Ui.Field" @bind="_overdueFee" disabled="@_busy" /></label>
+                <div class="flex items-end"><button type="submit" class="@Ui.PrimaryButton" disabled="@_busy">@(_busy ? "Đang lưu…" : "Lưu bảng giá")</button></div>
+            </form>
+            <p class="text-xs text-[#6F6966]">Một mức cọc chìa áp dụng cho cả thuê ngày và thuê tháng; cọc được hoàn khi trả chìa đúng hạn.</p>
+        </div>
+
+        <div class="@Ui.Card space-y-4">
+            <h2 class="text-sm font-extrabold">Khu và tủ</h2>
+            <div class="grid gap-4 lg:grid-cols-2">
+                <form class="space-y-2" @onsubmit="AddZoneAsync" @onsubmit:preventDefault>
+                    <h3 class="text-xs font-bold uppercase tracking-wide text-[#6F6966]">Thêm khu</h3>
+                    <div class="flex flex-wrap gap-2">
+                        <input class="@Ui.Field !mt-0 w-40" aria-label="Tên khu" placeholder="Tên khu" maxlength="100" @bind="_zoneName" disabled="@_busy" />
+                        <input class="@Ui.Field !mt-0 w-24" type="number" aria-label="Tầng" min="-5" max="100" @bind="_zoneFloor" disabled="@_busy" />
+                        <button type="submit" class="@Ui.Button" disabled="@(_busy || string.IsNullOrWhiteSpace(_zoneName))">Thêm khu</button>
+                    </div>
+                </form>
+                <form class="space-y-2" @onsubmit="AddLockerAsync" @onsubmit:preventDefault>
+                    <h3 class="text-xs font-bold uppercase tracking-wide text-[#6F6966]">Thêm tủ</h3>
+                    <div class="flex flex-wrap gap-2">
+                        <select class="@Ui.Field !mt-0 w-44" aria-label="Khu" @bind="_lockerZone" disabled="@_busy">
+                            <option value="0">Chọn khu</option>
+                            @foreach (var zone in catalog.Zones) { <option value="@zone.Id">@zone.Name · Tầng @zone.Floor</option> }
+                        </select>
+                        <input class="@Ui.Field !mt-0 w-32" aria-label="Số tủ" placeholder="Số tủ" maxlength="20" @bind="_lockerNumber" disabled="@_busy" />
+                        <button type="submit" class="@Ui.Button" disabled="@(_busy || _lockerZone == 0 || string.IsNullOrWhiteSpace(_lockerNumber))">Thêm tủ</button>
+                    </div>
+                    @if (_numberError is not null) { <p role="alert" class="text-xs text-red-700">@_numberError</p> }
+                </form>
+            </div>
+
+            @if (catalog.Zones.Count == 0)
+            {
+                <p role="status" class="text-sm text-[#6F6966]">Chưa có khu nào. Thêm khu rồi thêm tủ.</p>
+            }
+            else
+            {
+                <LockerGrid Slots="_slots" SelectedId="_selected?.Id" OnSelect="s => _selected = s" />
+            }
+            @if (_selected is { } slot)
+            {
+                <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#D8D1CD] bg-[#ECE8E4] p-3 text-sm">
+                    <span>Tủ <strong>@slot.Number</strong> · @LockerText.Slot(slot.Status)</span>
+                    <button type="button" class="@Ui.DangerButton" disabled="@(_busy || slot.Status is not ("Available" or "Maintenance"))" @onclick="() => DeactivateAsync(slot)">Ngừng dùng tủ</button>
+                </div>
+                @if (slot.Status is not ("Available" or "Maintenance"))
+                {
+                    <p class="text-xs text-[#6F6966]">Chỉ ngừng dùng được tủ còn trống hoặc đang bảo trì và không có đơn giữ chỗ hay hợp đồng.</p>
+                }
+            }
+        </div>
+
+        <div class="@Ui.Card space-y-3">
+            <h2 class="text-sm font-extrabold">Nội quy tủ</h2>
+            <p class="text-xs text-[#6F6966]">Hội viên đọc nội quy này ở trang "Tủ của tôi".</p>
+            <textarea class="@Ui.Field min-h-32" rows="6" maxlength="4000" aria-label="Nội quy tủ" @bind="_rules" @bind:event="oninput" disabled="@_busy"></textarea>
+            <div class="flex items-center justify-between gap-3">
+                <span class="text-xs @(_rules.Length >= 4000 ? "text-red-700" : "text-[#6F6966]")">@_rules.Length / 4000 ký tự</span>
+                <button type="button" class="@Ui.PrimaryButton" disabled="@_busy" @onclick="SaveRulesAsync">Lưu nội quy</button>
+            </div>
+        </div>
+    }
+</section>
+
+@code {
+    private readonly CancellationTokenSource _lifetime = new();
+    private LockerCatalog? _catalog;
+    private LockerSlot[] _slots = [];
+    private LockerSlot? _selected;
+    private decimal _dailyFee, _oneMonth, _threeMonths, _sixMonths, _twelveMonths, _keyDeposit = 100_000, _overdueFee;
+    private string _zoneName = "", _lockerNumber = "", _rules = "";
+    private int _zoneFloor = 1, _lockerZone;
+    private string? _error, _numberError;
+    private bool _loading = true, _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync(fillForms: true);
+        _loading = false;
+    }
+
+    private async Task LoadAsync(bool fillForms)
+    {
+        try
+        {
+            _catalog = await Api.CatalogAsync(_lifetime.Token);
+            _slots = _catalog.Zones.SelectMany(z => z.Lockers).ToArray();
+            _selected = _selected is null ? null : _slots.FirstOrDefault(s => s.Id == _selected.Id);
+            if (fillForms)
+            {
+                _rules = _catalog.Rules;
+                Fill(_catalog.Prices);
+            }
+        }
+        catch (ApiException ex) { _error = ex.Message; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+    }
+
+    private void Fill(IReadOnlyList<LockerPolicy> prices)
+    {
+        decimal Fee(string type, int months) => prices.FirstOrDefault(p => p.Type == type && (type == "Daily" || p.Months == months))?.RentalFee ?? 0;
+        _dailyFee = Fee("Daily", 0);
+        _oneMonth = Fee("Monthly", 1);
+        _threeMonths = Fee("Quarterly", 3);
+        _sixMonths = Fee("HalfYearly", 6);
+        _twelveMonths = Fee("Yearly", 12);
+        if (prices.FirstOrDefault() is { } first)
+            _keyDeposit = first.Deposit;
+        _overdueFee = prices.FirstOrDefault(p => p.Type != "Daily")?.OverdueDailyFee ?? 0;
+    }
+
+    private async Task RunAsync(Func<Task> work)
+    {
+        if (_busy) return;
+        _busy = true;
+        _error = null;
+        _numberError = null;
+        try { await work(); }
+        catch (ApiException ex) when (ex.ErrorCode == "LOCKER_NUMBER_DUPLICATE") { _numberError = ex.Message; }
+        catch (ApiException ex) { _error = ex.Message; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        finally { _busy = false; }
+    }
+
+    private Task SavePricingAsync() => RunAsync(async () =>
+    {
+        var saved = await Api.SavePricingAsync(new LockerPricingRequest(_dailyFee, _keyDeposit, _oneMonth, _threeMonths, _sixMonths,
+            _twelveMonths, _overdueFee), _lifetime.Token);
+        Fill(saved);
+        Toasts.Show("Đã cập nhật bảng giá tủ thành công.");
+    });
+
+    private Task AddZoneAsync() => RunAsync(async () =>
+    {
+        await Api.AddZoneAsync(new LockerZoneRequest(_zoneName.Trim(), _zoneFloor), _lifetime.Token);
+        _zoneName = "";
+        await LoadAsync(fillForms: false);
+        Toasts.Show("Đã tạo khu tủ thành công.");
+    });
+
+    private Task AddLockerAsync() => RunAsync(async () =>
+    {
+        await Api.AddLockerAsync(new LockerCreateRequest(_lockerZone, _lockerNumber.Trim()), _lifetime.Token);
+        _lockerNumber = "";
+        await LoadAsync(fillForms: false);
+        Toasts.Show("Đã tạo tủ thành công.");
+    });
+
+    private Task DeactivateAsync(LockerSlot slot) => RunAsync(async () =>
+    {
+        await Api.DeactivateLockerAsync(slot.Id, _lifetime.Token);
+        _selected = null;
+        await LoadAsync(fillForms: false);
+        Toasts.Show($"Đã cập nhật tủ {slot.Number} thành công.");
+    });
+
+    private Task SaveRulesAsync() => RunAsync(async () =>
+    {
+        _rules = (await Api.SaveRulesAsync(new LockerRulesRequest(_rules), _lifetime.Token)).Text;
+        Toasts.Show("Đã cập nhật nội quy tủ thành công.");
+    });
+
+    public void Dispose()
+    {
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+    }
+}

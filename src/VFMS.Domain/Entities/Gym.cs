@@ -18,6 +18,8 @@ public class Gym : BaseEntity
     public TimeOnly? CloseTime { get; set; }
     public bool IsAcceptingMembers { get; set; } = true;
     public bool IsAcceptingTrainerApplications { get; set; } = true;
+    /// <summary>UC 5.7: locker rules shown to Members (at most 4,000 characters).</summary>
+    public string? LockerRules { get; set; }
     public int RenewalAdvanceDays { get; set; } = DefaultRenewalAdvanceDays;
     public int RenewalGraceDays { get; set; } = DefaultRenewalGraceDays;
 

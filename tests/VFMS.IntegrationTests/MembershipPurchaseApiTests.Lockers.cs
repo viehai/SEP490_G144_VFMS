@@ -27,7 +27,7 @@ public sealed partial class MembershipPurchaseApiTests
         using var member = Client("member", "Member");
         using var staff = Client("staff", "Staff");
         var request = new { lockerId, policyId };
-        var checkout = await CreateLockerCheckout(member, "/api/lockers/rentals", request);
+        var checkout = await CreateOnlineLockerCheckout(member, request);
         var number = checkout.GetProperty("orderNumber").GetString();
         var deadline = new DateTimeOffset(checkout.GetProperty("expiresAt").GetDateTime());
         var transferAt = deadline.AddMinutes(-1);
@@ -67,7 +67,8 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Equal(HttpStatusCode.OK, replay.StatusCode);
         var order = await member.GetFromJsonAsync<JsonElement>($"/api/lockers/orders/{number}");
         Assert.Equal(fulfilled ? "Paid" : "RefundPending", order.GetProperty("status").GetString());
-        var refunds = await staff.GetFromJsonAsync<JsonElement>("/api/lockers/staff/refunds");
+        // GBR-102: an unapplied payment is recorded for the front desk, in the same queue as PT and Membership.
+        var refunds = await staff.GetFromJsonAsync<JsonElement>("/api/checkout-refunds/pending");
         Assert.Equal(fulfilled ? 0 : 1, refunds.GetArrayLength());
         if (fulfilled)
         {
@@ -89,9 +90,7 @@ public sealed partial class MembershipPurchaseApiTests
         using var staff = Client("staff", "Staff");
         using var outsider = Client("other-staff", "Staff");
         var request = new { lockerId, policyId };
-        using var hold = await member.PostAsJsonAsync("/api/lockers/rentals", request);
-        Assert.True(hold.StatusCode == HttpStatusCode.Created, await hold.Content.ReadAsStringAsync());
-        var checkout = await hold.Content.ReadFromJsonAsync<JsonElement>();
+        var checkout = await CreateOnlineLockerCheckout(member, request);
         var rentalId = checkout.GetProperty("rentalId").GetInt32();
         var qr = checkout.GetProperty("vietQr").Deserialize<VietQrPaymentResponse>(new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
         var amount = checkout.GetProperty("amountDue").GetDecimal();
@@ -127,43 +126,46 @@ public sealed partial class MembershipPurchaseApiTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task LockerLateTransferRequestsARefundButUncollectedMonthlyRentalStartsAutomatically(bool latePayment)
+    public async Task LockerPaymentThatCannotBeAppliedAndAnUncollectedKeyBecomeUnappliedTransactions(bool latePayment)
     {
         var (lockerId, policyId) = await PrepareLocker();
         using var member = Client("member", "Member");
         using var staff = Client("staff", "Staff");
-        var checkout = await CreateLockerCheckout(member, "/api/lockers/rentals", new { lockerId, policyId });
+        var checkout = await CreateOnlineLockerCheckout(member, new { lockerId, policyId });
         var deadline = new DateTimeOffset(checkout.GetProperty("expiresAt").GetDateTime());
         var transfer = latePayment ? deadline.AddSeconds(1) : deadline.AddMinutes(-14);
         var orderNumber = checkout.GetProperty("orderNumber").GetString();
         var amount = checkout.GetProperty("amountDue").GetDecimal();
+        Assert.Equal(350_000, amount);
         var transferContent = checkout.GetProperty("vietQr").GetProperty("transferContent").GetString()!;
         _clock.Now = transfer.AddSeconds(1);
         using var paid = await NotifyTransferAsync(transferContent, amount, 911, transfer);
         Assert.Equal(HttpStatusCode.OK, paid.StatusCode);
         if (!latePayment)
         {
-            var start = new DateTimeOffset(Today.AddDays(2).ToDateTime(TimeOnly.MinValue), TimeSpan.FromHours(7));
-            _clock.Now = start.AddDays(1);
-            await using var scope = _app.Services.CreateAsyncScope();
-            await scope.ServiceProvider.GetRequiredService<ILockerService>().Expire(CancellationToken.None);
+            // GBR-106: the key is collected by closing time on the second calendar day after payment.
+            var paidDate = DateOnly.FromDateTime(transfer.ToOffset(TimeSpan.FromHours(7)).DateTime);
+            var pickupBy = new DateTimeOffset(paidDate.AddDays(2).ToDateTime(new TimeOnly(22, 0)), TimeSpan.FromHours(7));
             var rental = await member.GetFromJsonAsync<JsonElement>("/api/lockers/my-rental");
             Assert.Equal("PendingHandover", rental.GetProperty("status").GetString());
+            Assert.Equal(pickupBy.UtcDateTime, rental.GetProperty("collectBy").GetDateTime());
+            Assert.Equal(JsonValueKind.Null, rental.GetProperty("expiresAt").ValueKind);
+            _clock.Now = pickupBy.AddMinutes(-1);
+            await using (var early = _app.Services.CreateAsyncScope())
+                await early.ServiceProvider.GetRequiredService<ILockerService>().Expire(CancellationToken.None);
+            Assert.Equal("Reserved", Assert.Single((await member.GetFromJsonAsync<JsonElement>("/api/lockers")).EnumerateArray())
+                .GetProperty("status").GetString());
+            _clock.Now = pickupBy.AddMinutes(1);
             var id = rental.GetProperty("id").GetInt32();
-            var expiry = rental.GetProperty("expiresAt").GetDateTime();
-            Assert.Equal(start.UtcDateTime.AddMonths(1), expiry);
-            using var handedOver = await staff.PostAsJsonAsync($"/api/lockers/staff/rentals/{id}/handover", LockerHandover);
-            Assert.Equal(HttpStatusCode.OK, handedOver.StatusCode);
-            var after = await handedOver.Content.ReadFromJsonAsync<JsonElement>();
-            Assert.Equal(expiry, after.GetProperty("expiresAt").GetDateTime());
-            Assert.Empty((await member.GetFromJsonAsync<JsonElement>("/api/checkout-refunds/mine")).EnumerateArray());
-            return;
+            using var tooLate = await staff.PostAsJsonAsync($"/api/lockers/staff/rentals/{id}/handover", LockerHandover);
+            Assert.Equal(HttpStatusCode.Conflict, tooLate.StatusCode);
+            await using var scope = _app.Services.CreateAsyncScope();
+            await scope.ServiceProvider.GetRequiredService<ILockerService>().Expire(CancellationToken.None);
         }
         var grid = await member.GetFromJsonAsync<JsonElement>("/api/lockers");
         Assert.Equal("Available", Assert.Single(grid.EnumerateArray()).GetProperty("status").GetString());
-        var refunds = await staff.GetFromJsonAsync<JsonElement>("/api/lockers/staff/refunds");
-        var pending = Assert.Single(refunds.EnumerateArray());
-        Assert.Equal(amount, pending.GetProperty("refundAmount").GetDecimal());
+        var pending = Assert.Single((await staff.GetFromJsonAsync<JsonElement>("/api/checkout-refunds/pending")).EnumerateArray());
+        Assert.Equal(amount, pending.GetProperty("amount").GetDecimal());
         var automatic = Assert.Single((await member.GetFromJsonAsync<JsonElement>("/api/checkout-refunds/mine")).EnumerateArray());
         Assert.Equal(amount, automatic.GetProperty("amount").GetDecimal());
         Assert.Equal("Pending", automatic.GetProperty("status").GetString());
@@ -179,15 +181,60 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Equal("Refunded", result.GetProperty("status").GetString());
         using var replay = await NotifyTransferAsync(transferContent, amount, 911, transfer);
         Assert.Equal(HttpStatusCode.OK, replay.StatusCode);
-        var rest = await staff.GetFromJsonAsync<JsonElement>("/api/lockers/staff/refunds");
-        Assert.Empty(rest.EnumerateArray());
+        Assert.Empty((await staff.GetFromJsonAsync<JsonElement>("/api/checkout-refunds/pending")).EnumerateArray());
+    }
+
+    [Fact]
+    public async Task LockerProceedToPaymentMustBeClickedWithinTenMinutes()
+    {
+        var (lockerId, policyId) = await PrepareLocker();
+        using var member = Client("member", "Member");
+        var request = new { lockerId, policyId };
+        var first = await CreateLockerCheckout(member, "/api/lockers/rentals", request);
+        _clock.Now = _clock.Now.AddMinutes(10).AddSeconds(1);
+        using var closed = await member.PostAsync($"/api/lockers/orders/{first.GetProperty("orderNumber").GetString()}/proceed", null);
+        Assert.Equal(HttpStatusCode.Conflict, closed.StatusCode);
+        Assert.Contains("LOCKER_PAYMENT_WINDOW_CLOSED", await closed.Content.ReadAsStringAsync());
+        Assert.Equal("Available", Assert.Single((await member.GetFromJsonAsync<JsonElement>("/api/lockers")).EnumerateArray())
+            .GetProperty("status").GetString());
+
+        // The job cancels an order that was never started and releases the locker at minute 10.
+        var second = await CreateLockerCheckout(member, "/api/lockers/rentals", request);
+        Assert.Equal("Reserved", Assert.Single((await member.GetFromJsonAsync<JsonElement>("/api/lockers")).EnumerateArray())
+            .GetProperty("status").GetString());
+        _clock.Now = _clock.Now.AddMinutes(10).AddSeconds(1);
+        await using (var scope = _app.Services.CreateAsyncScope())
+            await scope.ServiceProvider.GetRequiredService<ILockerService>().Expire(CancellationToken.None);
+        var order = await member.GetFromJsonAsync<JsonElement>($"/api/lockers/orders/{second.GetProperty("orderNumber").GetString()}");
+        Assert.Equal("Cancelled", order.GetProperty("status").GetString());
+        Assert.Equal("Available", Assert.Single((await member.GetFromJsonAsync<JsonElement>("/api/lockers")).EnumerateArray())
+            .GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task LockerRentalRequiresAnActiveGymMembership()
+    {
+        var (lockerId, policyId) = await PrepareLocker();
+        await using (var scope = _app.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+            foreach (var membership in await db.MemberMemberships.ToListAsync())
+                membership.MembershipStatus = MembershipStatus.Expired;
+            await db.SaveChangesAsync();
+        }
+        using var member = Client("member", "Member");
+        using var response = await member.PostAsJsonAsync("/api/lockers/rentals", new { lockerId, policyId });
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Contains("LOCKER_MEMBERSHIP_REQUIRED", await response.Content.ReadAsStringAsync());
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task LockerDailyCashSettlesDepositUsingRecordedKeyOutcome(bool keyLost)
+    [InlineData("returned")]
+    [InlineData("keyLost")]
+    [InlineData("afterClosing")]
+    public async Task LockerDailyCashSettlesDepositUsingRecordedKeyOutcome(string outcome)
     {
+        var keyLost = outcome == "keyLost";
         var (lockerId, _) = await PrepareLocker();
         _clock.Now = new DateTimeOffset(Today.ToDateTime(new TimeOnly(10, 0)), TimeSpan.FromHours(7));
         using var manager = Client("manager", "Manager");
@@ -196,13 +243,12 @@ public sealed partial class MembershipPurchaseApiTests
         using var policy = await manager.PutAsJsonAsync("/api/lockers/manager/pricing", new
         {
             dailyFee = 20_000,
-            dailyDeposit = 100_000,
+            keyDeposit = 100_000,
             oneMonth = 200_000,
             threeMonths = 550_000,
             sixMonths = 1_000_000,
             twelveMonths = 1_900_000,
-            overdueDailyFee = 10_000,
-            keyReplacementFee = 100_000
+            overdueDailyFee = 10_000
         });
         Assert.True(policy.StatusCode == HttpStatusCode.OK, await policy.Content.ReadAsStringAsync());
         var tiers = await policy.Content.ReadFromJsonAsync<JsonElement>();
@@ -228,7 +274,7 @@ public sealed partial class MembershipPurchaseApiTests
             Assert.Equal(100_000, quote.GetProperty("forfeitedDeposit").GetDecimal());
             Assert.Equal(0, quote.GetProperty("additionalAmountDue").GetDecimal());
         }
-        else
+        else if (outcome == "afterClosing")
         {
             _clock.Now = new DateTimeOffset(rental.GetProperty("expiresAt").GetDateTime()).AddSeconds(1);
             var outstanding = await member.GetFromJsonAsync<JsonElement>("/api/lockers/my-rental");
@@ -240,7 +286,8 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.True(terminate.StatusCode == HttpStatusCode.OK, await terminate.Content.ReadAsStringAsync());
         var closed = await terminate.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("Terminated", closed.GetProperty("status").GetString());
-        Assert.Equal(keyLost ? 0 : 100_000, closed.GetProperty("refundedDeposit").GetDecimal());
+        // GBR-19: the deposit is lost when the key is lost or a Daily key comes back after closing time.
+        Assert.Equal(outcome == "returned" ? 100_000 : 0, closed.GetProperty("refundedDeposit").GetDecimal());
         using var retry = await staff.PostAsJsonAsync($"{rentalPath}/terminate", close);
         Assert.Equal(HttpStatusCode.OK, retry.StatusCode);
         await using var scope = _app.Services.CreateAsyncScope();
@@ -248,6 +295,17 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Equal(1, await db.PaymentTransactions.CountAsync(p => p.LockerRentalContractId == rentalId));
         Assert.Equal(keyLost ? LockerStatus.Maintenance : LockerStatus.Available, (await db.Lockers.SingleAsync()).LockerStatus);
         Assert.Equal(1, await db.AuditLogs.CountAsync(a => a.NewValue!.StartsWith("LockerTerminated:")));
+    }
+
+    // GBR-109: an online rental shows no QR until the Member clicks 'Proceed to Payment'.
+    private static async Task<JsonElement> CreateOnlineLockerCheckout(HttpClient member, object request)
+    {
+        var created = await CreateLockerCheckout(member, "/api/lockers/rentals", request);
+        Assert.Equal(JsonValueKind.Null, created.GetProperty("vietQr").ValueKind);
+        Assert.NotEqual(JsonValueKind.Null, created.GetProperty("proceedBy").ValueKind);
+        using var proceed = await member.PostAsync($"/api/lockers/orders/{created.GetProperty("orderNumber").GetString()}/proceed", null);
+        Assert.True(proceed.StatusCode == HttpStatusCode.OK, await proceed.Content.ReadAsStringAsync());
+        return await proceed.Content.ReadFromJsonAsync<JsonElement>();
     }
 
     private static async Task<JsonElement> CreateLockerCheckout(HttpClient client, string path, object request)
@@ -274,7 +332,7 @@ public sealed partial class MembershipPurchaseApiTests
         var id = initial.GetProperty("rentalId").GetInt32();
         var staffPath = $"/api/lockers/staff/rentals/{id}";
         var initialNumber = initial.GetProperty("orderNumber").GetString();
-        using var paid = await staff.PostAsJsonAsync($"/api/lockers/staff/orders/{initialNumber}/cash", new { amount = 250_000 });
+        using var paid = await staff.PostAsJsonAsync($"/api/lockers/staff/orders/{initialNumber}/cash", new { amount = 350_000 });
         Assert.Equal(HttpStatusCode.OK, paid.StatusCode);
         using var handedOver = await staff.PostAsJsonAsync($"{staffPath}/handover", LockerHandover);
         Assert.True(handedOver.StatusCode == HttpStatusCode.OK, await handedOver.Content.ReadAsStringAsync());
@@ -336,10 +394,26 @@ public sealed partial class MembershipPurchaseApiTests
         var abandoned = await verified.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("Abandoned", abandoned.GetProperty("status").GetString());
         Assert.Equal("Maintenance", abandoned.GetProperty("locker").GetProperty("status").GetString());
-        Assert.Equal(180_000, abandoned.GetProperty("outstandingAmount").GetDecimal());
+        // GBR-20: the overdue fee is capped at 7 days and the key replacement fee is no longer charged.
+        Assert.Equal(70_000, abandoned.GetProperty("outstandingAmount").GetDecimal());
         using var safe = await staff.PutAsJsonAsync($"/api/lockers/staff/grid/{replacementId}/maintenance",
             new { maintenance = false, safeInspection = true });
         Assert.Equal(HttpStatusCode.OK, safe.StatusCode);
+
+        // GBR-110: the unpaid amount blocks a new rental until Staff collects it.
+        Assert.Equal(70_000, (await member.GetFromJsonAsync<JsonElement>("/api/lockers/my-outstanding")).GetProperty("amount").GetDecimal());
+        using var blocked = await member.PostAsJsonAsync("/api/lockers/rentals", new { lockerId = replacementId, policyId });
+        Assert.Equal(HttpStatusCode.Conflict, blocked.StatusCode);
+        Assert.Contains("LOCKER_UNPAID_AMOUNT", await blocked.Content.ReadAsStringAsync());
+        var unpaid = Assert.Single((await staff.GetFromJsonAsync<JsonElement>("/api/lockers/staff/unpaid")).EnumerateArray());
+        Assert.Equal(id, unpaid.GetProperty("rental").GetProperty("id").GetInt32());
+        using var wrongAmount = await staff.PostAsJsonAsync($"{staffPath}/outstanding/collect", new { amount = 1 });
+        Assert.Equal(HttpStatusCode.Conflict, wrongAmount.StatusCode);
+        using var collected = await staff.PostAsJsonAsync($"{staffPath}/outstanding/collect", new { amount = 70_000 });
+        Assert.True(collected.StatusCode == HttpStatusCode.OK, await collected.Content.ReadAsStringAsync());
+        Assert.Equal(0, (await member.GetFromJsonAsync<JsonElement>("/api/lockers/my-outstanding")).GetProperty("amount").GetDecimal());
+        using var again = await member.PostAsJsonAsync("/api/lockers/rentals", new { lockerId = replacementId, policyId });
+        Assert.Equal(HttpStatusCode.Created, again.StatusCode);
     }
 
     [Theory]
@@ -354,7 +428,7 @@ public sealed partial class MembershipPurchaseApiTests
             new { memberId = "member", lockerId, policyId, paymentMethod = "Cash" });
         var id = initial.GetProperty("rentalId").GetInt32();
         using var handover = await staff.PostAsJsonAsync($"/api/lockers/staff/rentals/{id}/handover",
-            new { termsAccepted = true, identityVerified = true, cashAmount = 250_000 });
+            new { termsAccepted = true, identityVerified = true, cashAmount = 350_000 });
         Assert.True(handover.IsSuccessStatusCode, await handover.Content.ReadAsStringAsync());
         var original = await handover.Content.ReadFromJsonAsync<JsonElement>();
         var originalExpiry = original.GetProperty("expiresAt").GetDateTimeOffset();
@@ -397,7 +471,7 @@ public sealed partial class MembershipPurchaseApiTests
         var id = initial.GetProperty("rentalId").GetInt32();
         var path = $"/api/lockers/staff/rentals/{id}";
         var initialNumber = initial.GetProperty("orderNumber").GetString();
-        using var cash = await staff.PostAsJsonAsync($"/api/lockers/staff/orders/{initialNumber}/cash", new { amount = 250_000 });
+        using var cash = await staff.PostAsJsonAsync($"/api/lockers/staff/orders/{initialNumber}/cash", new { amount = 350_000 });
         Assert.Equal(HttpStatusCode.OK, cash.StatusCode);
         using var handover = await staff.PostAsJsonAsync($"{path}/handover", LockerHandover);
         Assert.Equal(HttpStatusCode.OK, handover.StatusCode);
@@ -444,8 +518,178 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Equal(winning.GetProperty("orderNumber").GetString(), settled.GetProperty("orderNumber").GetString());
         Assert.Equal("Paid", settled.GetProperty("status").GetString());
         using var terminated = await staff.PostAsJsonAsync($"{path}/terminate",
-            new { lockerEmpty = true, lockSafe = true, settlementOrderNumber = winning.GetProperty("orderNumber").GetString() });
+            new
+            {
+                lockerEmpty = true, lockSafe = true, settlementOrderNumber = winning.GetProperty("orderNumber").GetString(),
+                refundMethod = "Cash"
+            });
         Assert.True(terminated.IsSuccessStatusCode, await terminated.Content.ReadAsStringAsync());
+        // GBR-19/20: the key was returned in the grace period, so the full deposit comes back after the overdue fee is paid.
+        Assert.Equal(100_000, (await terminated.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("refundedDeposit").GetDecimal());
+    }
+
+    [Fact]
+    public async Task LockerReminderAndOverdueNoticeAreSentOnceByTheJob()
+    {
+        var (lockerId, policyId) = await PrepareLocker();
+        using var staff = Client("staff", "Staff");
+        using var member = Client("member", "Member");
+        var initial = await CreateLockerCheckout(staff, "/api/lockers/staff/rentals",
+            new { memberId = "member", lockerId, policyId, paymentMethod = "Cash" });
+        using var handover = await staff.PostAsJsonAsync($"/api/lockers/staff/rentals/{initial.GetProperty("rentalId").GetInt32()}/handover",
+            new { termsAccepted = true, identityVerified = true, cashAmount = 350_000 });
+        Assert.True(handover.IsSuccessStatusCode, await handover.Content.ReadAsStringAsync());
+        var expiry = new DateTimeOffset((await handover.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("expiresAt").GetDateTime());
+
+        async Task RunJob()
+        {
+            await using var scope = _app.Services.CreateAsyncScope();
+            await scope.ServiceProvider.GetRequiredService<ILockerService>().Expire(CancellationToken.None);
+        }
+        async Task<int> Notices(string title)
+        {
+            await using var scope = _app.Services.CreateAsyncScope();
+            return await scope.ServiceProvider.GetRequiredService<VfmsDbContext>().Notifications.CountAsync(n => n.Title == title);
+        }
+
+        _clock.Now = expiry.AddDays(-7).AddMinutes(-1);
+        await RunJob();
+        Assert.Equal(0, await Notices("Tủ sắp hết hạn"));
+        _clock.Now = expiry.AddDays(-7).AddMinutes(1);
+        await RunJob();
+        await RunJob();
+        Assert.Equal(1, await Notices("Tủ sắp hết hạn"));
+
+        _clock.Now = expiry.AddDays(4).AddMinutes(-1);
+        await RunJob();
+        Assert.Equal(0, await Notices("Thông báo quá hạn thuê tủ"));
+        _clock.Now = expiry.AddDays(4).AddMinutes(1);
+        await RunJob();
+        await RunJob();
+        Assert.Equal(1, await Notices("Thông báo quá hạn thuê tủ"));
+        var rental = await member.GetFromJsonAsync<JsonElement>("/api/lockers/my-rental");
+        Assert.NotEqual(JsonValueKind.Null, rental.GetProperty("reminderSentAt").ValueKind);
+        Assert.NotEqual(JsonValueKind.Null, rental.GetProperty("overdueNoticeSentAt").ValueKind);
+    }
+
+    [Fact]
+    public async Task LockerMonthlyOverdueBeyondGraceCannotBeReturnedNormally()
+    {
+        var (lockerId, policyId) = await PrepareLocker();
+        using var staff = Client("staff", "Staff");
+        var initial = await CreateLockerCheckout(staff, "/api/lockers/staff/rentals",
+            new { memberId = "member", lockerId, policyId, paymentMethod = "Cash" });
+        var path = $"/api/lockers/staff/rentals/{initial.GetProperty("rentalId").GetInt32()}";
+        using var handover = await staff.PostAsJsonAsync($"{path}/handover",
+            new { termsAccepted = true, identityVerified = true, cashAmount = 350_000 });
+        var expiry = new DateTimeOffset((await handover.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("expiresAt").GetDateTime());
+        _clock.Now = expiry.AddDays(7).AddMinutes(1);
+        using var returned = await staff.PostAsJsonAsync($"{path}/return", new { lockerEmpty = true });
+        Assert.Equal(HttpStatusCode.Conflict, returned.StatusCode);
+        using var terminated = await staff.PostAsJsonAsync($"{path}/terminate", new { lockerEmpty = true, lockSafe = true });
+        Assert.Equal(HttpStatusCode.Conflict, terminated.StatusCode);
+    }
+
+    [Fact]
+    public async Task LockerDailyIsClearedFromOpeningTimeTheNextDayWithNoUnpaidAmount()
+    {
+        var (lockerId, _) = await PrepareLocker();
+        _clock.Now = new DateTimeOffset(Today.ToDateTime(new TimeOnly(10, 0)), TimeSpan.FromHours(7));
+        using var manager = Client("manager", "Manager");
+        using var staff = Client("staff", "Staff");
+        using var member = Client("member", "Member");
+        using var prices = await manager.PutAsJsonAsync("/api/lockers/manager/pricing", new
+        {
+            dailyFee = 20_000, keyDeposit = 100_000, oneMonth = 200_000, threeMonths = 550_000, sixMonths = 1_000_000,
+            twelveMonths = 1_900_000, overdueDailyFee = 10_000
+        });
+        var tiers = await prices.Content.ReadFromJsonAsync<JsonElement>();
+        var policyId = Assert.Single(tiers.EnumerateArray(), t => t.GetProperty("type").GetString() == "Daily").GetProperty("id").GetInt32();
+        var checkout = await CreateLockerCheckout(staff, "/api/lockers/staff/rentals",
+            new { memberId = "member", lockerId, policyId, paymentMethod = "Cash" });
+        var id = checkout.GetProperty("rentalId").GetInt32();
+        var path = $"/api/lockers/staff/rentals/{id}";
+        using var handover = await staff.PostAsJsonAsync($"{path}/handover",
+            new { termsAccepted = true, identityVerified = true, cashAmount = 120_000 });
+        Assert.True(handover.IsSuccessStatusCode, await handover.Content.ReadAsStringAsync());
+        var closing = new DateTimeOffset((await handover.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("expiresAt").GetDateTime());
+        var nextOpening = new DateTimeOffset(Today.AddDays(1).ToDateTime(new TimeOnly(6, 0)), TimeSpan.FromHours(7));
+        var inventory = new { inventory = new[] { new { name = "Áo", quantity = 1 } } };
+
+        _clock.Now = closing.AddMinutes(1);
+        using var early = await staff.PostAsJsonAsync($"{path}/clearance", inventory);
+        Assert.Equal(HttpStatusCode.Conflict, early.StatusCode);
+        _clock.Now = nextOpening;
+        using var requested = await staff.PostAsJsonAsync($"{path}/clearance", inventory);
+        Assert.True(requested.StatusCode == HttpStatusCode.Created, await requested.Content.ReadAsStringAsync());
+        using var verified = await manager.PostAsync($"/api/lockers/manager/clearances/{await requested.Content.ReadFromJsonAsync<int>()}/verify", null);
+        Assert.True(verified.IsSuccessStatusCode, await verified.Content.ReadAsStringAsync());
+        var abandoned = await verified.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Abandoned", abandoned.GetProperty("status").GetString());
+        Assert.Equal("Maintenance", abandoned.GetProperty("locker").GetProperty("status").GetString());
+        Assert.Equal(JsonValueKind.Null, abandoned.GetProperty("outstandingAmount").ValueKind);
+        Assert.Equal(0, (await member.GetFromJsonAsync<JsonElement>("/api/lockers/my-outstanding")).GetProperty("amount").GetDecimal());
+    }
+
+    [Fact]
+    public async Task LockerCatalogZonesLockersRulesAndPricesAreManagedByTheManager()
+    {
+        var (lockerId, policyId) = await PrepareLocker();
+        using var manager = Client("manager", "Manager");
+        using var staff = Client("staff", "Staff");
+        using var member = Client("member", "Member");
+        using var forbidden = await staff.PostAsJsonAsync("/api/lockers/manager/zones", new { name = "B", floor = 2 });
+        Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+
+        using var zoneResponse = await manager.PostAsJsonAsync("/api/lockers/manager/zones", new { name = "B", floor = 2 });
+        Assert.Equal(HttpStatusCode.Created, zoneResponse.StatusCode);
+        var zoneId = (await zoneResponse.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetInt32();
+        using var added = await manager.PostAsJsonAsync("/api/lockers/manager/lockers", new { zoneId, number = "B01" });
+        Assert.Equal(HttpStatusCode.Created, added.StatusCode);
+        var newId = (await added.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetInt32();
+        // MSG-48: the number is unique within the gym, in any zone.
+        using var duplicate = await manager.PostAsJsonAsync("/api/lockers/manager/lockers", new { zoneId, number = "A01" });
+        Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
+        Assert.Contains("LOCKER_NUMBER_DUPLICATE", await duplicate.Content.ReadAsStringAsync());
+
+        // MSG-07: every amount is a whole VND amount greater than 0.
+        var prices = new
+        {
+            dailyFee = 20_000, keyDeposit = 100_000, oneMonth = 200_000, threeMonths = 550_000, sixMonths = 1_000_000,
+            twelveMonths = 1_900_000, overdueDailyFee = 10_000
+        };
+        using var invalid = await manager.PutAsJsonAsync("/api/lockers/manager/pricing", new
+        {
+            prices.dailyFee, keyDeposit = 0, prices.oneMonth, prices.threeMonths, prices.sixMonths, prices.twelveMonths, prices.overdueDailyFee
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        using var saved = await manager.PutAsJsonAsync("/api/lockers/manager/pricing", prices);
+        Assert.True(saved.IsSuccessStatusCode, await saved.Content.ReadAsStringAsync());
+        var tiers = await saved.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.All(tiers.EnumerateArray(), tier => Assert.Equal(100_000, tier.GetProperty("deposit").GetDecimal()));
+        policyId = Assert.Single(tiers.EnumerateArray(), t => t.GetProperty("type").GetString() == "Monthly").GetProperty("id").GetInt32();
+
+        // UC 5.7 Step 3.2, MSG-06: rules are at most 4,000 characters and are shown to Members.
+        using var tooLong = await manager.PutAsJsonAsync("/api/lockers/manager/rules", new { text = new string('x', 4001) });
+        Assert.Equal(HttpStatusCode.BadRequest, tooLong.StatusCode);
+        using var rules = await manager.PutAsJsonAsync("/api/lockers/manager/rules", new { text = "Không để vật có giá trị." });
+        Assert.True(rules.IsSuccessStatusCode, await rules.Content.ReadAsStringAsync());
+        Assert.Equal("Không để vật có giá trị.", (await member.GetFromJsonAsync<JsonElement>("/api/lockers/rules")).GetProperty("text").GetString());
+
+        var catalog = await manager.GetFromJsonAsync<JsonElement>("/api/lockers/manager/catalog");
+        Assert.Equal(2, catalog.GetProperty("zones").GetArrayLength());
+        Assert.Equal("Không để vật có giá trị.", catalog.GetProperty("rules").GetString());
+
+        // UC 5.7 Step 3.1: a locker with a hold or contract cannot be deactivated (MSG-47); a free one is hidden.
+        using var hold = await member.PostAsJsonAsync("/api/lockers/rentals", new { lockerId, policyId });
+        Assert.True(hold.StatusCode == HttpStatusCode.Created, await hold.Content.ReadAsStringAsync());
+        using var held = await manager.PostAsync($"/api/lockers/manager/lockers/{lockerId}/deactivate", null);
+        Assert.Equal(HttpStatusCode.Conflict, held.StatusCode);
+        Assert.Contains("LOCKER_HELD", await held.Content.ReadAsStringAsync());
+        using var deactivated = await manager.PostAsync($"/api/lockers/manager/lockers/{newId}/deactivate", null);
+        Assert.True(deactivated.IsSuccessStatusCode, await deactivated.Content.ReadAsStringAsync());
+        var grid = await member.GetFromJsonAsync<JsonElement>("/api/lockers");
+        Assert.DoesNotContain(grid.EnumerateArray(), slot => slot.GetProperty("id").GetInt32() == newId);
     }
 
     private async Task<(int LockerId, int PolicyId)> PrepareLocker()
@@ -476,8 +720,8 @@ public sealed partial class MembershipPurchaseApiTests
             PolicyName = "1 tháng",
             RentalType = RentalType.Monthly,
             RentalPrice = 250_000,
-            OverdueDailyFee = 10_000,
-            KeyReplacementFee = 100_000
+            DepositAmount = 100_000,
+            OverdueDailyFee = 10_000
         };
         db.LockerPricingPolicies.Add(policy);
         var locker = new Locker

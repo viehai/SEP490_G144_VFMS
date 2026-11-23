@@ -1,0 +1,102 @@
+@page "/staff/lockers"
+@layout StaffPTLayout
+@using Microsoft.AspNetCore.Authorization
+@using VFMS.Client.Components.Operations
+@using VFMS.Client.Components.Lockers
+@using VFMS.Contracts.Lockers
+@attribute [Authorize(Roles = "Staff")]
+@inject LockerApiClient Api
+@implements IDisposable
+
+<PageTitle>Sơ đồ tủ | Victor Fitness</PageTitle>
+
+<section class="workspace-page space-y-6 font-['Inter',sans-serif] text-[#242424]" aria-labelledby="locker-registry-title">
+    <PageHeader Overline="VFMS / FRONT DESK" Title="Sơ đồ tủ" Description="Xem trạng thái tủ, thuê tại quầy và đặt tủ vào bảo trì.">
+        <div class="flex flex-wrap gap-2">
+            <a href="/staff/locker-contracts" class="@Ui.PrimaryButton">Hợp đồng &amp; trả tủ</a>
+            <a href="/staff/dashboard" class="@Ui.Button">← Tổng quan</a>
+        </div>
+    </PageHeader>
+    <Alerts Error="@_error" />
+
+    @if (_loading)
+    {
+        <p role="status" class="text-sm text-[#6F6966]">Đang tải…</p>
+    }
+    else
+    {
+        <div class="@Ui.Card space-y-4">
+            <div class="flex flex-wrap items-center gap-2 text-xs text-[#6F6966]">
+                @foreach (var status in new[] { "Available", "Reserved", "Occupied", "Overdue", "Maintenance" })
+                {
+                    <StatusBadge Status="@LockerText.SlotTone(status)" Label="@LockerText.Slot(status)" />
+                }
+                <span>Đang giữ gồm tủ giữ cho đơn online hoặc chờ nhận chìa.</span>
+            </div>
+            <LockerGrid Slots="_grid" SelectedId="_selected?.Id" OnSelect="s => _selected = s" />
+        </div>
+
+        @if (_selected is { } slot)
+        {
+            <div class="@Ui.Card space-y-4">
+                @if (slot.Status == "Available")
+                {
+                    <LockerCounterRentalPanel @key="slot.Id" Slot="slot" Policies="_policies" OnDone="ReloadAsync" />
+                    <hr class="border-[#D8D1CD]" />
+                    <LockerMaintenancePanel @key="@($"m{slot.Id}")" Slot="slot" OnDone="ReloadAsync" />
+                }
+                else if (slot.Status == "Maintenance")
+                {
+                    <LockerMaintenancePanel @key="@($"m{slot.Id}")" Slot="slot" OnDone="ReloadAsync" />
+                }
+                else
+                {
+                    <p class="text-sm">Tủ @slot.Number đang ở trạng thái <strong>@LockerText.Slot(slot.Status)</strong>. Xử lý hợp đồng, nhận chìa hoặc trả tủ tại trang hợp đồng.</p>
+                    <div class="flex flex-wrap gap-2">
+                        <a class="@Ui.PrimaryButton" href="@($"/staff/locker-contracts?search={Uri.EscapeDataString(slot.Number)}")">Mở hợp đồng của tủ này</a>
+                    </div>
+                    @if (slot.Status == "Occupied")
+                    {
+                        <hr class="border-[#D8D1CD]" />
+                        <LockerMaintenancePanel @key="@($"m{slot.Id}")" Slot="slot" OnDone="ReloadAsync" />
+                    }
+                }
+            </div>
+        }
+    }
+</section>
+
+@code {
+    private readonly CancellationTokenSource _lifetime = new();
+    private LockerSlot[] _grid = [];
+    private LockerPolicy[] _policies = [];
+    private LockerSlot? _selected;
+    private bool _loading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ReloadAsync();
+        _loading = false;
+    }
+
+    private async Task ReloadAsync()
+    {
+        try
+        {
+            var ct = _lifetime.Token;
+            _grid = await Api.DeskGridAsync(ct);
+            _policies = await Api.DeskPricingAsync(ct);
+            _selected = _selected is null ? null : _grid.FirstOrDefault(s => s.Id == _selected.Id);
+            _error = null;
+        }
+        catch (ApiException ex) { _error = ex.Message; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+    }
+
+    public void Dispose()
+    {
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+    }
+}

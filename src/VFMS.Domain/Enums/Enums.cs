@@ -272,7 +272,9 @@ public enum LockerStatus
     Rented,
     Maintenance,
     Damaged,
-    Reserved
+    Reserved,
+    /// <summary>UC 5.7: hidden from the grid and catalog; contract history is kept.</summary>
+    Inactive
 }
 
 public enum LockerType

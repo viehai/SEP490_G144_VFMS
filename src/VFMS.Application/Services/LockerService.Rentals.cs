@@ -24,10 +24,10 @@ public sealed partial class LockerService
                 return Invalid<LockerRentalView>("Cần xác minh hội viên, xác nhận đồng ý điều khoản và giao chìa.");
             var payment = rental.Payments.SingleOrDefault(p => p.LockerPurpose == LockerPaymentPurpose.Rental);
             var collectCash = request.CashAmount is not null && rental.ContractStatus == LockerContractStatus.PendingPayment;
-            if (payment is null || rental.ExpiresAt <= now ||
-                rental.Locker.LockerStatus != LockerStatus.Reserved ||
-                !await Eligible(rental.CustomerUserId, now, ct))
-                return Conflict<LockerRentalView>("Hợp đồng hoặc hội viên không còn đủ điều kiện nhận chìa.");
+            if (payment is null || rental.CollectBy <= now || rental.Locker.LockerStatus != LockerStatus.Reserved)
+                return Conflict<LockerRentalView>("Hợp đồng không còn hiệu lực hoặc đã quá hạn nhận chìa.");
+            if (!await Eligible(rental.CustomerUserId, now, ct))
+                return MembershipRequired<LockerRentalView>();
 
             if (collectCash)
             {
@@ -56,10 +56,9 @@ public sealed partial class LockerService
             }
             else
             {
-                var latestStart = LocalDate(paidAt).AddDays(2);
-                var start = payment.Order.Channel == OrderChannel.Online && latestStart < today ? latestStart : today;
-                SetMonthlyTerm(rental, start, Months(Type(rental)));
+                SetMonthlyTerm(rental, today, Months(Type(rental)));
             }
+            rental.CollectBy = null;
             rental.HandedOverAt = now;
             rental.HandedOverByUserId = actor;
             rental.ContractStatus = LockerContractStatus.Active;
@@ -84,9 +83,10 @@ public sealed partial class LockerService
         var now = Now.UtcDateTime;
         if (!InUse(rental) || rental.ReturnedAt is not null ||
             OverdueDays(rental, now) > 7 || Type(rental) == RentalType.Daily ||
-            rental.Locker.LockerStatus is LockerStatus.Maintenance or LockerStatus.Damaged ||
-            !await Eligible(rental.CustomerUserId, now, ct))
+            rental.Locker.LockerStatus is LockerStatus.Maintenance or LockerStatus.Damaged)
             return Conflict<LockerCheckout>("Hợp đồng không đủ điều kiện gia hạn.");
+        if (!await Eligible(rental.CustomerUserId, now, ct))
+            return MembershipRequired<LockerCheckout>();
         if (rental.Payments.Any(p => Pending(p, now) || IsPaidSettlement(p)))
             return Conflict<LockerCheckout>("Hợp đồng đang có khoản thu gia hạn hoặc tất toán cần xử lý.");
         var policy = await repo.GetActivePolicyAsync(request.PolicyId, ct);
@@ -109,28 +109,27 @@ public sealed partial class LockerService
     private static bool Money(decimal value, bool zeroAllowed = false) =>
         value >= (zeroAllowed ? 0 : 1) && value <= 1_000_000_000_000m && decimal.Truncate(value) == value;
 
+    // GBR-19: every rental type carries the Key Deposit.
     private static bool ValidPolicy(LockerPricingPolicy policy) =>
-        Money(policy.RentalPrice) && Money(policy.KeyReplacementFee, true) && Money(policy.OverdueDailyFee, true) &&
-        (policy.RentalType == RentalType.Daily ? Money(policy.DepositAmount) : Months(policy.RentalType) > 0 && policy.DepositAmount == 0);
+        Money(policy.RentalPrice) && Money(policy.DepositAmount) && Money(policy.OverdueDailyFee, true) &&
+        (policy.RentalType == RentalType.Daily || Months(policy.RentalType) > 0);
 
     public Task<Result<IReadOnlyList<LockerPolicy>>> SavePricing(string actor, LockerPricingRequest input, CancellationToken ct) =>
         Write(async () =>
         {
             if (await Actor(actor, UserRole.Manager, ct) is null)
                 return Forbidden<IReadOnlyList<LockerPolicy>>();
-            var tiers = new (RentalType Type, string Name, decimal Price, decimal Deposit)[]
+            var tiers = new (RentalType Type, string Name, decimal Price)[]
             {
-                (RentalType.Daily, "Thuê ngày", input.DailyFee, input.DailyDeposit),
-                (RentalType.Monthly, "1 tháng", input.OneMonth, 0),
-                (RentalType.Quarterly, "3 tháng", input.ThreeMonths, 0),
-                (RentalType.HalfYearly, "6 tháng", input.SixMonths, 0),
-                (RentalType.Yearly, "12 tháng", input.TwelveMonths, 0)
+                (RentalType.Daily, "Thuê ngày", input.DailyFee),
+                (RentalType.Monthly, "1 tháng", input.OneMonth),
+                (RentalType.Quarterly, "3 tháng", input.ThreeMonths),
+                (RentalType.HalfYearly, "6 tháng", input.SixMonths),
+                (RentalType.Yearly, "12 tháng", input.TwelveMonths)
             };
-            if (tiers.Any(p => !Money(p.Price)) || !Money(input.DailyDeposit) ||
-                !Money(input.OverdueDailyFee, true) || !Money(input.KeyReplacementFee, true) ||
-                input.ThreeMonths >= input.OneMonth * 3 || input.SixMonths >= input.ThreeMonths * 2 ||
-                input.TwelveMonths >= input.SixMonths * 2)
-                return Invalid<IReadOnlyList<LockerPolicy>>("Kiểm tra số tiền và chiết khấu lũy tiến theo kỳ hạn.");
+            // UC 5.7 Step 2, MSG-07: every price is a whole VND amount greater than 0.
+            if (tiers.Any(p => !Money(p.Price)) || !Money(input.KeyDeposit) || !Money(input.OverdueDailyFee))
+                return Invalid<IReadOnlyList<LockerPolicy>>("Vui lòng nhập số tiền VND nguyên lớn hơn 0 cho mọi mức giá, cọc chìa và phí quá hạn.");
 
             var current = await repo.GetActivePoliciesAsync(ct);
             foreach (var previous in current)
@@ -140,12 +139,20 @@ public sealed partial class LockerService
                 RentalType = t.Type,
                 PolicyName = t.Name,
                 RentalPrice = t.Price,
-                DepositAmount = t.Deposit,
-                OverdueDailyFee = t.Type == RentalType.Daily ? 0 : input.OverdueDailyFee,
-                KeyReplacementFee = input.KeyReplacementFee
+                DepositAmount = input.KeyDeposit,
+                OverdueDailyFee = t.Type == RentalType.Daily ? 0 : input.OverdueDailyFee
             }).ToArray();
             foreach (var policy in next)
                 repo.Add(policy);
+            repo.Add(new AuditLog
+            {
+                ActorUserId = actor,
+                ActionType = AuditActionType.Update,
+                AuditEntity = nameof(LockerPricingPolicy),
+                NewValue = FormattableString.Invariant(
+                    $"LockerPriceListSaved:Deposit={input.KeyDeposit}:OverdueDaily={input.OverdueDailyFee}"),
+                OccurredAt = Now.UtcDateTime
+            });
             await repo.SaveChangesAsync(ct);
             return Result<IReadOnlyList<LockerPolicy>>.Success(next.Select(Policy).ToArray());
         }, ct);

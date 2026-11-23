@@ -1,0 +1,173 @@
+@page "/locker-checkout/{OrderNumber}"
+@layout PublicLayout
+@using Microsoft.AspNetCore.Authorization
+@using VFMS.Client.Components.Operations
+@using VFMS.Client.Components.Lockers
+@using VFMS.Contracts.Lockers
+@attribute [Authorize(Roles = "Member")]
+@inject LockerApiClient Api
+@inject ToastService Toasts
+@implements IDisposable
+
+<PageTitle>Thanh toán thuê tủ | Victor Fitness</PageTitle>
+
+<section class="mx-auto min-w-0 max-w-2xl space-y-6 px-[20px] pb-16 pt-28 font-body" aria-labelledby="checkout-title">
+    <PageHeader Overline="VFMS / TỦ ĐỒ" Title="Thanh toán thuê tủ" Description="Thanh toán bằng VietQR. Hệ thống tự cập nhật khi nhận được tiền.">
+        <a href="/my-locker" class="@Ui.Button">← Tủ của tôi</a>
+    </PageHeader>
+    <Alerts Error="@_error" />
+
+    @if (_order is not { } order)
+    {
+        <p role="status" class="text-sm text-vfms-text-secondary">@(_busy ? "Đang tải đơn…" : "Không tải được đơn.")</p>
+        @if (!_busy) { <button type="button" class="@Ui.Button" @onclick="RefreshAsync">Tải lại</button> }
+    }
+    else
+    {
+        <div class="@Ui.Card space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <h2 class="font-heading text-lg font-extrabold">Đơn @order.OrderNumber</h2>
+                <StatusBadge Status="@LockerText.OrderTone(order.Status)" Label="@LockerText.Order(order.Status)" />
+            </div>
+            <p class="text-2xl font-extrabold">@OperationsText.Money(order.AmountDue)</p>
+
+            @if (order.Status == "Pending" && order.VietQr is not null)
+            {
+                <LockerQr Checkout="order" Now="_now" />
+            }
+            else if (order.Status == "Pending" && order.ProceedBy is { } by)
+            {
+                @if (_now < by)
+                {
+                    <p class="text-sm">Tủ đang được giữ cho bạn. Còn <strong>@LockerText.Remaining(by, _now)</strong> để bấm "Tiếp tục thanh toán", quá hạn đơn sẽ bị hủy và tủ được nhả.</p>
+                    <button type="button" class="@Ui.PrimaryButton" disabled="@_busy" @onclick="ProceedAsync">@(_busy ? "Đang tạo mã…" : "Tiếp tục thanh toán")</button>
+                }
+                else
+                {
+                    <p role="alert" class="@Ui.Error">Thanh toán không thành công hoặc đã bị hủy. Đã quá 10 phút mà chưa bấm tiếp tục thanh toán, đơn sẽ được hủy và tủ nhả lại. Vui lòng thử lại.</p>
+                }
+            }
+            else if (order.Status == "Pending")
+            {
+                <p class="text-sm">Đơn đang chờ thanh toán trước @LockerText.Local(order.ExpiresAt).</p>
+            }
+            else if (order.Status == "AwaitingConfirmation")
+            {
+                <p class="text-sm">Đã hết thời gian chuyển khoản. Hệ thống đang chờ xác nhận giao dịch đã thực hiện đúng hạn (đến @LockerText.Local(order.HoldExpiresAt)).</p>
+            }
+            else if (order.Status == "Paid")
+            {
+                <p role="status" class="@Ui.Notice">Thanh toán thành công@(order.InvoiceNumber is { } invoice ? $" cho hóa đơn #{invoice}" : "").</p>
+            }
+            else if (order.Status is "Expired" or "Cancelled")
+            {
+                <p role="alert" class="@Ui.Error">Thanh toán không thành công hoặc đã bị hủy. Bạn có thể thử lại hoặc chọn phương thức khác.</p>
+            }
+            else if (order.Status.StartsWith("Refund", StringComparison.Ordinal) || order.Status == "Refunded")
+            {
+                <p class="text-sm">Đã nhận tiền nhưng không áp dụng được vào đơn này. Quầy lễ tân sẽ xử lý khoản tiền; theo dõi tại "Giao dịch".</p>
+            }
+
+            <div class="flex flex-wrap gap-2">
+                @if (order.Status == "Pending")
+                {
+                    <button type="button" class="@Ui.DangerButton" disabled="@_busy" @onclick="CancelAsync">Hủy đơn</button>
+                }
+                <button type="button" class="@Ui.Button" disabled="@_busy" @onclick="RefreshAsync">Kiểm tra trạng thái</button>
+                @if (order.Status == "Paid")
+                {
+                    <a href="/my-locker" class="@Ui.PrimaryButton">Xem tủ của tôi</a>
+                }
+            </div>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter] public string OrderNumber { get; set; } = "";
+    private CancellationTokenSource? _lifetime;
+    private LockerCheckout? _order;
+    private DateTime _now = DateTime.UtcNow;
+    private bool _busy;
+    private string? _error;
+    private string? _lastStatus;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        Dispose();
+        var lifetime = new CancellationTokenSource();
+        _lifetime = lifetime;
+        _order = null;
+        await RefreshAsync();
+        _ = TickAsync(lifetime.Token);
+    }
+
+    // Counts down every second and re-reads the order every 5 seconds until it is settled.
+    private async Task TickAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+            var seconds = 0;
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                _now = DateTime.UtcNow;
+                if (++seconds % 5 == 0 && _order is { Status: "Pending" or "AwaitingConfirmation" } && !_busy)
+                    await RefreshAsync(quiet: true);
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private async Task RefreshAsync() => await RefreshAsync(false);
+
+    private async Task RefreshAsync(bool quiet)
+    {
+        if (_busy || _lifetime is null) return;
+        var ct = _lifetime.Token;
+        _busy = !quiet;
+        try
+        {
+            Set(await Api.OrderAsync(OrderNumber, ct));
+            _error = null;
+        }
+        catch (ApiException ex) when (!quiet) { _error = ex.Message; }
+        catch (ApiException) { }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        finally { _busy = false; }
+    }
+
+    private async Task ProceedAsync() => await Act(() => Api.ProceedAsync(OrderNumber, _lifetime!.Token));
+    private async Task CancelAsync() => await Act(() => Api.CancelOrderAsync(OrderNumber, _lifetime!.Token));
+
+    private async Task Act(Func<Task<LockerCheckout>> call)
+    {
+        if (_busy) return;
+        _busy = true;
+        _error = null;
+        try { Set(await call()); }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+            _busy = false;
+            await RefreshAsync(quiet: true);
+        }
+        catch (OperationCanceledException) when (_lifetime!.IsCancellationRequested) { }
+        finally { _busy = false; }
+    }
+
+    private void Set(LockerCheckout order)
+    {
+        _order = order;
+        if (order.Status == "Paid" && _lastStatus is not null and not "Paid")
+            Toasts.Show($"Thanh toán thành công{(order.InvoiceNumber is { } invoice ? $" cho hóa đơn #{invoice}" : "")}.");
+        _lastStatus = order.Status;
+    }
+
+    public void Dispose()
+    {
+        _lifetime?.Cancel();
+        _lifetime?.Dispose();
+    }
+}

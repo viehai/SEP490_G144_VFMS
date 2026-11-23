@@ -17,7 +17,6 @@ public sealed class LockerWorker(IServiceScopeFactory scopes, ILogger<LockerWork
                 await using var scope = scopes.CreateAsyncScope();
                 var service = scope.ServiceProvider.GetRequiredService<ILockerService>();
                 await service.Expire(ct);
-                await service.SendPendingNoticeEmail(scope.ServiceProvider.GetRequiredService<IEmailService>(), ct);
             }
             catch (Exception ex) when (!ct.IsCancellationRequested)
             {

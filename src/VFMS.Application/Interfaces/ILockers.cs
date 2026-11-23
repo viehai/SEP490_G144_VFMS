@@ -24,12 +24,17 @@ public interface ILockerRepository : IAuditedRepository
         CancellationToken cancellationToken = default);
 
     // ── Lockers and pricing ──────────────────────────────────────
-    /// <summary>Lockers of the gym with their zone, by floor and number (read only).</summary>
+    /// <summary>Active lockers of the gym with their zone, by floor and number (read only).</summary>
     Task<IReadOnlyList<Locker>> GetGymLockersAsync(int gymId, CancellationToken cancellationToken = default);
     /// <summary>A locker of the gym with its zone and gym loaded.</summary>
     Task<Locker?> GetGymLockerAsync(int lockerId, int gymId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<LockerPricingPolicy>> GetActivePoliciesAsync(CancellationToken cancellationToken = default);
     Task<LockerPricingPolicy?> GetActivePolicyAsync(int id, CancellationToken cancellationToken = default);
+    Task<Gym?> GetGymAsync(int gymId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<LockerZone>> GetZonesAsync(int gymId, CancellationToken cancellationToken = default);
+    Task<LockerZone?> GetZoneAsync(int zoneId, int gymId, CancellationToken cancellationToken = default);
+    /// <summary>MSG-48: the number is used by any locker of the gym, including deactivated ones.</summary>
+    Task<bool> LockerNumberExistsAsync(int gymId, string number, CancellationToken cancellationToken = default);
 
     // ── Rentals ──────────────────────────────────────────────────
     /// <summary>GBR-19: true when a live allocation (in use, awaiting handover or a live checkout hold) holds the locker
@@ -49,13 +54,16 @@ public interface ILockerRepository : IAuditedRepository
         bool overdueOnly, CancellationToken cancellationToken = default);
     /// <summary>Full rentals whose maintenance replacement is still held after the rental expired.</summary>
     Task<IReadOnlyList<LockerRentalContract>> GetExpiredReplacementsAsync(DateTime now, int take, CancellationToken cancellationToken = default);
-    /// <summary>Full paid daily rentals still awaiting key handover.</summary>
-    Task<IReadOnlyList<LockerRentalContract>> GetPaidDailyAwaitingHandoverAsync(int take, CancellationToken cancellationToken = default);
-    /// <summary>The first full rental whose final notice email is due.</summary>
-    Task<LockerRentalContract?> GetNextPendingNoticeAsync(DateTime now, CancellationToken cancellationToken = default);
-    /// <summary>Marks the notice email sent unless the notice or its retry claim changed meanwhile.</summary>
-    Task MarkNoticeEmailSentAsync(int rentalId, DateTime? finalNoticeAt, DateTime? retryAt, DateTime sentAt,
-        CancellationToken cancellationToken = default);
+    /// <summary>Full paid rentals still awaiting key handover (GBR-106).</summary>
+    Task<IReadOnlyList<LockerRentalContract>> GetAwaitingHandoverAsync(int take, CancellationToken cancellationToken = default);
+    /// <summary>GBR-20: full active monthly rentals expiring within 7 days that have no reminder yet.</summary>
+    Task<IReadOnlyList<LockerRentalContract>> GetDueRemindersAsync(DateTime now, int take, CancellationToken cancellationToken = default);
+    /// <summary>GBR-20: full monthly rentals on overdue day 5 or later that have no overdue notice yet.</summary>
+    Task<IReadOnlyList<LockerRentalContract>> GetDueOverdueNoticesAsync(DateTime now, int take, CancellationToken cancellationToken = default);
+    /// <summary>GBR-110: the Member's unpaid locker amount from cleared lockers.</summary>
+    Task<decimal> GetUnpaidAmountAsync(string memberId, CancellationToken cancellationToken = default);
+    /// <summary>GBR-110: full abandoned rentals of the gym with an unpaid amount (read only).</summary>
+    Task<IReadOnlyList<LockerRentalContract>> GetUnpaidRentalsAsync(int gymId, string? search, CancellationToken cancellationToken = default);
 
     // ── Payments ─────────────────────────────────────────────────
     /// <summary>The Locker charge of an order, taken from its full rental.</summary>
@@ -64,10 +72,8 @@ public interface ILockerRepository : IAuditedRepository
     Task<PaymentTransaction?> GetCheckoutAsync(string orderNumber, int gymId, string? customerId, CancellationToken cancellationToken = default);
     /// <summary>Locker charges whose hold expired unpaid, with the rental's locker and the order loaded.</summary>
     Task<IReadOnlyList<PaymentTransaction>> GetStaleChargesAsync(DateTime now, int take, CancellationToken cancellationToken = default);
-    /// <summary>Locker charges of the gym with an unfinished refund, with order and invoice (read only).</summary>
-    Task<IReadOnlyList<PaymentTransaction>> GetPendingRefundsAsync(int gymId, int take, CancellationToken cancellationToken = default);
-    /// <summary>Loads the charge's source payment and its order.</summary>
-    Task LoadSourcePaymentAsync(PaymentTransaction charge, CancellationToken cancellationToken = default);
+    /// <summary>GBR-109: online rental charges whose 10-minute 'Proceed to Payment' window passed unstarted.</summary>
+    Task<IReadOnlyList<PaymentTransaction>> GetUnstartedChargesAsync(DateTime now, int take, CancellationToken cancellationToken = default);
     Task<bool> IsTransferRecordedAsync(PaymentTransaction payment, string reference, CancellationToken cancellationToken = default);
     void RecordExtraTransfer(PaymentTransaction payment, SepayTransfer transfer, DateTime now);
     void RecordUnappliedTransfer(PaymentTransaction payment, SepayTransfer transfer, DateTime now);
@@ -91,10 +97,22 @@ public interface ILockerService
     Task<Result<IReadOnlyList<LockerMember>>> FindMembers(string actor, string? search, CancellationToken ct);
     Task<Result<IReadOnlyList<LockerStaffRental>>> Registry(string actor, UserRole role, string? search, bool overdueOnly, CancellationToken ct);
     Task<Result<LockerStaffRental>> Details(string actor, UserRole role, int id, CancellationToken ct);
+    Task<Result<LockerOutstanding>> MyOutstanding(string actor, CancellationToken ct);
+    Task<Result<IReadOnlyList<LockerStaffRental>>> Unpaid(string actor, string? search, CancellationToken ct);
+    Task<Result<LockerRentalView>> CollectOutstanding(string actor, int id, decimal amount, CancellationToken ct);
+    Task<Result<LockerRulesView>> Rules(string actor, UserRole role, CancellationToken ct);
+
+    // UC 5.7 Manage Locker Catalog & Pricing
+    Task<Result<LockerCatalog>> Catalog(string actor, CancellationToken ct);
+    Task<Result<LockerCatalogZone>> AddZone(string actor, LockerZoneRequest input, CancellationToken ct);
+    Task<Result<LockerSlot>> AddLocker(string actor, LockerCreateRequest input, CancellationToken ct);
+    Task<Result<LockerSlot>> DeactivateLocker(string actor, int lockerId, CancellationToken ct);
+    Task<Result<LockerRulesView>> SaveRules(string actor, LockerRulesRequest input, CancellationToken ct);
 
     Task<Result<LockerCheckout>> Rent(string actor, LockerRentalRequest input, CancellationToken ct);
     Task<Result<LockerCheckout>> CounterRent(string actor, CounterLockerRentalRequest input, CancellationToken ct);
     Task<Result<LockerCheckout>> GetCheckout(string actor, UserRole role, string number, CancellationToken ct);
+    Task<Result<LockerCheckout>> Proceed(string actor, string number, CancellationToken ct);
     Task<Result<LockerCheckout>> CancelCheckout(string actor, UserRole role, string number, CancellationToken ct);
     Task<Result<LockerCheckout>> ConfirmCash(string actor, string number, decimal amount, CancellationToken ct);
     Task<Result<LockerRentalView>> Handover(string actor, int id, LockerHandoverRequest request, CancellationToken ct);
@@ -109,17 +127,13 @@ public interface ILockerService
     Task<Result<LockerSettlementQuote>> SettlementQuote(string actor, int id, bool damaged, CancellationToken ct);
     Task<Result<LockerCheckout>> StartSettlement(string actor, int id, LockerSettlementRequest request, CancellationToken ct);
     Task<Result<LockerRentalView>> Terminate(string actor, int id, LockerTerminationRequest request, CancellationToken ct);
-    Task<Result<IReadOnlyList<LockerCheckout>>> Refunds(string actor, UserRole role, CancellationToken ct);
-    Task<Result<LockerCheckout>> ConfirmRefund(string actor, UserRole role, string orderNumber, LockerRefundRequest input, CancellationToken ct);
 
-    Task<Result<LockerRentalView>> SendNotice(string actor, int id, CancellationToken ct);
     Task<Result<int>> RequestClearance(string actor, int id, LockerClearanceRequest request, CancellationToken ct);
     Task<Result<IReadOnlyList<LockerClearanceView>>> Clearances(string actor, CancellationToken ct);
     Task<Result<LockerRentalView>> VerifyClearance(string actor, int incidentId, CancellationToken ct);
 
-    // Background jobs (LockerWorker)
+    /// <summary>Background job (LockerWorker): holds, pickup deadlines, reminders and overdue notices.</summary>
     Task Expire(CancellationToken ct);
-    Task SendPendingNoticeEmail(IEmailService email, CancellationToken ct);
 }
 
 /// <summary>Applies a SePay transfer to a Locker order; null when the order is not a Locker order.</summary>
