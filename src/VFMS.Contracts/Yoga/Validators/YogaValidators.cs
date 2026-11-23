@@ -83,6 +83,17 @@ public sealed class YogaSessionRequestValidator : AbstractValidator<YogaSessionR
     }
 }
 
+public sealed class YogaWeeklySessionsRequestValidator : AbstractValidator<YogaWeeklySessionsRequest>
+{
+    public YogaWeeklySessionsRequestValidator()
+    {
+        RuleFor(x => x.YogaStudioId).GreaterThan(0).WithMessage("Vui lòng chọn phòng.");
+        RuleFor(x => x.Days).NotEmpty().WithMessage("Hãy chọn ít nhất một thứ trong tuần.");
+        RuleFor(x => x.Days).Must(d => d.Distinct().Count() == d.Count && d.All(Enum.IsDefined))
+            .When(x => x.Days is { Count: > 0 }).WithMessage("Các thứ trong tuần không hợp lệ hoặc bị trùng.");
+    }
+}
+
 public sealed class YogaBookingRequestValidator : AbstractValidator<YogaBookingRequest>
 {
     public YogaBookingRequestValidator()

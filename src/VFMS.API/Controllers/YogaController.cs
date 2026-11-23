@@ -127,6 +127,12 @@ public sealed class YogaClassesController : ControllerBase
             ? this.ToActionResult(await _service.CreateSessionAsync(request, userId, ClientIp, cancellationToken))
             : Unauthorized();
 
+    [HttpPost("classes/{id:int}/sessions/weekly")]
+    public async Task<IActionResult> CreateWeeklySessions(int id, [FromBody] YogaWeeklySessionsRequest request, CancellationToken cancellationToken) =>
+        User.GetUserId() is { } userId
+            ? this.ToActionResult(await _service.CreateWeeklySessionsAsync(id, request, userId, ClientIp, cancellationToken))
+            : Unauthorized();
+
     [HttpPut("sessions/{id:int}")]
     public async Task<IActionResult> UpdateSession(int id, [FromBody] YogaSessionRequest request, CancellationToken cancellationToken) =>
         User.GetUserId() is { } userId

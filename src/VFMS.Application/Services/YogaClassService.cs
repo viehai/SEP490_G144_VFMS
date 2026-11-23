@@ -245,6 +245,58 @@ public sealed class YogaClassService : IYogaClassService
         return failure ?? await SessionResponseAsync(session.Id, 201, cancellationToken);
     }
 
+    /// <summary>
+    /// One session on each chosen weekday across the class dates. All or nothing: if any date clashes
+    /// (studio, instructor, room size) nothing is saved and the message names that date.
+    /// </summary>
+    public async Task<Result<YogaWeeklySessionsResponse>> CreateWeeklySessionsAsync(
+        int classId, YogaWeeklySessionsRequest request, string actorUserId, string? ipAddress, CancellationToken cancellationToken = default)
+    {
+        var yogaClass = await _repository.GetClassAsync(classId, cancellationToken);
+        if (yogaClass is null)
+            return ClassNotFound<YogaWeeklySessionsResponse>();
+
+        var now = _clock.GetUtcNow().UtcDateTime;
+        var earliest = yogaClass.ClassStatus == YogaClassStatus.Draft ? DateOnly.MinValue : YogaTime.Today(_clock).AddDays(PublishLeadDays);   // GBR-77
+        var used = yogaClass.Schedules.Where(s => s.ScheduleStatus != YogaScheduleStatus.Cancelled).Select(s => s.ScheduledDate).ToHashSet();
+        var onDays = Enumerable.Range(0, yogaClass.EndDate.DayNumber - yogaClass.StartDate.DayNumber + 1)
+            .Select(yogaClass.StartDate.AddDays)
+            .Where(d => request.Days.Contains(d.DayOfWeek))
+            .ToArray();
+        var dates = onDays.Where(d => !used.Contains(d) && d >= earliest && YogaTime.ToUtc(d, request.StartTime) > now).ToArray();
+        if (dates.Length == 0)
+            return Result<YogaWeeklySessionsResponse>.Failure(
+                "Không có ngày nào để tạo buổi học: các ngày đã chọn đã có buổi, đã qua hoặc quá gần ngày hôm nay.", "YOGA_NO_SESSION_DATES");
+
+        var end = request.StartTime.AddMinutes(yogaClass.DurationMinutes);
+        Result<YogaWeeklySessionsResponse>? failure = null;
+        await _repository.ExecuteInTransactionAsync(async () =>
+        {
+            // Check every date first (ascending, so two managers lock in the same order), then save.
+            foreach (var date in dates)
+            {
+                await _repository.LockScheduleDateAsync(date, cancellationToken);   // GBR-74/75
+                var problem = await ValidateSessionAsync(
+                    new YogaSessionRequest(classId, request.YogaStudioId, date, request.StartTime, end, request.InstructorUserId),
+                    yogaClass, null, cancellationToken);
+                if (problem is not null)
+                {
+                    failure = Result<YogaWeeklySessionsResponse>.Failure(
+                        $"Ngày {date:dd/MM/yyyy}: {problem.ErrorMessage}", problem.ErrorCode ?? "YOGA_SESSION_INVALID", problem.StatusCode);
+                    return;
+                }
+            }
+            foreach (var date in dates)
+            {
+                var session = new YogaClassSchedule { YogaClassId = classId, ScheduleStatus = YogaScheduleStatus.Scheduled };
+                ApplySession(session, new YogaSessionRequest(classId, request.YogaStudioId, date, request.StartTime, end, request.InstructorUserId), yogaClass);
+                var audit = AuditedWriter.Audit(actorUserId, AuditActionType.Create, SessionEntity, ipAddress, newValue: Describe(session));
+                await AuditedWriter.SaveNewAsync(_repository, session, audit, null, cancellationToken);
+            }
+        }, cancellationToken);
+        return failure ?? Result<YogaWeeklySessionsResponse>.Success(new(dates.Length, onDays.Length - dates.Length), 201);
+    }
+
     public async Task<Result<YogaSessionResponse>> UpdateSessionAsync(
         int id, YogaSessionRequest request, string actorUserId, string? ipAddress, CancellationToken cancellationToken = default)
     {

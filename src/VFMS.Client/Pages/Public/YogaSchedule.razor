@@ -280,11 +280,7 @@
 
     private IEnumerable<DateOnly> Week => Enumerable.Range(0, 7).Select(_from.AddDays);
 
-    private static string DayName(DateOnly d) => d.DayOfWeek switch
-    {
-        DayOfWeek.Monday => "Thứ 2", DayOfWeek.Tuesday => "Thứ 3", DayOfWeek.Wednesday => "Thứ 4", DayOfWeek.Thursday => "Thứ 5",
-        DayOfWeek.Friday => "Thứ 6", DayOfWeek.Saturday => "Thứ 7", _ => "Chủ nhật"
-    };
+    private static string DayName(DateOnly d) => VFMS.Client.Components.Memberships.YogaClassCard.DayName(d);
 
     private async Task LoadMine()
     {

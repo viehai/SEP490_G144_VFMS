@@ -37,11 +37,11 @@
                     <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[#D8D1CD] bg-[#ECE8E4] px-5 py-4">
                         <div>
                             <p class="workspace-heading text-sm">@s.ClassName</p>
-                            <p class="text-xs text-[#6F6966]">@s.ScheduledDate.ToString("dddd dd/MM") · @s.StartTime.ToString("HH:mm")–@s.EndTime.ToString("HH:mm") · @s.StudioName (tầng @s.FloorNumber)</p>
+                            <p class="text-xs text-[#6F6966]">@VFMS.Client.Components.Memberships.YogaClassCard.DayName(s.ScheduledDate) @s.ScheduledDate.ToString("dd/MM") · @s.StartTime.ToString("HH:mm")–@s.EndTime.ToString("HH:mm") · @s.StudioName (tầng @s.FloorNumber)</p>
                         </div>
                         <div class="flex flex-wrap items-center gap-2">
                             <span class="text-xs font-semibold">@s.ConfirmedBookings/@s.MaxParticipants chỗ</span>
-                            <StatusBadge Status="@s.Status" />
+                            <StatusBadge Status="@s.Status" Label="@VFMS.Client.Components.Memberships.YogaClassCard.StatusName(s.Status)" />
                             @if (s.AttendanceSubmittedAt is not null)
                             {
                                 <StatusBadge Status="Completed" Label="@(s.AttendanceSubmittedLate ? "Đã điểm danh · trễ" : "Đã điểm danh")" />
@@ -60,7 +60,7 @@
                                 @foreach (var r in item.Roster)
                                 {
                                     <li @key="r.BookingId" class="flex items-center justify-between gap-2 rounded-lg border border-[#D8D1CD] px-3 py-2 text-sm">
-                                        <span>@(r.MatNumber is { } mat ? $"#{mat} · " : "")@r.MemberName</span><StatusBadge Status="@r.BookingStatus" />
+                                        <span>@(r.MatNumber is { } mat ? $"#{mat} · " : "")@r.MemberName</span><StatusBadge Status="@r.BookingStatus" Label="@VFMS.Client.Components.Memberships.YogaClassCard.StatusName(r.BookingStatus)" />
                                     </li>
                                 }
                             </ul>

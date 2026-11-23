@@ -140,6 +140,39 @@ public sealed class YogaPersistenceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task WeeklySessionsFillChosenWeekdaysAndSaveNothingWhenOneDateClashes()
+    {
+        await using var db = new SqliteTestContext(_options);
+        var repository = new YogaRepository(db);
+        var studios = new YogaStudioService(repository, TimeProvider.System);
+        var classes = new YogaClassService(repository, TimeProvider.System);
+        var start = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7)).AddDays(10);
+        while (start.DayOfWeek != DayOfWeek.Monday) start = start.AddDays(1);
+        var studio = (await studios.CreateAsync(new YogaStudioRequest("Lotus", 2, 20), "manager", null)).Data!.Id;
+        var type = (await classes.CreateClassTypeAsync(new YogaClassTypeRequest("Vinyasa", null), "manager", null)).Data!.Id;
+        async Task<int> NewClass(string name) => (await classes.CreateClassAsync(new YogaClassRequest(
+            type, name, "yi-1", "Beginner", 2, 1, 15, 60, DateTime.UtcNow.AddDays(5), start, start.AddDays(13)), "manager", null)).Data!.Id;
+        var flow = await NewClass("Morning Flow");
+        var other = await NewClass("Evening Flow");
+        var weekly = new YogaWeeklySessionsRequest(studio, [DayOfWeek.Monday, DayOfWeek.Wednesday], new(9, 0));
+
+        // Another class already holds the studio on the second Wednesday: nothing is saved, the message names the date.
+        Assert.True((await classes.CreateSessionAsync(new YogaSessionRequest(other, studio, start.AddDays(9), new(9, 30), new(10, 30)), "manager", null)).IsSuccess);
+        var clash = await classes.CreateWeeklySessionsAsync(flow, weekly, "manager", null);
+        Assert.Equal("YOGA_SESSION_CONFLICT", clash.ErrorCode);
+        Assert.StartsWith($"Ngày {start.AddDays(9):dd/MM/yyyy}", clash.ErrorMessage);
+        Assert.False(await db.YogaClassSchedules.AnyAsync(s => s.YogaClassId == flow));
+
+        var created = await classes.CreateWeeklySessionsAsync(flow, weekly with { StartTime = new(7, 0) }, "manager", null);
+        Assert.True(created.IsSuccess, created.ErrorMessage);
+        Assert.Equal((4, 0), (created.Data!.Created, created.Data.Skipped));
+        Assert.Equal([start, start.AddDays(2), start.AddDays(7), start.AddDays(9)],
+            await db.YogaClassSchedules.Where(s => s.YogaClassId == flow).OrderBy(s => s.ScheduledDate).Select(s => s.ScheduledDate).ToListAsync());
+        Assert.Equal("YOGA_NO_SESSION_DATES",   // a second run finds no free date
+            (await classes.CreateWeeklySessionsAsync(flow, weekly with { StartTime = new(7, 0) }, "manager", null)).ErrorCode);
+    }
+
+    [Fact]
     public async Task ManagerCanCreateAndPublishClassForInstructorWithoutTrainerProfile()   // SCRUM-103/104
     {
         await using var db = new SqliteTestContext(_options);

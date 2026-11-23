@@ -148,7 +148,7 @@ How to tell which plan you got:
 
 | Page | Sign in as | Try |
 |---|---|---|
-| `/manager/yoga` | Manager | Studios (create, edit, deactivate), class types, classes (create, publish, cancel), sessions |
+| `/manager/yoga` | Manager | Studios (create, edit, deactivate), class types, classes (create, publish, cancel), sessions. Sessions are made by weekday: after **Lưu** on a new class its **Buổi học** panel opens; pick days (T2…CN), start time and room, then **Tạo lịch** makes one session per chosen day from the class start to end date (`POST /api/yoga/classes/{id}/sessions/weekly`). Days that already have a session, are past, or (published class) are within 7 days are skipped and counted. If any date clashes (room or trainer busy, room too small) nothing is saved and the message names the date. **Sửa** still changes one session's date |
 | `/yoga/schedule` | anyone | A week timetable (days across, start times down; a day-by-day list on phones) with free mats, filters and next/previous week. A week with no classes still shows the empty grid. `?date=yyyy-MM-dd&classId=N` opens the week of that date, scrolls to class N and outlines it in red |
 | `/pt/yoga` | YogaInstructor | This week's assigned sessions with booked members, and **Điểm danh** per session |
 | `/yoga/my-bookings` | Member | Upcoming (with cancel), past (Có mặt / Vắng) and waitlist tabs |
