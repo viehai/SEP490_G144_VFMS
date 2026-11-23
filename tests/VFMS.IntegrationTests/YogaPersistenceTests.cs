@@ -26,12 +26,12 @@ public sealed class YogaPersistenceTests : IAsyncLifetime
         // A Yoga Instructor created by an Admin: no TrainerProfile row.
         var instructor = new ApplicationUser
         {
-            UserId = "yi-1", Gym = gym, Email = "yi@example.com", FullName = "Lan Yoga", PasswordHash = "x",
+            UserId = "yi-1", Gym = gym, Email = "yi@example.com", PhoneNumber = "0900000101", FullName = "Lan Yoga", PasswordHash = "x",
             AccountStatus = AccountStatus.Active
         };
         db.AddRange(gym, role, instructor, new ApplicationUser
         {
-            UserId = "manager", Gym = gym, Email = "m@example.com", FullName = "Manager", PasswordHash = "x",
+            UserId = "manager", Gym = gym, Email = "m@example.com", PhoneNumber = "0900000102", FullName = "Manager", PasswordHash = "x",
             AccountStatus = AccountStatus.Active
         });
         db.ApplicationUserRoles.Add(new ApplicationUserRole { User = instructor, Role = role });
@@ -65,7 +65,7 @@ public sealed class YogaPersistenceTests : IAsyncLifetime
         await using var db = new SqliteTestContext(_options);
         var gym = await db.Gyms.FirstAsync();
         foreach (var id in new[] { "b1", "b2", "b3" })
-            db.AddRange(new ApplicationUser { UserId = id, Gym = gym, Email = id + "@example.com", FullName = id, PasswordHash = "x", AccountStatus = AccountStatus.Active },
+            db.AddRange(new ApplicationUser { UserId = id, Gym = gym, Email = id + "@example.com", PhoneNumber = "09000002" + id, FullName = id, PasswordHash = "x", AccountStatus = AccountStatus.Active },
                 TestSeed.Membership(id, ComponentType.YOGA));
         await db.SaveChangesAsync();
         var classId = await CreatePublishedClassAsync(db, max: 2);
@@ -103,7 +103,7 @@ public sealed class YogaPersistenceTests : IAsyncLifetime
         await using var db = new SqliteTestContext(_options);
         var gym = await db.Gyms.FirstAsync();
         foreach (var id in new[] { "a1", "a2" })
-            db.AddRange(new ApplicationUser { UserId = id, Gym = gym, Email = id + "@example.com", FullName = id, PasswordHash = "x", AccountStatus = AccountStatus.Active },
+            db.AddRange(new ApplicationUser { UserId = id, Gym = gym, Email = id + "@example.com", PhoneNumber = "09000002" + id, FullName = id, PasswordHash = "x", AccountStatus = AccountStatus.Active },
                 TestSeed.Membership(id, ComponentType.YOGA));
         await db.SaveChangesAsync();
         var classId = await CreatePublishedClassAsync(db, max: 2);
