@@ -17,7 +17,11 @@ public sealed partial class MembershipPurchaseApiTests
     {
         var booking = await PreparePTCheckout();
         using var member = Client("member", "Member");
+        using var staff = Client("staff", "Staff");
         var hold = await HoldPT(member, booking);
+        var unselected = Assert.Single((await StaffOrdersAsync(staff, "?serviceType=PT&method=Unselected&paymentStatus=Unrecorded")).Items);
+        Assert.Equal(hold.OrderNumber, unselected.OrderNumber);
+        Assert.False(unselected.CanConfirmCash);
         using var choose = await member.PostAsJsonAsync($"/api/pt/purchases/{hold.OrderNumber}/payment",
             new PTPaymentRequest("PT-OFF", MembershipPaymentMethods.Cash));
         Assert.True(choose.StatusCode == HttpStatusCode.OK, await choose.Content.ReadAsStringAsync());
@@ -32,9 +36,14 @@ public sealed partial class MembershipPurchaseApiTests
         // Past the 15-minute QR deadline the counter order is still waiting for cash, not a transfer.
         _clock.Now = new DateTimeOffset(hold.ExpiresAt).AddMinutes(30);
         Assert.Equal("Pending", (await member.GetFromJsonAsync<PTCheckoutResponse>($"/api/pt/purchases/{hold.OrderNumber}"))!.Status);
+        var listed = Assert.Single((await StaffOrdersAsync(staff, "?serviceType=PT&method=Cash&status=Pending&paymentStatus=Pending")).Items);
+        Assert.Equal(hold.OrderNumber, listed.OrderNumber);
+        Assert.True(listed.IsPersonalTraining);
+        Assert.True(listed.CanConfirmCash);
+        Assert.Equal(550_000m, listed.AmountDue);
+        Assert.Equal(new DateTimeOffset(counter.HoldExpiresAt), listed.PaymentDeadline);
 
         var route = $"/api/pt/purchases/{hold.OrderNumber}/cash-confirmation";
-        using var staff = Client("staff", "Staff");
         using var membershipCash = await staff.PostAsJsonAsync($"/api/staff/membership-purchases/{hold.OrderNumber}/confirm-cash",
             new ConfirmMembershipCashRequest(550_000m));
         Assert.Equal(HttpStatusCode.NotFound, membershipCash.StatusCode);
@@ -51,6 +60,9 @@ public sealed partial class MembershipPurchaseApiTests
         var paid = (await confirmed.Content.ReadFromJsonAsync<PTCheckoutResponse>())!;
         Assert.Equal("Paid", paid.Status);
         Assert.NotNull(paid.InvoiceNumber);
+        var listedPaid = Assert.Single((await StaffOrdersAsync(staff, "?serviceType=PT&method=Cash&status=Paid")).Items);
+        Assert.False(listedPaid.CanConfirmCash);
+        Assert.Equal(paid.InvoiceNumber, listedPaid.InvoiceNumber);
         using var retry = await staff.PostAsJsonAsync(route, new PTCashConfirmationRequest(550_000m));
         Assert.Equal(HttpStatusCode.OK, retry.StatusCode);
 

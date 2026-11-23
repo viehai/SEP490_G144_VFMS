@@ -154,7 +154,7 @@ public sealed partial class MembershipPlanApiClientTests
     public async Task GetMembershipDetail_ReadsMembershipAndPersistedFreezeHistory()
     {
         var summary = FrozenMembership();
-        var freezeStart = summary.StartDate.AddDays(5);
+        var freezeStart = summary.StartDate!.Value.AddDays(5);
         var period = new MembershipFreezePeriodResponse(freezeStart, freezeStart.AddDays(4), freezeStart, null, "Active");
         var purchasedAt = new DateTimeOffset(2026, 11, 30, 17, 0, 0, TimeSpan.Zero);
         var expected = new MembershipDetailResponse(summary, purchasedAt, "INV-20261201-0007", new(2, 1, [period]));

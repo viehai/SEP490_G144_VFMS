@@ -437,6 +437,7 @@ public sealed partial class MembershipPurchaseApiTests
         using var callback = await NotifyAsync(purchase, id: 130);
         Assert.Equal(HttpStatusCode.OK, callback.StatusCode);
         var membership = Assert.Single(await ListOwnedMembershipsAsync(member), row => row.ComponentType == type);
+        await ActivateMembershipAsync(member, membership.MembershipId, Today);
         Assert.False((await GetFreezeEligibilityAsync(member, membership.MembershipId)).Eligible);
         using var response = await member.PostAsJsonAsync(FreezeRequestsRoute, FreezeInput(membership.MembershipId));
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);

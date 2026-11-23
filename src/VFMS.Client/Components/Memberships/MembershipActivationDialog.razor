@@ -1,0 +1,104 @@
+@using VFMS.Contracts.Memberships
+@inject MembershipPlanApiClient Plans
+@implements IDisposable
+
+<WorkspaceModal Open="true" Title="@(_saved is null ? "Chọn ngày kích hoạt" : MembershipDisplay.Status(_saved.Membership.Status))" OnClose="CloseAsync">
+    @if (_saved is { } saved && saved.Membership.StartDate is { } scheduled)
+    {
+        <div class="space-y-4">
+            <p role="status" tabindex="-1" @ref="_notice" class="rounded-lg bg-green-50 p-4 text-sm font-semibold text-green-900">
+                Gói @Membership.PlanName @(saved.Membership.Status == MembershipStatuses.Active ? "đã có hiệu lực từ" : "sẽ có hiệu lực từ") ngày <MembershipDate Date="@scheduled" />.
+            </p>
+            <button type="button" class="@PrimaryButton" @onclick="CloseAsync">Đóng</button>
+        </div>
+    }
+    else if (Membership.Activation is { } window)
+    {
+        <form @onsubmit="SaveAsync" @onsubmit:preventDefault class="space-y-4">
+            <fieldset disabled="@_saving" class="space-y-4">
+                <legend class="sr-only">Chọn ngày kích hoạt gói @Membership.PlanName</legend>
+                <p class="font-semibold text-vfms-text">@Membership.PlanName</p>
+                <p id="activation-window" class="text-sm leading-6 text-vfms-text-secondary">
+                    Ngày mua <MembershipDate Date="@window.PurchasedOn" />. Chọn ngày kích hoạt từ <MembershipDate Date="@window.EarliestDate" /> đến <MembershipDate Date="@window.Deadline" />.
+                </p>
+                <label for="membership-activation-date" class="block text-sm font-semibold text-vfms-text">
+                    Ngày kích hoạt <span class="text-red-700" aria-hidden="true">*</span>
+                    <input id="membership-activation-date" type="date" class="mt-1 block w-full rounded-lg border border-vfms-border bg-white p-2.5"
+                           @ref="_dateInput" @bind="_startDate" required aria-describedby="activation-window activation-error"
+                           min="@MembershipDisplay.DateInput(window.EarliestDate)" max="@MembershipDisplay.DateInput(window.Deadline)" />
+                </label>
+                <div id="activation-error">
+                    @if (_error is not null)
+                    {
+                        <p role="alert" class="rounded-lg bg-red-50 p-3 text-sm text-red-800">@_error</p>
+                    }
+                </div>
+                <div class="flex flex-wrap gap-3">
+                    <button type="button" class="min-h-[44px] rounded-lg border border-vfms-border px-4 py-2 text-sm font-semibold" @onclick="CloseAsync">Hủy</button>
+                    <button type="submit" class="@PrimaryButton">@(_saving ? "Đang lưu..." : "Xác nhận kích hoạt")</button>
+                </div>
+            </fieldset>
+        </form>
+    }
+</WorkspaceModal>
+
+@code {
+    [Parameter, EditorRequired] public MembershipSummaryResponse Membership { get; set; } = default!;
+    [Parameter] public EventCallback<MembershipDetailResponse> Saved { get; set; }
+    [Parameter] public EventCallback Closed { get; set; }
+
+    private const string PrimaryButton = "min-h-[44px] rounded-lg bg-vfms-primary px-5 py-2 text-sm font-semibold text-white hover:bg-vfms-primary-hover";
+    private readonly CancellationTokenSource _lifetime = new();
+    private DateOnly? _startDate;
+    private MembershipDetailResponse? _saved;
+    private bool _saving;
+    private bool _focusNotice;
+    private string? _error;
+    private ElementReference _dateInput;
+    private ElementReference _notice;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && Membership.Activation is not null)
+            await _dateInput.FocusAsync();
+        if (_focusNotice)
+        {
+            _focusNotice = false;
+            await _notice.FocusAsync();
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_saving || _saved is not null || Membership.Activation is not { } window) return;
+        if (_startDate is not { } date || date < window.EarliestDate || date > window.Deadline)
+        {
+            _error = "Chọn ngày kích hoạt trong khoảng cho phép.";
+            return;
+        }
+
+        _saving = true;
+        _error = null;
+        var ct = _lifetime.Token;
+        try
+        {
+            _saved = await Plans.ScheduleMembershipActivationAsync(Membership.MembershipId, date, ct);
+            if (!ct.IsCancellationRequested)
+            {
+                _focusNotice = true;
+                await Saved.InvokeAsync(_saved);
+            }
+        }
+        catch (AuthApiException error) when (!ct.IsCancellationRequested) { _error = error.Message; }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        finally { _saving = false; }
+    }
+
+    private Task CloseAsync() => _saving ? Task.CompletedTask : Closed.InvokeAsync();
+
+    public void Dispose()
+    {
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+    }
+}

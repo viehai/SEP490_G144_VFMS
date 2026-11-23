@@ -199,13 +199,15 @@ public sealed partial class MembershipPurchaseApiTests
     public async Task TransactionHistorySettledFinancialAndVoucherSnapshotsSurviveManagerCatalogAndPromotionEdits()
     {
         using var buyer = Client("buyer", "Customer");
-        var original = await CreateAsync(buyer, Purchase([new(_basic, ActivationDate: Today.AddDays(1)), new(_combo)]));
+        var original = await CreateAsync(buyer, Purchase([new(_basic), new(_combo)]));
         var voucher = await SeedCheckoutVoucherAsync();
         var applied = await ApplyCheckoutVoucherAsync(buyer, original);
         using var settlement = await NotifyAsync(applied, 20_002);
         Assert.Equal(HttpStatusCode.OK, settlement.StatusCode);
         var id = await TransactionOrderIdAsync(original);
         var before = await TransactionDetailAsync(buyer, id);
+        var basic = Assert.Single(await ListOwnedMembershipsAsync(buyer), membership => membership.MembershipPlanId == _basic);
+        await ActivateMembershipAsync(buyer, basic.MembershipId, Today.AddDays(1));
 
         using var manager = Client("manager", "Manager");
         using var promotionUpdate = await manager.PutAsJsonAsync($"/api/manager/promotions/{voucher.Id}",
@@ -233,7 +235,7 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Equal("VietQR", after.Transaction.PaymentMethod);
         Assert.NotNull(after.PaidAt);
         Assert.Collection(after.Items,
-            item => { Assert.Equal("Basic", item.PlanName); Assert.Equal(500_000m, item.UnitPrice); Assert.Equal(Today.AddDays(1), item.ActivationStartDate); },
+            item => { Assert.Equal("Basic", item.PlanName); Assert.Equal(500_000m, item.UnitPrice); Assert.Null(item.ActivationStartDate); },
             item => { Assert.Equal("Combo", item.PlanName); Assert.Equal(800_000m, item.UnitPrice); });
         Assert.Equal("SAVE20", after.Voucher!.Code);
         Assert.Equal("Checkout campaign", after.Voucher.Name);
@@ -376,7 +378,7 @@ public sealed partial class MembershipPurchaseApiTests
         using var receipt = await staff.PostAsJsonAsync($"/api/staff/membership-purchases/{paid.OrderNumber}/confirm-cash",
             new ConfirmMembershipCashRequest(paid.AmountDue));
         Assert.Equal(HttpStatusCode.OK, receipt.StatusCode);
-        var overdue = await CreateAsync(buyer, Purchase([new(_combo, ActivationDate: Today.AddDays(2))]));
+        var overdue = await CreateAsync(buyer, Purchase([new(_combo)]));
         await SeedCheckoutVoucherAsync();
         await ApplyCheckoutVoucherAsync(buyer, overdue);
         _clock.Now = overdue.ExpiresAt.AddDays(1);

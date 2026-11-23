@@ -4,9 +4,10 @@
 @using System.Globalization
 @using VFMS.Client.Components.Memberships
 @using VFMS.Contracts.Memberships
-@attribute [Authorize(Roles = "Member")]
+@attribute [Authorize(Roles = "Customer,Member")]
 @inject MembershipPlanApiClient Plans
 @inject NavigationManager Navigation
+@inject AuthSession Session
 @implements IDisposable
 
 <PageTitle>Gói của tôi | Victor Fitness</PageTitle>
@@ -15,7 +16,9 @@
     <header class="space-y-2 border-b border-vfms-border pb-5">
         <h1 id="my-memberships-title" class="font-heading text-3xl font-extrabold text-vfms-text">Gói của tôi</h1>
         <p class="text-sm text-vfms-text-secondary">Xem thời hạn, trạng thái và thông tin bảo lưu của các gói hội viên của bạn.</p>
-        <a href="/my-freeze-requests" class="inline-flex min-h-[44px] items-center text-sm font-semibold text-vfms-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary">Yêu cầu bảo lưu của tôi</a>
+        <AuthorizeView Roles="Member">
+            <a href="/my-freeze-requests" class="inline-flex min-h-[44px] items-center text-sm font-semibold text-vfms-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary">Yêu cầu bảo lưu của tôi</a>
+        </AuthorizeView>
     </header>
 
     @if (_loading)
@@ -33,13 +36,36 @@
     {
         <div class="space-y-4 rounded-xl border border-vfms-border bg-vfms-surface p-8 text-center">
             <p role="status" class="text-sm text-vfms-text-secondary">Bạn chưa có gói hội viên nào.</p>
-            <a href="/#pricing-memberships" class="inline-flex min-h-[44px] items-center rounded-lg bg-vfms-primary px-5 py-2 text-sm font-semibold text-white hover:bg-vfms-primary-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary">
+            <a href="/membership-plans" class="inline-flex min-h-[44px] items-center rounded-lg bg-vfms-primary px-5 py-2 text-sm font-semibold text-white hover:bg-vfms-primary-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary">
                 Khám phá gói hội viên
             </a>
         </div>
     }
     else
     {
+        <div class="flex flex-wrap items-end justify-between gap-3" aria-label="Bộ lọc gói tập">
+            <div class="flex flex-wrap gap-2" role="group" aria-label="Trạng thái gói tập">
+                @foreach (var status in FilterStatuses.Where(status => _statusFilter == status ||
+                    _memberships.Any(membership => status.Length == 0 || membership.Status == status)))
+                {
+                    var selected = _statusFilter == status;
+                    <button type="button" aria-pressed="@(selected ? "true" : "false")" @onclick="() => _statusFilter = status"
+                            class="min-h-[44px] rounded-lg border px-3 text-sm font-semibold @(selected ? "border-vfms-primary bg-vfms-primary text-white" : "border-vfms-border bg-vfms-surface text-vfms-text hover:bg-vfms-muted")">
+                        @(status.Length == 0 ? "Tất cả" : MembershipDisplay.Status(status)) (@_memberships.Count(membership => status.Length == 0 || membership.Status == status))
+                    </button>
+                }
+            </div>
+            <label for="membership-service-filter" class="text-sm font-semibold text-vfms-text">
+                Dịch vụ
+                <select id="membership-service-filter" class="ml-1 min-h-[44px] rounded-lg border border-vfms-border bg-vfms-surface px-3" @bind="_serviceFilter">
+                    <option value="">Tất cả dịch vụ</option>
+                    <option value="GYM">Gym</option>
+                    <option value="YOGA">Yoga</option>
+                    <option value="PT">Huấn luyện cá nhân</option>
+                </select>
+            </label>
+        </div>
+
         @if (_loadingRenewals)
         {
             <p class="text-sm text-vfms-text-secondary" role="status">Đang tải thông tin gia hạn...</p>
@@ -53,8 +79,13 @@
             </div>
         }
 
+        var shown = VisibleMemberships.ToArray();
+        @if (shown.Length == 0)
+        {
+            <p role="status" class="rounded-xl border border-vfms-border bg-vfms-surface p-5 text-sm text-vfms-text-secondary">Không có gói tập phù hợp với bộ lọc.</p>
+        }
         <ul class="list-none space-y-4 p-0">
-            @foreach (var membership in _memberships)
+            @foreach (var membership in shown)
             {
                 _options.TryGetValue(membership.MembershipId, out var option);
                 <li @key="membership.MembershipId" class="space-y-4 rounded-xl border border-vfms-border bg-vfms-surface p-5 sm:p-6">
@@ -104,8 +135,14 @@
                         <p role="alert" class="text-sm text-red-800 rounded-lg bg-red-50 border border-red-200 p-3">@_renewalError</p>
                     }
                     <div class="flex flex-wrap gap-3">
-                        <a href="/my-memberships/@membership.MembershipId"
-                           aria-label="@($"Xem chi tiết gói {membership.PlanName}, ngày kích hoạt {membership.StartDate.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)}")"
+                        @if (membership.Activation is { } window && window.EarliestDate <= window.Deadline && MembershipDisplay.Today <= window.Deadline)
+                        {
+                            <button type="button" class="min-h-[44px] rounded-lg bg-vfms-primary px-5 py-2 text-sm font-semibold text-white hover:bg-vfms-primary-hover"
+                                    aria-label="Chọn ngày kích hoạt gói @membership.PlanName" @onclick="() => _choosing = membership">
+                                Chọn ngày kích hoạt
+                            </button>
+                        }
+                        <a href="/my-memberships/@membership.MembershipId" aria-label="Xem chi tiết gói @membership.PlanName"
                            class="inline-flex min-h-[44px] items-center rounded-lg border border-vfms-primary px-5 py-2 text-sm font-semibold text-vfms-primary hover:bg-vfms-primary-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary">
                             Xem chi tiết
                         </a>
@@ -122,41 +159,63 @@
                 </li>
             }
         </ul>
-        <a href="/#pricing-memberships" class="inline-flex min-h-[44px] items-center text-sm font-bold text-vfms-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary">
+        <a href="/membership-plans" class="inline-flex min-h-[44px] items-center text-sm font-bold text-vfms-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary">
             Xem tất cả gói hội viên
         </a>
     }
 </section>
 
+@if (_choosing is not null)
+{
+    <MembershipActivationDialog Membership="_choosing" Saved="ActivationSavedAsync" Closed="CloseActivation" />
+}
+
 @code {
     private static readonly CultureInfo VietnameseCulture = CultureInfo.GetCultureInfo("vi-VN");
+    private static readonly string[] FilterStatuses = [string.Empty, MembershipStatuses.AwaitingActivation, MembershipStatuses.Scheduled,
+        MembershipStatuses.Active, MembershipStatuses.Frozen, MembershipStatuses.Expired, MembershipStatuses.Suspended, MembershipStatuses.Cancelled];
     private readonly CancellationTokenSource _lifetime = new();
     private IReadOnlyList<MembershipSummaryResponse> _memberships = [];
     private IReadOnlyDictionary<int, MembershipRenewalOption> _options = new Dictionary<int, MembershipRenewalOption>();
     private bool _loading;
+    private bool _fetching;
     private string? _loadError;
     private bool _loadingRenewals;
     private string? _renewalsLoadError;
     private int? _submittingMembershipId;
     private string? _renewalError;
     private int? _renewalErrorMembershipId;
+    private string _statusFilter = string.Empty;
+    private string _serviceFilter = string.Empty;
+    private MembershipSummaryResponse? _choosing;
 
-    protected override Task OnInitializedAsync() => LoadAsync();
+    private IEnumerable<MembershipSummaryResponse> VisibleMemberships => _memberships.Where(membership =>
+        (_statusFilter.Length == 0 || membership.Status == _statusFilter) &&
+        (_serviceFilter.Length == 0 || membership.ComponentType == _serviceFilter));
 
-    private async Task LoadAsync()
+    protected override async Task OnInitializedAsync()
     {
-        if (_loading)
-            return;
+        await LoadAsync();
+        if (!_lifetime.IsCancellationRequested)
+            _ = WatchMembershipDatesAsync(_lifetime.Token);
+    }
+
+    private Task LoadAsync() => LoadMembershipsAsync(showLoading: true);
+
+    private async Task LoadMembershipsAsync(bool showLoading)
+    {
+        if (_fetching || _lifetime.IsCancellationRequested) return;
         var ct = _lifetime.Token;
-        _loading = true;
-        _loadError = null;
+        _fetching = true;
+        _loading = showLoading;
+        if (showLoading) _loadError = null;
         try
         {
             _memberships = await Plans.GetMyMembershipsAsync(ct);
         }
         catch (AuthApiException ex)
         {
-            _loadError = ex.Message;
+            if (showLoading) _loadError = ex.Message;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -164,10 +223,44 @@
         }
         finally
         {
-            _loading = false;
+            _loading = _fetching = false;
         }
         if (_memberships.Count > 0 && !ct.IsCancellationRequested)
             await LoadRenewalsAsync();
+    }
+
+    private async Task ActivationSavedAsync(MembershipDetailResponse detail)
+    {
+        _memberships = _memberships.Select(membership => membership.MembershipId == detail.Membership.MembershipId
+            ? detail.Membership : membership).ToArray();
+        _statusFilter = string.Empty;
+        await LoadMembershipsAsync(showLoading: false);
+    }
+
+    private void CloseActivation() => _choosing = null;
+
+    private async Task WatchMembershipDatesAsync(CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                var today = MembershipDisplay.Today;
+                if (_choosing is null && _memberships.Any(membership => membership.Status switch
+                    {
+                        MembershipStatuses.Scheduled => membership.StartDate <= today,
+                        MembershipStatuses.Active => membership.EndDate < today,
+                        MembershipStatuses.AwaitingActivation => membership.Activation?.Deadline <= today,
+                        _ => false
+                    }))
+                {
+                    await InvokeAsync(() => LoadMembershipsAsync(showLoading: false));
+                }
+                if (!ct.IsCancellationRequested) await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
     }
 
     private async Task LoadRenewalsAsync()
@@ -175,6 +268,8 @@
         if (_loadingRenewals)
             return;
         var ct = _lifetime.Token;
+        var auth = await Session.GetAuthenticationStateAsync();
+        if (!auth.User.IsInRole("Member") || ct.IsCancellationRequested) return;
         _loadingRenewals = true;
         _renewalsLoadError = null;
         StateHasChanged();

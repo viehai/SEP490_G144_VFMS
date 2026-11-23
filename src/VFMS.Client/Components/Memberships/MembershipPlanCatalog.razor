@@ -1,10 +1,15 @@
 @using System.Globalization
 @using VFMS.Contracts.Common
 @using VFMS.Contracts.Memberships
-@using VFMS.Contracts.Memberships.Validators
 @inject MembershipPlanApiClient Plans
 @inject NavigationManager Navigation
+@inject MembershipCart Cart
 @implements IDisposable
+
+@if (Cart.Count > 0)
+{
+    <p class="mb-4 text-right" role="status"><a href="/membership-cart" class="inline-flex min-h-[44px] items-center rounded-lg border border-vfms-primary px-4 text-sm font-bold text-vfms-primary hover:bg-vfms-primary-soft">Xem giỏ hàng (@Cart.Count gói)</a></p>
+}
 
 @if (_loading)
 {
@@ -66,9 +71,9 @@ else if (_page is { Items.Count: > 0 } catalog)
                 <div class="mt-6">
                     <AuthorizeView Roles="Customer,Member" Context="buyer">
                         <Authorized>
-                            <button type="button" disabled="@(_submitting || _cart.Count >= 50)"
+                            <button type="button" disabled="@(Cart.Count >= MembershipCart.MaximumItems)" aria-label="Thêm @plan.Name vào giỏ"
                                     class="w-full bg-[#B83A3A] hover:bg-[#9F3030] py-4 font-heading text-xs uppercase tracking-wider font-bold text-white rounded-lg transition-colors disabled:opacity-50"
-                                    @onclick="() => _cart.Add(new CartLine(plan))">Thêm gói tập</button>
+                                    @onclick="() => Cart.Add(plan.Id, plan.Name, plan.Price)">Thêm vào giỏ</button>
                         </Authorized>
                         <NotAuthorized>
                             @if (buyer.User.Identity?.IsAuthenticated == true)
@@ -103,54 +108,6 @@ else
     <p role="status" class="font-body text-sm text-[#6F6966]">@(IsYoga(ServiceType) ? "Hiện chưa có gói Yoga mở bán." : "Hiện chưa có gói tập Gym mở bán.")</p>
 }
 
-@if (_cart.Count > 0)
-{
-    <form class="mt-10 space-y-5 border border-[#D8D1CD] bg-[#F8F5F2] p-6 font-body rounded-xl shadow-sm"
-          @onsubmit="CheckoutAsync" @onsubmit:preventDefault aria-labelledby="membership-cart-title">
-        <h3 id="membership-cart-title" class="font-heading text-xl font-black text-[#242424]">Giỏ gói tập (@_cart.Count)</h3>
-        <fieldset class="space-y-5" disabled="@_submitting">
-            @foreach (var line in _cart)
-            {
-                <fieldset @key="line" class="grid gap-3 border border-[#D8D1CD] p-4 md:grid-cols-2 rounded-lg bg-[#ECE8E4]">
-                    <legend class="px-2 font-heading font-bold text-[#242424]">@line.Plan.Name · @Money(line.Plan.Price)</legend>
-                    <label class="block text-xs font-medium text-[#242424]">
-                        Email người thụ hưởng (để trống nếu mua cho mình)
-                        <input type="email" class="mt-1 block w-full border border-[#D8D1CD] bg-[#F8F5F2] p-2 text-sm rounded-lg focus:border-[#B83A3A] focus:outline-none"
-                               autocomplete="off" maxlength="256" @bind="line.BeneficiaryEmail" />
-                    </label>
-                    <label class="block text-xs font-medium text-[#242424]">
-                        Ngày bắt đầu (để trống để hệ thống xếp lịch)
-                        <input type="date" class="mt-1 block w-full border border-[#D8D1CD] bg-[#F8F5F2] p-2 text-sm rounded-lg focus:border-[#B83A3A] focus:outline-none"
-                               min="@DateInput(Today)" max="@DateInput(Today.AddDays(30))" @bind="line.ActivationDate" />
-                    </label>
-                    <button type="button" class="justify-self-start text-xs font-bold text-[#DC2626] hover:underline"
-                            @onclick="() => _cart.Remove(line)">Bỏ gói @line.Plan.Name</button>
-                </fieldset>
-            }
-            <p class="text-xs text-[#6F6966]">Gói cùng loại dịch vụ được xếp nối tiếp sau gói hiện có.</p>
-            <p class="font-heading text-lg font-bold text-[#242424]">Tạm tính: <span class="text-[#B83A3A]">@Money(_cart.Sum(line => line.Plan.Price))</span></p>
-            <label class="block text-xs font-medium text-[#242424]">
-                Hình thức thanh toán
-                <select class="mt-1 block border border-[#D8D1CD] bg-[#F8F5F2] p-2 text-sm rounded-lg focus:border-[#B83A3A] focus:outline-none" @bind="_paymentMethod">
-                    <option value="@MembershipPaymentMethods.VietQr">Chuyển khoản VietQR</option>
-                    <option value="@MembershipPaymentMethods.Cash">Tiền mặt tại quầy</option>
-                </select>
-            </label>
-            <p id="membership-voucher-next-step" class="text-sm leading-relaxed text-[#6F6966]">
-                <span class="font-semibold text-[#242424]">Có mã giảm giá?</span>
-                Bạn có thể nhập và áp dụng mã ở bước thanh toán tiếp theo, trước khi chuyển khoản hoặc thanh toán tại quầy.
-            </p>
-            <button type="submit" aria-describedby="membership-voucher-next-step" class="bg-[#B83A3A] hover:bg-[#9F3030] px-6 py-3 font-heading text-xs font-bold uppercase tracking-wider text-white rounded-lg transition-colors">
-                @(_submitting ? "Đang tạo đơn..." : "Tạo đơn thanh toán")
-            </button>
-        </fieldset>
-        @if (_checkoutError is not null)
-        {
-            <p role="alert" class="text-sm text-red-800">@_checkoutError</p>
-        }
-    </form>
-}
-
 @code {
     /// <summary>GYM or YOGA: which plans this catalog sells. Null lists every plan.</summary>
     [Parameter] public string? ServiceType { get; set; }
@@ -169,17 +126,11 @@ else
     private static bool IsYoga(string? type) => string.Equals(type, MembershipPlanServiceTypes.Yoga, StringComparison.OrdinalIgnoreCase);
 
     private static readonly NumberFormatInfo Vietnamese = new() { NumberGroupSeparator = ".", NumberDecimalSeparator = "," };
-    private static readonly MembershipPurchaseRequestValidator PurchaseValidator = new();
     private readonly CancellationTokenSource _lifetime = new();
-    private readonly List<CartLine> _cart = [];
     private PagedResponse<MembershipPlanCatalogItemResponse>? _page;
     private int _requestedPage = 1;
     private bool _loading = true;
     private string? _error;
-    private bool _submitting;
-    private string? _checkoutError;
-    private string _paymentMethod = MembershipPaymentMethods.VietQr;
-    private static DateOnly Today => DateOnly.FromDateTime(DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(7)).DateTime);
 
     protected override Task OnInitializedAsync() => LoadAsync(1);
 
@@ -217,50 +168,7 @@ else
             : plan.DurationInDays is > 0 ? $"{plan.DurationInDays} ngày"
             : "Chưa có thời hạn";
 
-    private async Task CheckoutAsync()
-    {
-        if (_submitting || _cart.Count == 0)
-            return;
-
-        _submitting = true;
-        _checkoutError = null;
-        var ct = _lifetime.Token;
-        try
-        {
-            var request = new MembershipPurchaseRequest(_cart.Select(line => new MembershipPurchaseItemRequest(
-                line.Plan.Id, line.BeneficiaryEmail?.Trim(), line.ActivationDate)).ToArray(), _paymentMethod);
-            var validation = await PurchaseValidator.ValidateAsync(request, ct);
-            if (!validation.IsValid)
-            {
-                _checkoutError = validation.Errors[0].ErrorMessage;
-                return;
-            }
-            var purchase = await Plans.PurchaseAsync(request, ct);
-            Navigation.NavigateTo($"/membership-purchases/{Uri.EscapeDataString(purchase.OrderNumber)}");
-        }
-        catch (AuthApiException ex)
-        {
-            _checkoutError = ex.Message;
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            // The user left the catalog.
-        }
-        finally
-        {
-            _submitting = false;
-        }
-    }
-
     private static string Money(decimal value) => $"{value.ToString("#,0.##", Vietnamese)} ₫";
-    private static string DateInput(DateOnly date) => date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-
-    private sealed class CartLine(MembershipPlanCatalogItemResponse plan)
-    {
-        public MembershipPlanCatalogItemResponse Plan { get; } = plan;
-        public string? BeneficiaryEmail { get; set; }
-        public DateOnly? ActivationDate { get; set; }
-    }
 
     public void Dispose()
     {

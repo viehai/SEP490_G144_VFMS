@@ -13,6 +13,7 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
 {
     private const string BasePath = "api/manager/membership-plans";
     private const string PurchasesPath = "api/membership-purchases";
+    private const string StaffPurchasesPath = "api/staff/membership-purchases";
     private const string RenewalsPath = "api/membership-renewals";
     private const string MembershipsPath = "api/memberships";
     private const string TransactionsPath = "api/membership-transactions";
@@ -103,6 +104,17 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
     public Task<MembershipDetailResponse> GetMembershipDetailAsync(int membershipId, CancellationToken cancellationToken = default) =>
         SendAsync<MembershipDetailResponse>(HttpMethod.Get,
             FormattableString.Invariant($"{MembershipsPath}/{membershipId}"), cancellationToken);
+
+    public async Task<MembershipDetailResponse> ScheduleMembershipActivationAsync(
+        int membershipId, DateOnly date, CancellationToken cancellationToken = default)
+    {
+        var detail = await SendAsync<MembershipDetailResponse>(HttpMethod.Put,
+            FormattableString.Invariant($"{MembershipsPath}/{membershipId}/activation"), cancellationToken,
+            JsonContent.Create(new ScheduleMembershipActivationRequest(date)));
+        if (detail.Membership.Status == MembershipStatuses.Active)
+            await session.RefreshMemberRoleAsync(null, cancellationToken);
+        return detail;
+    }
 
     public Task<PagedResponse<MembershipTransactionSummaryResponse>> ListTransactionsAsync(
         int page, int pageSize = 10, CancellationToken cancellationToken = default) =>
@@ -224,8 +236,26 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
     public Task<MembershipPurchaseResponse> ConfirmCashAsync(
         string orderNumber, ConfirmMembershipCashRequest request, CancellationToken cancellationToken = default) =>
         SendAsync<MembershipPurchaseResponse>(HttpMethod.Post,
-            $"api/staff/membership-purchases/{Uri.EscapeDataString(orderNumber)}/confirm-cash", cancellationToken,
+            $"{StaffPurchasesPath}/{Uri.EscapeDataString(orderNumber)}/confirm-cash", cancellationToken,
             JsonContent.Create(request), ReadPurchaseAsync);
+
+    public Task<PagedResponse<StaffPackageOrderResponse>> ListStaffOrdersAsync(
+        StaffPackageOrderQuery query, CancellationToken cancellationToken = default)
+    {
+        var path = FormattableString.Invariant($"{StaffPurchasesPath}?page={query.Page}&pageSize={query.PageSize}");
+        var filters = new (string Name, string? Value)[]
+        {
+            ("search", query.Search), ("status", query.Status), ("serviceType", query.ServiceType),
+            ("method", query.Method), ("paymentStatus", query.PaymentStatus),
+            ("from", query.From?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)),
+            ("to", query.To?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture))
+        };
+        foreach (var (name, value) in filters)
+            if (!string.IsNullOrWhiteSpace(value))
+                path += $"&{name}={Uri.EscapeDataString(value.Trim())}";
+
+        return SendAsync<PagedResponse<StaffPackageOrderResponse>>(HttpMethod.Get, path, cancellationToken);
+    }
 
     private static readonly JsonSerializerOptions PurchaseJsonOptions = new(JsonSerializerDefaults.Web);
 
