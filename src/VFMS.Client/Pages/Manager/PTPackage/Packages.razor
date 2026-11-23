@@ -24,7 +24,7 @@
                 <fieldset disabled="@_working" class="grid gap-4 text-sm font-semibold text-[#242424] sm:grid-cols-2">
                     <label>Tên gói<input class="@Field" @bind="draft.Name" required maxlength="256" aria-invalid="@Invalid("Name")" />@FieldError("Name")</label>
                     <label>Cấp PT
-                        <select class="@Field" @bind="draft.Level"><option>Junior</option><option>Senior</option><option>Master</option></select>@FieldError("TrainerLevel")
+                        <select class="@Field" @bind="draft.Level"><option value="Junior">Sơ cấp</option><option value="Senior">Cao cấp</option><option value="Master">Chuyên gia</option></select>@FieldError("TrainerLevel")
                     </label>
                     <label>Số buổi<input class="@Field" type="number" min="1" max="@PTPackageRequestValidator.MaxSessions" @bind="draft.Credits" required aria-invalid="@Invalid("Credits")" />@FieldError("Credits")</label>
                     <div>
@@ -59,7 +59,7 @@
             <h2 id="pt-package-details" class="break-words border-b border-[#D8D1CD] pb-3 text-base font-bold text-[#242424]" tabindex="-1" @ref="_panelHeading">@package.Name</h2>
             <dl class="mt-4 grid gap-4 text-sm sm:grid-cols-2">
                 <div><dt class="font-semibold text-[#6F6966]">Mã gói</dt><dd>@package.Code</dd></div>
-                <div><dt class="font-semibold text-[#6F6966]">Cấp PT</dt><dd>@package.TrainerLevel</dd></div>
+                <div><dt class="font-semibold text-[#6F6966]">Cấp PT</dt><dd>@PTDisplay.Level(package.TrainerLevel)</dd></div>
                 <div><dt class="font-semibold text-[#6F6966]">Số buổi</dt><dd>@package.Credits buổi</dd></div>
                 <div><dt class="font-semibold text-[#6F6966]">Giá</dt><dd>@Vnd.Format(package.Price)</dd></div>
                 <div><dt class="font-semibold text-[#6F6966]">Bảo lưu tối thiểu / tối đa</dt><dd>@package.FreezeMinimumDays / @package.FreezeMaxTotalDays ngày</dd></div>
@@ -121,7 +121,7 @@
                                 <th scope="row" class="max-w-56 break-words">@row.Name <span class="block text-xs font-normal text-[#6F6966]">@row.Code</span></th>
                                 <td>@row.Credits buổi</td>
                                 <td class="whitespace-nowrap font-semibold text-[#B83A3A]">@Vnd.Format(row.Price)</td>
-                                <td>@row.TrainerLevel</td>
+                                <td>@PTDisplay.Level(row.TrainerLevel)</td>
                                 <td>@row.FreezeMinimumDays / @row.FreezeMaxTotalDays ngày</td>
                                 <td>@(row.SubscriberCount ?? 0)</td>
                                 <td><span class="inline-block whitespace-nowrap rounded-md border px-2.5 py-1 text-[11px] font-semibold @(row.IsActive ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-[#D8D1CD] bg-[#ECE8E4] text-[#6F6966]")">@SaleStatus(row.IsActive)</span></td>
@@ -165,7 +165,7 @@
 </div>
 
 @code {
-    private const int PageSize = 20;
+    private const int PageSize = 10;
     private const string Field = "mt-1 block w-full rounded-lg border border-[#D8D1CD] bg-white px-3 py-2 text-sm font-normal text-[#242424] focus:border-[#B83A3A] focus:ring-2 focus:ring-[#B83A3A]/20 outline-none";
     private const string Button = "rounded-lg border border-[#D8D1CD] bg-white px-3 py-1.5 text-xs font-semibold text-[#242424] hover:bg-[#ECE8E4] transition disabled:opacity-50";
     private const string PrimaryButton = "rounded-lg bg-[#B83A3A] px-4 py-2 text-sm font-semibold text-white hover:bg-[#9F3030] transition shadow-sm disabled:opacity-50";

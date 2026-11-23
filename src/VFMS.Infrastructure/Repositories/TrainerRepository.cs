@@ -55,13 +55,13 @@ public sealed class TrainerRepository(VfmsDbContext db, IDataProtectionProvider 
             if (AccountIdentityConflict.SqlErrorNumber(exception) == 51000)
                 await transaction.RollbackAsync(cancellationToken);
             Context.ChangeTracker.Clear();
-            return Result<T>.Failure("Recruitment is busy; retry shortly.", "TRAINER_CONFLICT", 409);
+            return Result<T>.Failure("Hệ thống tuyển dụng đang bận. Vui lòng thử lại sau ít phút.", "TRAINER_CONFLICT", 409);
         }
         catch (DbUpdateConcurrencyException)
         {
             await transaction.RollbackAsync(cancellationToken);
             Context.ChangeTracker.Clear();
-            return Result<T>.Failure("Record changed; refresh and retry.", "TRAINER_CONFLICT", 409);
+            return Result<T>.Failure("Hồ sơ vừa thay đổi. Vui lòng tải lại và thử lại.", "TRAINER_CONFLICT", 409);
         }
         catch (DbUpdateException exception) when (AccountIdentityConflict.GetField(exception) is { } field)
         {
@@ -73,7 +73,7 @@ public sealed class TrainerRepository(VfmsDbContext db, IDataProtectionProvider 
         {
             await transaction.RollbackAsync(cancellationToken);
             Context.ChangeTracker.Clear();
-            return Result<T>.Failure("Unable to save because of a data conflict.", "TRAINER_CONFLICT", 409);
+            return Result<T>.Failure("Không thể lưu do dữ liệu bị xung đột. Vui lòng tải lại và thử lại.", "TRAINER_CONFLICT", 409);
         }
         finally
         {

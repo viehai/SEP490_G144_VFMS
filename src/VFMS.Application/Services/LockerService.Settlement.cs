@@ -28,7 +28,7 @@ public sealed partial class LockerService
         Type(rental) != RentalType.Daily && rental.ReturnedAt is null && OverdueDays(rental, now) > 7;
 
     private static Result<T> MustClear<T>() => Conflict<T>(
-        "Hợp đồng quá hạn hơn 7 ngày, cần xử lý theo quy trình dọn tủ có Manager xác nhận.");
+        "Hợp đồng quá hạn hơn 7 ngày, cần xử lý theo quy trình dọn tủ có quản lý xác nhận.");
 
     private static LockerSettlementQuote CalculateSettlement(LockerRentalContract rental, bool damaged, DateTime now) =>
         SettleAmounts(rental, OverdueFees(rental, now), damaged || rental.KeyLossConfirmedAt is not null, now);

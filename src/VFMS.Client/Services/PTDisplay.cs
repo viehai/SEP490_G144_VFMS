@@ -16,6 +16,14 @@ internal static class PTDisplay
     internal static string Day(DayOfWeek day) => day == DayOfWeek.Sunday ? "Chủ nhật" : $"Thứ {(int)day + 1}";
     internal static int DayIndex(DayOfWeek day) => ((int)day + 6) % 7;
 
+    internal static string Level(string value) => value switch
+    {
+        "Junior" => "Sơ cấp",
+        "Senior" => "Cao cấp",
+        "Master" => "Chuyên gia",
+        _ => value
+    };
+
     internal static string Status(string value) => value switch
     {
         "Active" => "Đang hoạt động",
@@ -35,6 +43,7 @@ internal static class PTDisplay
         "PendingFreeze" => "Chờ duyệt bảo lưu",
         "Approved" => "Đã duyệt",
         "Rejected" => "Đã từ chối",
+        "Blacklisted" => "Không đủ điều kiện",
         "ReschedulePending" => "Chờ hội viên phản hồi",
         "RescheduleRequested" => "Chờ PT phản hồi",
         "MakeUpPending" => "Chờ hội viên duyệt buổi bù",

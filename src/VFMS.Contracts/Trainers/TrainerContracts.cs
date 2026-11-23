@@ -15,14 +15,14 @@ public sealed record TrainerApplicationReceipt(string TrackingCode, string Statu
 public sealed record TrainerRecruitmentStatus(bool IsAcceptingApplications);
 public sealed record SetTrainerRecruitmentStatusRequest(bool IsAcceptingApplications);
 public sealed record TrainerApplicationFilter(string? Status = null, string? TrainerRole = null,
-    DateTime? From = null, DateTime? To = null, int Page = 1, int PageSize = 20, string? ApplicationType = null);
+    DateTime? From = null, DateTime? To = null, int Page = 1, int PageSize = 10, string? ApplicationType = null);
 public sealed record ReviewTrainerApplicationRequest(string Action, string? Note, string? Level = null,
     string? ExistingUserId = null, bool IdentityVerified = false);
 public sealed record UpdateTrainerProfileRequest(string? Bio = null, TrainerFileInput? Avatar = null);
 public sealed record TrainerSetupRequest(string Token, string Password);
 /// <summary>Search matches the trainer name or specialization; TrainerRole filters PT or Yoga (UC 3.4).</summary>
 public sealed record TrainerSearch(string? Search = null, string? TrainerRole = null, string? Gender = null,
-    decimal? MinimumRating = null, int Page = 1, int PageSize = 20);
+    decimal? MinimumRating = null, int Page = 1, int PageSize = 10);
 /// <summary>Replaces: the published certificate (link or file name) a pending ProfileUpdate certificate would replace (UC 3.3).</summary>
 public sealed record TrainerDocumentResponse(string Id, string FileName, string ContentType, string DownloadUrl, bool IsExternalLink = false,
     string? Replaces = null);

@@ -14,7 +14,7 @@
     else if (_trainer is { } trainer)
     {
         <section class="trainer-panel trainer-stack">
-            <h2>@trainer.Profile.FullName · @trainer.Profile.Level</h2>
+            <h2>@trainer.Profile.FullName · @PTDisplay.Level(trainer.Profile.Level)</h2>
             @if (_packages.Length == 0) { <p>Chưa có gói đang mở bán cho cấp PT này.</p> }
             else
             {

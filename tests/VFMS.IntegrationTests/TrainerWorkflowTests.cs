@@ -268,14 +268,14 @@ public class TrainerWorkflowTests
         {
             var message = await email.Delivery.Task.WaitAsync(timeout.Token);
             Assert.Equal(TrainerTestDatabase.Request.Email, message.Recipient);
-            Assert.Equal("Set up your trainer account", message.Subject);
+            Assert.Equal("Thiết lập tài khoản huấn luyện viên", message.Subject);
             Assert.Contains($"https://gym.example.test/auth/trainer-setup?token={Uri.EscapeDataString(token)}", message.Body);
 
             while (true)
             {
                 var json = await fixture.Db.TrainerApplications.Where(x => x.Id == application.Id)
                     .Select(x => x.EmailQueueJson).SingleAsync(timeout.Token);
-                var setup = JsonSerializer.Deserialize<List<TrainerQueuedEmail>>(json)!.Single(x => x.Subject == message.Subject);
+                var setup = JsonSerializer.Deserialize<List<TrainerQueuedEmail>>(json)!.Single(x => x.Subject == "Set up your trainer account");
                 if (setup.SentAt is not null)
                 {
                     Assert.Empty(setup.ProtectedBody);
@@ -715,9 +715,9 @@ public class TrainerWorkflowTests
         Assert.Equal(1, await db.ApplicationUsers.CountAsync());
         Assert.Equal("RECRUITMENT_COOLDOWN", (await service.Submit(TrainerTestDatabase.Request, null, default)).ErrorCode);
         var app = await db.TrainerApplications.SingleAsync();
-        var receiptEmail = JsonSerializer.Deserialize<List<TrainerQueuedEmail>>(app.EmailQueueJson)!.Single(x => x.Subject == "Trainer application received");
+        var receiptEmail = JsonSerializer.Deserialize<List<TrainerQueuedEmail>>(app.EmailQueueJson)!.Single(x => x.Subject == "Đã nhận hồ sơ ứng tuyển huấn luyện viên");
         var receiptBody = fixture.Protection.CreateProtector("VFMS.TrainerEmail.v1").Unprotect(receiptEmail.ProtectedBody);
-        Assert.DoesNotContain("Pending Review", receiptBody); Assert.Contains("Pending.", receiptBody);
+        Assert.Contains("Hồ sơ đang chờ xét duyệt.", receiptBody);
         var file = JsonSerializer.Deserialize<List<TrainerStoredFile>>(app.CertificatesJson)!.Single();
         Assert.Equal(404, (await service.ApplicationDocument(app.Id, file.Id, null, default)).StatusCode);
         Assert.Equal(TrainerTestDatabase.Request.Certificates[0].Content, TrainerTestDatabase.Success(await service.ApplicationDocument(app.Id, file.Id, "manager", default)).Content);

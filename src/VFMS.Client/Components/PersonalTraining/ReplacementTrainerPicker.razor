@@ -13,7 +13,7 @@
                 <option value="">Chọn huấn luyện viên</option>
                 @foreach (var trainer in _trainers)
                 {
-                    <option value="@trainer.UserId">@trainer.FullName · @trainer.Level</option>
+                    <option value="@trainer.UserId">@trainer.FullName · @PTDisplay.Level(trainer.Level)</option>
                 }
             </select>
         </label>

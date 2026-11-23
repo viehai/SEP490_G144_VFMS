@@ -11,7 +11,7 @@
 <PageTitle>Sơ đồ tủ | Victor Fitness</PageTitle>
 
 <section class="workspace-page space-y-6 font-['Inter',sans-serif] text-[#242424]" aria-labelledby="locker-registry-title">
-    <PageHeader Overline="VFMS / FRONT DESK" Title="Sơ đồ tủ" Description="Xem trạng thái tủ, thuê tại quầy và đặt tủ vào bảo trì.">
+    <PageHeader Overline="VFMS / LỄ TÂN" Title="Sơ đồ tủ" Description="Xem trạng thái tủ, thuê tại quầy và đặt tủ vào bảo trì.">
         <div class="flex flex-wrap gap-2">
             <a href="/staff/locker-contracts" class="@Ui.PrimaryButton">Hợp đồng &amp; trả tủ</a>
             <a href="/staff/dashboard" class="@Ui.Button">← Tổng quan</a>
@@ -31,7 +31,7 @@
                 {
                     <StatusBadge Status="@LockerText.SlotTone(status)" Label="@LockerText.Slot(status)" />
                 }
-                <span>Đang giữ gồm tủ giữ cho đơn online hoặc chờ nhận chìa.</span>
+                <span>Đang giữ gồm tủ giữ cho đơn trực tuyến hoặc chờ nhận chìa.</span>
             </div>
             <LockerGrid Slots="_grid" SelectedId="_selected?.Id" OnSelect="s => _selected = s" />
         </div>

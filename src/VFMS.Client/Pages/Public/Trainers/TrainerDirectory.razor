@@ -64,7 +64,7 @@
                         </div>
                     </div>
                     <div class="trainer-row trainer-between">
-                        <span class="trainer-status">@trainer.Level</span>
+                        <span class="trainer-status">@PTDisplay.Level(trainer.Level)</span>
                         @if (trainer.AverageRating > 0) { <StarRating Value="trainer.AverageRating" /> }
                         else { <span class="trainer-muted">Chưa có đánh giá</span> }
                     </div>

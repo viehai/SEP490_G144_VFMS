@@ -18,7 +18,7 @@
                 <TrainerAvatar Trainer="detail.Profile" />
                 <div>
                     <h1>@detail.Profile.FullName</h1>
-                    <p class="trainer-muted">@detail.Profile.TrainerRole · @detail.Profile.Specialty · @detail.Profile.Level · @detail.Profile.ExperienceYears năm kinh nghiệm</p>
+                    <p class="trainer-muted">@detail.Profile.TrainerRole · @detail.Profile.Specialty · @PTDisplay.Level(detail.Profile.Level) · @detail.Profile.ExperienceYears năm kinh nghiệm</p>
                     @if (IsPT)
                     {
                         <p class="trainer-muted">@(detail.Profile.IsAcceptingNewMembers ? "Sẵn sàng nhận học viên" : "Không nhận học viên mới")</p>
@@ -86,9 +86,9 @@
                             </li>
                         }
                     </ul>
-                    @if (detail.ReviewTotal > 20)
+                    @if (detail.ReviewTotal > 10)
                     {
-                        <Pager Page="detail.ReviewPage" TotalCount="detail.ReviewTotal" Noun="đánh giá"
+                        <Pager PageSize="10" Page="detail.ReviewPage" TotalCount="detail.ReviewTotal" Noun="đánh giá"
                                Disabled="_loadingReviews" OnPage="LoadReviewsAsync" />
                     }
                 }

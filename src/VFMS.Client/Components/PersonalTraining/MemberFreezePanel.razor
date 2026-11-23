@@ -42,7 +42,7 @@
                 @if (_proposal is { } proposal)
                 {
                     <div class="trainer-stack">
-                        <p>Hạn gói dự kiến @Date(proposal.ExpiresOn). Các ca dưới đây được giữ chỗ trong lúc chờ Manager duyệt.</p>
+                        <p>Hạn gói dự kiến @Date(proposal.ExpiresOn). Các ca dưới đây được giữ chỗ trong lúc chờ quản lý duyệt.</p>
                         @if (proposal.GymCoverageWarning)
                         {
                             <p class="trainer-feedback trainer-error" role="alert">Gói Gym của bạn hết hạn trước buổi cuối. Bạn cần gia hạn gói Gym để vào tập các buổi đó.</p>
@@ -76,7 +76,7 @@
                     <TrainerStatus Status="@freeze.Status" />
                 </div>
                 <p class="trainer-copy">@freeze.Reason</p>
-                @if (!string.IsNullOrWhiteSpace(freeze.ReviewNote)) { <p class="trainer-copy">Phản hồi Manager: @freeze.ReviewNote</p> }
+                @if (!string.IsNullOrWhiteSpace(freeze.ReviewNote)) { <p class="trainer-copy">Phản hồi Quản lý: @freeze.ReviewNote</p> }
                 @if (freeze.ReplacementTrainerId is not null) { <p class="trainer-muted">Kèm đổi huấn luyện viên cho các buổi còn lại.</p> }
                 <div class="trainer-row">
                     @if (freeze.Status == "Active" && Today < freeze.ResumeDate)

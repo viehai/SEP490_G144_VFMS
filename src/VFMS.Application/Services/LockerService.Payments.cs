@@ -97,7 +97,7 @@ public sealed partial class LockerService
                 return Missing<LockerCheckout>();
             var now = Now.UtcDateTime;
             if (charge.LockerPurpose != LockerPaymentPurpose.Rental || order!.Channel != OrderChannel.Online)
-                return Conflict<LockerCheckout>("Chỉ đơn thuê tủ online mới cần bắt đầu thanh toán.");
+                return Conflict<LockerCheckout>("Chỉ đơn thuê tủ trực tuyến mới cần bắt đầu thanh toán.");
             if (charge.PaymentStartedAt is null)
             {
                 if (!Pending(charge, now))

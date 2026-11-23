@@ -9,7 +9,7 @@
 <PageTitle>Xét tuyển huấn luyện viên | Victor Fitness</PageTitle>
 
 <section class="workspace-page trainer-page trainer-stack">
-    <PageHeader Overline="VFMS / TRAINERS" Title="Hồ sơ huấn luyện viên"
+    <PageHeader Overline="VFMS / HUẤN LUYỆN VIÊN" Title="Hồ sơ huấn luyện viên"
                 Description="Xét tuyển ứng viên và duyệt cập nhật chứng chỉ của huấn luyện viên." />
     <div class="trainer-panel trainer-row trainer-between">
         <span>Nhận hồ sơ ứng tuyển: <strong>@(_recruitmentStatus?.IsAcceptingApplications == true ? "Đang mở" : "Tạm dừng")</strong></span>
@@ -105,14 +105,14 @@
                 <div class="trainer-stack">
                     <h3>Lịch sử nộp hồ sơ</h3>
                     <ul class="trainer-list">
-                        @foreach (var attempt in (app.SubmissionHistory ?? []).Skip((_attemptPage - 1) * 20).Take(20))
+                        @foreach (var attempt in (app.SubmissionHistory ?? []).Skip((_attemptPage - 1) * 10).Take(10))
                         {
                             <li class="trainer-row trainer-between"><button type="button" class="trainer-link" disabled="@Busy" @onclick="() => OpenAsync(attempt.Id)">Lần @attempt.SubmissionAttempt · @PTDisplay.LocalTime(attempt.SubmittedAt)</button><TrainerStatus Status="@attempt.Status" /></li>
                         }
                     </ul>
-                    @if (app.SubmissionHistory is { Count: > 20 } attempts)
+                    @if (app.SubmissionHistory is { Count: > 10 } attempts)
                     {
-                        <Pager Page="_attemptPage" TotalCount="attempts.Count" Noun="lần nộp" Disabled="Busy" OnPage="page => _attemptPage = page" />
+                        <Pager PageSize="10" Page="_attemptPage" TotalCount="attempts.Count" Noun="lần nộp" Disabled="Busy" OnPage="page => _attemptPage = page" />
                     }
                 </div>
                 @if (!string.IsNullOrWhiteSpace(app.InterviewNote)) { <div><h3>Ghi chú phỏng vấn</h3><p class="trainer-copy">@app.InterviewNote</p></div> }
@@ -151,11 +151,11 @@
                             </select></label>
                             @if (_action == "Hire")
                             {
-                                <label>Cấp huấn luyện viên<select class="trainer-input" @bind="_level"><option>Junior</option><option>Senior</option><option>Master</option></select></label>
+                                <label>Cấp huấn luyện viên<select class="trainer-input" @bind="_level"><option value="Junior">Sơ cấp</option><option value="Senior">Cao cấp</option><option value="Master">Chuyên gia</option></select></label>
                                 @if (app.AccountMatch is { Status: "Ambiguous" } && ChosenCandidate(app) is { } chosen)
                                 {
                                     <p class="trainer-muted trainer-copy">Liên kết với tài khoản ID: @chosen.UserId</p>
-                                    <p class="trainer-muted trainer-copy">Khi tuyển, tài khoản này chỉ còn vai trò @LoginRole(app) (gỡ vai trò Customer/Member).</p>
+                                    <p class="trainer-muted trainer-copy">Khi tuyển, tài khoản này chỉ còn vai trò @LoginRole(app) (gỡ vai trò khách hàng/hội viên).</p>
                                     @if (AccountMatchError(app) is { } blocked)
                                     {
                                         <p class="trainer-feedback trainer-error" role="alert">@blocked</p>
@@ -171,7 +171,7 @@
                                         <input class="trainer-input" value="@match.FullName" readonly />
                                     </label>
                                     <p class="trainer-muted trainer-copy">ID tài khoản: @match.UserId</p>
-                                    <p class="trainer-muted trainer-copy">Khi tuyển, tài khoản này chỉ còn vai trò @LoginRole(app) (gỡ vai trò Customer/Member).</p>
+                                    <p class="trainer-muted trainer-copy">Khi tuyển, tài khoản này chỉ còn vai trò @LoginRole(app) (gỡ vai trò khách hàng/hội viên).</p>
                                     @if (AccountMatchError(app) is { } blocked)
                                     {
                                         <p class="trainer-feedback trainer-error" role="alert">@blocked</p>
@@ -363,7 +363,7 @@
     private string? _chosenAccount;
 
     // UC 3.2 step 7: Trainer Role PT signs in as PT, Trainer Role Yoga as YogaInstructor.
-    private static string LoginRole(TrainerApplicationResponse app) => app.TrainerRole == "Yoga" ? "YogaInstructor" : "PT";
+    private static string LoginRole(TrainerApplicationResponse app) => app.TrainerRole == "Yoga" ? "huấn luyện viên Yoga" : "huấn luyện viên cá nhân";
 
     private TrainerAccountCandidate? ChosenCandidate(TrainerApplicationResponse app) =>
         app.AccountMatch?.Matches?.FirstOrDefault(match => match.UserId == _chosenAccount);
@@ -377,7 +377,7 @@
             "Ứng viên còn hợp đồng PT với tư cách hội viên. Chỉ tuyển được sau khi hợp đồng đó kết thúc.",
         "Ambiguous" when _chosenAccount is not null => null,
         "Ambiguous" => "Hồ sơ khớp nhiều tài khoản hoặc chỉ trùng số điện thoại. Xác minh danh tính rồi chọn tài khoản đủ điều kiện ở danh sách trên.",
-        "Ineligible" => "Tài khoản khớp không phải tài khoản Customer/Member đang hoạt động nên không thể liên kết.",
+        "Ineligible" => "Tài khoản khớp không phải tài khoản khách hàng/hội viên đang hoạt động nên không thể liên kết.",
         _ => "Chưa xác định được tài khoản. Mở lại hồ sơ để tải kết quả mới nhất."
     };
 

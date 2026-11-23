@@ -15,6 +15,7 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
     TrainerSetupLinkSettings? setupLinks = null) : ITrainerService
 {
     private static readonly TimeSpan SubmissionCooldown = TimeSpan.FromMinutes(10);
+    // Stable queue discriminator for setup emails already persisted before localization.
     private const string SetupSubject = "Set up your trainer account";
 
     private static Result<T> Error<T>(string code, string message, int status = 409) =>
@@ -101,7 +102,7 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
     {
         var gym = await repo.GetDefaultGymAsync(ct);
         return gym == null
-            ? Error<TrainerRecruitmentStatus>("TRAINER_CONFIGURATION", "Gym is not configured.", 503)
+            ? Error<TrainerRecruitmentStatus>("TRAINER_CONFIGURATION", "Phòng tập chưa được cấu hình.", 503)
             : Result<TrainerRecruitmentStatus>.Success(new(gym.IsAcceptingTrainerApplications));
     }
 
@@ -109,10 +110,10 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
         repo.RunExclusiveAsync(async () =>
         {
             if (!await HasRole(actor, "Manager", ct))
-                return Error<TrainerRecruitmentStatus>("TRAINER_FORBIDDEN", "Manager role required.", 403);
+                return Error<TrainerRecruitmentStatus>("TRAINER_FORBIDDEN", "Cần quyền quản lý để thực hiện thao tác này.", 403);
             var gym = await repo.GetDefaultGymAsync(ct);
             if (gym == null)
-                return Error<TrainerRecruitmentStatus>("TRAINER_CONFIGURATION", "Gym is not configured.", 503);
+                return Error<TrainerRecruitmentStatus>("TRAINER_CONFIGURATION", "Phòng tập chưa được cấu hình.", 503);
             if (gym.IsAcceptingTrainerApplications != accepting)
             {
                 var before = gym.IsAcceptingTrainerApplications;
@@ -125,35 +126,35 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
     public Task<Result<TrainerApplicationReceipt>> Submit(SubmitTrainerApplicationRequest r, string? actor, CancellationToken ct) => repo.RunExclusiveAsync(async () =>
     {
         if (!(await new SubmitTrainerApplicationValidator().ValidateAsync(r, ct)).IsValid)
-            return Error<TrainerApplicationReceipt>("TRAINER_VALIDATION", "Invalid application fields or certificates.", 400);
+            return Error<TrainerApplicationReceipt>("TRAINER_VALIDATION", "Thông tin hồ sơ hoặc chứng chỉ không hợp lệ.", 400);
         var update = r.ApplicationType == "ProfileUpdate";
         // GBR-66: screen the public text at submission; a ProfileUpdate only publishes its specialization.
         if (await BannedWords(update ? r.Specialty ?? "" : r.Bio + " " + r.Specialty, ct) is { Count: > 0 } bannedText)
             return ContentRejected<TrainerApplicationReceipt>(bannedText);
         if (!update && !await repo.IsAnyGymRecruitingAsync(ct))
-            return Error<TrainerApplicationReceipt>("TRAINER_RECRUITMENT_CLOSED", "Trainer recruitment is closed.", 409);
+            return Error<TrainerApplicationReceipt>("TRAINER_RECRUITMENT_CLOSED", "Phòng tập đang tạm dừng nhận hồ sơ ứng tuyển.", 409);
         var trainer = await IsTrainer(actor, ct);
         if (update && !trainer)
-            return Error<TrainerApplicationReceipt>("TRAINER_FORBIDDEN", "Trainer role required.", 403);
+            return Error<TrainerApplicationReceipt>("TRAINER_FORBIDDEN", "Cần quyền huấn luyện viên để thực hiện thao tác này.", 403);
         // UC 3.1: a signed-in Customer or Member may apply; members who only hold the Member role are included.
         if (!update && actor != null && !trainer && !await HasRole(actor, "Customer", ct) && !await HasRole(actor, "Member", ct))
-            return Error<TrainerApplicationReceipt>("TRAINER_FORBIDDEN", "Customer or Member role required.", 403);
+            return Error<TrainerApplicationReceipt>("TRAINER_FORBIDDEN", "Cần tài khoản khách hàng hoặc hội viên để thực hiện thao tác này.", 403);
 
         var email = UserIdentityRules.NormalizeEmail(r.Email);
         var citizen = (r.CitizenId ?? "").Trim();
         string phoneNumber;
         var now = DateTime.UtcNow;
         if (!update && (trainer || await IsEmployee(email, citizen, ct)))
-            return Error<TrainerApplicationReceipt>("TRAINER_NOT_ELIGIBLE", "Staff, Manager, Admin and active Trainer accounts cannot apply.");
+            return Error<TrainerApplicationReceipt>("TRAINER_NOT_ELIGIBLE", "Tài khoản nhân viên, quản lý, quản trị viên và huấn luyện viên đang hoạt động không được ứng tuyển.");
         int? trainerRoleId;
         if (update)
         {
             var owner = await repo.GetUserAsync(actor!, ct);
             var profile = await repo.GetProfileByUserAsync(actor!, activeOnly: true, ct);
             if (profile?.CitizenId == null)
-                return Error<TrainerApplicationReceipt>("TRAINER_IDENTITY_MISSING", "The trainer profile has no verified Citizen ID. Contact the Manager.");
+                return Error<TrainerApplicationReceipt>("TRAINER_IDENTITY_MISSING", "Hồ sơ huấn luyện viên chưa có CCCD đã xác minh. Vui lòng liên hệ quản lý.");
             if (owner == null)
-                return Error<TrainerApplicationReceipt>("TRAINER_FORBIDDEN", "Trainer role required.", 403);
+                return Error<TrainerApplicationReceipt>("TRAINER_FORBIDDEN", "Cần quyền huấn luyện viên để thực hiện thao tác này.", 403);
             // UC 3.3: identity and personal details come from the signed-in account and its TrainerProfile, not the form.
             email = UserIdentityRules.NormalizeEmail(owner.Email);
             citizen = profile.CitizenId;
@@ -170,32 +171,32 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
             var published = Records<TrainerStoredFile>(profile.CertificatesJson);
             if (replacements.Distinct().Count() != replacements.Length ||
                 replacements.Any(id => !published.Any(file => file.Id == id && !file.IsDeleted && !file.IsAvatar && file.IsPublic)))
-                return Error<TrainerApplicationReceipt>("TRAINER_CERTIFICATE_TARGET_INVALID", "Select distinct published certificates to replace.", 400);
+                return Error<TrainerApplicationReceipt>("TRAINER_CERTIFICATE_TARGET_INVALID", "Chọn các chứng chỉ đã công bố khác nhau để thay thế.", 400);
             // UC 3.3: a ProfileUpdate keeps the Trainer Role chosen at recruitment.
             trainerRoleId = profile.TrainerRoleId;
         }
         else
         {
             if (!UserIdentityRules.TryNormalizePhone(r.PhoneNumber, out phoneNumber))
-                return Error<TrainerApplicationReceipt>("TRAINER_VALIDATION", "Invalid phone number format.", 400);
+                return Error<TrainerApplicationReceipt>("TRAINER_VALIDATION", "Số điện thoại không hợp lệ.", 400);
             if (r.Certificates.Any(file => file.ReplacesCertificateId != null) ||
                 (r.CertificateLinks ?? []).Any(link => link.ReplacesCertificateId != null))
-                return Error<TrainerApplicationReceipt>("TRAINER_CERTIFICATE_TARGET_INVALID", "Recruitment cannot replace published certificates.", 400);
+                return Error<TrainerApplicationReceipt>("TRAINER_CERTIFICATE_TARGET_INVALID", "Hồ sơ ứng tuyển không được thay thế chứng chỉ đã công bố.", 400);
             trainerRoleId = await repo.GetActiveTrainerRoleIdAsync(r.TrainerRole ?? "", ct);
             if (trainerRoleId == null)
-                return Error<TrainerApplicationReceipt>("TRAINER_CONFIGURATION", "Trainer roles are not configured.", 503);
+                return Error<TrainerApplicationReceipt>("TRAINER_CONFIGURATION", "Vai trò huấn luyện viên chưa được cấu hình.", 503);
         }
         var history = update
             ? await repo.GetApplicationsByUserAsync(r.ApplicationType, actor!, ct)
             : await repo.GetRecruitmentHistoryAsync(email, citizen, null, ct);
         if (update && history.Any(x => IsOpen(x.ApplicationStatus)))
-            return Error<TrainerApplicationReceipt>("TRAINER_CHANGE_PENDING", "A profile update is already pending.");
+            return Error<TrainerApplicationReceipt>("TRAINER_CHANGE_PENDING", "Bạn đang có yêu cầu cập nhật hồ sơ chờ duyệt.");
         var last = history.MaxBy(x => x.SubmittedAt);
         if (last != null && last.SubmittedAt > now - SubmissionCooldown)
         {
             var errorCode = update ? "TRAINER_PROFILE_UPDATE_COOLDOWN" : "RECRUITMENT_COOLDOWN";
             var nextSubmissionAt = last.SubmittedAt + SubmissionCooldown;
-            return Error<TrainerApplicationReceipt>(errorCode, $"You can submit again after {nextSubmissionAt:O}.");
+            return Error<TrainerApplicationReceipt>(errorCode, $"Bạn có thể nộp lại hồ sơ sau {nextSubmissionAt:O}.");
         }
 
         var a = new TrainerApplication
@@ -222,11 +223,11 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
         };
         repo.Add(a);
         await repo.SaveChangesAsync(ct);
-        Mail(a, email, "Trainer application received", $"Your tracking code is {a.TrackingCode}. Your application is Pending.");
+        Mail(a, email, "Đã nhận hồ sơ ứng tuyển huấn luyện viên", $"Mã theo dõi hồ sơ của bạn là {a.TrackingCode}. Hồ sơ đang chờ xét duyệt.");
         if (update)
         {
             var managers = await repo.GetActiveUserIdsInRoleAsync("Manager", ct);
-            foreach (var manager in managers) Notify(manager, actor!, a, "TrainerCredentialReview", "Trainer credentials pending review", "A trainer submitted credentials for review.");
+            foreach (var manager in managers) Notify(manager, actor!, a, "TrainerCredentialReview", "Chứng chỉ huấn luyện viên đang chờ duyệt", "Huấn luyện viên đã gửi chứng chỉ để xét duyệt.");
         }
         Audit(actor, nameof(TrainerApplication), a.Id, "Submit", null, a.ApplicationStatus.ToString());
         return Result<TrainerApplicationReceipt>.Success(new(a.TrackingCode, "Pending", a.SubmissionAttempt), 201);
@@ -234,18 +235,25 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
 
     public async Task<Result<PagedResponse<TrainerApplicationResponse>>> Applications(TrainerApplicationFilter r, string actor, CancellationToken ct)
     {
-        if (!await HasRole(actor, "Manager", ct)) return Error<PagedResponse<TrainerApplicationResponse>>("TRAINER_FORBIDDEN", "Manager role required.", 403);
+        if (!await HasRole(actor, "Manager", ct)) return Error<PagedResponse<TrainerApplicationResponse>>("TRAINER_FORBIDDEN", "Cần quyền quản lý để thực hiện thao tác này.", 403);
         return await ApplicationList(r, null, ct);
     }
     public async Task<Result<PagedResponse<TrainerApplicationResponse>>> MyApplications(TrainerApplicationFilter r, string actor, CancellationToken ct)
     {
-        if (!await IsTrainer(actor, ct)) return Error<PagedResponse<TrainerApplicationResponse>>("TRAINER_FORBIDDEN", "Trainer role required.", 403);
+        if (!await IsTrainer(actor, ct)) return Error<PagedResponse<TrainerApplicationResponse>>("TRAINER_FORBIDDEN", "Cần quyền huấn luyện viên để thực hiện thao tác này.", 403);
         return await ApplicationList(r, actor, ct);
     }
     private async Task<Result<PagedResponse<TrainerApplicationResponse>>> ApplicationList(TrainerApplicationFilter r, string? owner, CancellationToken ct)
     {
-        if (!(await new TrainerApplicationFilterValidator().ValidateAsync(r, ct)).IsValid) return Error<PagedResponse<TrainerApplicationResponse>>("TRAINER_VALIDATION", "Invalid filters.", 400);
+        if (!(await new TrainerApplicationFilterValidator().ValidateAsync(r, ct)).IsValid) return Error<PagedResponse<TrainerApplicationResponse>>("TRAINER_VALIDATION", "Bộ lọc tìm kiếm không hợp lệ.", 400);
+        r = r with { PageSize = 10 };
         var (items, total) = await repo.SearchApplicationsAsync(r, owner, ct);
+        var lastPage = Math.Max(1, (total + r.PageSize - 1) / r.PageSize);
+        if (r.Page > lastPage)
+        {
+            r = r with { Page = lastPage };
+            (items, total) = await repo.SearchApplicationsAsync(r, owner, ct);
+        }
         var roles = await repo.GetTrainerRoleNamesAsync(ct);
         return Result<PagedResponse<TrainerApplicationResponse>>.Success(
             new(r.Page, r.PageSize, total, items.Select(a => ApplicationResponse(a, roles)).ToList()));
@@ -257,10 +265,10 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
         ApplicationResponse(a, await repo.GetTrainerRoleNamesAsync(ct));
     public async Task<Result<TrainerApplicationResponse>> Application(int id, string actor, CancellationToken ct)
     {
-        if (!await HasRole(actor, "Manager", ct)) return Error<TrainerApplicationResponse>("TRAINER_FORBIDDEN", "Manager role required.", 403);
+        if (!await HasRole(actor, "Manager", ct)) return Error<TrainerApplicationResponse>("TRAINER_FORBIDDEN", "Cần quyền quản lý để thực hiện thao tác này.", 403);
         var a = await repo.GetApplicationAsync(id, ct);
         if (a == null)
-            return Error<TrainerApplicationResponse>("TRAINER_NOT_FOUND", "Application not found.", 404);
+            return Error<TrainerApplicationResponse>("TRAINER_NOT_FOUND", "Không tìm thấy hồ sơ ứng tuyển.", 404);
 
         var email = a.Email.Trim().ToLowerInvariant();
         var related = a.ApplicationType == "Recruitment"
@@ -383,17 +391,17 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
 
     public Task<Result<TrainerApplicationResponse>> Review(int id, ReviewTrainerApplicationRequest r, string actor, CancellationToken ct) => repo.RunExclusiveAsync(async () =>
     {
-        if (!await HasRole(actor, "Manager", ct)) return Error<TrainerApplicationResponse>("TRAINER_FORBIDDEN", "Manager role required.", 403);
-        if (!(await new ReviewTrainerApplicationValidator().ValidateAsync(r, ct)).IsValid) return Error<TrainerApplicationResponse>("TRAINER_VALIDATION", "Invalid decision or missing identity verification.", 400);
+        if (!await HasRole(actor, "Manager", ct)) return Error<TrainerApplicationResponse>("TRAINER_FORBIDDEN", "Cần quyền quản lý để thực hiện thao tác này.", 403);
+        if (!(await new ReviewTrainerApplicationValidator().ValidateAsync(r, ct)).IsValid) return Error<TrainerApplicationResponse>("TRAINER_VALIDATION", "Quyết định không hợp lệ hoặc chưa xác minh danh tính.", 400);
         var a = await repo.GetApplicationAsync(id, ct);
-        if (a == null) return Error<TrainerApplicationResponse>("TRAINER_NOT_FOUND", "Application not found.", 404);
+        if (a == null) return Error<TrainerApplicationResponse>("TRAINER_NOT_FOUND", "Không tìm thấy hồ sơ ứng tuyển.", 404);
         var before = a.ApplicationStatus.ToString();
         if (a.ApplicationType == "ProfileUpdate")
         {
             if (r.Action is not ("Approve" or "Reject") || a.ApplicationStatus is not (TrainerApplicationStatus.Pending or TrainerApplicationStatus.UnderReview))
-                return Error<TrainerApplicationResponse>("TRAINER_INVALID_STATE", "Pending profile updates can only be approved or rejected.");
+                return Error<TrainerApplicationResponse>("TRAINER_INVALID_STATE", "Yêu cầu cập nhật hồ sơ đang chờ chỉ có thể được duyệt hoặc từ chối.");
             var profile = a.ApplicantUserId is { } applicant ? await repo.GetProfileByUserAsync(applicant, activeOnly: true, ct) : null;
-            if (profile == null) return Error<TrainerApplicationResponse>("TRAINER_NOT_FOUND", "Profile not found.", 404);
+            if (profile == null) return Error<TrainerApplicationResponse>("TRAINER_NOT_FOUND", "Không tìm thấy hồ sơ huấn luyện viên.", 404);
             if (r.Action == "Approve")
             {
                 // GBR-66: the requested specialization is public text.
@@ -406,7 +414,7 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
                     {
                         var index = published.FindIndex(item => item.Id == target && item.IsPublic && !item.IsDeleted && !item.IsAvatar);
                         if (index < 0)
-                            return Error<TrainerApplicationResponse>("TRAINER_CERTIFICATE_TARGET_INVALID", "A certificate to replace is no longer published.");
+                            return Error<TrainerApplicationResponse>("TRAINER_CERTIFICATE_TARGET_INVALID", "Chứng chỉ cần thay thế không còn được công bố.");
                         published.RemoveAt(index);
                     }
                     file.ReplacesCertificateId = null;
@@ -423,35 +431,35 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
             a.ReviewNote = Note(r);
             a.ReviewedByUserId = actor;
             a.ReviewedAt = DateTime.UtcNow;
-            Notify(profile.PTUserId, actor, a, "TrainerCredentialDecision", "Trainer credentials reviewed", $"Your profile update was {a.ApplicationStatus.ToString().ToLowerInvariant()}.");
+            Notify(profile.PTUserId, actor, a, "TrainerCredentialDecision", "Đã xét duyệt chứng chỉ huấn luyện viên", $"Yêu cầu cập nhật hồ sơ của bạn đã {(a.ApplicationStatus == TrainerApplicationStatus.Approved ? "được duyệt" : "bị từ chối")}.");
             Audit(actor, nameof(TrainerApplication), a.Id, r.Action, before, a.ApplicationStatus.ToString());
             return Result<TrainerApplicationResponse>.Success(await ApplicationResponse(a, ct));
         }
-        if (r.Action == "Approve") return Error<TrainerApplicationResponse>("TRAINER_INVALID_STATE", "Recruitment applications require Interview, Hire or Reject.");
+        if (r.Action == "Approve") return Error<TrainerApplicationResponse>("TRAINER_INVALID_STATE", "Vui lòng chọn ghi nhận phỏng vấn, tuyển dụng hoặc từ chối cho hồ sơ ứng tuyển.");
         if (a.ApplicationStatus == TrainerApplicationStatus.Hired && r.Action == "Hire")
             return Result<TrainerApplicationResponse>.Success(await ApplicationResponse(a, ct));
         if (a.ApplicationStatus is not (TrainerApplicationStatus.Pending or TrainerApplicationStatus.UnderReview or TrainerApplicationStatus.Interviewing))
-            return Error<TrainerApplicationResponse>("TRAINER_INVALID_STATE", "Only pending/interviewing applications can be reviewed.");
+            return Error<TrainerApplicationResponse>("TRAINER_INVALID_STATE", "Chỉ có thể xét duyệt hồ sơ đang chờ hoặc đang phỏng vấn.");
         if (r.Action == "Hire")
         {
-            if (a.ApplicationStatus is not (TrainerApplicationStatus.Interviewing or TrainerApplicationStatus.UnderReview)) return Error<TrainerApplicationResponse>("TRAINER_INTERVIEW_REQUIRED", "Record the interview before hiring.");
+            if (a.ApplicationStatus is not (TrainerApplicationStatus.Interviewing or TrainerApplicationStatus.UnderReview)) return Error<TrainerApplicationResponse>("TRAINER_INTERVIEW_REQUIRED", "Cần ghi nhận phỏng vấn trước khi tuyển dụng.");
             var matches = await FindMatchingAccounts(a, ct);
             var ineligible = await IneligibleAccounts(matches, ct);
             var accountMatch = DescribeAccountMatch(matches, ineligible, a);
             if (accountMatch.Status == "Ineligible")
-                return Error<TrainerApplicationResponse>("TRAINER_IDENTITY_CONFLICT", "The matching account is not an active Customer/Member account.");
+                return Error<TrainerApplicationResponse>("TRAINER_IDENTITY_CONFLICT", "Tài khoản khớp không phải tài khoản khách hàng hoặc hội viên đang hoạt động.");
             ApplicationUser? user;
             if (accountMatch.Status == "Ambiguous")
             {
                 // UC-3.2 step 7: the Manager verifies identity manually and picks the applicant's account.
                 user = matches.FirstOrDefault(m => m.UserId == r.ExistingUserId && !ineligible.Contains(m.UserId));
                 if (user == null)
-                    return Error<TrainerApplicationResponse>("TRAINER_IDENTITY_CONFLICT", "Select one eligible matching account after verifying the applicant's identity.");
+                    return Error<TrainerApplicationResponse>("TRAINER_IDENTITY_CONFLICT", "Sau khi xác minh danh tính ứng viên, hãy chọn một tài khoản khớp đủ điều kiện.");
             }
             else
             {
                 if (r.ExistingUserId != accountMatch.UserId)
-                    return Error<TrainerApplicationResponse>("TRAINER_IDENTITY_CONFLICT", "The account match has changed. Reload the application and verify it again.");
+                    return Error<TrainerApplicationResponse>("TRAINER_IDENTITY_CONFLICT", "Tài khoản khớp đã thay đổi. Vui lòng tải lại hồ sơ và xác minh lại.");
                 user = matches.SingleOrDefault();
             }
             var userId = user?.UserId;
@@ -460,27 +468,27 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
             var rehire = previous is { IsActive: false } && previous.PTUserId == userId && previous.CitizenId == a.CitizenId;
             if (previous != null && !rehire)
                 return previous.CitizenId == a.CitizenId
-                    ? Error<TrainerApplicationResponse>("TRAINER_IDENTITY_CONFLICT", "Another trainer profile already uses this Citizen ID.")
-                    : Error<TrainerApplicationResponse>("TRAINER_PROFILE_EXISTS", "Account already has a trainer profile.");
+                    ? Error<TrainerApplicationResponse>("TRAINER_IDENTITY_CONFLICT", "CCCD này đã được sử dụng cho hồ sơ huấn luyện viên khác.")
+                    : Error<TrainerApplicationResponse>("TRAINER_PROFILE_EXISTS", "Tài khoản đã có hồ sơ huấn luyện viên.");
             // UC 3.2 step 7: the login role comes from the applied Trainer Role (PT -> PT, Yoga -> YogaInstructor).
             var trainerRole = await repo.GetTrainerRoleAsync(a.TrainerRoleId, ct);
             var role = trainerRole?.Role;
             if (trainerRole?.RoleName == TrainerRoleNames.PT && user != null &&
                 await repo.HasActiveYogaAssignmentsAsync(user.UserId, ct))
                 return Error<TrainerApplicationResponse>("TRAINER_TEACHING_ROLE_CONFLICT",
-                    "A Yoga instructor cannot be hired as a PT while assigned to Yoga classes.");
+                    "Huấn luyện viên Yoga đang được phân công lớp không thể được tuyển làm PT.");
             if (user != null && await HasUnfinishedPTContract(user.UserId, ct))
                 return Error<TrainerApplicationResponse>("TRAINER_MEMBER_PT_CONTRACT",
-                    "The applicant still has a PT contract as a member. Hire them after that contract ends.");
+                    "Ứng viên còn hợp đồng PT với tư cách hội viên. Chỉ có thể tuyển sau khi hợp đồng đó kết thúc.");
             if (await BannedWords(a.Bio + " " + a.Specialty, ct) is { Count: > 0 } bannedBio) return ContentRejected<TrainerApplicationResponse>(bannedBio);
             var gym = await repo.GetDefaultGymAsync(ct);
-            if (role == null || gym == null) return Error<TrainerApplicationResponse>("TRAINER_CONFIGURATION", "Gym or trainer role is not configured.", 503);
+            if (role == null || gym == null) return Error<TrainerApplicationResponse>("TRAINER_CONFIGURATION", "Phòng tập hoặc vai trò huấn luyện viên chưa được cấu hình.", 503);
             var isNew = user == null;
             if (isNew)
             {
                 var email = UserIdentityRules.NormalizeEmail(a.Email);
                 if (!UserIdentityRules.IsValidEmail(email) || !UserIdentityRules.TryNormalizePhone(a.PhoneNumber, out var phoneNumber))
-                    return Error<TrainerApplicationResponse>("TRAINER_IDENTITY_CONFLICT", "The application has an invalid email address or phone number.");
+                    return Error<TrainerApplicationResponse>("TRAINER_IDENTITY_CONFLICT", "Email hoặc số điện thoại trong hồ sơ không hợp lệ.");
 
                 user = new ApplicationUser
                 {
@@ -523,7 +531,7 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
             {
                 var otherBefore = other.ApplicationStatus.ToString();
                 other.ApplicationStatus = TrainerApplicationStatus.Rejected;
-                other.ReviewNote = $"Closed automatically: application {a.TrackingCode} was hired.";
+                other.ReviewNote = $"Tự động đóng: ứng viên đã được tuyển theo hồ sơ {a.TrackingCode}.";
                 other.ReviewedByUserId = actor;
                 other.ReviewedAt = DateTime.UtcNow;
                 Audit(actor, nameof(TrainerApplication), other.Id, "AutoClose", otherBefore, other.ApplicationStatus.ToString());
@@ -531,12 +539,12 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
             if (isNew)
                 QueueSetup(user, a);
             else
-                Mail(a, user.Email, "Trainer role activated", $"Your existing account now has {trainerRole!.RoleName} trainer access. Sign in again to refresh your roles.");
+                Mail(a, user.Email, "Đã kích hoạt quyền huấn luyện viên", $"Tài khoản hiện tại của bạn đã có quyền huấn luyện viên {(trainerRole!.RoleName == TrainerRoleNames.Yoga ? "Yoga" : "cá nhân")}. Vui lòng đăng nhập lại để cập nhật quyền truy cập.");
         }
         else
         {
             a.ApplicationStatus = r.Action == "Interview" ? TrainerApplicationStatus.Interviewing : TrainerApplicationStatus.Rejected;
-            if (r.Action == "Reject") Mail(a, a.Email, "Trainer application decision", $"Application {a.TrackingCode} was rejected. Contact the gym for details.");
+            if (r.Action == "Reject") Mail(a, a.Email, "Kết quả xét duyệt hồ sơ ứng tuyển huấn luyện viên", $"Hồ sơ {a.TrackingCode} đã bị từ chối. Vui lòng liên hệ phòng tập để biết chi tiết.");
         }
         if (r.Action == "Interview")
         {
@@ -544,7 +552,7 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
             var entry = $"[{DateTime.UtcNow.AddHours(7):dd/MM/yyyy HH:mm}] {Note(r)}";
             var notes = string.IsNullOrEmpty(a.InterviewNote) ? entry : a.InterviewNote + "\n" + entry;
             if (notes.Length > 2000)
-                return Error<TrainerApplicationResponse>("TRAINER_VALIDATION", "Interview notes cannot exceed 2,000 characters in total.", 400);
+                return Error<TrainerApplicationResponse>("TRAINER_VALIDATION", "Tổng ghi chú phỏng vấn không được vượt quá 2.000 ký tự.", 400);
             a.InterviewNote = notes;
         }
         else
@@ -564,7 +572,7 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
     }
     public Task<Result<bool>> ResendSetup(int applicationId, string actor, CancellationToken ct) => repo.RunExclusiveAsync(async () =>
     {
-        if (!await HasRole(actor, "Manager", ct)) return Error<bool>("TRAINER_FORBIDDEN", "Manager role required.", 403);
+        if (!await HasRole(actor, "Manager", ct)) return Error<bool>("TRAINER_FORBIDDEN", "Cần quyền quản lý để thực hiện thao tác này.", 403);
         var a = await repo.GetHiredRecruitmentAsync(applicationId, ct);
         var loginRoleId = a?.TrainerRoleId is { } trainerRoleId
             ? await repo.GetActiveLoginRoleIdAsync(trainerRoleId, TrainerLoginRoles, ct)
@@ -572,7 +580,7 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
         var u = a?.HiredUserId is { } hiredId && loginRoleId is { } roleId
             ? await repo.GetPendingTrainerAccountAsync(hiredId, roleId, ct)
             : null;
-        if (u == null) return Error<bool>("TRAINER_INVALID_STATE", "Only pending hired accounts can receive a setup link.");
+        if (u == null) return Error<bool>("TRAINER_INVALID_STATE", "Chỉ tài khoản đã được tuyển và đang chờ kích hoạt mới được nhận liên kết thiết lập mật khẩu.");
         await ClearSetupEmails(u, ct);
         QueueSetup(u, a!);
         var status = a!.ApplicationStatus.ToString();
@@ -581,7 +589,7 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
     }, ct);
     public async Task<Result<bool>> Setup(TrainerSetupRequest r, CancellationToken ct)
     {
-        if (!(await new TrainerSetupValidator().ValidateAsync(r, ct)).IsValid) return Error<bool>("TRAINER_VALIDATION", "Invalid token/password format.", 400);
+        if (!(await new TrainerSetupValidator().ValidateAsync(r, ct)).IsValid) return Error<bool>("TRAINER_VALIDATION", "Mã thiết lập hoặc định dạng mật khẩu không hợp lệ.", 400);
         var tokenHash = HashSetupToken(r.Token);
         var user = await repo.FindEligiblePasswordSetupAsync(tokenHash, DateTime.UtcNow, ct);
         if (user is null)
@@ -600,17 +608,17 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
         }, ct);
     }
 
-    private static Result<bool> InvalidSetupToken() => Error<bool>("TRAINER_SETUP_INVALID", "Setup link is invalid or expired.", 400);
+    private static Result<bool> InvalidSetupToken() => Error<bool>("TRAINER_SETUP_INVALID", "Liên kết thiết lập mật khẩu không hợp lệ hoặc đã hết hạn.", 400);
 
     /// <summary>UC 4.12 / GBR-104: the change applies immediately; members of untouched contracts get one week to change trainer.</summary>
     public Task<Result<TrainerReadinessStatus>> SetReadiness(bool accepting, string actor, CancellationToken ct) =>
         repo.RunExclusiveAsync(async () =>
         {
             if (!await HasRole(actor, "PT", ct))
-                return Error<TrainerReadinessStatus>("TRAINER_FORBIDDEN", "PT role required.", 403);
+                return Error<TrainerReadinessStatus>("TRAINER_FORBIDDEN", "Cần quyền huấn luyện viên cá nhân để thực hiện thao tác này.", 403);
             var profile = await repo.GetProfileByUserAsync(actor, activeOnly: true, ct);
             if (profile == null)
-                return Error<TrainerReadinessStatus>("TRAINER_NOT_FOUND", "Active trainer profile not found.", 404);
+                return Error<TrainerReadinessStatus>("TRAINER_NOT_FOUND", "Không tìm thấy hồ sơ huấn luyện viên đang hoạt động.", 404);
             var now = DateTime.UtcNow;
             var today = DateOnly.FromDateTime(now.AddHours(7));
             var notified = 0;
@@ -654,25 +662,32 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
 
     public async Task<Result<PagedResponse<TrainerProfileResponse>>> Search(TrainerSearch r, CancellationToken ct)
     {
-        if (!(await new TrainerSearchValidator().ValidateAsync(r, ct)).IsValid) return Error<PagedResponse<TrainerProfileResponse>>("TRAINER_VALIDATION", "Invalid filters.", 400);
+        if (!(await new TrainerSearchValidator().ValidateAsync(r, ct)).IsValid) return Error<PagedResponse<TrainerProfileResponse>>("TRAINER_VALIDATION", "Bộ lọc tìm kiếm không hợp lệ.", 400);
+        r = r with { PageSize = 10 };
         var (items, total) = await repo.SearchPublicProfilesAsync(r, ct);
+        var lastPage = Math.Max(1, (total + r.PageSize - 1) / r.PageSize);
+        if (r.Page > lastPage)
+        {
+            r = r with { Page = lastPage };
+            (items, total) = await repo.SearchPublicProfilesAsync(r, ct);
+        }
         return Result<PagedResponse<TrainerProfileResponse>>.Success(new(r.Page, r.PageSize, total, items));
     }
     public async Task<Result<TrainerPublicDetail>> Public(int id, CancellationToken ct, string? actor = null, int reviewPage = 1)
     {
         var p = await repo.GetPublicProfileAsync(id, ct);
         if (p == null)
-            return Error<TrainerPublicDetail>("TRAINER_NOT_FOUND", "Trainer not found.", 404);
+            return Error<TrainerPublicDetail>("TRAINER_NOT_FOUND", "Không tìm thấy huấn luyện viên.", 404);
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7));
         var stored = await repo.GetProfileAsync(id, ct);
         var certificates = Docs(stored!.CertificatesJson, $"/api/trainers/{id}", true);
         if (Records<TrainerStoredFile>(stored.CertificatesJson).Count == 0 && !string.IsNullOrWhiteSpace(stored.CertificateUrl))
-            certificates = [new TrainerDocumentResponse("legacy", "Certificate", "application/octet-stream", stored.CertificateUrl)];
+            certificates = [new TrainerDocumentResponse("legacy", "Chứng chỉ", "application/octet-stream", stored.CertificateUrl)];
         // UC 3.4 step 7: a frozen contract is still the member's package, so its schedule stays reachable.
         var hasActiveContract = await HasRole(actor, "Member", ct) &&
             await repo.HasRunningContractWithTrainerAsync(actor!, p.UserId, today, ct);
-        const int pageSize = 20;
+        const int pageSize = 10;
         // GBR-108: only PT contract reviews (UC 4.10) belong to a trainer.
         var reviewTotal = await repo.CountPublishedReviewsAsync(p.UserId, ct);
         reviewPage = Math.Clamp(reviewPage, 1, Math.Max(1, (int)Math.Ceiling((double)reviewTotal / pageSize)));
@@ -682,20 +697,20 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
     }
     public async Task<Result<TrainerPublicDetail>> Mine(string actor, CancellationToken ct)
     {
-        if (!await IsTrainer(actor, ct)) return Error<TrainerPublicDetail>("TRAINER_FORBIDDEN", "Trainer role required.", 403);
+        if (!await IsTrainer(actor, ct)) return Error<TrainerPublicDetail>("TRAINER_FORBIDDEN", "Cần quyền huấn luyện viên để thực hiện thao tác này.", 403);
         var p = await repo.GetProfileByUserAsync(actor, activeOnly: false, ct);
         return p == null
-            ? Error<TrainerPublicDetail>("TRAINER_NOT_FOUND", "Profile not found.", 404)
+            ? Error<TrainerPublicDetail>("TRAINER_NOT_FOUND", "Không tìm thấy hồ sơ huấn luyện viên.", 404)
             : await Public(p.Id, ct, actor);
     }
     public Task<Result<bool>> Update(UpdateTrainerProfileRequest r, string actor, CancellationToken ct) => repo.RunExclusiveAsync(async () =>
     {
-        if (!await IsTrainer(actor, ct)) return Error<bool>("TRAINER_FORBIDDEN", "Trainer role required.", 403);
-        if (!(await new TrainerProfileValidator().ValidateAsync(r, ct)).IsValid) return Error<bool>("TRAINER_VALIDATION", "Invalid bio or avatar.", 400);
+        if (!await IsTrainer(actor, ct)) return Error<bool>("TRAINER_FORBIDDEN", "Cần quyền huấn luyện viên để thực hiện thao tác này.", 403);
+        if (!(await new TrainerProfileValidator().ValidateAsync(r, ct)).IsValid) return Error<bool>("TRAINER_VALIDATION", "Giới thiệu hoặc ảnh đại diện không hợp lệ.", 400);
         if (r.Bio != null && await BannedWords(r.Bio, ct) is { Count: > 0 } banned) return ContentRejected<bool>(banned);
         var p = await repo.GetProfileByUserAsync(actor, activeOnly: true, ct);
         if (p == null)
-            return Error<bool>("TRAINER_NOT_FOUND", "Profile not found.", 404);
+            return Error<bool>("TRAINER_NOT_FOUND", "Không tìm thấy hồ sơ huấn luyện viên.", 404);
 
         if (r.Bio != null)
             p.Bio = r.Bio.Trim();
@@ -725,8 +740,8 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
         var managers = await repo.GetActiveUserIdsInRoleAsync("Manager", ct);
         foreach (var application in expired)
             foreach (var manager in managers)
-                Notify(manager, null, application, SetupExpiredType, "Trainer setup link expired",
-                    $"{application.FullName} did not set a password within 48 hours. Resend the setup link from the application.");
+                Notify(manager, null, application, SetupExpiredType, "Liên kết thiết lập mật khẩu huấn luyện viên đã hết hạn",
+                    $"{application.FullName} chưa thiết lập mật khẩu trong vòng 48 giờ. Vui lòng gửi lại liên kết từ hồ sơ ứng tuyển.");
         return Result<int>.Success(expired.Count);
     }, ct);
 
@@ -740,7 +755,7 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
     {
         var application = await repo.GetApplicationAsync(id, ct);
         if (application == null || (!await HasRole(actor, "Manager", ct) && !await OwnsApplication(application, actor, ct)))
-            return Error<TrainerFileResponse>("TRAINER_NOT_FOUND", "Document not found.", 404);
+            return Error<TrainerFileResponse>("TRAINER_NOT_FOUND", "Không tìm thấy tài liệu.", 404);
         return await ReadDocument(Records<TrainerStoredFile>(application.CertificatesJson).FirstOrDefault(x => x.Id == fileId && !x.IsAvatar), ct);
     }
     public async Task<Result<TrainerFileResponse>> Document(int id, string fileId, string? actor, CancellationToken ct) =>
@@ -752,21 +767,21 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
     private async Task<Result<TrainerFileResponse>> ProfileFile(int id, string? fileId, bool avatar, string? actor, CancellationToken ct)
     {
         var profile = await repo.GetProfileAsync(id, ct);
-        if (profile == null) return Error<TrainerFileResponse>("TRAINER_NOT_FOUND", "Document not found.", 404);
+        if (profile == null) return Error<TrainerFileResponse>("TRAINER_NOT_FOUND", "Không tìm thấy tài liệu.", 404);
         var file = avatar
             ? (string.IsNullOrWhiteSpace(profile.AvatarJson) ? null : JsonSerializer.Deserialize<TrainerStoredFile>(profile.AvatarJson))
             : Records<TrainerStoredFile>(profile.CertificatesJson).FirstOrDefault(x => x.Id == fileId && !x.IsAvatar);
-        if (file == null || file.IsDeleted) return Error<TrainerFileResponse>("TRAINER_NOT_FOUND", "Document not found.", 404);
+        if (file == null || file.IsDeleted) return Error<TrainerFileResponse>("TRAINER_NOT_FOUND", "Không tìm thấy tài liệu.", 404);
         var allowed = file.IsPublic && await repo.GetPublicProfileAsync(id, ct) != null;
         if (!allowed) allowed = await HasRole(actor, "Manager", ct) || (actor == profile.PTUserId && await IsTrainer(actor, ct));
-        return allowed ? await ReadDocument(file, ct) : Error<TrainerFileResponse>("TRAINER_NOT_FOUND", "Document not found.", 404);
+        return allowed ? await ReadDocument(file, ct) : Error<TrainerFileResponse>("TRAINER_NOT_FOUND", "Không tìm thấy tài liệu.", 404);
     }
     private async Task<Result<TrainerFileResponse>> ReadDocument(TrainerStoredFile? file, CancellationToken ct)
     {
         if (file == null || file.IsDeleted || file.ExternalUrl is not null)
-            return Error<TrainerFileResponse>("TRAINER_NOT_FOUND", "Document not found.", 404);
+            return Error<TrainerFileResponse>("TRAINER_NOT_FOUND", "Không tìm thấy tài liệu.", 404);
         var content = await repo.ReadFileAsync(file, ct);
-        return content == null ? Error<TrainerFileResponse>("TRAINER_NOT_FOUND", "Document not found.", 404)
+        return content == null ? Error<TrainerFileResponse>("TRAINER_NOT_FOUND", "Không tìm thấy tài liệu.", 404)
             : Result<TrainerFileResponse>.Success(new(file.FileName, file.ContentType, content));
     }
 
@@ -786,9 +801,9 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
             {
                 var body = mail.Body ?? throw new InvalidOperationException("The queued email can no longer be read.");
                 if (body.StartsWith("SETUP:", StringComparison.Ordinal))
-                    body = "Set up your trainer password within 48 hours: " +
+                    body = "Vui lòng thiết lập mật khẩu huấn luyện viên trong vòng 48 giờ: " +
                         (setupLinks ?? throw new InvalidOperationException("Configure the trainer password setup page URL.")).Build(body[6..]);
-                await email.SendAsync(item.Recipient, item.Subject, body, ct);
+                await email.SendAsync(item.Recipient, item.Subject == SetupSubject ? "Thiết lập tài khoản huấn luyện viên" : item.Subject, body, ct);
                 item.SentAt = DateTime.UtcNow;
                 item.ProtectedBody = string.Empty;
                 // GBR-04: a setup link expires 48 hours after it is sent.

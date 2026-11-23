@@ -70,15 +70,17 @@ public sealed class TrainerApiClientTests
         Assert.Equal(HttpStatusCode.Unauthorized, error.StatusCode);
     }
 
-    [Fact]
-    public async Task SubmissionCooldownDisplaysVietnameseTimeForUtcDatabaseValue()
+    [Theory]
+    [InlineData("You can submit again after 2026-11-13T18:09:23.2543535.")]
+    [InlineData("Bạn có thể nộp lại hồ sơ sau 2026-11-13T18:09:23.2543535.")]
+    public async Task SubmissionCooldownDisplaysVietnameseTimeForUtcDatabaseValue(string message)
     {
         var application = new SubmitTrainerApplicationRequest("Trainer", "trainer@example.test", "0912345678",
             "012345678901", new(1990, 1, 1), "Other", "Strength", 3, "Trainer biography", true, []);
         using var api = CreateClient(_ => Task.FromResult(Json(new
         {
             errorCode = "RECRUITMENT_COOLDOWN",
-            errorMessage = "You can submit again after 2026-11-13T18:09:23.2543535."
+            errorMessage = message
         }, HttpStatusCode.Conflict)));
 
         var error = await Assert.ThrowsAsync<AuthApiException>(() => api.SubmitAsync(application));

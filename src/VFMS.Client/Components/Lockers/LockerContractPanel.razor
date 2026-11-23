@@ -47,7 +47,7 @@
     @if (rental.Status == "PendingHandover")
     {
         <div class="space-y-3 border-t border-[#D8D1CD] pt-4">
-            <h4 class="text-sm font-bold">Giao chìa (đơn online đã thanh toán)</h4>
+            <h4 class="text-sm font-bold">Giao chìa (đơn trực tuyến đã thanh toán)</h4>
             <label class="flex items-center gap-2 text-sm"><input type="checkbox" @bind="_identity" disabled="@_busy" /> Đã xác minh danh tính hội viên</label>
             <label class="flex items-center gap-2 text-sm"><input type="checkbox" @bind="_terms" disabled="@_busy" /> Hội viên đồng ý nội quy tủ</label>
             <button type="button" class="@Ui.PrimaryButton" disabled="@(_busy || !_identity || !_terms)" @onclick="HandoverAsync">Xác nhận giao chìa</button>
@@ -150,8 +150,8 @@
     @if (rental.ClearanceAfter is { } after && rental.ReturnedAt is null && now >= after && rental.Status == "Overdue")
     {
         <div class="space-y-3 border-t border-[#D8D1CD] pt-4">
-            <h4 class="text-sm font-bold">Dọn tủ quá hạn (cần Manager xác nhận)</h4>
-            <p class="text-xs text-[#6F6966]">Mở tủ cùng Manager, ghi lại đồ bỏ lại. Một Manager khác sẽ xác nhận để kết thúc hợp đồng: mất cọc@(rental.Type == "Daily" ? "" : $", ghi nợ phí quá hạn tối đa 7 ngày").</p>
+            <h4 class="text-sm font-bold">Dọn tủ quá hạn (cần quản lý xác nhận)</h4>
+            <p class="text-xs text-[#6F6966]">Mở tủ cùng quản lý, ghi lại đồ bỏ lại. Một quản lý khác sẽ xác nhận để kết thúc hợp đồng: mất cọc@(rental.Type == "Daily" ? "" : $", ghi nợ phí quá hạn tối đa 7 ngày").</p>
             <label class="flex items-center gap-2 text-sm"><input type="checkbox" @bind="_noBelongings" disabled="@_busy" /> Tủ trống, không có đồ bỏ lại</label>
             @if (!_noBelongings)
             {
@@ -321,7 +321,7 @@
     {
         var items = _noBelongings ? [] : _items.Where(i => !string.IsNullOrWhiteSpace(i.Name)).Select(i => new LockerInventoryItem(i.Name.Trim(), i.Quantity)).ToArray();
         await Api.RequestClearanceAsync(Item.Rental.Id, new LockerClearanceRequest(items, _noBelongings), _lifetime.Token);
-        Toasts.Show("Đã gửi biên bản kiểm kê, chờ Manager xác nhận.");
+        Toasts.Show("Đã gửi biên bản kiểm kê, chờ quản lý xác nhận.");
     });
 
     public void Dispose()

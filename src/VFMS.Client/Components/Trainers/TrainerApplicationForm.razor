@@ -87,7 +87,7 @@ else
                 }
                     <fieldset class="trainer-certificate-links">
                         <legend>Link chứng chỉ</legend>
-                        <p class="trainer-muted">Gửi từ 1 đến 5 chứng chỉ bằng tệp hoặc link HTTPS.</p>
+                        <p class="trainer-muted">Gửi từ 1 đến 5 chứng chỉ bằng tệp hoặc liên kết HTTPS.</p>
                         @for (var index = 0; index < _links.Count; index++)
                         {
                             var link = _links[index];
@@ -108,12 +108,12 @@ else
                                 @if (index > 0)
                                 {
                                     <button type="button" class="trainer-button" aria-label="@($"Bỏ {label.ToLowerInvariant()}")"
-                                            @onclick="() => _links.Remove(link)">Bỏ link</button>
+                                            @onclick="() => _links.Remove(link)">Bỏ liên kết</button>
                                 }
                             </div>
                         }
                         <button type="button" class="trainer-button" disabled="@(_links.Count + _files.Count >= 5)"
-                                @onclick="() => _links.Add(new())">+ Thêm link</button>
+                                @onclick="() => _links.Add(new())">+ Thêm liên kết</button>
                     </fieldset>
                 <TrainerFeedback Error="@_fileError" />
                 @FieldError("Certificates")
@@ -231,7 +231,7 @@ else
         {
             _receipt = await Api.SubmitAsync(request);
             // MSG-04
-            Toasts.Show(IsUpdate ? "Đã tạo yêu cầu cập nhật chứng chỉ thành công. Chứng chỉ đang chờ Manager duyệt."
+            Toasts.Show(IsUpdate ? "Đã tạo yêu cầu cập nhật chứng chỉ thành công. Chứng chỉ đang chờ quản lý duyệt."
                 : "Đã tạo hồ sơ ứng tuyển thành công.");
             _files.Clear();
             _links.Clear();
@@ -244,9 +244,9 @@ else
             _bannedWords = TrainerContentRules.ProhibitedWords(ex.ErrorCode, ex.Message);
             _error = ex.ErrorCode switch
             {
-                "TRAINER_CHANGE_PENDING" => "Bạn đang có yêu cầu cập nhật chờ Manager duyệt.",
+                "TRAINER_CHANGE_PENDING" => "Bạn đang có yêu cầu cập nhật chờ quản lý duyệt.",
                 "TRAINER_NOT_ELIGIBLE" => "Bạn không đủ điều kiện ứng tuyển: email hoặc CCCD thuộc tài khoản nhân viên hoặc huấn luyện viên đang hoạt động.",
-                "TRAINER_IDENTITY_MISSING" => "Hồ sơ huấn luyện viên chưa có CCCD đã xác minh. Liên hệ Manager để cập nhật.",
+                "TRAINER_IDENTITY_MISSING" => "Hồ sơ huấn luyện viên chưa có CCCD đã xác minh. Liên hệ quản lý để cập nhật.",
                 "TRAINER_RECRUITMENT_CLOSED" => "Phòng tập đang tạm dừng nhận hồ sơ ứng tuyển. Vui lòng quay lại sau.",
                 "TRAINER_FORBIDDEN" => IsUpdate ? "Chỉ huấn luyện viên đang hoạt động mới gửi được yêu cầu này."
                     : "Tài khoản đang đăng nhập không được nộp hồ sơ ứng tuyển. Đăng xuất hoặc dùng tài khoản khách hàng.",
@@ -283,7 +283,7 @@ else
         "ExperienceYears" => "Nhập số năm kinh nghiệm từ 0 đến 80.",
         "Bio" => "Nhập giới thiệu chuyên môn, tối đa 4.000 ký tự.",
         "Consent" => "Xác nhận đồng ý trước khi gửi.",
-        _ => "Gửi từ 1 đến 5 chứng chỉ hợp lệ (tệp PDF/JPG/PNG tối đa 5 MB hoặc link HTTPS tối đa 2.048 ký tự)."
+        _ => "Gửi từ 1 đến 5 chứng chỉ hợp lệ (tệp PDF/JPG/PNG tối đa 5 MB hoặc liên kết HTTPS tối đa 2.048 ký tự)."
     };
 
     private sealed class CertificateLink

@@ -12,7 +12,7 @@
 <PageTitle>Hợp đồng tủ | Victor Fitness</PageTitle>
 
 <section class="workspace-page space-y-6 font-['Inter',sans-serif] text-[#242424]" aria-labelledby="locker-contracts-title" aria-busy="@_loading.ToString().ToLowerInvariant()">
-    <PageHeader Overline="VFMS / FRONT DESK" Title="Hợp đồng tủ" Description="Giao chìa, gia hạn, trả tủ, theo dõi tủ quá hạn và thu khoản phí còn nợ.">
+    <PageHeader Overline="VFMS / LỄ TÂN" Title="Hợp đồng tủ" Description="Giao chìa, gia hạn, trả tủ, theo dõi tủ quá hạn và thu khoản phí còn nợ.">
         <div class="flex flex-wrap gap-2">
             <a href="/staff/lockers" class="@Ui.PrimaryButton">Sơ đồ tủ</a>
             <a href="/staff/dashboard" class="@Ui.Button">← Tổng quan</a>
@@ -56,7 +56,7 @@
                         <th scope="col" class="px-4 py-3">HẠN</th><th scope="col" class="px-4 py-3">QUÁ HẠN</th><th scope="col" class="px-4 py-3">TRẠNG THÁI</th><th scope="col" class="px-4 py-3"><span class="sr-only">Thao tác</span></th>
                     </tr></thead>
                     <tbody class="divide-y divide-[#ECE8E4]">
-                        @foreach (var item in Visible)
+                        @foreach (var item in Visible.Skip((_page - 1) * PageSize).Take(PageSize))
                         {
                             var r = item.Rental;
                             <tr @key="r.Id" class="hover:bg-[#F3EDEA]">
@@ -72,6 +72,7 @@
                     </tbody>
                 </table>
             </div>
+            <Pager Page="_page" PageSize="PageSize" TotalCount="Visible.Count" Noun="hợp đồng" Disabled="_loading" OnPage="page => _page = page" />
         }
     </div>
 
@@ -84,6 +85,8 @@
 </section>
 
 @code {
+    private const int PageSize = 10;
+    private int _page = 1;
     private static readonly (string Key, string Label)[] Tabs =
     [
         ("contracts", "Hợp đồng đang thuê"),
@@ -126,6 +129,7 @@
 
     private async Task LoadAsync()
     {
+        _page = 1;
         _loading = true;
         try
         {

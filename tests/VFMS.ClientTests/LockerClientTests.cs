@@ -7,6 +7,12 @@ using VFMS.Client.Services;
 using VFMS.Contracts.Auth;
 using VFMS.Contracts.Lockers;
 using Xunit;
+using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Web;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using VFMS.Client.Components.Lockers;
+using VFMS.Client.Components.Operations;
 
 namespace VFMS.ClientTests;
 
@@ -14,6 +20,76 @@ namespace VFMS.ClientTests;
 public sealed class LockerClientTests
 {
     private readonly List<HttpRequestMessage> _requests = [];
+
+    [Fact]
+    public async Task ExpiredSessionUsesVietnameseNotice()
+    {
+        var api = Client(HttpStatusCode.Unauthorized);
+        var error = await Assert.ThrowsAsync<ApiException>(() => api.GridAsync());
+        Assert.Equal("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại. (MSG-11)", error.Message);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(10)]
+    [InlineData(11)]
+    [InlineData(21)]
+    public async Task LockerGridShowsAtMostTenSlotsWithoutDroppingTheTotal(int count)
+    {
+        await using var provider = new ServiceCollection().AddLogging().BuildServiceProvider();
+        await using var renderer = new HtmlRenderer(provider, provider.GetRequiredService<ILoggerFactory>());
+        var slots = Enumerable.Range(1, count).Select(i => new LockerSlot(i, $"A{i:00}", "A", 1, "Available")).ToArray();
+        var html = await renderer.Dispatcher.InvokeAsync(async () =>
+            (await renderer.RenderComponentAsync<LockerGrid>(ParameterView.FromDictionary(new Dictionary<string, object?>
+            {
+                [nameof(LockerGrid.Slots)] = slots
+            }))).ToHtmlString());
+        Assert.Equal(Math.Min(count, 10), System.Text.RegularExpressions.Regex.Matches(html, "aria-pressed=").Count);
+        if (count > 10)
+            Assert.Contains($"{count} tủ", WebUtility.HtmlDecode(html));
+    }
+
+    [Fact]
+    public async Task GridPagerReachesLastLockerAndResetsAfterFiltering()
+    {
+        var activator = new TrackingActivator();
+        await using var provider = new ServiceCollection().AddLogging()
+            .AddSingleton<IComponentActivator>(activator).BuildServiceProvider();
+        await using var renderer = new HtmlRenderer(provider, provider.GetRequiredService<ILoggerFactory>());
+        var slots = Enumerable.Range(1, 21).Select(i => new LockerSlot(i, $"A{i:00}", "A", 1, "Available")).ToArray();
+        await renderer.Dispatcher.InvokeAsync(async () =>
+        {
+            var root = await renderer.RenderComponentAsync<LockerGrid>(ParameterView.FromDictionary(new Dictionary<string, object?>
+            {
+                [nameof(LockerGrid.Slots)] = slots
+            }));
+            await activator.Instances.OfType<Pager>().Single().OnPage.InvokeAsync(3);
+            var html = WebUtility.HtmlDecode(root.ToHtmlString());
+            Assert.Contains(">A21</span>", html);
+            Assert.DoesNotContain(">A01</span>", html);
+            Assert.Equal(1, System.Text.RegularExpressions.Regex.Matches(html, "aria-pressed=").Count);
+
+            await activator.Instances.OfType<LockerGrid>().Single().SetParametersAsync(ParameterView.FromDictionary(new Dictionary<string, object?>
+            {
+                [nameof(LockerGrid.Slots)] = slots.Take(11).ToArray()
+            }));
+            html = WebUtility.HtmlDecode(root.ToHtmlString());
+            Assert.Contains("Trang 1 / 2", html);
+            Assert.Contains(">A01</span>", html);
+            Assert.Equal(10, System.Text.RegularExpressions.Regex.Matches(html, "aria-pressed=").Count);
+        });
+    }
+
+    private sealed class TrackingActivator : IComponentActivator
+    {
+        public List<IComponent> Instances { get; } = [];
+        public IComponent CreateInstance(Type componentType)
+        {
+            var component = (IComponent)Activator.CreateInstance(componentType)!;
+            Instances.Add(component);
+            return component;
+        }
+    }
 
     private LockerApiClient Client(HttpStatusCode status, object? body = null)
     {

@@ -33,7 +33,7 @@ public sealed partial class PersonalTrainingService(IPersonalTrainingRepository 
     private async Task<PTPurchase?> MemberContract(string memberId, int id, CancellationToken ct) =>
         await repo.GetContractAsync(id, ct) is { } contract && contract.MemberUserId == memberId ? contract : null;
 
-    private const int PageSize = 20;
+    private const int PageSize = 10;
 
     private static Result<PagedResponse<TResponse>> PageOf<T, TResponse>(PTPage<T> page, Func<T, TResponse> map) =>
         Result<PagedResponse<TResponse>>.Success(new(page.Page, PageSize, page.TotalCount, page.Items.Select(map).ToArray()));

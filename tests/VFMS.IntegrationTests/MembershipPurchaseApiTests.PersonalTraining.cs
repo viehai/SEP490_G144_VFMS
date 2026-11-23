@@ -276,9 +276,12 @@ public sealed partial class MembershipPurchaseApiTests
         var first = (await trainer.GetFromJsonAsync<VFMS.Contracts.Common.PagedResponse<PTAssignedMember>>(path))!;
         var second = (await trainer.GetFromJsonAsync<VFMS.Contracts.Common.PagedResponse<PTAssignedMember>>(path + "&page=2"))!;
         Assert.Equal(21, first.TotalCount);
-        Assert.Equal(20, first.Items.Count);
-        var ended = Assert.Single(second.Items);
-        Assert.DoesNotContain(first.Items, item => item.ContractId == ended.ContractId);
+        Assert.Equal(10, first.PageSize);
+        Assert.Equal(10, first.Items.Count);
+        Assert.Equal(10, second.Items.Count);
+        var third = (await trainer.GetFromJsonAsync<VFMS.Contracts.Common.PagedResponse<PTAssignedMember>>(path + "&page=3"))!;
+        var ended = Assert.Single(third.Items);
+        Assert.Equal(21, first.Items.Concat(second.Items).Concat(third.Items).Select(item => item.ContractId).Distinct().Count());
         var visible = await trainer.GetFromJsonAsync<PTContractResponse[]>($"/api/pt/contracts/{ended.ContractId}");
         Assert.Equal("Expired", Assert.Single(visible!).Status);
     }

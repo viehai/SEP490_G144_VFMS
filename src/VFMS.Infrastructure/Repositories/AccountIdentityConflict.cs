@@ -29,8 +29,8 @@ internal static class AccountIdentityConflict
     }
 
     public static Result<T> ResultFor<T>(string field) => field == nameof(ApplicationUser.Email)
-        ? Result<T>.Failure("Email is already in use.", "AUTH_EMAIL_EXISTS", 409)
-        : Result<T>.Failure("A user with this phone number already exists.", "USER_PHONE_EXISTS", 409);
+        ? Result<T>.Failure("Email này đã được sử dụng.", "AUTH_EMAIL_EXISTS", 409)
+        : Result<T>.Failure("Số điện thoại này đã được sử dụng cho tài khoản khác.", "USER_PHONE_EXISTS", 409);
 
     public static int? SqlErrorNumber(Exception exception)
     {
@@ -41,5 +41,5 @@ internal static class AccountIdentityConflict
     }
 
     public static Result<T> WriteConflict<T>() =>
-        Result<T>.Failure("Account details changed concurrently. Please retry.", "USER_PROVISIONING_CONFLICT", 409);
+        Result<T>.Failure("Thông tin tài khoản vừa thay đổi. Vui lòng thử lại.", "USER_PROVISIONING_CONFLICT", 409);
 }

@@ -1,6 +1,7 @@
 @inject PersonalTrainingApiClient Api
 @inject ToastService Toasts
 @using VFMS.Contracts.Trainers
+@using VFMS.Client.Components.Operations
 
 <section class="trainer-panel trainer-stack">
     <header class="trainer-row trainer-between">
@@ -125,7 +126,7 @@
     }
     else if (!Visible.Any()) { <p class="trainer-muted">Chưa có buổi tập trong danh sách này.</p> }
     <div class="trainer-stack">
-        @foreach (var item in Visible.Where(item => IsTrainer || _history || item.Id == _selectedCalendarSession))
+        @foreach (var item in ListedSessions.Skip((SessionPage - 1) * PageSize).Take(PageSize))
         {
             <article class="pt-session trainer-stack" @key="item.Id">
                 <div class="trainer-row trainer-between">
@@ -134,7 +135,7 @@
                     else { <TrainerStatus Status="@item.Status" /> }
                 </div>
                 <p class="trainer-muted">Tính @item.CreditUnits buổi</p>
-                @if (item.CompletedByCheckIn) { <p class="trainer-muted">Ghi có mặt nhờ hội viên check-in.</p> }
+                @if (item.CompletedByCheckIn) { <p class="trainer-muted">Ghi có mặt nhờ hội viên ghi nhận vào phòng tập.</p> }
                 @if (IsTrainer)
                 {
                     <a class="trainer-link" href="@($"/pt/contracts/{Contract.Id}/sessions/{item.Id}")">Mở chi tiết ca học</a>
@@ -230,7 +231,7 @@
                 @if (_sessionId == item.Id && _editor == Absence)
                 {
                     <form class="trainer-stack" @onsubmit="SendAbsenceAsync" @onsubmit:preventDefault>
-                        <p class="trainer-muted">Nếu PT chưa điểm danh, buổi thành buổi bù; PT có thể phản hồi đến hết ngày hôm sau, sau đó bạn mới đặt lịch buổi bù được. Nếu PT đã điểm danh (có mặt hoặc vắng mặt), Manager sẽ xem xét.</p>
+                        <p class="trainer-muted">Nếu PT chưa điểm danh, buổi thành buổi bù; PT có thể phản hồi đến hết ngày hôm sau, sau đó bạn mới đặt lịch buổi bù được. Nếu PT đã điểm danh (có mặt hoặc vắng mặt), Quản lý sẽ xem xét.</p>
                         <label>Ghi chú (không bắt buộc)<textarea class="trainer-input" rows="3" maxlength="1000" @bind="_absenceReason" disabled="@_busy"></textarea></label>
                         <div class="trainer-row"><button class="trainer-button trainer-primary" disabled="@_busy">Gửi báo cáo</button>
                             <button type="button" class="trainer-button" @onclick="CloseEditor">Đóng</button></div>
@@ -239,14 +240,23 @@
                 @if (item.TrainerAbsenceReportedAt is not null)
                 {
                     <p class="trainer-muted">Báo PT vắng mặt: @AbsenceOutcome(item)</p>
-                    @if (!string.IsNullOrWhiteSpace(item.TrainerAbsenceReviewNote)) { <p class="trainer-copy">Manager: @item.TrainerAbsenceReviewNote</p> }
+                    @if (!string.IsNullOrWhiteSpace(item.TrainerAbsenceReviewNote)) { <p class="trainer-copy">Quản lý: @item.TrainerAbsenceReviewNote</p> }
                 }
             </article>
         }
     </div>
+    @if (ListedSessions.Length > PageSize)
+    {
+        <Pager Page="SessionPage" PageSize="PageSize" TotalCount="ListedSessions.Length" Noun="buổi tập" Disabled="_busy" OnPage="page => _sessionPage = page" />
+    }
 </section>
 
 @code {
+    private const int PageSize = 10;
+    private int _sessionPage = 1;
+    private int SessionPage => Math.Clamp(_sessionPage, 1, Math.Max(1, (ListedSessions.Length + PageSize - 1) / PageSize));
+    private PTSessionResponse[] ListedSessions => Visible.Where(item => IsTrainer || _history || item.Id == _selectedCalendarSession)
+        .OrderBy(item => item.Date).ThenBy(item => item.StartTime).ThenBy(item => item.Id).ToArray();
     [Parameter, EditorRequired] public PTContractResponse Contract { get; set; } = default!;
     [Parameter] public bool IsTrainer { get; set; }
     [Parameter] public string? TrainerName { get; set; }
@@ -319,17 +329,18 @@
 
     private static string AbsenceOutcome(PTSessionResponse s) => s.Status switch
     {
-        "Disputed" => "PT đã điểm danh khác với báo cáo, đang chờ Manager xem xét.",
+        "Disputed" => "PT đã điểm danh khác với báo cáo, đang chờ quản lý xem xét.",
         "Cancelled" when s.MakeUpAvailableAt is { } opens => $"đang chờ PT phản hồi; buổi bù đặt lịch được từ {LocalTime(opens)}.",
         "Cancelled" => "đã trả lại thành buổi bù.",
-        "Completed" => "Manager xác nhận buổi tập đã diễn ra.",
-        "NoShow" => "Manager xác nhận hội viên vắng mặt.",
+        "Completed" => "Quản lý xác nhận buổi tập đã diễn ra.",
+        "NoShow" => "Quản lý xác nhận hội viên vắng mặt.",
         _ => "đã ghi nhận."
     };
 
     private void SelectHistory(bool history)
     {
         _history = history;
+        _sessionPage = 1;
         _selectedCalendarSession = null;
         CloseEditor();
     }

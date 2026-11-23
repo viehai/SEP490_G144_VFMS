@@ -40,9 +40,11 @@ public sealed class TrainerApiClient(HttpClient http, AuthSession session) : IDi
         catch (AuthApiException ex) when (ex.ErrorCode is "RECRUITMENT_COOLDOWN" or "TRAINER_PROFILE_UPDATE_COOLDOWN")
         {
             const string prefix = "You can submit again after ";
+            const string vietnamesePrefix = "Bạn có thể nộp lại hồ sơ sau ";
             var message = "Vui lòng chờ đủ 10 phút kể từ lần nộp trước rồi thử lại.";
-            if (ex.Message.StartsWith(prefix, StringComparison.Ordinal) &&
-                DateTimeOffset.TryParse(ex.Message[prefix.Length..].TrimEnd('.'),
+            var matchedPrefix = ex.Message.StartsWith(vietnamesePrefix, StringComparison.Ordinal) ? vietnamesePrefix : prefix;
+            if (ex.Message.StartsWith(matchedPrefix, StringComparison.Ordinal) &&
+                DateTimeOffset.TryParse(ex.Message[matchedPrefix.Length..].TrimEnd('.'),
                     CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var retryAt))
             {
                 var vietnamTime = retryAt.ToOffset(TimeSpan.FromHours(7))

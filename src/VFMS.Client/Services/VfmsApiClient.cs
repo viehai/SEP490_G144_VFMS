@@ -96,7 +96,7 @@ public sealed class VfmsApiClient(HttpClient http, AuthSession session, ILogger<
     {
         var message = response.StatusCode switch
         {
-            HttpStatusCode.Unauthorized => "Your session has expired. Please sign in again to continue. (MSG-11)",
+            HttpStatusCode.Unauthorized => "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại. (MSG-11)",
             HttpStatusCode.Forbidden => "Bạn không có quyền thực hiện thao tác này.",
             HttpStatusCode.TooManyRequests => "Bạn đã thao tác quá nhiều lần. Vui lòng đợi một lát rồi thử lại.",
             >= HttpStatusCode.InternalServerError => "Hệ thống tạm thời chưa sẵn sàng. Vui lòng thử lại sau.",

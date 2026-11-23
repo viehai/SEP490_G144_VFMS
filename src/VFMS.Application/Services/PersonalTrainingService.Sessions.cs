@@ -475,7 +475,7 @@ public sealed partial class PersonalTrainingService
         var now = Now;
         // UC 4.11: once disputed, the Manager reviews the PT's record as it stands.
         if (s.SessionStatus == PTSessionStatus.Disputed)
-            return Conflict<PTSessionResponse>("Buổi đang chờ Manager xử lý tranh chấp, không sửa điểm danh được.");
+            return Conflict<PTSessionResponse>("Buổi đang chờ quản lý xử lý tranh chấp, không sửa điểm danh được.");
         var memberReported = s.TrainerAbsenceReportedAt != null && s.TrainerAbsenceReviewedAt == null &&
             s.SessionStatus == PTSessionStatus.Cancelled;
         var lastDay = memberReported ? PersonalTrainingRules.TrainerResponseLastDay(s.SessionDate) : s.SessionDate;
@@ -553,7 +553,7 @@ public sealed partial class PersonalTrainingService
         {
             var recorded = session.SessionStatus == PTSessionStatus.Completed ? "có mặt" : "vắng mặt";
             session.SessionStatus = PTSessionStatus.Disputed;
-            message = trainerMessage = $"PT đã ghi hội viên {recorded} nên báo cáo được chuyển Manager xem xét.";
+            message = trainerMessage = $"PT đã ghi hội viên {recorded} nên báo cáo được chuyển quản lý xem xét.";
             foreach (var manager in await ManagerIds(session.PTUserId, ct))
                 Notify(manager, "Tranh chấp điểm danh PT", $"Hội viên báo PT vắng mặt nhưng PT đã ghi hội viên {recorded}.", nameof(PTSession), id);
         }
@@ -569,7 +569,7 @@ public sealed partial class PersonalTrainingService
             message = $"Buổi tập thành buổi bù. PT có thể phản hồi đến hết ngày {lastDay:dd/MM/yyyy}; sau đó bạn đặt lịch buổi bù được " +
                 $"(dùng được đến {PersonalTrainingRules.MakeUpDeadline(contract.EndDate):dd/MM/yyyy}).";
             trainerMessage = $"Hội viên báo bạn vắng buổi {session.StartTime:HH:mm} ngày {session.SessionDate:dd/MM/yyyy}. " +
-                $"Nếu bạn đã dạy, hãy điểm danh trước hết ngày {lastDay:dd/MM/yyyy} để Manager xem xét.";
+                $"Nếu bạn đã dạy, hãy điểm danh trước hết ngày {lastDay:dd/MM/yyyy} để quản lý xem xét.";
         }
         SettleCredits(contract);
         Audit(actor, nameof(PTSession), id, $"TrainerAbsentReported:{session.SessionStatus}");
@@ -668,9 +668,9 @@ public sealed partial class PersonalTrainingService
         Audit(actor, nameof(PTSession), id, $"DisputeDecided:{request.Decision}");
         var outcome = request.Decision switch
         {
-            PTDisputeDecisions.SessionHeld => "Manager xác nhận buổi tập đã diễn ra; buổi được tính là đã dùng.",
-            PTDisputeDecisions.PTAbsent => "Manager xác nhận PT vắng mặt; buổi tập được trả lại thành buổi bù.",
-            _ => "Manager xác nhận hội viên vắng mặt; buổi tập bị tính là đã dùng."
+            PTDisputeDecisions.SessionHeld => "Quản lý xác nhận buổi tập đã diễn ra; buổi được tính là đã dùng.",
+            PTDisputeDecisions.PTAbsent => "Quản lý xác nhận PT vắng mặt; buổi tập được trả lại thành buổi bù.",
+            _ => "Quản lý xác nhận hội viên vắng mặt; buổi tập bị tính là đã dùng."
         };
         Notify(session.MemberUserId, "Kết quả tranh chấp điểm danh", outcome, nameof(PTSession), id);
         Notify(session.PTUserId, "Kết quả tranh chấp điểm danh", outcome, nameof(PTSession), id);

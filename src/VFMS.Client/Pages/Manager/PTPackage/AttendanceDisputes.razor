@@ -7,7 +7,7 @@
 
 <PageTitle>Tranh chấp điểm danh PT | Victor Fitness</PageTitle>
 <section class="workspace-page trainer-page trainer-stack">
-    <PageHeader Overline="VFMS / PERSONAL TRAINING" Title="Tranh chấp điểm danh"
+    <PageHeader Overline="VFMS / HUẤN LUYỆN CÁ NHÂN" Title="Tranh chấp điểm danh"
                 Description="Hội viên báo PT vắng mặt nhưng PT đã điểm danh. Xem hai bên và lượt ra vào gym của hội viên rồi chọn kết quả cuối cùng." />
     <div class="trainer-row">
         <button class="trainer-button" aria-pressed="@(!_processed)" disabled="@_busy" @onclick="() => SwitchAsync(false)">Đang chờ</button>
@@ -37,7 +37,7 @@
             @if (_visits.TryGetValue(item.SessionId, out var visits))
             {
                 <h3>Lượt ra vào gym ngày @item.Date.ToString("dd/MM/yyyy")</h3>
-                @if (visits.Count == 0) { <p class="trainer-muted">Hội viên không check-in trong ngày này.</p> }
+                @if (visits.Count == 0) { <p class="trainer-muted">Hội viên không ghi nhận vào phòng tập trong ngày này.</p> }
                 else
                 {
                     <div class="trainer-scroll">
@@ -51,7 +51,7 @@
                                         <td>@Method(visit.CheckinMethod, visit.CheckedInBy)</td>
                                         <td>@(visit.CheckoutTime is { } outAt ? Clock(outAt) : visit.Status == "Active" ? "Đang trong gym" : "—")@(visit.Status == "AutoClosed" ? " (tự đóng)" : "")</td>
                                         <td>@(visit.CheckoutMethod is { } outMethod ? Method(outMethod, visit.CheckedOutBy) : "—")</td>
-                                        <td>@(visit.InCheckInWindow ? "Trong khung check-in của buổi" : visit.OverlapsSession ? "Có mặt trong giờ tập" : "Ngoài giờ tập")</td>
+                                        <td>@(visit.InCheckInWindow ? "Trong khung ghi nhận vào phòng tập của buổi" : visit.OverlapsSession ? "Có mặt trong giờ tập" : "Ngoài giờ tập")</td>
                                     </tr>
                                 }
                             </tbody>
@@ -71,7 +71,7 @@
             else
             {
                 <p>Kết quả: <strong>@DecisionName(item.Decision)</strong>@(item.ReviewNote is { } review ? $" · {review}" : "")</p>
-                @if (item.ReviewerName is { } reviewer) { <p class="trainer-muted">Manager quyết định: @reviewer</p> }
+                @if (item.ReviewerName is { } reviewer) { <p class="trainer-muted">Quản lý quyết định: @reviewer</p> }
             }
         </article>
     }

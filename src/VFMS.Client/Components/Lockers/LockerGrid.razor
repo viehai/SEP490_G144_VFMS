@@ -1,4 +1,5 @@
 @using VFMS.Contracts.Lockers
+@using VFMS.Client.Components.Operations
 @* Locker grid grouped by zone and floor, colour-coded by status. A slot is clickable only when Selectable allows it. *@
 @if (Slots.Count == 0)
 {
@@ -6,7 +7,7 @@
 }
 else
 {
-    @foreach (var zone in Slots.GroupBy(s => (s.Zone, s.Floor)).OrderBy(g => g.Key.Floor).ThenBy(g => g.Key.Zone))
+    @foreach (var zone in PageSlots.GroupBy(s => (s.Zone, s.Floor)))
     {
         <section class="space-y-2" aria-label="@($"Khu {zone.Key.Zone}, tầng {zone.Key.Floor}")">
             <h3 class="text-xs font-bold uppercase tracking-wider text-vfms-text-secondary">Khu @zone.Key.Zone · Tầng @zone.Key.Floor</h3>
@@ -23,6 +24,10 @@ else
             </div>
         </section>
     }
+    @if (Slots.Count > PageSize)
+    {
+        <Pager Page="_page" PageSize="PageSize" TotalCount="Slots.Count" Noun="tủ" OnPage="page => _page = page" />
+    }
 }
 
 @code {
@@ -30,6 +35,22 @@ else
     [Parameter] public int? SelectedId { get; set; }
     [Parameter] public Func<LockerSlot, bool>? Selectable { get; set; }
     [Parameter] public EventCallback<LockerSlot> OnSelect { get; set; }
+
+    private const int PageSize = 10;
+    private int _page = 1;
+    private IReadOnlyList<LockerSlot>? _previousSlots;
+    private IEnumerable<LockerSlot> PageSlots => Slots.OrderBy(s => s.Floor).ThenBy(s => s.Zone)
+        .ThenBy(s => s.Number, StringComparer.OrdinalIgnoreCase).ThenBy(s => s.Id)
+        .Skip((_page - 1) * PageSize).Take(PageSize);
+
+    protected override void OnParametersSet()
+    {
+        // A filtered grid may have a different set of lockers; start from its first page.
+        if (_previousSlots is not null && !_previousSlots.Select(s => s.Id).SequenceEqual(Slots.Select(s => s.Id)))
+            _page = 1;
+        _previousSlots = Slots;
+        _page = Math.Clamp(_page, 1, Math.Max(1, (Slots.Count + PageSize - 1) / PageSize));
+    }
 
     private bool IsSelectable(LockerSlot slot) => Selectable?.Invoke(slot) ?? true;
 

@@ -19,7 +19,7 @@
             <section id="pt-basic-profile" class="trainer-panel trainer-stack trainer-anchor">
                 <div class="trainer-row">
                     <TrainerAvatar Trainer="detail.Profile" />
-                    <div><h2>@detail.Profile.FullName</h2><p class="trainer-muted">@detail.Profile.TrainerRole · @detail.Profile.Specialty · @detail.Profile.Level · @detail.Profile.ExperienceYears năm kinh nghiệm</p>
+                    <div><h2>@detail.Profile.FullName</h2><p class="trainer-muted">@detail.Profile.TrainerRole · @detail.Profile.Specialty · @PTDisplay.Level(detail.Profile.Level) · @detail.Profile.ExperienceYears năm kinh nghiệm</p>
                     @if (detail.Profile.AverageRating > 0) { <StarRating Value="detail.Profile.AverageRating" /> }
                     else { <p class="trainer-muted">Chưa có đánh giá</p> }</div>
                 </div>
@@ -71,7 +71,7 @@
                 }
                 else
                 {
-                    <p class="trainer-muted">Manager duyệt trước khi thay đổi được công bố.</p>
+                    <p class="trainer-muted">quản lý duyệt trước khi thay đổi được công bố.</p>
                     <div class="trainer-row">
                         <button type="button" class="trainer-button" aria-pressed="@(_editingCredentials && _replacement is null)"
                                 @onclick="() => OpenCredentials(null)">Thêm chứng chỉ mới</button>

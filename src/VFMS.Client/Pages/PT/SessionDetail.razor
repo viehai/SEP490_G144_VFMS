@@ -22,8 +22,8 @@
             @if (CanRecord(session))
             {
                 <p class="trainer-muted">@(AwaitingMyResponse(session)
-                    ? $"Hội viên báo bạn vắng mặt. Nếu bạn đã dạy, hãy điểm danh trước hết ngày {Date(session.Date.AddDays(1))}: buổi sẽ chuyển Manager xem xét."
-                    : session.CompletedByCheckIn ? "Hội viên đã check-in nên buổi được ghi có mặt. Bạn có thể sửa đến hết hôm nay."
+                    ? $"Hội viên báo bạn vắng mặt. Nếu bạn đã dạy, hãy điểm danh trước hết ngày {Date(session.Date.AddDays(1))}: buổi sẽ chuyển quản lý xem xét."
+                    : session.CompletedByCheckIn ? "Hội viên đã ghi nhận vào phòng tập nên buổi được ghi có mặt. Bạn có thể sửa đến hết hôm nay."
                     : session.Status is "Completed" or "NoShow" ? "Có thể sửa điểm danh đến hết hôm nay."
                     : session.Status == "PendingFreeze" ? "Buổi đang chờ duyệt bảo lưu: ghi vắng mặt không bị trừ buổi."
                     : "Điểm danh trong hôm nay.")</p>

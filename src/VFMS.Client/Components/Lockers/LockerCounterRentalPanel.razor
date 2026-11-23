@@ -53,7 +53,7 @@
         else if (_members is not null)
         {
             <ul class="divide-y divide-[#ECE8E4] rounded-lg border border-[#D8D1CD]">
-                @foreach (var member in _members)
+                @foreach (var member in _members.Skip((_memberPage - 1) * PageSize).Take(PageSize))
                 {
                     <li @key="member.Id" class="flex items-center justify-between gap-3 px-3 py-2 text-sm">
                         <span>@member.Name · @member.Phone</span>
@@ -68,6 +68,7 @@
                     </li>
                 }
             </ul>
+            <Pager Page="_memberPage" PageSize="PageSize" TotalCount="_members.Length" Noun="hội viên" Disabled="_busy" OnPage="page => _memberPage = page" />
         }
         @if (_member is not null)
         {
@@ -94,6 +95,8 @@
 </div>
 
 @code {
+    private const int PageSize = 10;
+    private int _memberPage = 1;
     [Parameter, EditorRequired] public LockerSlot Slot { get; set; } = null!;
     [Parameter, EditorRequired] public IReadOnlyList<LockerPolicy> Policies { get; set; } = [];
     [Parameter] public EventCallback OnDone { get; set; }
@@ -138,6 +141,7 @@
     private async Task SearchAsync()
     {
         if (_busy || string.IsNullOrWhiteSpace(_search)) return;
+        _memberPage = 1;
         await Run(async () => { _members = await Api.MembersAsync(_search.Trim(), _lifetime.Token); _member = null; });
     }
 
