@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Mvc.ModelBinding;
 using VFMS.API.Extensions;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.PersonalTraining;
-using VFMS.Application.Services;
+using VFMS.Application.Interfaces;
 
 namespace VFMS.API.Controllers;
 
@@ -12,7 +12,7 @@ namespace VFMS.API.Controllers;
 [Route("api/pt")]
 [Authorize]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
-public sealed class PersonalTrainingController(PersonalTrainingService service) : ControllerBase
+public sealed class PersonalTrainingController(IPersonalTrainingService service) : ControllerBase
 {
     private Task<IActionResult> AsUser<T>(Func<string, Task<Result<T>>> action) =>
         User.GetUserId() is { } actor ? Reply(action(actor)) : Task.FromResult<IActionResult>(Unauthorized());

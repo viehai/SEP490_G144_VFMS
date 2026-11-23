@@ -77,7 +77,7 @@ public sealed partial class MembershipPurchaseApiTests
 
         _clock.Now = new DateTimeOffset(counter.HoldExpiresAt).AddSeconds(1);
         await using (var scope = _app.Services.CreateAsyncScope())
-            await scope.ServiceProvider.GetRequiredService<VFMS.Application.Services.PersonalTrainingService>().ExpirePending(CancellationToken.None);
+            await scope.ServiceProvider.GetRequiredService<VFMS.Application.Interfaces.IPersonalTrainingService>().ExpirePending(CancellationToken.None);
         using var staff = Client("staff", "Staff");
         using var late = await staff.PostAsJsonAsync($"/api/pt/purchases/{hold.OrderNumber}/cash-confirmation",
             new PTCashConfirmationRequest(counter.AmountDue));

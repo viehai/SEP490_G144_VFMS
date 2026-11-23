@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using VFMS.API.Extensions;
-using VFMS.Application.Services;
+using VFMS.Application.Interfaces;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Trainers;
 
@@ -11,7 +11,7 @@ namespace VFMS.API.Controllers;
 [ApiController]
 [Route("api/trainers")]
 [RequestSizeLimit(36 * 1024 * 1024)]
-public sealed class TrainersController(TrainerService service) : ControllerBase
+public sealed class TrainersController(ITrainerService service) : ControllerBase
 {
     private string Actor => User.GetUserId()!;
 

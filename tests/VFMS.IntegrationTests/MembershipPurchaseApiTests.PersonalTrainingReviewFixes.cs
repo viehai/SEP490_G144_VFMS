@@ -133,7 +133,7 @@ public sealed partial class MembershipPurchaseApiTests
     {
         var mapping = new TypeAdapterConfig();
         mapping.Scan(typeof(TrainerMapping).Assembly);
-        return new(new TrainerStore(scope.ServiceProvider.GetRequiredService<VfmsDbContext>(),
+        return new(new TrainerRepository(scope.ServiceProvider.GetRequiredService<VfmsDbContext>(),
             new EphemeralDataProtectionProvider(), new ConfigurationBuilder().Build()), new PasswordHasher(), new Mapper(mapping));
     }
 
@@ -174,7 +174,7 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Equal(HttpStatusCode.BadRequest, slots.StatusCode);
     }
 
-    // Hiring itself runs on SQL Server only (TrainerStore.Write); the hire and role removal are in TrainerWorkflowTests.
+    // Hiring itself runs on SQL Server only (TrainerRepository.RunExclusiveAsync); the hire and role removal are in TrainerWorkflowTests.
     [Fact]
     public async Task ApplicationDetailFlagsAMemberWithAnUnfinishedPTContractAndActiveMemberServices()
     {

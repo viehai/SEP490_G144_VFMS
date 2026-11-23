@@ -172,7 +172,7 @@ public sealed partial class MembershipPurchaseApiTests
         profile.AcceptingNewMembers = false;
         profile.NotAcceptingSince = Today.AddDays(-90);
         await db.SaveChangesAsync();
-        var service = scope.ServiceProvider.GetRequiredService<PersonalTrainingService>();
+        var service = scope.ServiceProvider.GetRequiredService<VFMS.Application.Interfaces.IPersonalTrainingService>();
         async Task<TrainerProfile> Swept(DateOnly day)
         {
             await service.ExpireInactiveTrainers(day, default);

@@ -86,7 +86,7 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Equal(taught.SessionDate, Assert.Single(current, row => row.ContractId == id).LastTrainedOn);
 
         // GBR-104: the PT role is kept while the contract still has make-up to use.
-        var service = scope.ServiceProvider.GetRequiredService<PersonalTrainingService>();
+        var service = scope.ServiceProvider.GetRequiredService<VFMS.Application.Interfaces.IPersonalTrainingService>();
         await service.ExpireInactiveTrainers(Today, default);
         Assert.True((await db.TrainerProfiles.AsNoTracking().SingleAsync(p => p.PTUserId == "buyer")).IsActive);
 

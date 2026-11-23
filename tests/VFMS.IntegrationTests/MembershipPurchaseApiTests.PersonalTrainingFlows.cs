@@ -97,7 +97,7 @@ public sealed partial class MembershipPurchaseApiTests
 
         _clock.Now = LocalTime(session.Date.AddDays(1), new TimeOnly(1, 0));
         await using (var scope = _app.Services.CreateAsyncScope())
-            await scope.ServiceProvider.GetRequiredService<PersonalTrainingService>().ProcessAttendance(CancellationToken.None);
+            await scope.ServiceProvider.GetRequiredService<VFMS.Application.Interfaces.IPersonalTrainingService>().ProcessAttendance(CancellationToken.None);
         using var late = await trainer.PostAsJsonAsync($"/api/pt/sessions/{session.Id}/attendance", false);
         Assert.Equal(HttpStatusCode.Conflict, late.StatusCode);
         var after = await ContractOf(member, id);

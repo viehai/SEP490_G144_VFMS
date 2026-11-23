@@ -12,6 +12,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using VFMS.Application.Interfaces;
 using VFMS.Application.Mappings;
 using VFMS.Application.Services;
+using VFMS.Application.Settings;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Trainers;
 using VFMS.Domain.Entities;
@@ -62,7 +63,12 @@ internal sealed class TrainerTestDatabase : IAsyncDisposable
     {
         var mapping = new TypeAdapterConfig();
         mapping.Scan(typeof(TrainerMapping).Assembly);
-        return new(new TrainerStore(db, Protection, Configuration), passwords ?? new PasswordHasher(), new Mapper(mapping));
+        return new(new TrainerRepository(db, Protection, Configuration), passwords ?? new PasswordHasher(), new Mapper(mapping),
+            new TrainerSetupLinkSettings
+            {
+                SetupPageUrl = Configuration["TrainerMail:SetupPageUrl"],
+                ResetUrl = Configuration["PasswordReset:ResetUrl"]
+            });
     }
     public async Task Initialize()
     {
@@ -251,11 +257,11 @@ public class TrainerWorkflowTests
         var email = new CapturedTrainerEmail();
         var services = new ServiceCollection();
         services.AddDbContext<VfmsDbContext>(options => options.UseSqlServer(fixture.Db.Database.GetConnectionString()));
-        services.AddSingleton<IDataProtectionProvider>(fixture.Protection);
         services.AddSingleton<IEmailService>(email);
+        services.AddScoped<ITrainerService>(sp => fixture.CreateService(sp.GetRequiredService<VfmsDbContext>()));
         await using var provider = services.BuildServiceProvider();
         using var worker = new TrainerEmailWorker(provider.GetRequiredService<IServiceScopeFactory>(),
-            fixture.Configuration, NullLogger<TrainerEmailWorker>.Instance);
+            NullLogger<TrainerEmailWorker>.Instance);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await worker.StartAsync(default);
         try
@@ -367,7 +373,7 @@ public class TrainerWorkflowTests
         profile.NotAcceptingSince = new DateOnly(2026, 1, 1);
         profile.AcceptingNewMembers = false;
         await db.SaveChangesAsync();
-        var workerService = new PersonalTrainingService(new PersonalTrainingStore(db), TimeProvider.System, null!, null!, null!);
+        var workerService = new PersonalTrainingService(new PersonalTrainingRepository(db), TimeProvider.System, null!, null!, null!);
         await workerService.ExpireInactiveTrainers(new DateOnly(2026, 3, 2), default);
         Assert.True((await db.TrainerProfiles.AsNoTracking().SingleAsync()).IsActive);
         await workerService.ExpireInactiveTrainers(new DateOnly(2026, 3, 3), default);
@@ -1041,11 +1047,11 @@ public class TrainerWorkflowTests
         var application = await fixture.Db.TrainerApplications.SingleAsync();
         var services = new ServiceCollection();
         services.AddDbContext<VfmsDbContext>(options => options.UseSqlServer(fixture.Db.Database.GetConnectionString()));
-        services.AddSingleton<IDataProtectionProvider>(fixture.Protection);
         services.AddSingleton<IEmailService>(new FailingTrainerEmail());
+        services.AddScoped<ITrainerService>(sp => fixture.CreateService(sp.GetRequiredService<VfmsDbContext>()));
         await using var provider = services.BuildServiceProvider();
         using var worker = new TrainerEmailWorker(provider.GetRequiredService<IServiceScopeFactory>(),
-            fixture.Configuration, NullLogger<TrainerEmailWorker>.Instance);
+            NullLogger<TrainerEmailWorker>.Instance);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await worker.StartAsync(default);
         try

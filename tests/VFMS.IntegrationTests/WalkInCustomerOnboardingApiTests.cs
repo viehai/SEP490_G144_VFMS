@@ -106,8 +106,8 @@ public sealed class WalkInCustomerOnboardingApiTests : IAsyncLifetime
         builder.Services.AddScoped<IUserAdministrationRepository, UserAdministrationRepository>();
         builder.Services.AddScoped<IUserAdministrationService, UserAdministrationService>();
         builder.Services.AddDataProtection().UseEphemeralDataProtectionProvider();
-        builder.Services.AddScoped<ITrainerStore, TrainerStore>();
-        builder.Services.AddScoped<TrainerService>();
+        builder.Services.AddScoped<ITrainerRepository, TrainerRepository>();
+        builder.Services.AddScoped<ITrainerService, TrainerService>();
         builder.Services.AddRateLimiter(options => options.AddPolicy("trainer-public",
             _ => RateLimitPartition.GetNoLimiter("trainer-test")));
         builder.Services.AddSingleton<IEmailService>(_emailService);

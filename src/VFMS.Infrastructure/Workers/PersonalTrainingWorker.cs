@@ -1,7 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using VFMS.Application.Services;
+using VFMS.Application.Interfaces;
 
 namespace VFMS.Infrastructure.Workers;
 
@@ -18,7 +18,7 @@ public sealed class PersonalTrainingWorker(IServiceScopeFactory scopes, ILogger<
             try
             {
                 await using var scope = scopes.CreateAsyncScope();
-                var service = scope.ServiceProvider.GetRequiredService<PersonalTrainingService>();
+                var service = scope.ServiceProvider.GetRequiredService<IPersonalTrainingService>();
                 await service.ExpirePending(ct);
                 await service.ProcessAttendance(ct);
                 await service.RemindPendingFreezes(ct);

@@ -148,7 +148,7 @@ public sealed partial class MembershipPurchaseApiTests
         {
             await RunJobAsync((service, ct) => service.ExpireOrdersAsync(ct));
             await using var workerScope = _app.Services.CreateAsyncScope();
-            await workerScope.ServiceProvider.GetRequiredService<VFMS.Application.Services.PersonalTrainingService>()
+            await workerScope.ServiceProvider.GetRequiredService<VFMS.Application.Interfaces.IPersonalTrainingService>()
                 .ExpirePending(CancellationToken.None);
         }
         if (taken)
@@ -474,7 +474,7 @@ public sealed partial class MembershipPurchaseApiTests
         {
             _clock.Now = new DateTimeOffset(pending.Proposal.ExpiresAt);
             await using var worker = _app.Services.CreateAsyncScope();
-            await worker.ServiceProvider.GetRequiredService<VFMS.Application.Services.PersonalTrainingService>()
+            await worker.ServiceProvider.GetRequiredService<VFMS.Application.Interfaces.IPersonalTrainingService>()
                 .ExpirePending(CancellationToken.None);
         }
         using var decided = await trainer.PostAsJsonAsync($"{requestPath}/decision", decision);

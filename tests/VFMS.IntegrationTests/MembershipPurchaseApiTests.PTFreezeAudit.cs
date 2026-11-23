@@ -145,7 +145,7 @@ public sealed partial class MembershipPurchaseApiTests
         {
             _clock.Now = created.AddHours(hours);
             await using var scope = _app.Services.CreateAsyncScope();
-            await scope.ServiceProvider.GetRequiredService<PersonalTrainingService>().RemindPendingFreezes(default);
+            await scope.ServiceProvider.GetRequiredService<VFMS.Application.Interfaces.IPersonalTrainingService>().RemindPendingFreezes(default);
             return await scope.ServiceProvider.GetRequiredService<VfmsDbContext>().Notifications
                 .CountAsync(n => n.Title == "Nhắc duyệt bảo lưu PT");
         }

@@ -13,20 +13,11 @@ public sealed partial class PersonalTrainingService
     {
         if (await User(actor, UserRole.Member, ct) is null)
             return Forbidden<IReadOnlyList<PTReplacementTrainer>>();
-        var contract = await ContractsWithSessions.SingleOrDefaultAsync(store, p => p.Id == contractId && p.MemberUserId == actor, ct);
+        var contract = await MemberContract(actor, contractId, ct);
         if (contract is null)
             return Missing<IReadOnlyList<PTReplacementTrainer>>();
         var gymId = contract.PTUser.GymId;
-        var yoga = ActiveYogaAssignments.Select(c => c.InstructorUserId);
-        var trainers = await (from profile in PTProfiles
-                              join user in ActiveUsers on profile.PTUserId equals user.UserId
-                              where profile.AcceptingNewMembers &&
-                                  profile.Level == contract.TrainerLevelSnapshot && profile.PTUserId != contract.PTUserId &&
-                                  user.GymId == gymId && !yoga.Contains(profile.PTUserId) &&
-                                  user.UserRoles.Any(r => r.Role.RoleName == nameof(UserRole.PT))
-                              orderby user.FullName
-                              select new PTReplacementTrainer(user.UserId, profile.Id, user.FullName, profile.Level.ToString(),
-                                  profile.Specialty)).ToListAsync(store, ct);
+        var trainers = await repo.GetReplacementTrainersAsync(gymId, contract.TrainerLevelSnapshot, contract.PTUserId, ct);
         return Result<IReadOnlyList<PTReplacementTrainer>>.Success(trainers);
     }
 
@@ -35,7 +26,7 @@ public sealed partial class PersonalTrainingService
     {
         if (await User(actor, UserRole.Member, ct) is null)
             return Forbidden<(PTPurchase, FreezePlan)>();
-        var contract = await ContractsWithSessions.SingleOrDefaultAsync(store, p => p.Id == contractId && p.MemberUserId == actor, ct);
+        var contract = await MemberContract(actor, contractId, ct);
         if (contract is null)
             return Missing<(PTPurchase, FreezePlan)>();
         // UC 4.13 outside a freeze request: only inside the one-week window opened by UC 4.12.
@@ -112,8 +103,8 @@ public sealed partial class PersonalTrainingService
         Notify(previousTrainer, "Hội viên đổi huấn luyện viên", "Các buổi chưa dạy của một hợp đồng đã chuyển sang huấn luyện viên khác.",
             nameof(PTPurchase), contract.Id);
         Notify(plan.TrainerId, "Nhận hội viên mới", message, nameof(PTPurchase), contract.Id);
-        await store.Save(ct);
-        var refreshed = await ContractsWithSessions.SingleOrDefaultAsync(store, p => p.Id == contract.Id, ct);
+        await repo.SaveChangesAsync(ct);
+        var refreshed = await repo.GetContractAsync(contract.Id, ct);
         return Result<PTContractResponse>.Success(ContractResponse(refreshed!));
     }, ct);
 }

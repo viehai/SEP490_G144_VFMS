@@ -44,7 +44,7 @@ public sealed partial class PersonalTrainingService
         var message = $"Ngày tập lại đã đổi thành {request.ResumeDate:dd/MM/yyyy}. Hãy kiểm tra lịch PT đã cập nhật.";
         Notify(actor, "Tập lại PT sớm", message, nameof(PTFreeze), id);
         Notify(plan.Purchase.PTUserId, "Tập lại PT sớm", message, nameof(PTFreeze), id);
-        await store.Save(ct);
+        await repo.SaveChangesAsync(ct);
         return Result<PTContractResponse>.Success(ContractResponse(plan.Purchase));
     }, ct);
 
@@ -53,8 +53,7 @@ public sealed partial class PersonalTrainingService
     {
         if (await User(actor, UserRole.Member, ct) is null)
             return Forbidden<EarlyResumePlan>();
-        var purchase = await ContractsWithSessions.SingleOrDefaultAsync(store,
-            p => p.MemberUserId == actor && p.PTFreezes.Any(f => f.Id == id), ct);
+        var purchase = await MemberFreeze(actor, id, ct);
         if (purchase is null)
             return Missing<EarlyResumePlan>();
 
@@ -101,8 +100,7 @@ public sealed partial class PersonalTrainingService
             }
         }
 
-        var templates = await Templates(purchase.PTUserId)
-            .Select(t => new { t.Id, t.DayOfWeek, t.StartTime }).ToListAsync(store, ct);
+        var templates = await Templates(purchase.PTUserId, ct);
         var templateIds = templates.ToDictionary(t => (t.DayOfWeek!.Value, t.StartTime), t => t.Id);
         var validSlots = new Dictionary<int, PTCalendarSlot>();
         foreach (var move in candidates)

@@ -32,17 +32,17 @@ public sealed partial class PersonalTrainingService
         var candidates = asTrainer
             ? WholeHours(contract.PTUser.Gym, start, duration)
             : PersonalTrainingRules.Occurrences(start, through,
-                    await Templates(contract.PTUserId).AsNoTracking(store).ToListAsync(store, ct), int.MaxValue)
+                    await Templates(contract.PTUserId, ct), int.MaxValue)
                 .Select(x => new PTCalendarSlot(x.Slot.Id, x.Date, x.Slot.StartTime, x.Slot.StartTime.Add(duration), "Available"))
                 .Where(s => s.EndTime > s.StartTime).ToArray();
         var conflicts = await ConflictingSlots(contract.PTUserId, contract.MemberUserId, candidates, now, ct,
             ignoreSession: id);
-        var bookings = await Occupied(now).Where(s => (s.PTUserId == contract.PTUserId ||
-                    asTrainer && s.MemberUserId == contract.MemberUserId) &&
-                s.SessionDate >= start && s.SessionDate <= through)
-            .Select(s => new PTRescheduleSlot(s.SessionDate, s.StartTime, s.EndTime, "Busy")).ToListAsync(store, ct);
-        bookings.AddRange(await Yoga(contract.PTUserId, asTrainer ? contract.MemberUserId : null, start, through)
-            .Select(s => new PTRescheduleSlot(s.ScheduledDate, s.StartTime, s.EndTime, "Busy")).ToListAsync(store, ct));
+        var bookings = (await repo.GetOccupyingSessionsAsync(now, start, through, contract.PTUserId,
+                asTrainer ? contract.MemberUserId : null, cancellationToken: ct))
+            .Select(s => new PTRescheduleSlot(s.SessionDate, s.StartTime, s.EndTime, "Busy")).ToList();
+        bookings.AddRange((await repo.GetYogaSessionsAsync(contract.PTUserId, asTrainer ? contract.MemberUserId : null,
+                start, through, ct))
+            .Select(s => new PTRescheduleSlot(s.ScheduledDate, s.StartTime, s.EndTime, "Busy")));
 
         var slots = candidates.Select(slot =>
         {
@@ -91,7 +91,7 @@ public sealed partial class PersonalTrainingService
         Notify(session.PTUserId, "Yêu cầu đổi lịch PT",
             $"Hội viên đề nghị đổi sang {request.Date:dd/MM/yyyy} {request.StartTime:HH:mm}–{end:HH:mm}.",
             nameof(PTSession), id);
-        await store.Save(ct);
+        await repo.SaveChangesAsync(ct);
         return Result<PTSessionResponse>.Success(SessionResponse(session, now));
     }, ct);
 
@@ -113,7 +113,7 @@ public sealed partial class PersonalTrainingService
         if (!expired && request.Accept && session.ProposedAdjustmentType == PTAdjustmentType.Cancellation)
         {
             AcceptCancellation(session, contract, actor, now);
-            await store.Save(ct);
+            await repo.SaveChangesAsync(ct);
             return Result<PTSessionResponse>.Success(SessionResponse(session, now));
         }
         var outcome = "RescheduleDeclined";
@@ -147,7 +147,7 @@ public sealed partial class PersonalTrainingService
         }
 
         CloseMemberReschedule(session, actor, outcome, message);
-        await store.Save(ct);
+        await repo.SaveChangesAsync(ct);
         return expired || unavailable
             ? Conflict<PTSessionResponse>(message)
             : Result<PTSessionResponse>.Success(SessionResponse(session, now));
@@ -187,8 +187,8 @@ public sealed partial class PersonalTrainingService
             return null;
         if (!RescheduleTimeEligible(contract, date, start, end, now))
             return null;
-        var template = await Templates(contract.PTUserId).Where(t => t.DayOfWeek == date.DayOfWeek && t.StartTime == start)
-            .Select(t => (int?)t.Id).FirstOrDefaultAsync(store, ct);
+        var template = (await Templates(contract.PTUserId, ct)).Where(t => t.DayOfWeek == date.DayOfWeek && t.StartTime == start)
+            .Select(t => (int?)t.Id).FirstOrDefault();
         if (template is null || await HasConflict(contract.PTUserId, contract.MemberUserId,
             [new(template.Value, date, start, end, "Available")], now, ct, ignoreSession: session.Id))
             return null;

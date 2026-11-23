@@ -37,28 +37,16 @@ public sealed partial class PersonalTrainingService
         var user = await User(actor, managerView ? UserRole.Manager : UserRole.Member, ct);
         if (user is null)
             return Forbidden<PagedResponse<PTFreezeResponse>>();
-        var query = store.Query<PTFreeze>().AsNoTracking(store).Where(f => managerView
-            ? f.PTPurchase.PTUser.GymId == user.GymId && (f.RequestStatus != PTFreezeRequestStatus.Pending) == processed
-            : f.PTPurchase.MemberUserId == actor && f.PTPurchaseId == contractId);
-        return await PageOf(query.OrderByDescending(f => f.Id).Select(f => new
-        {
-            Freeze = f,
-            Contract = f.PTPurchase,
-            MemberName = f.PTPurchase.Member.FullName,
-            TrainerName = f.PTPurchase.PTUser.FullName,
-            ReplacementName = store.Query<ApplicationUser>().Where(u => u.UserId == f.ReplacementTrainerId)
-                .Select(u => u.FullName).FirstOrDefault(),
-            Held = f.PTPurchase.Sessions.Where(s => s.PTFreezeId == f.Id && s.SessionStatus == PTSessionStatus.FreezeHold)
-                .OrderBy(s => s.SessionDate).ThenBy(s => s.StartTime)
-                .Select(s => new { s.SessionDate, s.StartTime, s.EndTime }).ToList()
-        }), page, row => FreezeResponse(row.Freeze, row.Contract) with
+        var rows = await repo.GetFreezePageAsync(managerView ? user.GymId : null, managerView ? null : actor,
+            contractId, processed, page, PageSize, ct);
+        return PageOf(rows, row => FreezeResponse(row.Freeze, row.Contract) with
         {
             MemberName = row.MemberName,
             TrainerName = row.TrainerName,
             // UC 4.9 step 2: the table shows the proposed schedule and the replacement trainer.
-            ReplacementTrainerName = row.ReplacementName,
-            ProposedSlots = row.Held.Select(h => new PTCalendarSlot(0, h.SessionDate, h.StartTime, h.EndTime, "Held")).ToArray()
-        }, ct);
+            ReplacementTrainerName = row.ReplacementTrainerName,
+            ProposedSlots = row.HeldSlots
+        });
     }
 
     // Shared with early resume.
@@ -86,10 +74,7 @@ public sealed partial class PersonalTrainingService
     private async Task<bool> GymCoverageShort(string memberId, DateOnly lastDate, CancellationToken ct)
     {
         // GBR-10: a paid Gym Membership that starts later (Scheduled) also counts.
-        var coverageEnd = await store.Query<MemberMembership>().Where(m => m.MemberUserId == memberId &&
-                (m.MembershipStatus == MembershipStatus.Active || m.MembershipStatus == MembershipStatus.Scheduled) &&
-                m.PackageComponent.ComponentType == ComponentType.GYM)
-            .MaxAsync(store, m => (DateOnly?)m.EndDate, ct);
+        var coverageEnd = await repo.GetLatestGymCoverageEndAsync(memberId, ct);
         return coverageEnd is null || coverageEnd < lastDate;
     }
 
@@ -104,7 +89,7 @@ public sealed partial class PersonalTrainingService
             .OrderBy(s => s.SessionDate).ThenBy(s => s.StartTime).ToArray();
         if (moves.Any(m => affected.All(s => s.Id != m.SessionId)))
             return Invalid<FreezePlan>("Chỉ được chọn ca mới cho các buổi nằm trong thời gian bảo lưu.");
-        var templates = await Templates(p.PTUserId).Select(t => new { t.DayOfWeek, t.StartTime }).ToListAsync(store, ct);
+        var templates = await Templates(p.PTUserId, ct);
         var pattern = p.WeeklyPatternJson?.StartsWith('{') == true
             ? JsonSerializer.Deserialize<SessionBasedPattern>(p.WeeklyPatternJson)!.Slots
             : JsonSerializer.Deserialize<PTSlotInput[]>(p.WeeklyPatternJson ?? "[]")!;
@@ -170,7 +155,7 @@ public sealed partial class PersonalTrainingService
     {
         if (!await ReplacementAllowed(p, trainerId, ct))
             return Conflict<FreezePlan>("Huấn luyện viên thay thế phải cùng cấp với gói và đang nhận học viên mới.");
-        var pattern = await Templates(trainerId).Where(t => templateIds.Contains(t.Id)).OrderBy(t => t.DayOfWeek).ToArrayAsync(store, ct);
+        var pattern = (await Templates(trainerId, ct)).Where(t => templateIds.Contains(t.Id)).OrderBy(t => t.DayOfWeek).ToArray();
         if (pattern.Length != templateIds.Length || pattern.Select(t => t.DayOfWeek).Distinct().Count() != pattern.Length)
             return Invalid<FreezePlan>("Chọn một ca đã công bố của huấn luyện viên mới cho mỗi ngày tập.");
         var transfer = p.Sessions.Where(s => s.SessionDate >= from && Utc(s.SessionDate, s.StartTime) > Now &&
@@ -199,10 +184,10 @@ public sealed partial class PersonalTrainingService
     private async Task<bool> ReplacementAllowed(PTPurchase p, string trainerId, CancellationToken ct)
     {
         var trainer = await User(trainerId, UserRole.PT, ct);
-        var profile = await PTProfiles.SingleOrDefaultAsync(store, x => x.PTUserId == trainerId, ct);
+        var profile = await repo.GetPTProfileAsync(trainerId, ct);
         return trainer is not null && profile is not null && trainerId != p.PTUserId && trainer.GymId == p.PTUser.GymId &&
             profile.AcceptingNewMembers && profile.Level == p.TrainerLevelSnapshot &&
-            !await ActiveYogaAssignments.AnyAsync(store, c => c.InstructorUserId == trainerId, ct);
+            !await TeachesYoga(trainerId, ct);
     }
 
     private static PTPlannedSession Planned(Replacement r, string trainerId) =>
@@ -230,7 +215,7 @@ public sealed partial class PersonalTrainingService
     {
         if (await User(actor, UserRole.Member, ct) is null)
             return Forbidden<PTFreezeProposal>();
-        var p = await ContractsWithSessions.SingleOrDefaultAsync(store, x => x.Id == id && x.MemberUserId == actor, ct);
+        var p = await MemberContract(actor, id, ct);
         if (p is null)
             return Missing<PTFreezeProposal>();
         var plan = await PlanFreeze(p, input, ct);
@@ -248,12 +233,11 @@ public sealed partial class PersonalTrainingService
             if (await User(actor, UserRole.Member, ct) is null)
                 return Forbidden<PTFreezeResponse>();
             // GBR-09: serialize with other holds on the trainer whose slots are held after the freeze, as checkout does.
-            var trainerId = input.ReplacementTrainerId ?? await store.Query<PTPurchase>()
-                .Where(x => x.Id == id && x.MemberUserId == actor).Select(x => x.PTUserId).FirstOrDefaultAsync(store, ct);
+            var trainerId = input.ReplacementTrainerId ?? await repo.GetContractTrainerIdAsync(id, actor, ct);
             if (trainerId is null)
                 return Missing<PTFreezeResponse>();
             await payments.LockUsersAsync([actor, trainerId], ct);
-            var p = await ContractsWithSessions.SingleOrDefaultAsync(store, x => x.Id == id && x.MemberUserId == actor, ct);
+            var p = await MemberContract(actor, id, ct);
             if (p is null)
                 return Missing<PTFreezeResponse>();
             var planResult = await PlanFreeze(p, input, ct);
@@ -275,8 +259,8 @@ public sealed partial class PersonalTrainingService
                 MaxDaysSnapshot = p.FreezeMaxTotalDaysSnapshot,
                 ReplacementTrainerId = input.ReplacementTrainerId
             };
-            store.Add(freeze);
-            await store.Save(ct);
+            repo.Add(freeze);
+            await repo.SaveChangesAsync(ct);
             // Schedule protection: sessions in the window are never penalised while the request is pending.
             foreach (var session in p.Sessions.Where(s => InFreezeWindow(s, input.StartDate, input.ResumeDate)))
             {
@@ -297,21 +281,24 @@ public sealed partial class PersonalTrainingService
                     ReplacementForSessionId = original.Id,
                     PTFreezeId = freeze.Id
                 });
-            await store.Save(ct);
+            await repo.SaveChangesAsync(ct);
             Notify(actor, "Đã gửi yêu cầu bảo lưu PT",
                 "Các buổi trong thời gian bảo lưu được bảo vệ và lịch sau bảo lưu được giữ trong lúc chờ duyệt.", nameof(PTFreeze), freeze.Id);
             foreach (var manager in await ManagerIds(p.PTUserId, ct))
                 Notify(manager, "Yêu cầu bảo lưu PT mới", $"{p.Member.FullName} xin bảo lưu từ {input.StartDate:dd/MM/yyyy}.",
                     nameof(PTFreeze), freeze.Id);
             Audit(actor, nameof(PTFreeze), freeze.Id, "Requested");
-            await store.Save(ct);
+            await repo.SaveChangesAsync(ct);
             return Result<PTFreezeResponse>.Success(FreezeResponse(freeze, p), 201);
         }, ct);
 
-    private Task<PTPurchase?> ManagerFreeze(string actor, int freezeId, CancellationToken ct) =>
-        ContractsWithSessions.SingleOrDefaultAsync(store, p => p.PTFreezes.Any(f => f.Id == freezeId) &&
-            ActiveUsers.Any(u => u.UserId == actor && u.GymId == p.PTUser.GymId &&
-                u.UserRoles.Any(r => r.Role.RoleName == nameof(UserRole.Manager))), ct);
+    // The Manager must belong to the gym of the contract's trainer.
+    private async Task<PTPurchase?> ManagerFreeze(string actor, int freezeId, CancellationToken ct)
+    {
+        var manager = await User(actor, UserRole.Manager, ct);
+        var purchase = manager is null ? null : await repo.GetContractForFreezeAsync(freezeId, ct);
+        return purchase is not null && purchase.PTUser.GymId == manager!.GymId ? purchase : null;
+    }
 
     private static PTSession[] Holds(PTPurchase p) =>
         p.Sessions.Where(s => s.SessionStatus == PTSessionStatus.FreezeHold).OrderBy(s => s.SessionDate).ToArray();
@@ -342,7 +329,7 @@ public sealed partial class PersonalTrainingService
             end = plan.Data.End;
         }
         var replacementName = f.ReplacementTrainerId is { } trainerId
-            ? await store.Query<ApplicationUser>().Where(u => u.UserId == trainerId).Select(u => u.FullName).FirstOrDefaultAsync(store, ct)
+            ? await repo.GetUserNameAsync(trainerId, ct)
             : null;
         return Result<PTFreezePreview>.Success(new(end, slots, await GymCoverageShort(purchase.MemberUserId, end, ct), replacementName));
     }
@@ -392,7 +379,7 @@ public sealed partial class PersonalTrainingService
                     Notify(purchase.MemberUserId, "Lịch sau bảo lưu không còn khả dụng",
                         $"Các ca {dates} không còn dùng được. Hãy chọn ca khác trong yêu cầu bảo lưu đang chờ.", nameof(PTFreeze), id);
                     Audit(actor, nameof(PTFreeze), id, "ApprovalBlocked:SlotUnavailable");
-                    await store.Save(ct);
+                    await repo.SaveChangesAsync(ct);
                     return Result<PTFreezeResponse>.Failure(
                         $"Không thể duyệt: các ca {dates} không còn khả dụng. Hội viên đã được thông báo để chọn lại.",
                         "PT_FREEZE_SLOT_UNAVAILABLE", 409);
@@ -404,7 +391,7 @@ public sealed partial class PersonalTrainingService
                     {
                         // Attended while pending: it counts as used and keeps its date (UC 4.8 'Pending Freeze Sessions').
                         purchase.Sessions.Remove(hold);
-                        store.Remove(hold);
+                        repo.Remove(hold);
                         continue;
                     }
                     if (original.SessionStatus != PTSessionStatus.Cancelled)
@@ -413,8 +400,8 @@ public sealed partial class PersonalTrainingService
                         original.CancelledAt = now;
                     }
                     hold.SessionStatus = PTSessionStatus.Scheduled;
-                    hold.PTAvailabilityId = await Templates(hold.PTUserId).Where(t => t.DayOfWeek == hold.SessionDate.DayOfWeek &&
-                        t.StartTime == hold.StartTime).Select(t => (int?)t.Id).FirstOrDefaultAsync(store, ct);
+                    hold.PTAvailabilityId = (await Templates(hold.PTUserId, ct)).Where(t => t.DayOfWeek == hold.SessionDate.DayOfWeek &&
+                        t.StartTime == hold.StartTime).Select(t => (int?)t.Id).FirstOrDefault();
                 }
                 if (f.ReplacementTrainerId is { } trainerId)
                 {
@@ -445,7 +432,7 @@ public sealed partial class PersonalTrainingService
             if (input.Approve && f.ReplacementTrainerId is { } newTrainer)
                 Notify(newTrainer, "Nhận hội viên chuyển sang", "Bạn được giao các buổi còn lại của một hợp đồng PT.", nameof(PTFreeze), id);
             Audit(actor, nameof(PTFreeze), id, f.RequestStatus.ToString());
-            await store.Save(ct);
+            await repo.SaveChangesAsync(ct);
             return Result<PTFreezeResponse>.Success(FreezeResponse(f, purchase));
         }, ct);
 
@@ -481,7 +468,7 @@ public sealed partial class PersonalTrainingService
         foreach (var hold in Holds(purchase))
         {
             purchase.Sessions.Remove(hold);
-            store.Remove(hold);
+            repo.Remove(hold);
         }
         foreach (var session in purchase.Sessions.Where(s => s.SessionStatus == PTSessionStatus.PendingFreeze &&
             s.SessionDate >= f.RequestedStartDate && s.SessionDate < f.RequestedEndDate))
@@ -498,7 +485,7 @@ public sealed partial class PersonalTrainingService
     {
         if (await User(actor, UserRole.Member, ct) is null)
             return Forbidden<PTFreezeResponse>();
-        var p = await ContractsWithSessions.SingleOrDefaultAsync(store, x => x.MemberUserId == actor && x.PTFreezes.Any(f => f.Id == id), ct);
+        var p = await MemberFreeze(actor, id, ct);
         if (p is null)
             return Missing<PTFreezeResponse>();
         var f = p.PTFreezes.Single(x => x.Id == id);
@@ -526,7 +513,7 @@ public sealed partial class PersonalTrainingService
                 original.SessionStatus = PTSessionStatus.Scheduled;
                 original.CancelledAt = null;
                 p.Sessions.Remove(replacement);
-                store.Remove(replacement);
+                repo.Remove(replacement);
             }
             p.EndDate = LastSessionDate(p);
             f.ActualStartDate = null;
@@ -537,12 +524,12 @@ public sealed partial class PersonalTrainingService
         f.RequestStatus = PTFreezeRequestStatus.Withdrawn;
         Audit(actor, nameof(PTFreeze), id, "Withdrawn");
         Notify(p.PTUserId, "Hội viên rút yêu cầu bảo lưu", "Lịch tập được khôi phục theo khả năng còn trống.", nameof(PTFreeze), id);
-        await store.Save(ct);
+        await repo.SaveChangesAsync(ct);
         return Result<PTFreezeResponse>.Success(FreezeResponse(f, p));
     }, ct);
 
-    private Task<PTPurchase?> MemberFreeze(string actor, int freezeId, CancellationToken ct) =>
-        ContractsWithSessions.SingleOrDefaultAsync(store, x => x.MemberUserId == actor && x.PTFreezes.Any(f => f.Id == freezeId), ct);
+    private async Task<PTPurchase?> MemberFreeze(string actor, int freezeId, CancellationToken ct) =>
+        await repo.GetContractForFreezeAsync(freezeId, ct) is { } contract && contract.MemberUserId == actor ? contract : null;
 
     private static PTPlannedSession HeldSession(PTSession hold) =>
         new(hold.ReplacementForSessionId ?? hold.Id, hold.SessionDate, hold.StartTime, hold.EndTime, hold.PTUserId);
@@ -575,8 +562,7 @@ public sealed partial class PersonalTrainingService
             if (await User(actor, UserRole.Member, ct) is null)
                 return Forbidden<PTFreezeResponse>();
             // GBR-09: serialize with other holds on the trainer, as when the request was made.
-            var trainerId = await store.Query<PTSession>().Where(s => s.PTFreezeId == id && s.MemberUserId == actor &&
-                s.SessionStatus == PTSessionStatus.FreezeHold).Select(s => s.PTUserId).FirstOrDefaultAsync(store, ct);
+            var trainerId = await repo.GetFreezeHoldTrainerIdAsync(id, actor, ct);
             if (trainerId is not null)
                 await payments.LockUsersAsync([actor, trainerId], ct);
             var p = await MemberFreeze(actor, id, ct);
@@ -607,7 +593,7 @@ public sealed partial class PersonalTrainingService
                 var trainer = await User(hold.PTUserId, UserRole.PT, ct);
                 if (trainer is null || move.Date < f.RequestedEndDate || Utc(move.Date, move.StartTime) <= now ||
                     !InHours(trainer.Gym, slot.StartTime, slot.EndTime) || !takenDays.Add(move.Date) ||
-                    !await Templates(hold.PTUserId).AnyAsync(store, t => t.DayOfWeek == day && t.StartTime == move.StartTime, ct) ||
+                    !(await Templates(hold.PTUserId, ct)).Any(t => t.DayOfWeek == day && t.StartTime == move.StartTime) ||
                     await HasConflict(hold.PTUserId, p.MemberUserId, [slot], now, ct, ignorePurchase: p.Id))
                     return Conflict<PTFreezeResponse>($"Ca {move.Date:dd/MM/yyyy} {move.StartTime:HH:mm} không còn trống hoặc không hợp lệ.");
                 hold.SessionDate = slot.Date;
@@ -618,7 +604,7 @@ public sealed partial class PersonalTrainingService
                 Notify(manager, "Lịch sau bảo lưu PT đã đổi", $"{p.Member.FullName} đã chọn ca mới cho yêu cầu bảo lưu.",
                     nameof(PTFreeze), id);
             Audit(actor, nameof(PTFreeze), id, "SlotsChanged");
-            await store.Save(ct);
+            await repo.SaveChangesAsync(ct);
             return Result<PTFreezeResponse>.Success(FreezeResponse(f, p));
         }, ct);
 
@@ -626,17 +612,14 @@ public sealed partial class PersonalTrainingService
     public Task<Result<int>> RemindPendingFreezes(CancellationToken ct) => Write(async () =>
     {
         var now = Now;
-        var due = await store.Query<PTFreeze>().Including(store, "PTPurchase.PTUser").Where(f =>
-            f.RequestStatus == PTFreezeRequestStatus.Pending && f.CreatedAt <= now.AddHours(-24) &&
-            (f.ManagerRemindedAt == null || f.CreatedAt <= now.AddHours(-48) && f.ManagerRemindedAt <= now.AddHours(-24)))
-            .OrderBy(f => f.Id).Take(100).ToListAsync(store, ct);
+        var due = await repo.GetFreezesDueForReminderAsync(now, 100, ct);
         foreach (var freeze in due)
         {
             freeze.ManagerRemindedAt = now;
             foreach (var manager in await ManagerIds(freeze.PTPurchase.PTUserId, ct))
                 Notify(manager, "Nhắc duyệt bảo lưu PT", "Có yêu cầu bảo lưu PT chưa được xử lý.", nameof(PTFreeze), freeze.Id);
         }
-        await store.Save(ct);
+        await repo.SaveChangesAsync(ct);
         return Result<int>.Success(due.Count);
     }, ct);
 }
