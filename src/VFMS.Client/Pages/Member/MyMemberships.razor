@@ -1,7 +1,6 @@
 @page "/my-memberships"
 @layout PublicLayout
 @using Microsoft.AspNetCore.Authorization
-@using System.Globalization
 @using VFMS.Client.Components.Memberships
 @using VFMS.Contracts.Memberships
 @attribute [Authorize(Roles = "Customer,Member")]
@@ -119,7 +118,7 @@
                                     {
                                         <div>
                                             <dt class="text-xs font-semibold text-vfms-text-secondary">Giá gia hạn</dt>
-                                            <dd class="mt-1 font-bold text-vfms-text">@(price.ToString("#,0", VietnameseCulture)) ₫</dd>
+                                            <dd class="mt-1 font-bold text-vfms-text">@Vnd.Format(price)</dd>
                                         </div>
                                     }
                                 </dl>
@@ -171,7 +170,6 @@
 }
 
 @code {
-    private static readonly CultureInfo VietnameseCulture = CultureInfo.GetCultureInfo("vi-VN");
     private static readonly string[] FilterStatuses = [string.Empty, MembershipStatuses.AwaitingActivation, MembershipStatuses.Scheduled,
         MembershipStatuses.Active, MembershipStatuses.Frozen, MembershipStatuses.Expired, MembershipStatuses.Suspended, MembershipStatuses.Cancelled];
     private readonly CancellationTokenSource _lifetime = new();

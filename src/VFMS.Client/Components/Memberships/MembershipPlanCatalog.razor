@@ -1,4 +1,3 @@
-@using System.Globalization
 @using VFMS.Contracts.Common
 @using VFMS.Contracts.Memberships
 @inject MembershipPlanApiClient Plans
@@ -47,10 +46,10 @@ else if (_page is { Items.Count: > 0 } catalog)
                     </header>
                     <div class="py-6 border-b border-[#ECE8E4]">
                         <p class="font-heading text-3xl sm:text-4xl font-black text-[#242424]">
-                            @plan.Price.ToString("#,0", Vietnamese) <span class="text-lg font-bold text-[#B83A3A]">₫</span>
+                            @Vnd.FormatAmount(plan.Price) <span class="text-lg font-bold text-[#B83A3A]">₫</span>
                         </p>
                         <span class="font-body text-xs text-[#6F6966]">
-                            @(months > 1 ? $"Tương đương {Money(Math.Round(plan.Price / months, 0))} / tháng" : Duration(plan))
+                            @(months > 1 ? $"Tương đương {Vnd.Format(Math.Round(plan.Price / months, 0))} / tháng" : Duration(plan))
                         </span>
                     </div>
                     @if (text.Features.Count > 0)
@@ -125,7 +124,6 @@ else
 
     private static bool IsYoga(string? type) => string.Equals(type, MembershipPlanServiceTypes.Yoga, StringComparison.OrdinalIgnoreCase);
 
-    private static readonly NumberFormatInfo Vietnamese = new() { NumberGroupSeparator = ".", NumberDecimalSeparator = "," };
     private readonly CancellationTokenSource _lifetime = new();
     private PagedResponse<MembershipPlanCatalogItemResponse>? _page;
     private int _requestedPage = 1;
@@ -167,8 +165,6 @@ else
         plan.DurationInMonths is > 0 ? $"{plan.DurationInMonths} tháng"
             : plan.DurationInDays is > 0 ? $"{plan.DurationInDays} ngày"
             : "Chưa có thời hạn";
-
-    private static string Money(decimal value) => $"{value.ToString("#,0.##", Vietnamese)} ₫";
 
     public void Dispose()
     {

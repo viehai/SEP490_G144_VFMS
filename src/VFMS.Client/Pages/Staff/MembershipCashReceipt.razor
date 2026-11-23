@@ -93,13 +93,13 @@
                                     Khách đưa (₫) <span aria-hidden="true" class="text-red-700">*</span>
                                     <input id="package-cash-amount" type="text" inputmode="numeric" class="@Ui.Field min-h-[44px] tabular-nums"
                                            @bind:get="_amount" @bind:set="SetCashTendered" @bind:event="oninput"
-                                           data-vnd-input required maxlength="38"
+                                           data-vnd-input="whole" required maxlength="38"
                                            aria-invalid="@(invalid ? "true" : "false")" aria-describedby="package-cash-feedback package-cash-error" />
                                 </label>
                                 <div id="package-cash-feedback" aria-live="polite">
                                     @if (tendered is not { } cash)
                                     {
-                                        <p class="text-sm text-red-800">Nhập số tiền hợp lệ, ví dụ @OperationsText.VndAmount(due).</p>
+                                        <p class="text-sm text-red-800">Nhập số tiền hợp lệ, ví dụ @Vnd.FormatAmount(due).</p>
                                     }
                                     else if (cash < due)
                                     {

@@ -1,6 +1,4 @@
-using System.Globalization;
 using System.Net;
-using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using VFMS.Client.Components.Memberships;
@@ -18,7 +16,6 @@ public partial class MembershipCashReceipt : IDisposable
     private static readonly string?[] OrderStatuses = [null, "Pending", "Paid", "Expired", "Cancelled"];
     private static readonly string[] PaymentMethods = ["Cash", "VietQR", "BankTransfer", "NoCharge"];
     private static readonly string[] PaymentStatuses = ["Pending", "Paid", "Failed", "Cancelled", "Refunded"];
-    private static readonly Regex GroupedVnd = new(@"^[0-9]{1,3}(?:\.[0-9]{3})+$", RegexOptions.CultureInvariant);
 
     private readonly CancellationTokenSource _lifetime = new();
     private StaffPackageOrderQuery _draft = new();
@@ -111,7 +108,7 @@ public partial class MembershipCashReceipt : IDisposable
     private void OpenDetails(StaffPackageOrderResponse row)
     {
         _selected = row;
-        _amount = row is { CanConfirmCash: true, AmountDue: { } due } ? OperationsText.VndAmount(due) : "";
+        _amount = row is { CanConfirmCash: true, AmountDue: { } due } ? Vnd.FormatAmount(due) : "";
         _actionError = null;
         _notice = null;
         _focus = FocusTarget.Details;
@@ -155,43 +152,9 @@ public partial class MembershipCashReceipt : IDisposable
         finally { _confirming = false; }
     }
 
-    private decimal? CashTendered => ParseCashTendered(_amount);
+    private decimal? CashTendered => Vnd.ParseInput(_amount, wholeUnits: true) is >= 0 and var cash ? cash : null;
 
-    private void SetCashTendered(string? input)
-    {
-        var text = input?.Trim() ?? "";
-        var amount = ParseCashTendered(text);
-        // Without the browser formatter, a digit edit can temporarily shift the existing separators.
-        if (amount is null && text.Contains('.') && GroupedVnd.IsMatch(_amount) && IsEditOfGroupedAmount(_amount, text))
-        {
-            amount = ParseCashTendered(text.Replace(".", ""));
-        }
-
-        _amount = amount is { } value ? OperationsText.VndAmount(value) : text;
-    }
-
-    private static decimal? ParseCashTendered(string text)
-    {
-        if (text.Contains('.') && !GroupedVnd.IsMatch(text)) return null;
-        return decimal.TryParse(text.Replace(".", ""), NumberStyles.None, CultureInfo.InvariantCulture, out var value)
-            ? value : null;
-    }
-
-    private static bool IsEditOfGroupedAmount(string previous, string current)
-    {
-        var start = 0;
-        while (start < previous.Length && start < current.Length && previous[start] == current[start]) start++;
-
-        var previousEnd = previous.Length;
-        var currentEnd = current.Length;
-        while (previousEnd > start && currentEnd > start && previous[previousEnd - 1] == current[currentEnd - 1])
-        {
-            previousEnd--;
-            currentEnd--;
-        }
-
-        return !current.AsSpan(start, currentEnd - start).Contains('.');
-    }
+    private void SetCashTendered(string? input) => _amount = Vnd.FormatInput(_amount, input, wholeUnits: true);
 
     private static bool HasFilters(StaffPackageOrderQuery query) =>
         !string.IsNullOrWhiteSpace(query.Search) || !string.IsNullOrEmpty(query.Status) ||

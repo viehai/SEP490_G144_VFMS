@@ -13,9 +13,7 @@ public static class OperationsText
     public static readonly string[] OrderStatuses = ["Pending", "Processing", "ReadyForPickup", "OutForDelivery", "Completed", "Cancelled"];
     public static readonly string[] FulfillmentTypes = ["GymPickup", "HomeDelivery"];
 
-    // Built by hand: WebAssembly may not ship vi-VN culture data, which would print "1,000" instead of "1.000".
-    public static string Money(decimal value) => VndAmount(value) + " ₫";
-    internal static string VndAmount(decimal value) => value.ToString("#,##0", CultureInfo.InvariantCulture).Replace(',', '.');
+    public static string Money(decimal value) => Vnd.Format(value);
     public static string Local(DateTime value) => value.ToLocalTime().ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture);
 
     public static string Label(string? value) => value switch
