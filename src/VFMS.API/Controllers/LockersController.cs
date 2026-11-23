@@ -1,10 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using VFMS.API.Extensions;
+using VFMS.Application.Interfaces;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Lockers;
 using VFMS.Domain.Enums;
-using VFMS.Infrastructure.Lockers;
 
 namespace VFMS.API.Controllers;
 
@@ -12,7 +12,7 @@ namespace VFMS.API.Controllers;
 [Authorize]
 [Route("api/lockers")]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
-public sealed class LockersController(LockerService service) : ControllerBase
+public sealed class LockersController(ILockerService service) : ControllerBase
 {
     private async Task<IActionResult> AsUser<T>(Func<string, Task<Result<T>>> action) =>
         User.GetUserId() is { } actor ? this.ToActionResult(await action(actor)) : Unauthorized();

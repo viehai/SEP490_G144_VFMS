@@ -1,13 +1,11 @@
 using System.Text.Json;
-using Microsoft.EntityFrameworkCore;
 using VFMS.Application.Interfaces;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Lockers;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
-using VFMS.Infrastructure.Payments;
 
-namespace VFMS.Infrastructure.Lockers;
+namespace VFMS.Application.Services;
 
 public sealed partial class LockerService
 {
@@ -24,8 +22,7 @@ public sealed partial class LockerService
     private async Task ReleaseLocker(LockerRentalContract rental, DateTime now, CancellationToken ct)
     {
         if (rental.Locker.LockerStatus == LockerStatus.Reserved &&
-            !await Allocations(db.LockerRentalContracts, now).AnyAsync(r => r.Id != rental.Id &&
-                (r.LockerId == rental.LockerId || r.ReplacementLockerId == rental.LockerId), ct))
+            !await repo.HasAllocationAsync(now, rental.LockerId, null, rental.Id, ct))
             rental.Locker.LockerStatus = LockerStatus.Available;
     }
 
@@ -34,28 +31,20 @@ public sealed partial class LockerService
         var now = Now.UtcDateTime;
         var result = await Write(async () =>
         {
-            var stale = await db.PaymentTransactions.Include(p => p.LockerRentalContract!).ThenInclude(r => r.Locker)
-                .Include(p => p.Order).Where(p => p.LockerRentalContractId != null && p.HoldExpiresAt <= now &&
-                    (p.Order.OrderStatus == OrderStatus.Pending ||
-                    p.LockerPurpose == LockerPaymentPurpose.Rental && p.LockerRentalContract!.ContractStatus == LockerContractStatus.PendingPayment &&
-                    p.Order.OrderStatus == OrderStatus.Expired)).OrderBy(p => p.Id).Take(100).ToListAsync(ct);
+            var stale = await repo.GetStaleChargesAsync(now, 100, ct);
             foreach (var charge in stale)
             {
                 charge.Order.OrderStatus = OrderStatus.Expired;
                 charge.PaymentStatus = PaymentStatus.Cancelled;
                 await ReleaseInitialHold(charge, now, ct);
             }
-            var expiredRelocations = await Rentals.Where(r => r.ReplacementLockerId != null && r.ExpiresAt <= now)
-                .OrderBy(r => r.Id).Take(100).ToListAsync(ct);
+            var expiredRelocations = await repo.GetExpiredReplacementsAsync(now, 100, ct);
             foreach (var rental in expiredRelocations)
             {
                 ReleaseReplacement(rental);
                 Audit(null, rental, "LockerReplacementExpired", now);
             }
-            var paidDaily = await Rentals.Where(r => r.ContractStatus == LockerContractStatus.PendingHandover &&
-                (r.RentalTypeSnapshot == RentalType.Daily ||
-                 r.RentalTypeSnapshot == null && r.LockerPricingPolicy.RentalType == RentalType.Daily))
-                .OrderBy(r => r.Id).Take(100).ToListAsync(ct);
+            var paidDaily = await repo.GetPaidDailyAwaitingHandoverAsync(100, ct);
             foreach (var rental in paidDaily)
             {
                 var charge = rental.Payments.Single(p => p.LockerPurpose == LockerPaymentPurpose.Rental);
@@ -65,10 +54,10 @@ public sealed partial class LockerService
                 rental.ContractStatus = LockerContractStatus.Cancelled;
                 rental.CancelledAt = now;
                 await ReleaseLocker(rental, now, ct);
-                CheckoutRefunds.Request(db, charge, "DailyKeyNotHandedOver", now);
+                repo.RequestRefund(charge, "DailyKeyNotHandedOver", now);
                 Audit(null, rental, "LockerDailyHandoverExpired:RefundRequested", now);
             }
-            await db.SaveChangesAsync(ct);
+            await repo.SaveChangesAsync(ct);
             return Result<bool>.Success(true);
         }, ct);
         if (!result.IsSuccess)
@@ -92,7 +81,7 @@ public sealed partial class LockerService
             rental.FinalNoticeAt = now;
             Notify(rental, "Thông báo quá hạn thuê tủ", NoticeText(rental, now), now);
             Audit(actor, rental, "LockerFinalNoticeQueued", now);
-            await db.SaveChangesAsync(ct);
+            await repo.SaveChangesAsync(ct);
         }
         return Result<LockerRentalView>.Success(View(rental, now));
     }, ct);
@@ -105,15 +94,11 @@ public sealed partial class LockerService
         var now = Now.UtcDateTime;
         var claimed = await Write(async () =>
         {
-            var rental = await Rentals
-                .Where(r => r.ReturnedAt == null && r.FinalNoticeAt != null && r.FinalNoticeEmailSentAt == null &&
-                    (r.FinalNoticeRetryAt == null || r.FinalNoticeRetryAt <= now))
-                .OrderBy(r => r.Id)
-                .FirstOrDefaultAsync(ct);
+            var rental = await repo.GetNextPendingNoticeAsync(now, ct);
             if (rental is not null)
             {
                 rental.FinalNoticeRetryAt = now.AddMinutes(2);
-                await db.SaveChangesAsync(ct);
+                await repo.SaveChangesAsync(ct);
             }
             return Result<LockerRentalContract?>.Success(rental);
         }, ct);
@@ -122,9 +107,7 @@ public sealed partial class LockerService
         await email.SendAsync(delivery.Customer.Email, "Thông báo quá hạn thuê tủ",
             NoticeText(delivery, delivery.FinalNoticeAt!.Value), ct);
         var sent = Now.UtcDateTime;
-        await db.LockerRentalContracts.Where(r => r.Id == delivery.Id && r.FinalNoticeAt == delivery.FinalNoticeAt &&
-            r.FinalNoticeRetryAt == delivery.FinalNoticeRetryAt)
-            .ExecuteUpdateAsync(s => s.SetProperty(r => r.FinalNoticeEmailSentAt, sent), ct);
+        await repo.MarkNoticeEmailSentAsync(delivery.Id, delivery.FinalNoticeAt, delivery.FinalNoticeRetryAt, sent, ct);
     }
 
     public Task<Result<int>> RequestClearance(string actor, int id, LockerClearanceRequest request, CancellationToken ct) =>
@@ -145,8 +128,7 @@ public sealed partial class LockerService
                 request.Inventory.Any(i => i is null || string.IsNullOrWhiteSpace(i.Name) ||
                     i.Name.Length > 200 || i.Quantity is < 1 or > 10000))
                 return Invalid<int>("Nhập danh sách đồ kiểm kê hoặc xác nhận tủ trống.");
-            var existing = await db.LockerIncidentLogs.Where(i => i.LockerRentalContractId == id && i.VerifiedAt == null)
-                .Select(i => (int?)i.Id).FirstOrDefaultAsync(ct);
+            var existing = await repo.GetOpenClearanceIdAsync(id, ct);
             if (existing is { } existingId)
                 return Result<int>.Success(existingId);
             var incident = new LockerIncidentLog
@@ -159,9 +141,9 @@ public sealed partial class LockerService
                 ReportedAt = now,
                 Description = JsonSerializer.Serialize(request.Inventory)
             };
-            db.LockerIncidentLogs.Add(incident);
+            repo.Add(incident);
             Audit(actor, rental, "LockerClearanceSubmitted", now);
-            await db.SaveChangesAsync(ct);
+            await repo.SaveChangesAsync(ct);
             return Result<int>.Success(incident.Id, 201);
         }, ct);
 
@@ -170,13 +152,7 @@ public sealed partial class LockerService
         var manager = await Actor(actor, UserRole.Manager, ct);
         if (manager is null)
             return Forbidden<IReadOnlyList<LockerClearanceView>>();
-        var data = await db.LockerIncidentLogs.AsNoTracking().Where(i => i.LockerRentalContractId != null &&
-                i.VerifiedAt == null && i.Locker.LockerZone.GymId == manager.GymId &&
-                (i.LockerRentalContract!.ContractStatus == LockerContractStatus.Active ||
-                 i.LockerRentalContract.ContractStatus == LockerContractStatus.Overdue ||
-                 i.LockerRentalContract.ContractStatus == LockerContractStatus.Expired ||
-                 i.LockerRentalContract.ContractStatus == LockerContractStatus.PendingHandover))
-            .OrderBy(i => i.Id).Take(100).ToListAsync(ct);
+        var data = await repo.GetOpenClearancesAsync(manager.GymId, 100, ct);
         return Result<IReadOnlyList<LockerClearanceView>>.Success(data.Select(i => new LockerClearanceView(
             i.Id, i.LockerRentalContractId!.Value, i.HandledByUserId, Utc(i.ReportedAt),
             JsonSerializer.Deserialize<LockerInventoryItem[]>(i.Description) ?? [])).ToArray());
@@ -188,8 +164,7 @@ public sealed partial class LockerService
             var manager = await Actor(actor, UserRole.Manager, ct);
             if (manager is null)
                 return Forbidden<LockerRentalView>();
-            var incident = await db.LockerIncidentLogs.SingleOrDefaultAsync(i => i.Id == incidentId &&
-                i.LockerRentalContractId != null && i.Locker.LockerZone.GymId == manager.GymId, ct);
+            var incident = await repo.GetClearanceAsync(incidentId, manager.GymId, ct);
             if (incident?.LockerRentalContractId is not { } rentalId)
                 return Missing<LockerRentalView>();
             if (incident.HandledByUserId == actor)
@@ -217,7 +192,7 @@ public sealed partial class LockerService
             incident.FineAmount = rental.FineAmount;
             Audit(actor, rental, "LockerClearanceVerified", now);
             Notify(rental, "Đã xử lý tủ quá hạn", "Liên hệ lễ tân để nhận lại đồ đã kiểm kê và xem khoản phí.", now);
-            await db.SaveChangesAsync(ct);
+            await repo.SaveChangesAsync(ct);
             return Result<LockerRentalView>.Success(View(rental, now));
         }, ct);
 
@@ -227,13 +202,11 @@ public sealed partial class LockerService
         var staff = await Actor(actor, role, ct);
         if (staff is null)
             return Forbidden<LockerSlot>();
-        var locker = await db.Lockers.Include(l => l.LockerZone)
-            .SingleOrDefaultAsync(l => l.Id == lockerId && l.LockerZone.GymId == staff.GymId, ct);
+        var locker = await repo.GetGymLockerAsync(lockerId, staff.GymId, ct);
         if (locker is null)
             return Missing<LockerSlot>();
         var now = Now.UtcDateTime;
-        var allocation = await Allocations(Rentals, now).SingleOrDefaultAsync(r =>
-            r.LockerId == lockerId || r.ReplacementLockerId == lockerId, ct);
+        var allocation = await repo.GetAllocationForLockerAsync(lockerId, now, ct);
         if (allocation is not null)
         {
             if (!request.Maintenance || allocation.LockerId != lockerId || !InUse(allocation) || OverdueDays(allocation, now) > 0)
@@ -245,7 +218,7 @@ public sealed partial class LockerService
             locker.LockerStatus is not (LockerStatus.Maintenance or LockerStatus.Damaged or LockerStatus.Available)))
             return Invalid<LockerSlot>("Cần xác nhận khóa đã được kiểm tra an toàn.");
         locker.LockerStatus = request.Maintenance ? LockerStatus.Maintenance : LockerStatus.Available;
-        db.AuditLogs.Add(new AuditLog
+        repo.Add(new AuditLog
         {
             ActorUserId = actor,
             ActionType = AuditActionType.Update,
@@ -254,7 +227,7 @@ public sealed partial class LockerService
             NewValue = locker.LockerStatus.ToString(),
             OccurredAt = now
         });
-        await db.SaveChangesAsync(ct);
+        await repo.SaveChangesAsync(ct);
         return Result<LockerSlot>.Success(Slot(locker, SlotStatus(locker, null, now)));
     }, ct);
 }

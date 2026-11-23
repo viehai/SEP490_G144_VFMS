@@ -1,10 +1,9 @@
-using Microsoft.EntityFrameworkCore;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Lockers;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
 
-namespace VFMS.Infrastructure.Lockers;
+namespace VFMS.Application.Services;
 
 public sealed partial class LockerService
 {
@@ -14,8 +13,7 @@ public sealed partial class LockerService
             var member = await Actor(actor, UserRole.Member, ct);
             if (member is null)
                 return Forbidden<LockerRentalView>();
-            var rental = await Rentals.SingleOrDefaultAsync(r => r.Id == id && r.CustomerUserId == actor &&
-                r.Locker.LockerZone.GymId == member.GymId, ct);
+            var rental = await repo.GetRentalAsync(id, member.GymId, actor, ct);
             if (rental is null)
                 return Missing<LockerRentalView>();
             var now = Now.UtcDateTime;
@@ -23,13 +21,11 @@ public sealed partial class LockerService
                 return Conflict<LockerRentalView>("Chỉ đổi tủ đang thuê khi tủ cũ cần bảo trì.");
             if (rental.ReplacementLockerId == lockerId)
                 return Result<LockerRentalView>.Success(View(rental, now));
-            var replacement = await db.Lockers.SingleOrDefaultAsync(l => l.Id == lockerId &&
-                l.LockerZone.GymId == member.GymId, ct);
+            var replacement = await repo.GetGymLockerAsync(lockerId, member.GymId, ct);
             if (replacement is null)
                 return Missing<LockerRentalView>();
             if (replacement.LockerStatus is LockerStatus.Rented or LockerStatus.Maintenance or LockerStatus.Damaged ||
-                await Allocations(db.LockerRentalContracts, now).AnyAsync(r =>
-                    r.LockerId == lockerId || r.ReplacementLockerId == lockerId, ct))
+                await repo.HasAllocationAsync(now, lockerId, null, null, ct))
                 return Conflict<LockerRentalView>("Tủ thay thế không còn trống.");
 
             ReleaseReplacement(rental);
@@ -37,7 +33,7 @@ public sealed partial class LockerService
             rental.ReplacementLockerId = replacement.Id;
             replacement.LockerStatus = LockerStatus.Reserved;
             Audit(actor, rental, $"LockerReplacementSelected:{replacement.Id}", now);
-            await db.SaveChangesAsync(ct);
+            await repo.SaveChangesAsync(ct);
             return Result<LockerRentalView>.Success(View(rental, now));
         }, ct);
 
@@ -64,8 +60,7 @@ public sealed partial class LockerService
             replacement.LockerStatus = LockerStatus.Rented;
             Audit(actor, rental, $"LockerRelocated:{oldId}:{replacement.Id}", now);
             Notify(rental, "Đã đổi tủ thuê", $"Hợp đồng hiện tại đã chuyển sang tủ {replacement.LockerNumber}.", now);
-            await db.SaveChangesAsync(ct);
-            await db.Entry(replacement).Reference(l => l.LockerZone).LoadAsync(ct);
+            await repo.SaveChangesAsync(ct);
             return Result<LockerRentalView>.Success(View(rental, now));
         }, ct);
 

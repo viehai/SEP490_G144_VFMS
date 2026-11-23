@@ -1,16 +1,13 @@
-using Microsoft.Data.SqlClient;
-using Microsoft.EntityFrameworkCore;
 using VFMS.Application.Interfaces;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Lockers;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
-using VFMS.Infrastructure.Data;
 
-namespace VFMS.Infrastructure.Lockers;
+namespace VFMS.Application.Services;
 
-public sealed partial class LockerService(VfmsDbContext db, TimeProvider clock,
-    IMembershipPurchaseRepository commerce, IMembershipPaymentGateway gateway) : ILockerPaymentFulfillment
+public sealed partial class LockerService(ILockerRepository repo, TimeProvider clock,
+    IMembershipPurchaseRepository commerce, IMembershipPaymentGateway gateway) : ILockerService, ILockerPaymentFulfillment
 {
     private static readonly TimeSpan LocalOffset = TimeSpan.FromHours(7);
     private static readonly TimeSpan PaymentWindow = TimeSpan.FromMinutes(15);
@@ -36,62 +33,14 @@ public sealed partial class LockerService(VfmsDbContext db, TimeProvider clock,
         rental.ExpiresAt = Midnight(rental.EndDate.AddDays(1));
     }
 
-    private IQueryable<ApplicationUser> Users(UserRole role) => db.ApplicationUsers
-        .Where(u => u.AccountStatus == AccountStatus.Active && !u.IsBanned &&
-            u.UserRoles.Any(r => r.Role.RoleName == role.ToString()));
-
     private Task<ApplicationUser?> Actor(string id, UserRole role, CancellationToken ct) =>
-        Users(role).SingleOrDefaultAsync(u => u.UserId == id, ct);
+        repo.GetActiveUserInRoleAsync(id, role, ct);
 
-    private IQueryable<LockerRentalContract> Rentals => db.LockerRentalContracts
-        .Include(r => r.Locker).ThenInclude(l => l.LockerZone).ThenInclude(z => z.Gym)
-        .Include(r => r.LockerPricingPolicy)
-        .Include(r => r.Customer)
-        .Include(r => r.ReplacementLocker)
-        .Include(r => r.Payments).ThenInclude(p => p.Order)
-        .Include(r => r.Payments).ThenInclude(p => p.Invoice)
-        .AsSplitQuery();
+    private Task<bool> Eligible(string member, DateTime now, CancellationToken ct) =>
+        repo.HasEligibleGymMembershipAsync(member, LocalDate(now), ct);
 
-    private static IQueryable<LockerRentalContract> Allocations(IQueryable<LockerRentalContract> rentals, DateTime now) =>
-        rentals.Where(r => r.ContractStatus == LockerContractStatus.Active || r.ContractStatus == LockerContractStatus.Overdue ||
-            (r.ContractStatus == LockerContractStatus.Expired && r.CancelledAt == null) ||
-            r.ContractStatus == LockerContractStatus.PendingHandover ||
-            (r.ContractStatus == LockerContractStatus.PendingPayment && r.Payments.Any(p =>
-                p.LockerPurpose == LockerPaymentPurpose.Rental && p.Order.OrderStatus == OrderStatus.Pending && p.HoldExpiresAt > now)));
-
-    private IQueryable<MemberMembership> EligibleMemberships(DateTime now)
-    {
-        var today = LocalDate(now);
-        return db.MemberMemberships.Where(m => m.MembershipStatus == MembershipStatus.Active &&
-            m.PackageComponent.ComponentType == ComponentType.GYM && m.StartDate <= today && m.EndDate >= today &&
-            !m.MembershipFreezes.Any(f => (f.RequestStatus == FreezeRequestStatus.Approved ||
-                f.RequestStatus == FreezeRequestStatus.Active || f.RequestStatus == FreezeRequestStatus.Completed) &&
-                (f.ActualStartDate ?? f.RequestedStartDate) <= today && (f.ActualEndDate ?? f.RequestedEndDate) > today));
-    }
-
-    private Task<bool> Eligible(string member, DateTime now, CancellationToken ct)
-    {
-        var members = Users(UserRole.Member);
-        return EligibleMemberships(now).AnyAsync(m => m.MemberUserId == member &&
-            members.Any(u => u.UserId == m.MemberUserId), ct);
-    }
-
-    private async Task<Result<T>> Write<T>(Func<Task<Result<T>>> action, CancellationToken ct)
-    {
-        const string conflictMessage = "Dữ liệu tủ vừa thay đổi. Vui lòng thử lại.";
-        try
-        {
-            return await commerce.ExecuteInSerializableTransactionAsync(action, ct);
-        }
-        catch (SqlException ex) when (ex.Number == 1205)
-        {
-            return Conflict<T>(conflictMessage);
-        }
-        catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 1205 or 2601 or 2627 })
-        {
-            return Conflict<T>(conflictMessage);
-        }
-    }
+    private Task<Result<T>> Write<T>(Func<Task<Result<T>>> action, CancellationToken ct) =>
+        repo.RunSerializableAsync(action, ct);
 
     private static Result<T> Invalid<T>(string message) => Result<T>.Failure(message, "LOCKER_VALIDATION");
     private static Result<T> Conflict<T>(string message) => Result<T>.Failure(message, "LOCKER_CONFLICT", 409);
@@ -212,7 +161,7 @@ public sealed partial class LockerService(VfmsDbContext db, TimeProvider clock,
             p.OverdueDailyFee, p.KeyReplacementFee);
 
     private void Audit(string? actor, LockerRentalContract rental, string value, DateTime now) =>
-        db.AuditLogs.Add(new AuditLog
+        repo.Add(new AuditLog
         {
             ActorUserId = actor,
             ActionType = AuditActionType.Update,
@@ -223,7 +172,7 @@ public sealed partial class LockerService(VfmsDbContext db, TimeProvider clock,
         });
 
     private void Notify(LockerRentalContract rental, string title, string message, DateTime now) =>
-        db.Notifications.Add(new Notification
+        repo.Add(new Notification
         {
             RecipientUserId = rental.CustomerUserId,
             NotificationType = "Locker",
@@ -240,11 +189,8 @@ public sealed partial class LockerService(VfmsDbContext db, TimeProvider clock,
         if (user is null)
             return Forbidden<IReadOnlyList<LockerSlot>>();
         var now = Now.UtcDateTime;
-        var lockers = await db.Lockers.AsNoTracking().Include(l => l.LockerZone)
-            .Where(l => l.LockerZone.GymId == user.GymId)
-            .OrderBy(l => l.LockerZone.FloorNumber).ThenBy(l => l.LockerNumber).ToListAsync(ct);
-        var rentals = await Allocations(db.LockerRentalContracts.AsNoTracking(), now)
-            .Where(r => r.Locker.LockerZone.GymId == user.GymId).OrderByDescending(r => r.Id).ToListAsync(ct);
+        var lockers = await repo.GetGymLockersAsync(user.GymId, ct);
+        var rentals = await repo.GetGymAllocationsAsync(user.GymId, now, ct);
         var byLocker = rentals.ToLookup(r => r.LockerId);
         var replacements = rentals.Where(r => r.ReplacementLockerId != null).Select(r => r.ReplacementLockerId!.Value).ToHashSet();
         return Result<IReadOnlyList<LockerSlot>>.Success(lockers.Select(l =>
@@ -255,8 +201,8 @@ public sealed partial class LockerService(VfmsDbContext db, TimeProvider clock,
     {
         if (await Actor(actor, role, ct) is null)
             return Forbidden<IReadOnlyList<LockerPolicy>>();
-        var policies = await db.LockerPricingPolicies.AsNoTracking().Where(p => p.PolicyStatus == PolicyStatus.Active &&
-            (role != UserRole.Member || p.RentalType != RentalType.Daily)).ToListAsync(ct);
+        var policies = (await repo.GetActivePoliciesAsync(ct))
+            .Where(p => role != UserRole.Member || p.RentalType != RentalType.Daily);
         return Result<IReadOnlyList<LockerPolicy>>.Success(policies.Select(Policy).OrderBy(p => p.Months).ToArray());
     }
 
@@ -265,9 +211,7 @@ public sealed partial class LockerService(VfmsDbContext db, TimeProvider clock,
         if (await Actor(actor, UserRole.Member, ct) is null)
             return Forbidden<LockerRentalView?>();
         var now = Now.UtcDateTime;
-        var rental = await Allocations(Rentals.AsNoTracking(), now)
-            .Where(r => r.CustomerUserId == actor && r.ContractStatus != LockerContractStatus.PendingPayment)
-            .OrderByDescending(r => r.Id).FirstOrDefaultAsync(ct);
+        var rental = await repo.GetCurrentRentalAsync(actor, now, ct);
         return Result<LockerRentalView?>.Success(rental is null ? null : View(rental, now));
     }
 }

@@ -1,16 +1,14 @@
-using Microsoft.EntityFrameworkCore;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Lockers;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
-using VFMS.Infrastructure.Payments;
 
-namespace VFMS.Infrastructure.Lockers;
+namespace VFMS.Application.Services;
 
 public sealed partial class LockerService
 {
     private Task<LockerRentalContract?> StaffRental(ApplicationUser staff, int id, CancellationToken ct) =>
-        Rentals.SingleOrDefaultAsync(r => r.Id == id && r.Locker.LockerZone.GymId == staff.GymId, ct);
+        repo.GetRentalAsync(id, staff.GymId, null, ct);
 
     private static bool IsPaidSettlement(PaymentTransaction payment) =>
         payment.LockerPurpose == LockerPaymentPurpose.Settlement && payment.Order.OrderStatus == OrderStatus.Paid;
@@ -62,7 +60,7 @@ public sealed partial class LockerService
                 if (HasPendingOrPaidSettlement(rental, now))
                     return Conflict<LockerSettlementQuote>("Cần xử lý khoản tất toán hiện có.");
                 MarkKeyLoss(actor, rental, now);
-                await db.SaveChangesAsync(ct);
+                await repo.SaveChangesAsync(ct);
             }
             return Result<LockerSettlementQuote>.Success(CalculateSettlement(rental, false, now));
         }, ct);
@@ -96,7 +94,7 @@ public sealed partial class LockerService
             MarkKeyLoss(actor, rental, now);
         }
         MarkReturned(actor, rental, now);
-        await db.SaveChangesAsync(ct);
+        await repo.SaveChangesAsync(ct);
         return Result<LockerSettlementQuote>.Success(CalculateSettlement(rental, false, now));
     }, ct);
 
@@ -174,8 +172,8 @@ public sealed partial class LockerService
         if (request.KeyLostOrDamaged && rental.KeyLossConfirmedAt is null)
             MarkKeyLoss(actor, rental, now);
 
-        db.PaymentTransactions.Add(charge);
-        await db.SaveChangesAsync(ct);
+        repo.Add(charge);
+        await repo.SaveChangesAsync(ct);
         return Result<LockerCheckout>.Success(Checkout(charge, now, qr), 201);
     }, ct);
 
@@ -223,7 +221,7 @@ public sealed partial class LockerService
                     return Conflict<LockerRentalView>("Không tìm thấy khoản cọc có thể hoàn.");
                 initial.RefundAmount = quote.RefundAmount;
                 initial.RefundReason = "DailyDepositReturn";
-                CheckoutRefunds.Resolve(db, initial, actor, true, method, request.RefundReference?.Trim(), now);
+                repo.ResolveRefund(initial, actor, method, request.RefundReference?.Trim(), now);
             }
             if (request.KeyLostOrDamaged && rental.KeyLossConfirmedAt is null)
                 MarkKeyLoss(actor, rental, now);
@@ -240,7 +238,7 @@ public sealed partial class LockerService
                 $"LockerTerminated:Overdue={quote.OverdueFees}:Replacement={quote.KeyReplacementFee}:Refund={quote.RefundAmount}:Forfeited={quote.ForfeitedDeposit}"), now);
             Notify(rental, "Đã trả tủ", FormattableString.Invariant(
                 $"Hợp đồng {rental.ContractNumber} đã kết thúc. Số tiền hoàn cọc: {quote.RefundAmount:N0} VND."), now);
-            await db.SaveChangesAsync(ct);
+            await repo.SaveChangesAsync(ct);
             return Result<LockerRentalView>.Success(View(rental, now));
         }, ct);
 
@@ -249,10 +247,7 @@ public sealed partial class LockerService
         var user = await Actor(actor, role, ct);
         if (user is null)
             return Forbidden<IReadOnlyList<LockerCheckout>>();
-        var pending = await db.PaymentTransactions.AsNoTracking().Include(p => p.Order).Include(p => p.Invoice)
-            .Where(p => p.LockerRentalContract!.Locker.LockerZone.GymId == user.GymId &&
-                p.RefundAmount > 0 && p.RefundStatus != "Refunded")
-            .OrderBy(p => p.Id).Take(100).ToListAsync(ct);
+        var pending = await repo.GetPendingRefundsAsync(user.GymId, 100, ct);
         var now = Now.UtcDateTime;
         return Result<IReadOnlyList<LockerCheckout>>.Success(pending.Select(p => Checkout(p, now)).ToArray());
     }
@@ -275,10 +270,10 @@ public sealed partial class LockerService
         if (ParseRefund(input.Method) is not { } method ||
             (method == PaymentMethod.BankTransfer && string.IsNullOrWhiteSpace(input.Reference)))
             return Invalid<LockerCheckout>("Cần ghi nhận cách hoàn tiền và mã tham chiếu nếu chuyển khoản.");
-        await db.Entry(charge).Reference(p => p.SourcePaymentTransaction).Query().Include(p => p.Order).LoadAsync(ct);
-        CheckoutRefunds.Resolve(db, charge, actor, true, method, input.Reference?.Trim(), now);
+        await repo.LoadSourcePaymentAsync(charge, ct);
+        repo.ResolveRefund(charge, actor, method, input.Reference?.Trim(), now);
         Audit(actor, charge.LockerRentalContract!, $"LockerRefundConfirmed:{charge.Order.OrderNumber}", now);
-        await db.SaveChangesAsync(ct);
+        await repo.SaveChangesAsync(ct);
         return Result<LockerCheckout>.Success(Checkout(charge, now));
     }, ct);
 }

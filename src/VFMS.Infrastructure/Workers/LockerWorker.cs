@@ -3,7 +3,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using VFMS.Application.Interfaces;
 
-namespace VFMS.Infrastructure.Lockers;
+namespace VFMS.Infrastructure.Workers;
 
 public sealed class LockerWorker(IServiceScopeFactory scopes, ILogger<LockerWorker> logger) : BackgroundService
 {
@@ -15,7 +15,7 @@ public sealed class LockerWorker(IServiceScopeFactory scopes, ILogger<LockerWork
             try
             {
                 await using var scope = scopes.CreateAsyncScope();
-                var service = scope.ServiceProvider.GetRequiredService<LockerService>();
+                var service = scope.ServiceProvider.GetRequiredService<ILockerService>();
                 await service.Expire(ct);
                 await service.SendPendingNoticeEmail(scope.ServiceProvider.GetRequiredService<IEmailService>(), ct);
             }

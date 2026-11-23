@@ -1,10 +1,9 @@
-using Microsoft.EntityFrameworkCore;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Lockers;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
 
-namespace VFMS.Infrastructure.Lockers;
+namespace VFMS.Application.Services;
 
 public sealed partial class LockerService
 {
@@ -14,7 +13,7 @@ public sealed partial class LockerService
             var staff = await Actor(actor, UserRole.Staff, ct);
             if (staff is null)
                 return Forbidden<LockerRentalView>();
-            var rental = await Rentals.SingleOrDefaultAsync(r => r.Id == id && r.Locker.LockerZone.GymId == staff.GymId, ct);
+            var rental = await StaffRental(staff, id, ct);
             if (rental is null)
                 return Missing<LockerRentalView>();
             var current = Now;
@@ -66,7 +65,7 @@ public sealed partial class LockerService
             rental.ContractStatus = LockerContractStatus.Active;
             rental.Locker.LockerStatus = LockerStatus.Rented;
             Audit(actor, rental, "LockerKeyHandedOver:IdentityVerified:TermsAccepted", now);
-            await db.SaveChangesAsync(ct);
+            await repo.SaveChangesAsync(ct);
             return Result<LockerRentalView>.Success(View(rental, now));
         }, ct);
 
@@ -79,8 +78,7 @@ public sealed partial class LockerService
         var method = role == UserRole.Member ? PaymentMethod.VietQR : ParseCollection(request.PaymentMethod);
         if (method is null)
             return Invalid<LockerCheckout>("Chọn Cash hoặc VietQR.");
-        var rental = await Rentals.SingleOrDefaultAsync(r => r.Id == id && r.Locker.LockerZone.GymId == user.GymId &&
-            (role != UserRole.Member || r.CustomerUserId == actor), ct);
+        var rental = await repo.GetRentalAsync(id, user.GymId, role == UserRole.Member ? actor : null, ct);
         if (rental is null)
             return Missing<LockerCheckout>();
         var now = Now.UtcDateTime;
@@ -91,8 +89,7 @@ public sealed partial class LockerService
             return Conflict<LockerCheckout>("Hợp đồng không đủ điều kiện gia hạn.");
         if (rental.Payments.Any(p => Pending(p, now) || IsPaidSettlement(p)))
             return Conflict<LockerCheckout>("Hợp đồng đang có khoản thu gia hạn hoặc tất toán cần xử lý.");
-        var policy = await db.LockerPricingPolicies.AsNoTracking().SingleOrDefaultAsync(p =>
-            p.Id == request.PolicyId && p.PolicyStatus == PolicyStatus.Active, ct);
+        var policy = await repo.GetActivePolicyAsync(request.PolicyId, ct);
         if (policy is null || Months(policy.RentalType) == 0 || !ValidPolicy(policy))
             return Invalid<LockerCheckout>("Chọn một gói thuê theo tháng.");
         var overdue = OverdueFees(rental, now);
@@ -104,8 +101,8 @@ public sealed partial class LockerService
         var qr = Qr(charge);
         if (method == PaymentMethod.VietQR && qr is null)
             return PaymentUnavailable();
-        db.PaymentTransactions.Add(charge);
-        await db.SaveChangesAsync(ct);
+        repo.Add(charge);
+        await repo.SaveChangesAsync(ct);
         return Result<LockerCheckout>.Success(Checkout(charge, now, qr), 201);
     }, ct);
 
@@ -135,7 +132,7 @@ public sealed partial class LockerService
                 input.TwelveMonths >= input.SixMonths * 2)
                 return Invalid<IReadOnlyList<LockerPolicy>>("Kiểm tra số tiền và chiết khấu lũy tiến theo kỳ hạn.");
 
-            var current = await db.LockerPricingPolicies.Where(p => p.PolicyStatus == PolicyStatus.Active).ToListAsync(ct);
+            var current = await repo.GetActivePoliciesAsync(ct);
             foreach (var previous in current)
                 previous.PolicyStatus = PolicyStatus.Inactive;
             var next = tiers.Select(t => new LockerPricingPolicy
@@ -147,8 +144,9 @@ public sealed partial class LockerService
                 OverdueDailyFee = t.Type == RentalType.Daily ? 0 : input.OverdueDailyFee,
                 KeyReplacementFee = input.KeyReplacementFee
             }).ToArray();
-            db.LockerPricingPolicies.AddRange(next);
-            await db.SaveChangesAsync(ct);
+            foreach (var policy in next)
+                repo.Add(policy);
+            await repo.SaveChangesAsync(ct);
             return Result<IReadOnlyList<LockerPolicy>>.Success(next.Select(Policy).ToArray());
         }, ct);
 
@@ -161,14 +159,7 @@ public sealed partial class LockerService
         if (string.IsNullOrEmpty(search) || search.Length > 100)
             return Invalid<IReadOnlyList<LockerMember>>("Nhập tên hoặc số điện thoại để tìm hội viên.");
         var now = Now.UtcDateTime;
-        var eligible = EligibleMemberships(now);
-        var allocated = Allocations(db.LockerRentalContracts, now);
-        var users = await Users(UserRole.Member).Where(u => u.GymId == staff.GymId &&
-                (u.FullName.Contains(search) || u.PhoneNumber.Contains(search)))
-            .OrderBy(u => u.FullName).ThenBy(u => u.UserId).Take(25)
-            .Select(u => new LockerMember(u.UserId, u.FullName, u.PhoneNumber,
-                eligible.Any(m => m.MemberUserId == u.UserId) && !allocated.Any(r => r.CustomerUserId == u.UserId)))
-            .ToListAsync(ct);
+        var users = await repo.SearchMembersAsync(staff.GymId, search, now, LocalDate(now), ct);
         return Result<IReadOnlyList<LockerMember>>.Success(users);
     }
 
@@ -183,18 +174,7 @@ public sealed partial class LockerService
             return Invalid<IReadOnlyList<LockerStaffRental>>("Từ khóa tìm kiếm tối đa 100 ký tự.");
         var now = Now.UtcDateTime;
         var today = LocalDate(now);
-        var query = Allocations(Rentals.AsNoTracking(), now)
-            .Where(r => r.Locker.LockerZone.GymId == staff.GymId &&
-                (overdueOnly || r.ContractStatus != LockerContractStatus.PendingPayment));
-        if (overdueOnly)
-            query = query.Where(r => r.ContractStatus != LockerContractStatus.PendingPayment &&
-                (r.ExpiresAt <= now || r.ContractStatus != LockerContractStatus.PendingHandover &&
-                    r.ExpiresAt == null && r.EndDate < today));
-        if (!string.IsNullOrWhiteSpace(search))
-            query = query.Where(r => r.ContractNumber.Contains(search) || r.Locker.LockerNumber.Contains(search) ||
-                r.Customer.FullName.Contains(search) || r.Payments.Any(p => p.LockerPurpose == LockerPaymentPurpose.Rental &&
-                    p.Invoice!.InvoiceNumber.Contains(search)));
-        var data = await query.OrderBy(r => r.EndDate).ThenBy(r => r.Id).Take(100).ToListAsync(ct);
+        var data = await repo.GetRegistryAsync(staff.GymId, now, today, search, overdueOnly, ct);
         return Result<IReadOnlyList<LockerStaffRental>>.Success(data.Select(r =>
             new LockerStaffRental(View(r, now), r.CustomerUserId, r.Customer.FullName, r.Customer.PhoneNumber)).ToArray());
     }

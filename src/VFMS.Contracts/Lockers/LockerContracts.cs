@@ -1,4 +1,3 @@
-using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
 using VFMS.Contracts.Memberships;
 
@@ -11,11 +10,11 @@ public sealed record LockerPricingRequest(decimal DailyFee, decimal DailyDeposit
     decimal ThreeMonths, decimal SixMonths, decimal TwelveMonths,
     [property: JsonRequired] decimal OverdueDailyFee, [property: JsonRequired] decimal KeyReplacementFee);
 public sealed record LockerRentalRequest(int LockerId, int PolicyId);
-public sealed record CounterLockerRentalRequest([Required, StringLength(450)] string MemberId, int LockerId,
-    int PolicyId, [Required] string PaymentMethod);
+public sealed record CounterLockerRentalRequest(string MemberId, int LockerId,
+    int PolicyId, string PaymentMethod);
 public sealed record LockerHandoverRequest(bool TermsAccepted, bool IdentityVerified, decimal? CashAmount = null);
 public sealed record LockerCashRequest(decimal Amount);
-public sealed record LockerRenewalRequest(int PolicyId, [StringLength(20)] string? PaymentMethod);
+public sealed record LockerRenewalRequest(int PolicyId, string? PaymentMethod);
 public sealed record LockerCheckout(int RentalId, string OrderNumber, string Status, decimal AmountDue,
     DateTime ExpiresAt, VietQrPaymentResponse? VietQr, string? InvoiceNumber,
     decimal RefundAmount, string? RefundReason, DateTime? RefundedAt, DateTime HoldExpiresAt = default);
@@ -30,15 +29,15 @@ public sealed record LockerRelocationRequest(int LockerId);
 public sealed record LockerStaffRental(LockerRentalView Rental, string MemberId, string MemberName, string Phone);
 public sealed record LockerMember(string Id, string Name, string Phone, bool Eligible);
 public sealed record LockerReturnRequest(bool LockerEmpty, bool KeyLostOrDamaged);
-public sealed record LockerSettlementRequest(bool KeyLostOrDamaged, [StringLength(20)] string? PaymentMethod);
+public sealed record LockerSettlementRequest(bool KeyLostOrDamaged, string? PaymentMethod);
 public sealed record LockerSettlementQuote(decimal OverdueFees, decimal KeyReplacementFee, decimal DepositHeld,
     decimal RefundAmount, decimal AdditionalAmountDue, decimal ForfeitedDeposit = 0, DateTime? ReturnedAt = null);
 public sealed record LockerTerminationRequest(bool KeyLostOrDamaged, bool LockerEmpty, bool LockSafe,
-    [StringLength(50)] string? SettlementOrderNumber, [StringLength(20)] string? RefundMethod,
-    [StringLength(100)] string? RefundReference);
-public sealed record LockerRefundRequest([Required, StringLength(20)] string Method, [StringLength(100)] string? Reference);
-public sealed record LockerInventoryItem([Required, StringLength(200)] string Name, [Range(1, 10000)] int Quantity);
-public sealed record LockerClearanceRequest([Required, MaxLength(100)] LockerInventoryItem[] Inventory, bool NoBelongings);
+    string? SettlementOrderNumber, string? RefundMethod,
+    string? RefundReference);
+public sealed record LockerRefundRequest(string Method, string? Reference);
+public sealed record LockerInventoryItem(string Name, int Quantity);
+public sealed record LockerClearanceRequest(LockerInventoryItem[] Inventory, bool NoBelongings);
 public sealed record LockerClearanceView(int Id, int RentalId, string? StaffId, DateTime ReportedAt,
     IReadOnlyList<LockerInventoryItem> Inventory);
 public sealed record LockerMaintenanceRequest(bool Maintenance, bool SafeInspection);

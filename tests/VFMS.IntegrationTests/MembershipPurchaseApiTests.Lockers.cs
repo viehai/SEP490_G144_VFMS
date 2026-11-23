@@ -7,7 +7,7 @@ using VFMS.Contracts.Memberships;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
 using VFMS.Infrastructure.Data;
-using VFMS.Infrastructure.Lockers;
+using VFMS.Application.Interfaces;
 
 namespace VFMS.IntegrationTests;
 
@@ -42,7 +42,7 @@ public sealed partial class MembershipPurchaseApiTests
         if (situation is "expired" or "reallocated")
         {
             await using var scope = _app.Services.CreateAsyncScope();
-            await scope.ServiceProvider.GetRequiredService<LockerService>().Expire(CancellationToken.None);
+            await scope.ServiceProvider.GetRequiredService<ILockerService>().Expire(CancellationToken.None);
         }
         string? replacement = null;
         if (situation == "reallocated")
@@ -146,7 +146,7 @@ public sealed partial class MembershipPurchaseApiTests
             var start = new DateTimeOffset(Today.AddDays(2).ToDateTime(TimeOnly.MinValue), TimeSpan.FromHours(7));
             _clock.Now = start.AddDays(1);
             await using var scope = _app.Services.CreateAsyncScope();
-            await scope.ServiceProvider.GetRequiredService<LockerService>().Expire(CancellationToken.None);
+            await scope.ServiceProvider.GetRequiredService<ILockerService>().Expire(CancellationToken.None);
             var rental = await member.GetFromJsonAsync<JsonElement>("/api/lockers/my-rental");
             Assert.Equal("PendingHandover", rental.GetProperty("status").GetString());
             var id = rental.GetProperty("id").GetInt32();

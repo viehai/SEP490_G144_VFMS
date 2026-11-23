@@ -1,14 +1,11 @@
-using Microsoft.EntityFrameworkCore;
 using VFMS.Application.Interfaces;
-using VFMS.Application.Services;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Lockers;
 using VFMS.Contracts.Memberships;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
-using VFMS.Infrastructure.Payments;
 
-namespace VFMS.Infrastructure.Lockers;
+namespace VFMS.Application.Services;
 
 public sealed partial class LockerService
 {
@@ -31,17 +28,14 @@ public sealed partial class LockerService
         var now = Now.UtcDateTime;
         if (member is null || member.GymId != user.GymId || !await Eligible(memberId, now, ct))
             return Conflict<LockerCheckout>("Hội viên cần có gói Gym đang hiệu lực.");
-        var locker = await db.Lockers.Include(l => l.LockerZone).ThenInclude(z => z.Gym)
-            .SingleOrDefaultAsync(l => l.Id == lockerId && l.LockerZone.GymId == user.GymId, ct);
+        var locker = await repo.GetGymLockerAsync(lockerId, user.GymId, ct);
         if (locker is null)
             return Missing<LockerCheckout>();
         if (locker.LockerStatus is LockerStatus.Maintenance or LockerStatus.Damaged or LockerStatus.Rented ||
-            await Allocations(db.LockerRentalContracts, now).AnyAsync(r => r.LockerId == lockerId ||
-                r.ReplacementLockerId == lockerId || r.CustomerUserId == memberId, ct))
+            await repo.HasAllocationAsync(now, lockerId, memberId, null, ct))
             return Conflict<LockerCheckout>("Tủ đã được giữ hoặc hội viên đã có tủ.");
 
-        var policy = await db.LockerPricingPolicies.SingleOrDefaultAsync(p =>
-            p.Id == policyId && p.PolicyStatus == PolicyStatus.Active, ct);
+        var policy = await repo.GetActivePolicyAsync(policyId, ct);
         if (policy is null || !ValidPolicy(policy) ||
             (channel == OrderChannel.Online && policy.RentalType == RentalType.Daily))
             return Invalid<LockerCheckout>("Gói thuê không hợp lệ cho kênh này.");
@@ -70,10 +64,10 @@ public sealed partial class LockerService
         if (method == PaymentMethod.VietQR && qr is null)
             return PaymentUnavailable();
         locker.LockerStatus = LockerStatus.Reserved;
-        db.PaymentTransactions.Add(charge);
-        await db.SaveChangesAsync(ct);
+        repo.Add(charge);
+        await repo.SaveChangesAsync(ct);
         Audit(actor, rental, "LockerCheckoutHeld", now);
-        await db.SaveChangesAsync(ct);
+        await repo.SaveChangesAsync(ct);
         return Result<LockerCheckout>.Success(Checkout(charge, now, qr), 201);
     }, ct);
 
@@ -82,9 +76,7 @@ public sealed partial class LockerService
         var user = await Actor(actor, role, ct);
         if (user is null)
             return Forbidden<LockerCheckout>();
-        var charge = await db.PaymentTransactions.AsNoTracking().Include(p => p.Order).Include(p => p.Invoice)
-            .SingleOrDefaultAsync(p => p.Order.OrderNumber == number && p.LockerRentalContract!.Locker.LockerZone.GymId == user.GymId &&
-                (role != UserRole.Member || p.LockerRentalContract!.CustomerUserId == actor), ct);
+        var charge = await repo.GetCheckoutAsync(number, user.GymId, role == UserRole.Member ? actor : null, ct);
         if (charge is null)
             return Missing<LockerCheckout>();
         var now = Now.UtcDateTime;
@@ -111,7 +103,7 @@ public sealed partial class LockerService
             charge.PaymentStatus = PaymentStatus.Cancelled;
             await ReleaseInitialHold(charge, now, ct);
             Audit(actor, charge.LockerRentalContract!, $"LockerCheckoutCancelled:{number}", now);
-            await db.SaveChangesAsync(ct);
+            await repo.SaveChangesAsync(ct);
             return Result<LockerCheckout>.Success(Checkout(charge, now));
         }, ct);
 
@@ -142,7 +134,7 @@ public sealed partial class LockerService
         var charge = await LoadCharge(order.Id, ct);
         if (charge is null || charge.SourcePaymentTransactionId is not null)
             return null;
-        if (await CheckoutRefunds.IsRecorded(db, charge, transfer.TransactionId, ct))
+        if (await repo.IsTransferRecordedAsync(charge, transfer.TransactionId, ct))
             return Result<SepayWebhookResponse>.Success(new(true));
         if (await commerce.SepayReferenceUsedAsync(transfer.TransactionId, ct) ||
             transfer.TransferredAt.ToUnixTimeSeconds() < new DateTimeOffset(Utc(order.CreatedAt)).ToUnixTimeSeconds())
@@ -151,19 +143,19 @@ public sealed partial class LockerService
         var now = Now;
         if (charge.GatewayTransactionReference is not null || order.OrderStatus == OrderStatus.Paid)
         {
-            CheckoutRefunds.RecordExtraTransfer(db, charge, transfer, now.UtcDateTime);
+            repo.RecordExtraTransfer(charge, transfer, now.UtcDateTime);
             Audit(null, charge.LockerRentalContract!, $"LockerExtraTransfer:{order.OrderNumber}", now.UtcDateTime);
-            await db.SaveChangesAsync(ct);
+            await repo.SaveChangesAsync(ct);
             return Result<SepayWebhookResponse>.Success(new(true));
         }
 
         if (charge.AmountDue != transfer.Amount || transfer.TransferredAt.UtcDateTime >= PaymentDeadline(charge) ||
             !await CanFulfill(charge, transfer.TransferredAt.UtcDateTime, now.UtcDateTime, ct))
         {
-            CheckoutRefunds.RecordUnappliedTransfer(db, charge, transfer, now.UtcDateTime);
+            repo.RecordUnappliedTransfer(charge, transfer, now.UtcDateTime);
             await ReleaseInitialHold(charge, now.UtcDateTime, ct);
             Audit(null, charge.LockerRentalContract!, "LockerRefundRequested", now.UtcDateTime);
-            await db.SaveChangesAsync(ct);
+            await repo.SaveChangesAsync(ct);
             return Result<SepayWebhookResponse>.Success(new(true));
         }
 
@@ -171,15 +163,7 @@ public sealed partial class LockerService
         return Result<SepayWebhookResponse>.Success(new(true));
     }
 
-    private async Task<PaymentTransaction?> LoadCharge(int orderId, CancellationToken ct)
-    {
-        var id = await db.PaymentTransactions.Where(p => p.OrderId == orderId)
-            .Select(p => (int?)p.LockerRentalContractId).SingleOrDefaultAsync(ct);
-        if (id is null)
-            return null;
-        var rental = await Rentals.SingleAsync(r => r.Id == id, ct);
-        return rental.Payments.Single(p => p.OrderId == orderId);
-    }
+    private Task<PaymentTransaction?> LoadCharge(int orderId, CancellationToken ct) => repo.GetChargeByOrderAsync(orderId, ct);
 
     private static bool Pending(PaymentTransaction charge, DateTime now) =>
         charge.Order.OrderStatus == OrderStatus.Pending && charge.HoldExpiresAt > now;
@@ -215,9 +199,7 @@ public sealed partial class LockerService
             return false;
         return (rental.ContractStatus == LockerContractStatus.PendingPayment ||
                 rental.ContractStatus == LockerContractStatus.Cancelled && charge.Order.OrderStatus == OrderStatus.Expired) &&
-            !await Allocations(db.LockerRentalContracts, now).AnyAsync(r => r.Id != rental.Id &&
-                (r.CustomerUserId == rental.CustomerUserId || r.LockerId == rental.LockerId ||
-                 r.ReplacementLockerId == rental.LockerId), ct);
+            !await repo.HasAllocationAsync(now, rental.LockerId, rental.CustomerUserId, rental.Id, ct);
     }
 
     private async Task ApplyPayment(PaymentTransaction charge, decimal amount, DateTimeOffset paidAt, string? reference,
@@ -261,7 +243,7 @@ public sealed partial class LockerService
                 break;
         }
         Audit(actor, rental, $"LockerPaymentConfirmed:{charge.LockerPurpose}:{charge.Order.OrderNumber}", now.UtcDateTime);
-        await db.SaveChangesAsync(ct);
+        await repo.SaveChangesAsync(ct);
     }
 
     private static PaymentMethod? ParseCollection(string? method) => method?.Trim().ToUpperInvariant() switch
