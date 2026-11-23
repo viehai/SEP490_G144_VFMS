@@ -168,7 +168,7 @@ public sealed class YogaBookingTests
 
         var result = await service.CancelAsync("m1", 5, new CancelYogaBookingRequest());
 
-        Assert.Equal(("Cancelled", "Yoga booking updated successfully."), (result.Data!.Status, result.Data.Message));
+        Assert.Equal(("Cancelled", "Cập nhật đặt lớp yoga thành công."), (result.Data!.Status, result.Data.Message));
         Assert.Equal(YogaBookingStatus.Cancelled, yogaClass.Bookings.Single().BookingStatus);
         Assert.Equal(YogaClassStatus.Open, yogaClass.ClassStatus);
         Assert.Empty(repo.Attendances);
@@ -212,7 +212,7 @@ public sealed class YogaBookingTests
 
         var result = await service.CancelAsync("m1", 5, new CancelYogaBookingRequest(ConfirmLateCancellation: true));
 
-        Assert.Contains("suspended until 14/11/2026 10:00", result.Data!.Message);
+        Assert.Contains("bị khóa đặt lớp yoga đến 14/11/2026 10:00", result.Data!.Message);
     }
 
     [Fact]

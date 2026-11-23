@@ -139,7 +139,7 @@ public sealed class CheckInTests
 
         Assert.Equal(201, ok.StatusCode);
         Assert.Equal("m1", ok.Data!.MemberUserId);
-        Assert.StartsWith("Welcome back, Member m1!", ok.Data.Message);
+        Assert.StartsWith("Chào mừng trở lại, Member m1!", ok.Data.Message);
         Assert.Equal(Today.AddDays(20), ok.Data.ValidThrough);
         var visit = repo.Active.Single(c => c.MemberUserId == "m1");
         Assert.Equal(CheckInMethod.FaceRecognition, visit.CheckinMethod);
@@ -150,9 +150,9 @@ public sealed class CheckInTests
     }
 
     [Theory]
-    [InlineData(MembershipStatus.Frozen, "Frozen")]
-    [InlineData(MembershipStatus.Suspended, "Suspended")]
-    [InlineData(MembershipStatus.Active, "Expired")]
+    [InlineData(MembershipStatus.Frozen, "Đang bảo lưu")]
+    [InlineData(MembershipStatus.Suspended, "Tạm ngưng")]
+    [InlineData(MembershipStatus.Active, "Hết hạn")]
     public async Task RefusedCheckInNamesTheMembershipStatus(MembershipStatus status, string shown)   // MSG-36 "with the status"
     {
         var (repo, service, qr) = Kiosk();
@@ -161,7 +161,7 @@ public sealed class CheckInTests
         var result = await service.KioskCheckInAsync(await QrScan(qr, "m1"));
 
         Assert.Equal(403, result.StatusCode);
-        Assert.EndsWith($"Please contact the front desk. Membership status: {shown}.", result.ErrorMessage);
+        Assert.EndsWith($"Vui lòng liên hệ quầy lễ tân. Trạng thái gói: {shown}.", result.ErrorMessage);
     }
 
     [Fact]
@@ -179,7 +179,7 @@ public sealed class CheckInTests
         var both = await service.KioskCheckInAsync(await QrScan(qr, "both"));
 
         Assert.Equal(403, refused.StatusCode);
-        Assert.EndsWith("Membership status: No gym plan.", refused.ErrorMessage);
+        Assert.EndsWith("Trạng thái gói: Chưa có gói Gym.", refused.ErrorMessage);
         Assert.Equal(403, manual.StatusCode);
         Assert.Equal("No gym plan", desk.MembershipStatus);
         Assert.Null(desk.ValidThrough);

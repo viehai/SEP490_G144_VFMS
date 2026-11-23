@@ -54,16 +54,30 @@ internal static class MembershipRules
 internal static class GymAccessMessages
 {
     public const string Denied =
-        "Access denied: No active membership found or biometric verification failed. Please contact the front desk.";   // MSG-36
+        "Từ chối truy cập: không tìm thấy gói hội viên còn hiệu lực hoặc không xác thực được khuôn mặt/mã QR. Vui lòng liên hệ quầy lễ tân.";   // MSG-36
     public const string DeniedCode = "ACCESS_DENIED";
     /// <summary>Kiosk scan matched no member (face not enrolled, QR token used, expired or replaced).</summary>
     public const string NotRecognisedCode = "SCAN_NOT_RECOGNISED";
 
     /// <summary>MSG-36 with the membership status, as UC "Check In" step 3 asks.</summary>
-    public static string DeniedWithStatus(string status) => $"{Denied} Membership status: {status}.";
+    public static string DeniedWithStatus(string status) => $"{Denied} Trạng thái gói: {StatusLabel(status)}.";
+
+    /// <summary>Vietnamese label of a MembershipRules status (the status itself stays an English code for the client).</summary>
+    public static string StatusLabel(string status) => status switch
+    {
+        "Active" => "Còn hiệu lực",
+        "Frozen" => "Đang bảo lưu",
+        "Expired" => "Hết hạn",
+        "Scheduled" => "Chưa bắt đầu",
+        "Suspended" => "Tạm ngưng",
+        "Cancelled" => "Đã hủy",
+        "None" => "Chưa có gói",
+        MembershipRules.NoGymPlan => "Chưa có gói Gym",
+        _ => status
+    };
 
     public static string Welcome(string name, DateOnly validThrough) =>
-        string.Create(CultureInfo.InvariantCulture, $"Welcome back, {name}! Access granted. Valid through {validThrough:dd/MM/yyyy}.");   // MSG-35
+        string.Create(CultureInfo.InvariantCulture, $"Chào mừng trở lại, {name}! Mời bạn vào. Gói còn hiệu lực đến {validThrough:dd/MM/yyyy}.");   // MSG-35
 
 }
 
@@ -147,7 +161,7 @@ public sealed class CheckInService : ICheckInService
         var today = YogaTime.Today(_clock);
         var rows = await _repository.SearchMembersAsync(term, cancellationToken);
         if (rows.Count == 0)
-            return Result<IReadOnlyList<FrontDeskMemberResponse>>.Failure("No matching records found.", "NOT_FOUND", 404);   // MSG-01
+            return Result<IReadOnlyList<FrontDeskMemberResponse>>.Failure("Không tìm thấy kết quả phù hợp.", "NOT_FOUND", 404);   // MSG-01
         return Result<IReadOnlyList<FrontDeskMemberResponse>>.Success(rows.Select(r =>
         {
             var gym = MembershipRules.Gym(r.Memberships);
@@ -259,7 +273,7 @@ public sealed class CheckInService : ICheckInService
         {
             if (now - open.CheckinTime < MaxVisit)
                 return Result<CheckInResultResponse>.Failure(
-                    "This member is already checked in. Check out first.", "ALREADY_CHECKED_IN", 409);
+                    "Hội viên này đang ở trong phòng tập. Hãy check-out trước.", "ALREADY_CHECKED_IN", 409);
             // shortcut: closes only this member's stale visit; others stay open until JOB-04 exists and inflate occupancy.
             open.Status = CheckInStatus.AutoClosed;
             open.CheckoutTime = open.CheckinTime + MaxVisit;

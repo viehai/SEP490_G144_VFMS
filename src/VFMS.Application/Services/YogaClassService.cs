@@ -58,7 +58,7 @@ public sealed class YogaClassService : IYogaClassService
     {
         var type = await _repository.GetClassTypeAsync(id, cancellationToken);
         if (type is null)
-            return Result<YogaClassTypeResponse>.Failure("Class type not found.", "YOGA_TYPE_NOT_FOUND", 404);
+            return Result<YogaClassTypeResponse>.Failure("Không tìm thấy loại lớp.", "YOGA_TYPE_NOT_FOUND", 404);
         var name = request.TypeName.Trim();
         if (await _repository.ClassTypeNameExistsAsync(name, id, cancellationToken))
             return TypeNameTaken();
@@ -99,7 +99,7 @@ public sealed class YogaClassService : IYogaClassService
         if (check is not null)
             return check;
         if (request.StartDate < YogaTime.Today(_clock))
-            return Result<YogaClassResponse>.Failure("Start date cannot be in the past.", "YOGA_CLASS_START_PAST");
+            return Result<YogaClassResponse>.Failure("Ngày bắt đầu không được ở trong quá khứ.", "YOGA_CLASS_START_PAST");
 
         var yogaClass = new YogaClass { ClassStatus = YogaClassStatus.Draft };
         Apply(yogaClass, request);
@@ -117,7 +117,7 @@ public sealed class YogaClassService : IYogaClassService
             return ClassNotFound<YogaClassResponse>();
         if (yogaClass.ClassStatus != YogaClassStatus.Draft)
             return Result<YogaClassResponse>.Failure(
-                "Only draft classes can be edited. Cancel the class or edit its sessions instead.", "YOGA_CLASS_NOT_DRAFT", 409);
+                "Chỉ sửa được lớp ở trạng thái nháp. Hãy hủy lớp hoặc sửa từng buổi học.", "YOGA_CLASS_NOT_DRAFT", 409);
 
         var check = await ValidateClassReferencesAsync(request, cancellationToken);
         if (check is not null)
@@ -126,14 +126,14 @@ public sealed class YogaClassService : IYogaClassService
         var active = yogaClass.Schedules.Where(s => s.ScheduleStatus != YogaScheduleStatus.Cancelled).ToArray();
         if (active.Any(s => s.ScheduledDate < request.StartDate || s.ScheduledDate > request.EndDate))
             return Result<YogaClassResponse>.Failure(
-                "Some sessions fall outside the new start and end dates. Move or cancel them first.", "YOGA_CLASS_SESSIONS_OUTSIDE");
+                "Một số buổi học nằm ngoài ngày bắt đầu và kết thúc mới. Hãy dời hoặc hủy chúng trước.", "YOGA_CLASS_SESSIONS_OUTSIDE");
         if (active.Any(s => (int)(s.EndTime - s.StartTime).TotalMinutes != request.DurationMinutes))
             return Result<YogaClassResponse>.Failure(
-                "Existing sessions have a different length. Update or cancel them before changing the duration.", "YOGA_CLASS_DURATION_MISMATCH");
+                "Các buổi học hiện có dài khác thời lượng mới. Hãy sửa hoặc hủy chúng trước khi đổi thời lượng.", "YOGA_CLASS_DURATION_MISMATCH");
 
         if (request.InstructorUserId.Trim() != yogaClass.InstructorUserId && active.Any(s => s.InstructorUserId is null))
             return Result<YogaClassResponse>.Failure(
-                "Existing sessions use the current class instructor. Set the instructor on those sessions or cancel them first.",
+                "Các buổi học hiện có đang dùng huấn luyện viên hiện tại của lớp. Hãy chọn huấn luyện viên cho từng buổi hoặc hủy chúng trước.",
                 "YOGA_CLASS_INSTRUCTOR_IN_USE", 409);   // GBR-74
 
         var before = Describe(yogaClass);
@@ -153,22 +153,22 @@ public sealed class YogaClassService : IYogaClassService
         if (yogaClass is null)
             return ClassNotFound<YogaClassResponse>();
         if (yogaClass.ClassStatus != YogaClassStatus.Draft)
-            return Result<YogaClassResponse>.Failure("Only draft classes can be published.", "YOGA_CLASS_NOT_DRAFT", 409);
+            return Result<YogaClassResponse>.Failure("Chỉ công bố được lớp ở trạng thái nháp.", "YOGA_CLASS_NOT_DRAFT", 409);
 
         var sessions = yogaClass.Schedules.Where(s => s.ScheduleStatus != YogaScheduleStatus.Cancelled).ToArray();
         if (sessions.Length == 0)
-            return Result<YogaClassResponse>.Failure("Add at least one session before publishing.", "YOGA_CLASS_NO_SESSIONS");
+            return Result<YogaClassResponse>.Failure("Hãy thêm ít nhất một buổi học trước khi công bố.", "YOGA_CLASS_NO_SESSIONS");
 
         var firstSession = sessions.Min(s => s.ScheduledDate);
         if (firstSession < YogaTime.Today(_clock).AddDays(PublishLeadDays))
             return Result<YogaClassResponse>.Failure(
-                $"The timetable must be published at least {PublishLeadDays} days before the first session ({firstSession:yyyy-MM-dd}).",
+                $"Thời khóa biểu phải được công bố trước buổi học đầu tiên ({firstSession:dd/MM/yyyy}) ít nhất {PublishLeadDays} ngày.",
                 "YOGA_PUBLISH_TOO_LATE");
         if (yogaClass.RegistrationDeadline <= _clock.GetUtcNow().UtcDateTime)
-            return Result<YogaClassResponse>.Failure("The registration deadline has already passed.", "YOGA_DEADLINE_PASSED");
+            return Result<YogaClassResponse>.Failure("Hạn đăng ký đã qua.", "YOGA_DEADLINE_PASSED");
         if (!(await ActiveInstructorIdsAsync(cancellationToken)).Contains(yogaClass.InstructorUserId))
             return Result<YogaClassResponse>.Failure(
-                "The class instructor is not an active yoga instructor. Assign an active instructor before publishing.",
+                "Huấn luyện viên của lớp không còn là huấn luyện viên yoga đang hoạt động. Hãy chọn huấn luyện viên khác trước khi công bố.",
                 "YOGA_INSTRUCTOR_INACTIVE");
 
         var before = Describe(yogaClass);
@@ -186,7 +186,7 @@ public sealed class YogaClassService : IYogaClassService
         if (yogaClass is null)
             return ClassNotFound<YogaClassResponse>();
         if (yogaClass.ClassStatus is YogaClassStatus.Cancelled or YogaClassStatus.Completed)
-            return Result<YogaClassResponse>.Failure("This class is already closed.", "YOGA_CLASS_CLOSED", 409);
+            return Result<YogaClassResponse>.Failure("Lớp này đã đóng.", "YOGA_CLASS_CLOSED", 409);
 
         var before = Describe(yogaClass);
         var now = DateTime.UtcNow;
@@ -200,8 +200,8 @@ public sealed class YogaClassService : IYogaClassService
         {
             booking.BookingStatus = YogaBookingStatus.Cancelled;
             booking.CancelledAt = now;
-            notifications.Add(AuditedWriter.Notify(booking.MemberUserId, actorUserId, "Yoga class cancelled",
-                $"{yogaClass.ClassName} has been cancelled by the gym.", ClassEntity, NotificationType.YogaSessionCancelled));
+            notifications.Add(AuditedWriter.Notify(booking.MemberUserId, actorUserId, "Lớp yoga đã bị hủy",
+                $"Lớp {yogaClass.ClassName} đã bị phòng tập hủy.", ClassEntity, NotificationType.YogaSessionCancelled));
         }
 
         var audit = AuditedWriter.Audit(actorUserId, AuditActionType.Update, ClassEntity, ipAddress, before, Describe(yogaClass));
@@ -252,9 +252,9 @@ public sealed class YogaClassService : IYogaClassService
         if (session is null)
             return SessionNotFound();
         if (session.YogaClassId != request.YogaClassId)
-            return Result<YogaSessionResponse>.Failure("A session cannot be moved to another class.", "YOGA_SESSION_CLASS_CHANGE");
+            return Result<YogaSessionResponse>.Failure("Không thể chuyển buổi học sang lớp khác.", "YOGA_SESSION_CLASS_CHANGE");
         if (session.ScheduleStatus != YogaScheduleStatus.Scheduled)
-            return Result<YogaSessionResponse>.Failure("Only scheduled sessions can be changed.", "YOGA_SESSION_NOT_SCHEDULED", 409);
+            return Result<YogaSessionResponse>.Failure("Chỉ sửa được buổi học đang theo lịch.", "YOGA_SESSION_NOT_SCHEDULED", 409);
 
         Result<YogaSessionResponse>? failure = null;
         await _repository.ExecuteInTransactionAsync(async () =>
@@ -272,8 +272,8 @@ public sealed class YogaClassService : IYogaClassService
 
             var notifications = moved
                 ? ConfirmedMembers(session.YogaClass).Select(memberId => AuditedWriter.Notify(memberId, actorUserId,
-                    "Yoga session changed",
-                    $"{session.YogaClass.ClassName} is now on {session.ScheduledDate:dd/MM/yyyy} at {session.StartTime:HH\\:mm}.",
+                    "Buổi học yoga đã đổi lịch",
+                    $"Lớp {session.YogaClass.ClassName} nay học lúc {session.StartTime:HH\\:mm} ngày {session.ScheduledDate:dd/MM/yyyy}.",
                     SessionEntity, NotificationType.YogaSessionChanged)).ToArray()
                 : [];
             var audit = AuditedWriter.Audit(actorUserId, AuditActionType.Update, SessionEntity, ipAddress, before, Describe(session));
@@ -290,13 +290,13 @@ public sealed class YogaClassService : IYogaClassService
         if (session is null)
             return SessionNotFound();
         if (session.ScheduleStatus != YogaScheduleStatus.Scheduled)
-            return Result<YogaSessionResponse>.Failure("Only scheduled sessions can be cancelled.", "YOGA_SESSION_NOT_SCHEDULED", 409);
+            return Result<YogaSessionResponse>.Failure("Chỉ hủy được buổi học đang theo lịch.", "YOGA_SESSION_NOT_SCHEDULED", 409);
 
         var before = Describe(session);
         MarkCancelled(session, DateTime.UtcNow);
         var notifications = ConfirmedMembers(session.YogaClass).Select(memberId => AuditedWriter.Notify(memberId, actorUserId,
-            "Yoga session cancelled",
-            $"{session.YogaClass.ClassName} on {session.ScheduledDate:dd/MM/yyyy} at {session.StartTime:HH\\:mm} has been cancelled by the gym.",
+            "Buổi học yoga đã bị hủy",
+            $"Buổi học {session.YogaClass.ClassName} lúc {session.StartTime:HH\\:mm} ngày {session.ScheduledDate:dd/MM/yyyy} đã bị phòng tập hủy.",
             SessionEntity, NotificationType.YogaSessionCancelled)).ToArray();
         var audit = AuditedWriter.Audit(actorUserId, AuditActionType.Update, SessionEntity, ipAddress, before, Describe(session));
         await AuditedWriter.SaveChangedAsync(_repository, session, audit, notifications, cancellationToken);
@@ -311,7 +311,7 @@ public sealed class YogaClassService : IYogaClassService
     {
         var (from, to) = Range(query);
         if (to < from || to.DayNumber - from.DayNumber > 62)
-            return Result<IReadOnlyList<YogaSessionResponse>>.Failure("Choose a date range of up to 62 days.", "YOGA_INVALID_RANGE");
+            return Result<IReadOnlyList<YogaSessionResponse>>.Failure("Hãy chọn khoảng thời gian tối đa 62 ngày.", "YOGA_INVALID_RANGE");
 
         // A class whose trainer is no longer an active yoga instructor is hidden as a whole.
         var teaching = await ActiveInstructorIdsAsync(cancellationToken);
@@ -330,7 +330,7 @@ public sealed class YogaClassService : IYogaClassService
     {
         var (from, to) = Range(query);
         if (to < from || to.DayNumber - from.DayNumber > 62)
-            return Result<IReadOnlyList<YogaAssignedSessionResponse>>.Failure("Choose a date range of up to 62 days.", "YOGA_INVALID_RANGE");
+            return Result<IReadOnlyList<YogaAssignedSessionResponse>>.Failure("Hãy chọn khoảng thời gian tối đa 62 ngày.", "YOGA_INVALID_RANGE");
 
         var sessions = (await _repository.GetSessionsAsync(from, to, cancellationToken))
             .Where(s => InstructorOf(s, s.YogaClass) == instructorUserId && s.YogaClass.ClassStatus != YogaClassStatus.Draft)
@@ -357,9 +357,9 @@ public sealed class YogaClassService : IYogaClassService
     private async Task<Result<YogaClassResponse>?> ValidateClassReferencesAsync(YogaClassRequest request, CancellationToken cancellationToken)
     {
         if (await _repository.GetClassTypeAsync(request.YogaClassTypeId, cancellationToken) is null)
-            return Result<YogaClassResponse>.Failure("Class type not found.", "YOGA_TYPE_NOT_FOUND");
+            return Result<YogaClassResponse>.Failure("Không tìm thấy loại lớp.", "YOGA_TYPE_NOT_FOUND");
         if (!await _repository.UserHasRoleAsync(request.InstructorUserId, InstructorRole, cancellationToken))
-            return Result<YogaClassResponse>.Failure("The selected instructor is not a yoga instructor.", "YOGA_INVALID_INSTRUCTOR");
+            return Result<YogaClassResponse>.Failure("Người được chọn không phải huấn luyện viên yoga.", "YOGA_INVALID_INSTRUCTOR");
         return null;
     }
 
@@ -367,36 +367,36 @@ public sealed class YogaClassService : IYogaClassService
         YogaSessionRequest request, YogaClass yogaClass, YogaClassSchedule? existing, CancellationToken cancellationToken)
     {
         if (yogaClass.ClassStatus is YogaClassStatus.Cancelled or YogaClassStatus.Completed)
-            return Result<YogaSessionResponse>.Failure("Sessions cannot be added to a closed class.", "YOGA_CLASS_CLOSED", 409);
+            return Result<YogaSessionResponse>.Failure("Không thể thêm buổi học vào lớp đã đóng.", "YOGA_CLASS_CLOSED", 409);
         if (request.ScheduledDate < yogaClass.StartDate || request.ScheduledDate > yogaClass.EndDate)
             return Result<YogaSessionResponse>.Failure(
-                $"The session date must be between {yogaClass.StartDate:yyyy-MM-dd} and {yogaClass.EndDate:yyyy-MM-dd}.",
+                $"Ngày học phải nằm trong khoảng {yogaClass.StartDate:dd/MM/yyyy} đến {yogaClass.EndDate:dd/MM/yyyy}.",
                 "YOGA_SESSION_OUTSIDE_CLASS");
         if (YogaTime.ToUtc(request.ScheduledDate, request.StartTime) <= _clock.GetUtcNow().UtcDateTime)
-            return Result<YogaSessionResponse>.Failure("A session cannot start in the past.", "YOGA_SESSION_IN_PAST");
+            return Result<YogaSessionResponse>.Failure("Buổi học không thể bắt đầu trong quá khứ.", "YOGA_SESSION_IN_PAST");
         // GBR-77 only for new or re-timed sessions: a substitute instructor or room can still be set close to the day.
         if (yogaClass.ClassStatus != YogaClassStatus.Draft &&
             (request.ScheduledDate != existing?.ScheduledDate || request.StartTime != existing.StartTime) &&
             request.ScheduledDate < YogaTime.Today(_clock).AddDays(PublishLeadDays))
             return Result<YogaSessionResponse>.Failure(
-                $"The class is already published. New or moved sessions must be at least {PublishLeadDays} days away.",
+                $"Lớp đã được công bố. Buổi học mới hoặc được dời phải cách hôm nay ít nhất {PublishLeadDays} ngày.",
                 "YOGA_PUBLISH_TOO_LATE");   // GBR-77
         if ((int)(request.EndTime - request.StartTime).TotalMinutes != yogaClass.DurationMinutes)
             return Result<YogaSessionResponse>.Failure(
-                $"Sessions of this class last {yogaClass.DurationMinutes} minutes.", "YOGA_SESSION_DURATION");
+                $"Mỗi buổi học của lớp này dài {yogaClass.DurationMinutes} phút.", "YOGA_SESSION_DURATION");
 
         var studio = await _repository.GetStudioAsync(request.YogaStudioId, cancellationToken);
         if (studio is null || !studio.IsActive)
-            return Result<YogaSessionResponse>.Failure("The studio is not available.", "YOGA_STUDIO_UNAVAILABLE");
+            return Result<YogaSessionResponse>.Failure("Phòng yoga không khả dụng.", "YOGA_STUDIO_UNAVAILABLE");
         if (studio.Capacity < yogaClass.MaxParticipants)
             return Result<YogaSessionResponse>.Failure(
-                $"The studio has {studio.Capacity} mats but the class allows {yogaClass.MaxParticipants} participants.",
+                $"Phòng có {studio.Capacity} thảm nhưng lớp cho phép {yogaClass.MaxParticipants} học viên.",
                 "YOGA_STUDIO_TOO_SMALL");
 
         var instructorId = string.IsNullOrWhiteSpace(request.InstructorUserId) ? yogaClass.InstructorUserId : request.InstructorUserId.Trim();
         if (instructorId != yogaClass.InstructorUserId &&
             !await _repository.UserHasRoleAsync(instructorId, InstructorRole, cancellationToken))
-            return Result<YogaSessionResponse>.Failure("The selected instructor is not a yoga instructor.", "YOGA_INVALID_INSTRUCTOR");
+            return Result<YogaSessionResponse>.Failure("Người được chọn không phải huấn luyện viên yoga.", "YOGA_INVALID_INSTRUCTOR");
 
         var sameDay = (await _repository.GetActiveSessionsOnDateAsync(request.ScheduledDate, cancellationToken))
             .Where(s => s.Id != existing?.Id)
@@ -418,11 +418,11 @@ public sealed class YogaClassService : IYogaClassService
         {
             if (other.YogaStudioId == studioId &&
                 start < other.EndTime.AddMinutes(StudioGapMinutes) && other.StartTime < end.AddMinutes(StudioGapMinutes))
-                return $"The studio is in use from {other.StartTime:HH\\:mm} to {other.EndTime:HH\\:mm}. Leave at least {StudioGapMinutes} minutes between sessions.";
+                return $"Phòng đang được dùng từ {other.StartTime:HH\\:mm} đến {other.EndTime:HH\\:mm}. Hãy để cách ít nhất {StudioGapMinutes} phút giữa các buổi.";
 
             var otherInstructor = other.InstructorUserId ?? other.YogaClass?.InstructorUserId;
             if (otherInstructor == instructorUserId && start < other.EndTime && other.StartTime < end)
-                return $"The instructor already teaches from {other.StartTime:HH\\:mm} to {other.EndTime:HH\\:mm}.";
+                return $"Huấn luyện viên đã có lớp từ {other.StartTime:HH\\:mm} đến {other.EndTime:HH\\:mm}.";
         }
         return null;
     }
@@ -527,11 +527,11 @@ public sealed class YogaClassService : IYogaClassService
 
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
-    private static Result<T> ClassNotFound<T>() => Result<T>.Failure("Yoga class not found.", "YOGA_CLASS_NOT_FOUND", 404);
+    private static Result<T> ClassNotFound<T>() => Result<T>.Failure("Không tìm thấy lớp yoga.", "YOGA_CLASS_NOT_FOUND", 404);
 
     private static Result<YogaSessionResponse> SessionNotFound() =>
-        Result<YogaSessionResponse>.Failure("Yoga session not found.", "YOGA_SESSION_NOT_FOUND", 404);
+        Result<YogaSessionResponse>.Failure("Không tìm thấy buổi học yoga.", "YOGA_SESSION_NOT_FOUND", 404);
 
     private static Result<YogaClassTypeResponse> TypeNameTaken() =>
-        Result<YogaClassTypeResponse>.Failure("A class type with this name already exists.", "YOGA_TYPE_NAME_TAKEN", 409);
+        Result<YogaClassTypeResponse>.Failure("Đã có loại lớp trùng tên.", "YOGA_TYPE_NAME_TAKEN", 409);
 }

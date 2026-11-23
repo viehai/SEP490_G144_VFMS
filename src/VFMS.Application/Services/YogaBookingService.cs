@@ -63,21 +63,21 @@ public sealed class YogaBookingService : IYogaBookingService
             .Where(m => m.PackageComponent.YogaClassTypeId is null || m.PackageComponent.YogaClassTypeId == yogaClass.YogaClassTypeId);
         if (MembershipRules.Usable(memberships, YogaTime.Today(_clock), ComponentType.YOGA) is null)
             return Result<YogaBookingResponse>.Failure(
-                "An active membership package is required to book Yoga classes or Personal Trainer sessions.", "MEMBERSHIP_REQUIRED", 403);
+                "Bạn cần có gói hội viên còn hiệu lực để đặt lớp Yoga hoặc buổi tập PT.", "MEMBERSHIP_REQUIRED", 403);
 
         if (SuspendedUntil(await _repository.GetNoShowTimesAsync(memberUserId, now - NoShowWindow - Suspension, cancellationToken), now) is { } until)
             return Result<YogaBookingResponse>.Failure(
                 string.Create(CultureInfo.InvariantCulture,
-                    $"You cannot book yoga classes until {until + YogaTime.GymOffset:dd/MM/yyyy HH:mm} after {NoShowLimit} no-shows within 30 days."),
+                    $"Bạn không thể đặt lớp yoga đến {until + YogaTime.GymOffset:dd/MM/yyyy HH:mm} vì đã vắng mặt {NoShowLimit} lần trong 30 ngày."),
                 "YOGA_BOOKING_SUSPENDED", 403);   // GBR-84
 
         if (yogaClass.ClassStatus is not (YogaClassStatus.Open or YogaClassStatus.Full) || now >= yogaClass.RegistrationDeadline)
-            return Result<YogaBookingResponse>.Failure("Registration for this class is closed.", "REGISTRATION_CLOSED", 409);   // GBR-78
+            return Result<YogaBookingResponse>.Failure("Lớp học này đã hết hạn đăng ký.", "REGISTRATION_CLOSED", 409);   // GBR-78
 
         var confirmed = Confirmed(yogaClass).ToList();
         if (confirmed.Any(b => b.MemberUserId == memberUserId))   // GBR-79
             return Result<YogaBookingResponse>.Failure(
-                "You already have another active class or training session scheduled during this time slot.", "ALREADY_BOOKED", 409);   // MSG-32
+                "Bạn đã có lớp học hoặc buổi tập khác trong khung giờ này.", "ALREADY_BOOKED", 409);   // MSG-32
 
         var waitlist = await _repository.GetWaitlistAsync(yogaClass.Id, cancellationToken);
         var myWaitlistEntry = waitlist.FirstOrDefault(w => w.MemberUserId == memberUserId);
@@ -85,17 +85,17 @@ public sealed class YogaBookingService : IYogaBookingService
         if (confirmed.Count >= yogaClass.MaxParticipants)
             return myWaitlistEntry is not null
                 ? Result<YogaBookingResponse>.Failure(
-                    $"The class is still full. You are number {myWaitlistEntry.Position} on the waitlist.", "ALREADY_WAITLISTED", 409)
+                    $"Lớp vẫn đang đủ chỗ. Bạn đang ở vị trí số {myWaitlistEntry.Position} trong danh sách chờ.", "ALREADY_WAITLISTED", 409)
                 : await JoinWaitlistAsync(memberUserId, yogaClass, waitlist, now, cancellationToken);
 
         var taken = confirmed.Where(b => b.MatNumber is not null).Select(b => b.MatNumber!.Value).ToHashSet();
         var mat = request.MatNumber ?? Enumerable.Range(1, yogaClass.MaxParticipants).FirstOrDefault(n => !taken.Contains(n));
         if (mat > yogaClass.MaxParticipants)
             return Result<YogaBookingResponse>.Failure(
-                $"Choose a mat from 1 to {yogaClass.MaxParticipants}.", "INVALID_MAT", 400);
+                $"Hãy chọn thảm từ 1 đến {yogaClass.MaxParticipants}.", "INVALID_MAT", 400);
         if (mat == 0 || taken.Contains(mat))
             return Result<YogaBookingResponse>.Failure(
-                "The selected mat position has just been reserved by another member. Please choose another mat.", "MAT_TAKEN", 409);   // MSG-33
+                "Vị trí thảm này vừa được hội viên khác đặt. Vui lòng chọn thảm khác.", "MAT_TAKEN", 409);   // MSG-33
 
         var booking = new YogaBooking
         {
@@ -112,7 +112,7 @@ public sealed class YogaBookingService : IYogaBookingService
             yogaClass.ClassStatus = YogaClassStatus.Full;   // GBR-80
         await _repository.SaveChangesAsync(cancellationToken);
         return Result<YogaBookingResponse>.Success(new YogaBookingResponse(
-            booking.Id, yogaClass.Id, yogaClass.ClassName, "Confirmed", mat, null, "Yoga booking created successfully."), 201);   // MSG-04
+            booking.Id, yogaClass.Id, yogaClass.ClassName, "Confirmed", mat, null, "Đặt lớp yoga thành công."), 201);   // MSG-04
     }
 
     public async Task<Result<MyYogaBookingsResponse>> GetMyBookingsAsync(string memberUserId, CancellationToken cancellationToken = default)
@@ -163,7 +163,7 @@ public sealed class YogaBookingService : IYogaBookingService
     {
         var booking = await _repository.GetBookingAsync(bookingId, cancellationToken);
         if (booking is null || booking.MemberUserId != memberUserId || booking.BookingStatus != YogaBookingStatus.Confirmed)
-            return Result<YogaBookingResponse>.Failure("Yoga booking not found.", "YOGA_BOOKING_NOT_FOUND", 404);
+            return Result<YogaBookingResponse>.Failure("Không tìm thấy lượt đặt lớp yoga.", "YOGA_BOOKING_NOT_FOUND", 404);
 
         Result<YogaBookingResponse> result = null!;
         await _repository.ExecuteInTransactionAsync(async () =>
@@ -181,13 +181,13 @@ public sealed class YogaBookingService : IYogaBookingService
         var yogaClass = (await _repository.GetClassAsync(booking.YogaClassId, cancellationToken))!;
         var next = NextSession(yogaClass, now);
         if (next is null)
-            return Result<YogaBookingResponse>.Failure("This class has no upcoming session to cancel.", "NO_UPCOMING_SESSION", 409);
+            return Result<YogaBookingResponse>.Failure("Lớp này không còn buổi học sắp tới để hủy.", "NO_UPCOMING_SESSION", 409);
 
         // GBR-83: free up to 2 hours before the next session; later only after the member accepts MSG-34.
         var late = YogaTime.ToUtc(next.ScheduledDate, next.StartTime) - now < LateCancellationCutoff;
         if (late && !request.ConfirmLateCancellation)
             return Result<YogaBookingResponse>.Failure(
-                "Class cancellations must be submitted at least 2 hours prior to start time. Late cancellation incurs a no-show penalty.",
+                "Phải hủy lớp trước giờ bắt đầu ít nhất 2 giờ. Hủy muộn sẽ bị tính là một lần vắng mặt.",
                 "LATE_CANCELLATION_CONFIRM", 409);   // MSG-34
 
         booking.BookingStatus = YogaBookingStatus.Cancelled;
@@ -213,18 +213,18 @@ public sealed class YogaBookingService : IYogaBookingService
         if ((await _repository.GetWaitlistAsync(yogaClass.Id, cancellationToken)).FirstOrDefault(w => w.NotifiedAt is null) is { } first)
         {
             first.NotifiedAt = now;
-            var notice = AuditedWriter.Notify(first.MemberUserId, null, "A yoga seat is free",
-                $"A seat opened in {yogaClass.ClassName}. Book it now to confirm your place.", nameof(YogaClass),
+            var notice = AuditedWriter.Notify(first.MemberUserId, null, "Lớp yoga vừa có chỗ trống",
+                $"Lớp {yogaClass.ClassName} vừa có chỗ trống. Hãy đặt ngay để giữ chỗ.", nameof(YogaClass),
                 NotificationType.YogaBookingConfirmed);
             notice.EntityId = yogaClass.Id;
             _repository.Add(notice);
         }
         await _repository.SaveChangesAsync(cancellationToken);
 
-        var message = "Yoga booking updated successfully.";   // MSG-03
+        var message = "Cập nhật đặt lớp yoga thành công.";   // MSG-03
         if (late && SuspendedUntil(await _repository.GetNoShowTimesAsync(booking.MemberUserId, now - NoShowWindow - Suspension, cancellationToken), now) is { } until)
             message += string.Create(CultureInfo.InvariantCulture,
-                $" This is your third no-show within 30 days, so yoga booking is suspended until {until + YogaTime.GymOffset:dd/MM/yyyy HH:mm}.");
+                $" Đây là lần vắng mặt thứ ba trong 30 ngày nên bạn bị khóa đặt lớp yoga đến {until + YogaTime.GymOffset:dd/MM/yyyy HH:mm}.");
         return Result<YogaBookingResponse>.Success(new YogaBookingResponse(
             booking.Id, yogaClass.Id, yogaClass.ClassName, "Cancelled", booking.MatNumber, null, message));
     }
@@ -238,7 +238,7 @@ public sealed class YogaBookingService : IYogaBookingService
     {
         var next = NextSession(yogaClass, now);
         if (next is null)
-            return Result<YogaBookingResponse>.Failure("Registration for this class is closed.", "REGISTRATION_CLOSED", 409);
+            return Result<YogaBookingResponse>.Failure("Lớp học này đã hết hạn đăng ký.", "REGISTRATION_CLOSED", 409);
         var entry = new YogaWaitlist
         {
             YogaClassScheduleId = next.Id,
@@ -251,7 +251,7 @@ public sealed class YogaBookingService : IYogaBookingService
         await _repository.SaveChangesAsync(cancellationToken);
         return Result<YogaBookingResponse>.Success(new YogaBookingResponse(
             null, yogaClass.Id, yogaClass.ClassName, "Waitlisted", null, entry.Position,
-            $"The class is full. You are number {entry.Position} on the waitlist; we will notify you when a seat opens."), 202);
+            $"Lớp đã đủ chỗ. Bạn ở vị trí số {entry.Position} trong danh sách chờ; chúng tôi sẽ báo khi có chỗ trống."), 202);
     }
 
     /// <summary>GBR-84: end of the booking ban if some no-show in the last 7 days was the 3rd within 30 days, else null.</summary>
@@ -268,5 +268,5 @@ public sealed class YogaBookingService : IYogaBookingService
 
     private static IEnumerable<YogaBooking> Confirmed(YogaClass c) => c.Bookings.Where(b => b.BookingStatus == YogaBookingStatus.Confirmed);
 
-    private static Result<T> NotFound<T>() => Result<T>.Failure("Yoga class not found.", "YOGA_CLASS_NOT_FOUND", 404);
+    private static Result<T> NotFound<T>() => Result<T>.Failure("Không tìm thấy lớp yoga.", "YOGA_CLASS_NOT_FOUND", 404);
 }

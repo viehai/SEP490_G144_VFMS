@@ -55,7 +55,7 @@
                     <tbody>
                         @if (_studios.Count == 0)
                         {
-                            <tr><td colspan="5" class="px-5 py-6 text-[#6F6966]">No matching records found.</td></tr>
+                            <tr><td colspan="5" class="px-5 py-6 text-[#6F6966]">Không tìm thấy kết quả phù hợp.</td></tr>
                         }
                         @foreach (var s in _studios)
                         {
@@ -85,7 +85,7 @@
             <ul class="divide-y divide-[#D8D1CD] border border-[#D8D1CD] bg-[#F8F5F2] rounded-lg">
                 @if (_types.Count == 0)
                 {
-                    <li class="px-5 py-6 text-sm text-[#6F6966]">No matching records found.</li>
+                    <li class="px-5 py-6 text-sm text-[#6F6966]">Không tìm thấy kết quả phù hợp.</li>
                 }
                 @foreach (var t in _types)
                 {
@@ -149,7 +149,7 @@
             <div class="space-y-4">
                 @if (_classes.Count == 0)
                 {
-                    <p class="border border-[#D8D1CD] bg-[#F8F5F2] px-5 py-6 text-sm text-[#6F6966] rounded-xl">No matching records found.</p>
+                    <p class="border border-[#D8D1CD] bg-[#F8F5F2] px-5 py-6 text-sm text-[#6F6966] rounded-xl">Không tìm thấy kết quả phù hợp.</p>
                 }
                 @foreach (var c in _classes)
                 {
@@ -202,7 +202,7 @@
                                     <tbody>
                                         @if (_sessions.Count == 0)
                                         {
-                                            <tr><td colspan="7" class="py-3 text-[#6F6966]">No matching records found.</td></tr>
+                                            <tr><td colspan="7" class="py-3 text-[#6F6966]">Không tìm thấy kết quả phù hợp.</td></tr>
                                         }
                                         @foreach (var s in _sessions)
                                         {
@@ -294,7 +294,7 @@
         await Run(() => _studioEditId is { } id
                 ? Api.PutAsync<YogaStudioResponse>($"api/yoga/studios/{id}", body)
                 : Api.PostAsync<YogaStudioResponse>("api/yoga/studios", body),
-            _studioEditId is null ? "Yoga studio created successfully." : "Yoga studio updated successfully.",
+            _studioEditId is null ? "Tạo phòng yoga thành công." : "Cập nhật phòng yoga thành công.",
             async () => { ResetStudio(); _studios = await Api.GetAsync<List<YogaStudioResponse>>("api/yoga/studios?includeInactive=true"); });
     }
 
@@ -303,7 +303,7 @@
 
     private Task ToggleStudio(YogaStudioResponse s) =>
         Run(() => Api.PostAsync<YogaStudioResponse>($"api/yoga/studios/{s.Id}/{(s.IsActive ? "deactivate" : "activate")}"),
-            "Yoga studio updated successfully.",
+            "Cập nhật phòng yoga thành công.",
             async () => _studios = await Api.GetAsync<List<YogaStudioResponse>>("api/yoga/studios?includeInactive=true"));
 
     // Types
@@ -313,7 +313,7 @@
         await Run(() => _typeEditId is { } id
                 ? Api.PutAsync<YogaClassTypeResponse>($"api/yoga/class-types/{id}", body)
                 : Api.PostAsync<YogaClassTypeResponse>("api/yoga/class-types", body),
-            "Class type saved successfully.",
+            "Lưu loại lớp thành công.",
             async () => { _typeEditId = null; _typeName = string.Empty; _typeDescription = null; _types = await Api.GetAsync<List<YogaClassTypeResponse>>("api/yoga/class-types"); });
     }
 
@@ -326,7 +326,7 @@
         await Run(() => _classEditId is { } id
                 ? Api.PutAsync<YogaClassResponse>($"api/yoga/classes/{id}", body)
                 : Api.PostAsync<YogaClassResponse>("api/yoga/classes", body),
-            _classEditId is null ? "Yoga class created successfully." : "Yoga class updated successfully.",
+            _classEditId is null ? "Tạo lớp yoga thành công." : "Cập nhật lớp yoga thành công.",
             () => { ResetClass(); return Task.CompletedTask; });
     }
 
@@ -370,7 +370,7 @@
         await Run(() => _sessionEditId is { } id
                 ? Api.PutAsync<YogaSessionResponse>($"api/yoga/sessions/{id}", body)
                 : Api.PostAsync<YogaSessionResponse>("api/yoga/sessions", body),
-            "Yoga session saved successfully.",
+            "Lưu buổi học thành công.",
             async () => { _sessionEditId = null; await LoadSessions(c.Id); });
     }
 
