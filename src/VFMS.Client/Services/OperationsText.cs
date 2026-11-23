@@ -7,7 +7,7 @@ public static class OperationsText
 {
     public static readonly string[] EquipmentStatuses = ["Operational", "UnderMaintenance", "Damaged", "Retired"];
     public static readonly string[] IncidentTypes = ["Malfunction", "Damage", "Safety", "Other"];
-    public static readonly string[] IssueStatuses = ["Reported", "InProgress", "Escalated", "Resolved", "MarkedSafe"];
+    public static readonly string[] IssueStatuses = ["InProgress", "Escalated", "Resolved"];
     public static readonly string[] ProposalStatuses = ["Draft", "Submitted", "Approved", "Rejected", "Completed"];
     public static readonly string[] ProductStatuses = ["Active", "Inactive", "OutOfStock"];
     public static readonly string[] OrderStatuses = ["Pending", "Processing", "ReadyForPickup", "OutForDelivery", "Completed", "Cancelled"];
@@ -29,11 +29,9 @@ public static class OperationsText
         "Safety" => "Mất an toàn",
         "Other" => "Khác",
         // Issues
-        "Reported" => "Mới báo",
         "InProgress" => "Đang xử lý",
-        "Escalated" => "Chuyển quản lý",
-        "Resolved" => "Đã xử lý",
-        "MarkedSafe" => "Đã xác nhận an toàn",
+        "Escalated" => "Chờ quản lý sửa",
+        "Resolved" => "Đã xong",
         // Proposals
         "Draft" => "Bản nháp",
         "Submitted" => "Chờ duyệt",
@@ -65,9 +63,9 @@ public static class OperationsText
     public static string Badge(string? status) =>
         "inline-block whitespace-nowrap rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide " + status switch
         {
-            "Operational" or "Resolved" or "MarkedSafe" or "Approved" or "Completed" or "Active"
+            "Operational" or "Resolved" or "Approved" or "Completed" or "Active"
                 => "border-emerald-200 bg-emerald-50 text-[#16A34A]",
-            "Reported" or "Pending" or "InProgress" or "Submitted" or "Processing" or "ReadyForPickup" or "OutForDelivery"
+            "Pending" or "InProgress" or "Submitted" or "Processing" or "ReadyForPickup" or "OutForDelivery"
                 or "UnderMaintenance" or "Draft"
                 => "border-amber-200 bg-amber-50 text-[#D97706]",
             "Damaged" or "Escalated" or "Rejected" or "OutOfStock" or "Safety"
@@ -75,7 +73,7 @@ public static class OperationsText
             _ => "border-[#D8D1CD] bg-[#ECE8E4] text-[#6B7280]"
         };
 
-    /// <summary>A status filter option with its count, e.g. "Mới báo (3)"; "Tất cả (12)" when <paramref name="status"/> is empty.</summary>
+    /// <summary>A status filter option with its count, e.g. "Đang xử lý (3)"; "Tất cả (12)" when <paramref name="status"/> is empty.</summary>
     public static string CountLabel(string? status, VFMS.Contracts.Operations.StatusCountsResponse? counts)
     {
         var label = string.IsNullOrEmpty(status) ? "Tất cả" : Label(status);
@@ -84,17 +82,17 @@ public static class OperationsText
         return $"{label} ({count})";
     }
 
-    /// <summary>How long an open issue has waited, e.g. "Mở 9 ngày"; null once it is closed (Resolved or MarkedSafe).</summary>
+    /// <summary>How long an open issue has waited, e.g. "Mở 9 ngày"; null once it is closed (Resolved).</summary>
     public static string? IssueAge(string status, DateTime reportedAtUtc, DateTime nowUtc)
     {
-        if (status is "Resolved" or "MarkedSafe") return null;
+        if (status == "Resolved") return null;
         var age = nowUtc - reportedAtUtc;
-        return age.TotalHours < 1 ? "Mới báo" : age.TotalDays < 1 ? $"Mở {(int)age.TotalHours} giờ" : $"Mở {(int)age.TotalDays} ngày";
+        return age.TotalHours < 1 ? "Vừa báo" : age.TotalDays < 1 ? $"Mở {(int)age.TotalHours} giờ" : $"Mở {(int)age.TotalDays} ngày";
     }
 
     /// <summary>An open issue that has waited too long: a Safety issue after 1 day, any other after 3 days.</summary>
     public static bool IssueOverdue(string status, string incidentType, DateTime reportedAtUtc, DateTime nowUtc) =>
-        status is not ("Resolved" or "MarkedSafe")
+        status != "Resolved"
         && nowUtc - reportedAtUtc >= (incidentType == "Safety" ? TimeSpan.FromDays(1) : TimeSpan.FromDays(3));
 
     /// <summary>Vietnamese names for the entity types the audit log records, in the order of the "Đối tượng" filter.</summary>
@@ -147,7 +145,6 @@ public static class OperationsText
         "EQUIPMENT_ISSUE_DUPLICATE" => "Thiết bị này đã có báo cáo sự cố đang mở.",
         "EQUIPMENT_ISSUE_NOT_FOUND" => "Không tìm thấy báo cáo sự cố.",
         "EQUIPMENT_ISSUE_INVALID_STATE" => "Báo cáo sự cố không ở trạng thái cho phép thao tác này.",
-        "EQUIPMENT_ISSUE_UNDER_REPAIR" => "Thiết bị đang được quản lý sửa chữa.",
         "PROPOSAL_INCOMPLETE" => "Đề xuất cần mô tả và ít nhất một hạng mục trước khi gửi.",
         "PROPOSAL_NOTE_REQUIRED" => "Cần nhập ghi chú khi từ chối hoặc yêu cầu sửa.",
         "PROPOSAL_EQUIPMENT_NOT_FOUND" => "Thiết bị liên quan không tồn tại.",

@@ -239,7 +239,7 @@ public sealed class EquipmentTests
     }
 
     [Fact]
-    public async Task ReportCreatesReportedIssueAndNotifiesStaff()
+    public async Task NewReportGoesStraightToStaffAndNotifiesThem()
     {
         var repo = new Repo();
         var eq = repo.SeedEquipment(EquipmentStatus.Operational);
@@ -247,7 +247,7 @@ public sealed class EquipmentTests
         var result = await Issues(repo).ReportAsync(new ReportEquipmentIssueRequest(eq.Id, "malfunction", "Belt slips"), Member, null);
 
         Assert.Equal(201, result.StatusCode);
-        Assert.Equal("Reported", result.Data!.Status);
+        Assert.Equal("InProgress", result.Data!.Status);
         Assert.Equal("Malfunction", result.Data.IncidentType);
         var note = Assert.Single(repo.Notifications);
         Assert.Equal(Staff, note.RecipientUserId);
@@ -270,26 +270,26 @@ public sealed class EquipmentTests
     }
 
     [Fact]
-    public async Task MarkingASafetyReportSafePutsTheMachineBackInUse()
+    public async Task ClosingASafetyReportPutsTheMachineBackInUse()
     {
         var repo = new Repo();
         var eq = repo.SeedEquipment(EquipmentStatus.Operational);
         var service = Issues(repo);
         var issue = (await service.ReportAsync(new ReportEquipmentIssueRequest(eq.Id, "Safety", "Loose bolt"), Member, null)).Data!;
 
-        Assert.True((await service.MarkSafeAsync(issue.Id, "Tightened, safe", Staff, null)).IsSuccess);
+        Assert.True((await service.ResolveAsync(issue.Id, "Tightened, safe", Staff, null)).IsSuccess);
         Assert.Equal(EquipmentStatus.Operational, eq.EquipmentStatus);
     }
 
     [Fact]
-    public async Task MarkingSafeKeepsTheMachineOutWhileAnotherIssueIsOpen()
+    public async Task ClosingKeepsTheMachineOutWhileAnotherIssueIsOpen()
     {
         var repo = new Repo();
         var eq = repo.SeedEquipment(EquipmentStatus.Damaged);
         repo.SeedIssue(eq, EquipmentIssueStatus.Escalated);
-        var second = repo.SeedIssue(eq, EquipmentIssueStatus.Reported);
+        var second = repo.SeedIssue(eq, EquipmentIssueStatus.InProgress);
 
-        Assert.True((await Issues(repo).MarkSafeAsync(second.Id, "Not this part", Staff, null)).IsSuccess);
+        Assert.True((await Issues(repo).ResolveAsync(second.Id, "Not this part", Staff, null)).IsSuccess);
         Assert.Equal(EquipmentStatus.Damaged, eq.EquipmentStatus);
     }
 
@@ -299,7 +299,7 @@ public sealed class EquipmentTests
         var repo = new Repo();
         var retired = repo.SeedEquipment(EquipmentStatus.Retired);
         var eq = repo.SeedEquipment(EquipmentStatus.Operational);
-        repo.SeedIssue(eq, EquipmentIssueStatus.Reported);
+        repo.SeedIssue(eq, EquipmentIssueStatus.InProgress);
         var service = Issues(repo);
 
         Assert.Equal("EQUIPMENT_RETIRED", (await service.ReportAsync(new(retired.Id, "Damage", "x"), Member, null)).ErrorCode);
@@ -307,23 +307,20 @@ public sealed class EquipmentTests
         Assert.True((await service.ReportAsync(new(eq.Id, "Damage", "x", ConfirmDuplicate: true), Member, null)).IsSuccess);
     }
 
-    // ── Staff (UC-72) ────────────────────────────────────────────
+    // ── Staff (UC-72): fix it and close it, or pass it to the Manager ──
 
     [Fact]
-    public async Task StaffResolveRequiresStartThenRecordsSafetyAndRestoresEquipment()
+    public async Task StaffFixesASmallProblemAndClosesTheIssue()
     {
         var repo = new Repo();
         var eq = repo.SeedEquipment(EquipmentStatus.Operational);
-        var issue = repo.SeedIssue(eq, EquipmentIssueStatus.Reported);
-        var service = Issues(repo);
+        var issue = repo.SeedIssue(eq, EquipmentIssueStatus.InProgress);
 
-        var tooEarly = await service.ResolveAsync(issue.Id, "Tightened belt", Staff, null);
-        await service.StartHandlingAsync(issue.Id, Staff, null);
-        var resolved = await service.ResolveAsync(issue.Id, "Tightened belt", Staff, null);
+        var resolved = await Issues(repo).ResolveAsync(issue.Id, "Tightened belt", Staff, null);
 
-        Assert.Equal("EQUIPMENT_ISSUE_INVALID_STATE", tooEarly.ErrorCode);
         Assert.Equal("Resolved", resolved.Data!.Status);
         Assert.Equal(EquipmentStatus.Operational, eq.EquipmentStatus);
+        Assert.Equal("Tightened belt", resolved.Data.ResolutionNote);
         Assert.Single(repo.SafetyConfirmations);
         Assert.Contains(repo.Notifications, n => n.RecipientUserId == Member);
     }
@@ -333,7 +330,7 @@ public sealed class EquipmentTests
     {
         var repo = new Repo();
         var eq = repo.SeedEquipment(EquipmentStatus.Operational);
-        var issue = repo.SeedIssue(eq, EquipmentIssueStatus.Reported);
+        var issue = repo.SeedIssue(eq, EquipmentIssueStatus.InProgress);
 
         var result = await Issues(repo).EscalateAsync(issue.Id, "Motor burnt", Staff, null);
 
@@ -344,53 +341,45 @@ public sealed class EquipmentTests
     }
 
     [Fact]
-    public async Task MarkSafeKeepsEquipmentStatus()
+    public async Task StaffCannotCloseAnIssueThatIsWithTheManager()
     {
         var repo = new Repo();
-        var eq = repo.SeedEquipment(EquipmentStatus.Operational);
-        var issue = repo.SeedIssue(eq, EquipmentIssueStatus.Reported);
+        var eq = repo.SeedEquipment(EquipmentStatus.Damaged);
+        var issue = repo.SeedIssue(eq, EquipmentIssueStatus.Escalated);
+        var service = Issues(repo);
 
-        var result = await Issues(repo).MarkSafeAsync(issue.Id, "Works fine", Staff, null);
+        Assert.Equal("EQUIPMENT_ISSUE_INVALID_STATE", (await service.ResolveAsync(issue.Id, "Fixed", Staff, null)).ErrorCode);
+        Assert.Equal("EQUIPMENT_ISSUE_INVALID_STATE", (await service.EscalateAsync(issue.Id, "Again", Staff, null)).ErrorCode);
+        Assert.Equal(EquipmentStatus.Damaged, eq.EquipmentStatus);
+    }
 
-        Assert.Equal("MarkedSafe", result.Data!.Status);
+    // ── Manager (UC-73): repaired, or retire the equipment ───────
+
+    [Fact]
+    public async Task ManagerRepairPutsTheMachineBackInUse()
+    {
+        var repo = new Repo();
+        var eq = repo.SeedEquipment(EquipmentStatus.Damaged);
+        var issue = repo.SeedIssue(eq, EquipmentIssueStatus.Escalated);
+
+        var confirmed = await Issues(repo).ConfirmSafeAsync(issue.Id, "Motor replaced", Manager, null);
+
+        Assert.Equal("Resolved", confirmed.Data!.Status);
         Assert.Equal(EquipmentStatus.Operational, eq.EquipmentStatus);
         Assert.Single(repo.SafetyConfirmations);
     }
 
-    // ── Manager repairs (UC-73) ──────────────────────────────────
-
     [Fact]
-    public async Task RepairFlowFromEscalatedToOperational()
+    public async Task ManagerActsOnlyOnEscalatedIssuesAndDisposeRetires()
     {
         var repo = new Repo();
         var eq = repo.SeedEquipment(EquipmentStatus.Damaged);
-        var issue = repo.SeedIssue(eq, EquipmentIssueStatus.Escalated);
+        var withStaff = repo.SeedIssue(eq, EquipmentIssueStatus.InProgress);
+        var escalated = repo.SeedIssue(eq, EquipmentIssueStatus.Escalated);
         var service = Issues(repo);
 
-        var started = await service.StartRepairAsync(issue.Id, Manager, null);
-        var staffBlocked = await service.ResolveAsync(issue.Id, "Fixed", Staff, null);
-        var notSafe = await service.MarkNotSafeAsync(issue.Id, "Still sparks", Manager, null);
-        var damagedAfterNotSafe = eq.EquipmentStatus;
-        var confirmed = await service.ConfirmSafeAsync(issue.Id, "Motor replaced", Manager, null);
-
-        Assert.Equal("InProgress", started.Data!.Status);
-        Assert.Equal("EQUIPMENT_ISSUE_UNDER_REPAIR", staffBlocked.ErrorCode);
-        Assert.Equal("InProgress", notSafe.Data!.Status);
-        Assert.Equal(EquipmentStatus.Damaged, damagedAfterNotSafe);
-        Assert.Equal("Resolved", confirmed.Data!.Status);
-        Assert.Equal(EquipmentStatus.Operational, eq.EquipmentStatus);
-    }
-
-    [Fact]
-    public async Task ConfirmSafeNeedsRepairStartedAndDisposeRetires()
-    {
-        var repo = new Repo();
-        var eq = repo.SeedEquipment(EquipmentStatus.Damaged);
-        var issue = repo.SeedIssue(eq, EquipmentIssueStatus.Escalated);
-        var service = Issues(repo);
-
-        var early = await service.ConfirmSafeAsync(issue.Id, "ok", Manager, null);
-        var disposed = await service.DisposeAsync(issue.Id, "Beyond repair", Manager, null);
+        var early = await service.ConfirmSafeAsync(withStaff.Id, "ok", Manager, null);
+        var disposed = await service.DisposeAsync(escalated.Id, "Beyond repair", Manager, null);
 
         Assert.Equal("EQUIPMENT_ISSUE_INVALID_STATE", early.ErrorCode);
         Assert.Equal("Resolved", disposed.Data!.Status);
@@ -440,9 +429,9 @@ public sealed class EquipmentTests
         var repo = new Repo();
         var equipment = repo.SeedEquipment(EquipmentStatus.Operational);
         var now = DateTime.UtcNow;
-        Issue(repo, equipment, IncidentType.Safety, EquipmentIssueStatus.Reported, now.AddDays(-2));
+        Issue(repo, equipment, IncidentType.Safety, EquipmentIssueStatus.InProgress, now.AddDays(-2));
         Issue(repo, equipment, IncidentType.Malfunction, EquipmentIssueStatus.Resolved, now.AddDays(-20), resolvedAt: now.AddDays(-19));
-        Issue(repo, equipment, IncidentType.Damage, EquipmentIssueStatus.MarkedSafe, now.AddDays(-200), resolvedAt: now.AddDays(-199));
+        Issue(repo, equipment, IncidentType.Damage, EquipmentIssueStatus.Resolved, now.AddDays(-200), resolvedAt: now.AddDays(-199));
 
         var summary = (await new EquipmentService(repo, Mapper()).GetIssueSummaryAsync(equipment.Id)).Data!;
 
@@ -476,7 +465,7 @@ public sealed class EquipmentTests
         var repo = new Repo();
         var busy = repo.SeedEquipment(EquipmentStatus.Operational);
         var quiet = repo.SeedEquipment(EquipmentStatus.Operational);
-        Issue(repo, busy, IncidentType.Damage, EquipmentIssueStatus.Reported, DateTime.UtcNow.AddDays(-3));
+        Issue(repo, busy, IncidentType.Damage, EquipmentIssueStatus.InProgress, DateTime.UtcNow.AddDays(-3));
         Issue(repo, busy, IncidentType.Damage, EquipmentIssueStatus.Resolved, DateTime.UtcNow.AddDays(-10));
         Issue(repo, quiet, IncidentType.Other, EquipmentIssueStatus.Resolved, DateTime.UtcNow.AddDays(-120));
 
@@ -491,14 +480,14 @@ public sealed class EquipmentTests
     {
         var repo = new Repo();
         var equipment = repo.SeedEquipment(EquipmentStatus.Operational);
-        repo.SeedIssue(equipment, EquipmentIssueStatus.Reported);
-        repo.SeedIssue(equipment, EquipmentIssueStatus.Reported);
+        repo.SeedIssue(equipment, EquipmentIssueStatus.InProgress);
+        repo.SeedIssue(equipment, EquipmentIssueStatus.InProgress);
         repo.SeedIssue(equipment, EquipmentIssueStatus.Escalated);
 
         var counts = (await Issues(repo).GetIssueCountsAsync()).Data!;
 
-        Assert.Equal(5, counts.Counts.Count);
-        Assert.Equal(2, counts.Counts["Reported"]);
+        Assert.Equal(3, counts.Counts.Count);
+        Assert.Equal(2, counts.Counts["InProgress"]);
         Assert.Equal(1, counts.Counts["Escalated"]);
         Assert.Equal(0, counts.Counts["Resolved"]);
         Assert.Equal(3, counts.Total);
@@ -645,7 +634,7 @@ public sealed class EquipmentTests
 
         public Task<bool> HasOpenIssueAsync(int equipmentId, int? excludingIssueId, CancellationToken cancellationToken = default) =>
             Task.FromResult(_issues.Any(i => i.EquipmentId == equipmentId && i.Id != excludingIssueId &&
-                i.IssueStatus is EquipmentIssueStatus.Reported or EquipmentIssueStatus.InProgress or EquipmentIssueStatus.Escalated));
+                i.IssueStatus is EquipmentIssueStatus.InProgress or EquipmentIssueStatus.Escalated));
 
         public Task<(IReadOnlyList<EquipmentIssueReport> Items, int TotalCount)> SearchIssuesAsync(
             EquipmentIssueQuery query, CancellationToken cancellationToken = default)
@@ -671,11 +660,11 @@ public sealed class EquipmentTests
             var mine = _issues.Where(i => i.EquipmentId == equipmentId).ToList();
             return Task.FromResult(new EquipmentIssueStats(
                 mine.Count,
-                mine.Count(i => i.IssueStatus is EquipmentIssueStatus.Reported or EquipmentIssueStatus.InProgress or EquipmentIssueStatus.Escalated),
+                mine.Count(i => i.IssueStatus is EquipmentIssueStatus.InProgress or EquipmentIssueStatus.Escalated),
                 mine.Count(i => i.ReportedAt >= recentSinceUtc),
                 mine.Count(i => i.IncidentType == IncidentType.Safety),
                 mine.Count == 0 ? null : mine.Max(i => i.ReportedAt),
-                mine.Where(i => i.IssueStatus is EquipmentIssueStatus.Resolved or EquipmentIssueStatus.MarkedSafe).Max(i => i.ResolvedAt)));
+                mine.Where(i => i.IssueStatus == EquipmentIssueStatus.Resolved).Max(i => i.ResolvedAt)));
         }
 
         public Task<IReadOnlyDictionary<int, int>> CountRecentIssuesAsync(

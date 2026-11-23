@@ -118,8 +118,7 @@ public sealed class OperationsApiClient(HttpClient http, AuthSession session) : 
             ("page", Number(request.Page)), ("pageSize", Number(request.PageSize))), ct);
 
     /// <summary>
-    /// Runs an issue action. Staff: start, resolve, escalate, mark-safe.
-    /// Manager: repair/start, repair/confirm-safe, repair/not-safe, repair/dispose.
+    /// Runs an issue action, always with a note. Staff: resolve, escalate. Manager: repair/confirm-safe, repair/dispose.
     /// </summary>
     public Task<EquipmentIssueResponse> IssueActionAsync(int id, string action, string? note, CancellationToken ct = default) =>
         SendAsync<EquipmentIssueResponse>(HttpMethod.Post, $"{IssuesPath}/{id}/{action}", ct,

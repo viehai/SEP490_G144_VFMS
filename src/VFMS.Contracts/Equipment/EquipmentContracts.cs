@@ -62,8 +62,8 @@ public sealed record EquipmentResponse(
 );
 
 /// <summary>
-/// Issue history of one piece of equipment. Open issues are Reported, InProgress or Escalated; closed ones are
-/// Resolved or MarkedSafe. <see cref="RepeatedIssues"/> is true when it had at least
+/// Issue history of one piece of equipment. Open issues are InProgress or Escalated; closed ones are
+/// Resolved. <see cref="RepeatedIssues"/> is true when it had at least
 /// <see cref="RepeatedIssueThreshold"/> reports in the last <see cref="RecentDays"/> days.
 /// </summary>
 public sealed record EquipmentIssueSummaryResponse(
@@ -96,7 +96,7 @@ public sealed record ReportEquipmentIssueRequest(
 );
 
 /// <summary>
-/// Status: Reported, InProgress, Escalated, Resolved, MarkedSafe. Search matches the equipment name or code.
+/// Status: InProgress, Escalated, Resolved. Search matches the equipment name or code.
 /// Sort: newest (default) or severity (Safety, then Damage, Malfunction, Other; newest first within each).
 /// </summary>
 public sealed record EquipmentIssueListRequest(

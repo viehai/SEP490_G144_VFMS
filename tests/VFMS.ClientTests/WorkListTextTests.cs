@@ -13,7 +13,7 @@ public sealed class WorkListTextTests
 {
     private static readonly StatusCountsResponse Counts = new(new Dictionary<string, int>
     {
-        ["Reported"] = 4, ["InProgress"] = 2, ["Escalated"] = 1, ["Resolved"] = 2, ["MarkedSafe"] = 1,
+        ["InProgress"] = 6, ["Escalated"] = 1, ["Resolved"] = 3,
         ["Pending"] = 1, ["ReadyForPickup"] = 1, ["OutForDelivery"] = 1, ["Completed"] = 16, ["Cancelled"] = 3,
     });
 
@@ -36,9 +36,9 @@ public sealed class WorkListTextTests
     private static readonly DateTime Now = new(2026, 11, 23, 12, 0, 0, DateTimeKind.Utc);
 
     [Theory]
-    [InlineData("Reported", "Safety", 0.5, "Mới báo", false)]
-    [InlineData("Reported", "Safety", 5, "Mở 5 giờ", false)]
-    [InlineData("Reported", "Safety", 30, "Mở 1 ngày", true)]          // Safety is overdue after a day
+    [InlineData("InProgress", "Safety", 0.5, "Vừa báo", false)]
+    [InlineData("InProgress", "Safety", 5, "Mở 5 giờ", false)]
+    [InlineData("InProgress", "Safety", 30, "Mở 1 ngày", true)]          // Safety is overdue after a day
     [InlineData("InProgress", "Malfunction", 30, "Mở 1 ngày", false)]
     [InlineData("Escalated", "Damage", 9 * 24, "Mở 9 ngày", true)]     // anything else after three days
     [InlineData("Resolved", "Safety", 9 * 24, null, false)]            // closed issues show no age

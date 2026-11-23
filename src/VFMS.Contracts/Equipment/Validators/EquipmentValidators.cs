@@ -6,7 +6,7 @@ internal static class EquipmentRules
 {
     public static readonly string[] EquipmentStatuses = ["Operational", "UnderMaintenance", "Damaged", "Retired"];
     public static readonly string[] IncidentTypes = ["Malfunction", "Damage", "Safety", "Other"];
-    public static readonly string[] IssueStatuses = ["Reported", "InProgress", "Escalated", "Resolved", "MarkedSafe"];
+    public static readonly string[] IssueStatuses = ["InProgress", "Escalated", "Resolved"];
     public static readonly string[] EquipmentSorts = ["name", "code", "newest", "purchase_date"];
     public static readonly string[] IssueSorts = ["newest", "severity"];
 
