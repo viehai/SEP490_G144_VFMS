@@ -4,6 +4,7 @@
 @using VFMS.Contracts.Yoga
 @using Microsoft.AspNetCore.Components.Authorization
 @inject VfmsApiClient Api
+@inject IJSRuntime JS
 
 <PageTitle>Lịch Yoga | Victor Fitness</PageTitle>
 
@@ -257,7 +258,7 @@
     {
         var (status, label, canBook, mine) = State(s);
         var tone = (s.YogaClassId == ClassId ? "ring-2 ring-[#B83A3A] ring-offset-1 " : "") + (mine ? "border-[#B83A3A] bg-[#F3E4E2]" : s.FreeSeats > 0 ? "border-[#D8D1CD] bg-white" : "border-amber-200 bg-amber-50");
-        return @<article class="@($"mb-1.5 space-y-1.5 rounded-lg border p-2 last:mb-0 {tone}")" aria-label="@($"{s.ClassName}, {DayName(s.ScheduledDate)} {s.StartTime:HH:mm}, {label}")">
+        return @<article data-yoga-class="@s.YogaClassId" class="@($"mb-1.5 space-y-1.5 rounded-lg border p-2 last:mb-0 {tone}")" aria-label="@($"{s.ClassName}, {DayName(s.ScheduledDate)} {s.StartTime:HH:mm}, {label}")">
             <p class="font-semibold leading-tight text-[#242424]">@s.ClassName</p>
             <p class="text-[11px] leading-snug text-[#6F6966]">@s.StartTime.ToString("HH:mm")–@s.EndTime.ToString("HH:mm") · @VFMS.Client.Components.Memberships.YogaClassCard.LevelName(s.DifficultyLevel)<br />@s.StudioName (tầng @s.FloorNumber) · @s.InstructorName</p>
             <StatusBadge Status="@status" Label="@label" />
@@ -319,6 +320,17 @@
         try { _instructors = await Api.GetAsync<List<YogaInstructorResponse>>("api/yoga/instructors"); }
         catch (ApiException) { /* filter stays empty; VfmsApiClient already logged which call failed */ }
         await Task.WhenAll(Load(), LoadMine());
+    }
+
+    private bool _scrolled;
+
+    // Bring the linked class into view once, on whichever layout (desktop grid or phone list) is showing.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_scrolled || ClassId is not { } id || _loading || !_sessions.Any(x => x.YogaClassId == id)) return;
+        _scrolled = true;
+        await JS.InvokeVoidAsync("eval",
+            $"[...document.querySelectorAll('[data-yoga-class=\"{id}\"]')].find(e => e.offsetParent)?.scrollIntoView({{ behavior: 'smooth', block: 'center' }})");
     }
 
     private async Task Move(int days) { _from = _from.AddDays(days); await Load(); }
