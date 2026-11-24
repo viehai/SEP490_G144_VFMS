@@ -10,6 +10,23 @@ public static class YogaRules
 
     public static bool IsDifficulty(string? value) =>
         value is not null && DifficultyLevels.Contains(value.Trim(), StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>1 Beginner, 2 Intermediate, 3 Advanced; 0 for anything else.</summary>
+    public static int LevelRank(string? level) =>
+        level is null ? 0 : Array.FindIndex(DifficultyLevels, d => d.Equals(level.Trim(), StringComparison.OrdinalIgnoreCase)) + 1;
+
+    /// <summary>
+    /// A yoga plan of <paramref name="planLevel"/> books classes of that level and every level below it.
+    /// A null plan level (plans sold before levels existed) books every class.
+    /// </summary>
+    public static bool PlanCovers(string? planLevel, string? classLevel) =>
+        planLevel is null || LevelRank(planLevel) >= LevelRank(classLevel);
+
+    /// <summary>Vietnamese label: Cơ bản / Trung bình / Nâng cao.</summary>
+    public static string LevelLabel(string? level) => LevelRank(level) switch
+    {
+        1 => "Cơ bản", 2 => "Trung bình", 3 => "Nâng cao", _ => level ?? string.Empty,
+    };
 }
 
 public sealed class YogaStudioRequestValidator : AbstractValidator<YogaStudioRequest>

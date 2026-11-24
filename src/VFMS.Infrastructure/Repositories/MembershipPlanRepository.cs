@@ -86,7 +86,6 @@ public sealed class MembershipPlanRepository(VfmsDbContext context)
             .Where(p => p.PackageStatus == PackageStatus.Active
                      && p.Components.Any(c => c.ComponentType == componentType))
             .Include(p => p.Components.Where(c => c.ComponentType == componentType))
-                .ThenInclude(c => c.YogaClassType)
             .OrderBy(p => p.Name).ThenBy(p => p.Id)
             .ToListAsync(cancellationToken);
 
@@ -111,8 +110,7 @@ public sealed class MembershipPlanRepository(VfmsDbContext context)
                     comp.DurationDays,
                     comp.DurationMonths,
                     comp.SessionCount,
-                    comp.YogaClassTypeId,
-                    comp.YogaClassType?.TypeName,
+                    comp.YogaDifficultyLevel,
                     comp.ApplicableTrainerLevel?.ToString(),
                     comp.PTFreezeMinimumDays,
                     comp.PTFreezeMaxTotalDays,

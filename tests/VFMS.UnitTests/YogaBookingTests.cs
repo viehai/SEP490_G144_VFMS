@@ -32,10 +32,10 @@ public sealed class YogaBookingTests
         return (repo, new YogaBookingService(repo, new FixedClock(NowOffset)), yogaClass);
     }
 
-    private static MemberMembership Membership(string user, ComponentType type = ComponentType.YOGA, int? classTypeId = null) => new()
+    private static MemberMembership Membership(string user, ComponentType type = ComponentType.YOGA, string? level = null) => new()
     {
         MemberUserId = user, MembershipStatus = MembershipStatus.Active, StartDate = Today.AddDays(-5), EndDate = Today.AddDays(25),
-        PackageComponent = new PackageComponent { ComponentType = type, YogaClassTypeId = classTypeId }
+        PackageComponent = new PackageComponent { ComponentType = type, YogaDifficultyLevel = level }
     };
 
     [Fact]
@@ -93,20 +93,60 @@ public sealed class YogaBookingTests
         Assert.Equal(YogaWaitlistStatus.Promoted, entry.WaitlistStatus);
     }
 
-    [Theory]
-    [InlineData(ComponentType.GYM, null)]   // gym-only package
-    [InlineData(ComponentType.YOGA, 99)]    // yoga package for another class type
-    public async Task BookingNeedsAnActiveYogaPackageForThisClassType(ComponentType type, int? classTypeId)   // MSG-31
+    [Fact]
+    public async Task BookingNeedsAnActiveYogaPackage()   // MSG-31
     {
         var (repo, service, _) = Setup();
         repo.Memberships.Clear();
-        repo.Memberships.Add(Membership("m1", type, classTypeId));
+        repo.Memberships.Add(Membership("m1", ComponentType.GYM));   // gym-only package
 
         var result = await service.BookAsync("m1", new YogaBookingRequest(1));
 
         Assert.Equal((403, "MEMBERSHIP_REQUIRED"), (result.StatusCode, result.ErrorCode));
-        repo.Memberships.Add(Membership("m1", ComponentType.YOGA, 4));
+        repo.Memberships.Add(Membership("m1", ComponentType.YOGA, "Beginner"));
         Assert.True((await service.BookAsync("m1", new YogaBookingRequest(1))).IsSuccess);
+    }
+
+    // A yoga plan books classes of its level and every level below it; plans sold before levels existed book everything.
+    [Theory]
+    [InlineData("Beginner", "Beginner", true)]
+    [InlineData("Beginner", "Intermediate", false)]
+    [InlineData("Beginner", "Advanced", false)]
+    [InlineData("Intermediate", "Beginner", true)]
+    [InlineData("Intermediate", "Intermediate", true)]
+    [InlineData("Intermediate", "Advanced", false)]
+    [InlineData("Advanced", "Beginner", true)]
+    [InlineData("Advanced", "Advanced", true)]
+    [InlineData(null, "Advanced", true)]
+    public async Task PlanLevelDecidesWhichClassesCanBeBooked(string? planLevel, string classLevel, bool allowed)
+    {
+        var (repo, service, yogaClass) = Setup();
+        yogaClass.DifficultyLevel = classLevel;
+        repo.Memberships.Clear();
+        repo.Memberships.Add(Membership("m1", ComponentType.YOGA, planLevel));
+
+        var result = await service.BookAsync("m1", new YogaBookingRequest(1));
+
+        Assert.Equal(allowed, result.IsSuccess);
+        if (!allowed)
+        {
+            Assert.Equal((403, "YOGA_LEVEL_NOT_COVERED"), (result.StatusCode, result.ErrorCode));
+            Assert.Contains("mua gói có độ khó cao hơn", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task WaitlistNeedsAPlanThatCoversTheLevelToo()
+    {
+        var (repo, service, yogaClass) = Setup(max: 1);
+        yogaClass.DifficultyLevel = "Advanced";
+        repo.Memberships.Clear();
+        repo.Memberships.Add(Membership("m1", ComponentType.YOGA, "Advanced"));
+        repo.Memberships.Add(Membership("m2", ComponentType.YOGA, "Beginner"));
+        Assert.True((await service.BookAsync("m1", new YogaBookingRequest(1))).IsSuccess);   // class is now full
+
+        Assert.Equal("YOGA_LEVEL_NOT_COVERED", (await service.BookAsync("m2", new YogaBookingRequest(1))).ErrorCode);
+        Assert.Empty(repo.Waitlist);
     }
 
     [Fact]

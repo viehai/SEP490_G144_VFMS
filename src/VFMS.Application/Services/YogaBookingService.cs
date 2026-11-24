@@ -2,6 +2,7 @@ using System.Globalization;
 using VFMS.Application.Interfaces;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Yoga;
+using VFMS.Contracts.Yoga.Validators;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
 
@@ -58,12 +59,17 @@ public sealed class YogaBookingService : IYogaBookingService
             !await _repository.IsActiveInstructorAsync(yogaClass.InstructorUserId, cancellationToken))   // hidden class
             return NotFound<YogaBookingResponse>();
 
-        // Precondition: an active package that includes yoga, of this class type when the package names one (MSG-31).
-        var memberships = (await _repository.GetMembershipsAsync(memberUserId, cancellationToken))
-            .Where(m => m.PackageComponent.YogaClassTypeId is null || m.PackageComponent.YogaClassTypeId == yogaClass.YogaClassTypeId);
+        // Precondition: an active yoga plan (MSG-31) whose level covers this class (a plan books its level and the ones below).
+        var memberships = await _repository.GetMembershipsAsync(memberUserId, cancellationToken);
         if (MembershipRules.Usable(memberships, YogaTime.Today(_clock), ComponentType.YOGA) is null)
             return Result<YogaBookingResponse>.Failure(
                 "Bạn cần có gói hội viên còn hiệu lực để đặt lớp Yoga hoặc buổi tập PT.", "MEMBERSHIP_REQUIRED", 403);
+        if (MembershipRules.Usable(
+                memberships.Where(m => YogaRules.PlanCovers(m.PackageComponent.YogaDifficultyLevel, yogaClass.DifficultyLevel)),
+                YogaTime.Today(_clock), ComponentType.YOGA) is null)
+            return Result<YogaBookingResponse>.Failure(
+                $"Gói yoga của bạn chưa bao gồm lớp {YogaRules.LevelLabel(yogaClass.DifficultyLevel)}. Hãy mua gói có độ khó cao hơn để được đăng ký.",
+                "YOGA_LEVEL_NOT_COVERED", 403);
 
         if (SuspendedUntil(await _repository.GetNoShowTimesAsync(memberUserId, now - NoShowWindow - Suspension, cancellationToken), now) is { } until)
             return Result<YogaBookingResponse>.Failure(
@@ -242,7 +248,6 @@ public sealed class YogaBookingService : IYogaBookingService
         var entry = new YogaWaitlist
         {
             YogaClassScheduleId = next.Id,
-            YogaClassTypeId = yogaClass.YogaClassTypeId,
             MemberUserId = memberUserId,
             Position = waitlist.Select(w => w.Position).DefaultIfEmpty(0).Max() + 1,
             JoinedAt = now
