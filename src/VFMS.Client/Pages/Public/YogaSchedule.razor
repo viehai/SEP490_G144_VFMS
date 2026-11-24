@@ -338,16 +338,33 @@
         _today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7));
         var start = DateOnly.TryParseExact(Date, "yyyy-MM-dd", out var d) ? d : _today;
         _from = start.AddDays(-(((int)start.DayOfWeek + 6) % 7));
+        await LoadUserAsync();
+        try { _instructors = await Api.GetAsync<List<YogaInstructorResponse>>("api/yoga/instructors"); }
+        catch (ApiException) { /* filter stays empty; VfmsApiClient already logged which call failed */ }
+        await Task.WhenAll(Load(), LoadMine());
+    }
+
+    private Task<AuthenticationState>? _authSeen;
+
+    // The role and the plan change after sign-in, or when a just-activated plan makes a Customer a Member.
+    private async Task LoadUserAsync()
+    {
+        _authSeen = AuthState;
         var user = AuthState is null ? null : (await AuthState).User;
         _isMember = user?.IsInRole("Member") == true;
+        _plan = null;
         if (user?.Identity?.IsAuthenticated == true)
         {
             try { _plan = await Api.GetAsync<YogaMyPlanResponse>("api/yoga/my-plan"); }
             catch (ApiException) { /* treated as no plan: the card offers buying, and the booking API still checks */ }
         }
-        try { _instructors = await Api.GetAsync<List<YogaInstructorResponse>>("api/yoga/instructors"); }
-        catch (ApiException) { /* filter stays empty; VfmsApiClient already logged which call failed */ }
-        await Task.WhenAll(Load(), LoadMine());
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_authSeen is null || ReferenceEquals(_authSeen, AuthState)) return;   // first load runs in OnInitializedAsync
+        await LoadUserAsync();
+        await LoadMine();
     }
 
     private bool _scrolled;
