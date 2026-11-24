@@ -6,6 +6,7 @@
 @using VFMS.Client.Components.Memberships
 @attribute [Authorize(Roles = "Customer,Member")]
 @inject MembershipPlanApiClient Plans
+@inject IJSRuntime JS
 @implements IDisposable
 
 <PageTitle>@(IsRenewal ? "Thanh toán gia hạn" : "Thanh toán gói tập") | Victor Fitness</PageTitle>
@@ -111,6 +112,12 @@
                     @if (purchase.Items.Any(item => !item.IsForPurchaser && item.AwaitingActivation))
                     {
                         <p class="text-sm text-vfms-text-secondary">Người nhận quà có thể chọn ngày kích hoạt trong Gói của tôi trên tài khoản của họ.</p>
+                    }
+                    @if (_pendingClass is { } pending && purchase.Items.Any(item => item.IsForPurchaser && pending.PlanIds.Contains(item.PlanId)))
+                    {
+                        @* The yoga class picked on the timetable before buying: book it once the plan is active. *@
+                        <p class="text-sm text-vfms-text">Kích hoạt gói trong Gói của tôi, rồi đăng ký lớp đã chọn.</p>
+                        <a href="@pending.ScheduleHref" class="inline-flex min-h-[44px] items-center rounded-lg border border-vfms-primary px-5 py-2 text-sm font-bold text-vfms-primary hover:bg-vfms-primary-soft">Đăng ký lớp @pending.Name ngay</a>
                     }
                     @if (purchase.Items.Any(item => item.IsForPurchaser))
                     {

@@ -22,6 +22,10 @@ public static class YogaRules
     public static bool PlanCovers(string? planLevel, string? classLevel) =>
         planLevel is null || LevelRank(planLevel) >= LevelRank(classLevel);
 
+    /// <summary>The class levels a plan of this level books, as labels: "Cơ bản, Trung bình".</summary>
+    public static string CoveredLabels(string? planLevel) =>
+        string.Join(", ", DifficultyLevels.Where(level => PlanCovers(planLevel, level)).Select(LevelLabel));
+
     /// <summary>Vietnamese label: Cơ bản / Trung bình / Nâng cao.</summary>
     public static string LevelLabel(string? level) => LevelRank(level) switch
     {

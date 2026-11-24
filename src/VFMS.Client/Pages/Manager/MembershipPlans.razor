@@ -4,6 +4,7 @@
 @using VFMS.Contracts.Common
 @using VFMS.Contracts.Memberships
 @using VFMS.Contracts.Memberships.Validators
+@using VFMS.Contracts.Yoga.Validators
 @attribute [Authorize(Roles = "Manager")]
 @inject MembershipPlanApiClient Api
 @inject IJSRuntime JS
@@ -49,7 +50,7 @@
                             <option value="@MembershipPlanServiceTypes.Gym">Gym</option>
                             <option value="@MembershipPlanServiceTypes.Yoga">Yoga</option>
                         </InputSelect>
-                        <span id="plan-service-hint" class="mt-1 block text-xs font-normal text-[#6F6966]">@(_selected is null ? "Gói Yoga cho phép đặt mọi lớp yoga. Không đổi được sau khi tạo." : "Không đổi được loại dịch vụ của gói đã tạo.")</span>
+                        <span id="plan-service-hint" class="mt-1 block text-xs font-normal text-[#6F6966]">@(_selected is null ? "Gói Yoga đặt được lớp theo cấp độ của gói. Không đổi được sau khi tạo." : "Không đổi được loại dịch vụ của gói đã tạo.")</span>
                     </label>
                     <label class="text-sm font-semibold text-[#242424]" for="plan-status">
                         Trạng thái
@@ -58,6 +59,20 @@
                             <option value="@Inactive">Ngừng bán</option>
                         </InputSelect>
                     </label>
+                    @if (IsYoga(form.ServiceType))
+                    {
+                        <label class="text-sm font-semibold text-[#242424]" for="plan-level">
+                            Cấp độ yoga
+                            <InputSelect id="plan-level" class="@Field" @bind-Value="form.YogaDifficultyLevel" required aria-describedby="plan-level-hint">
+                                <option value="">Chọn cấp độ</option>
+                                @foreach (var level in YogaRules.DifficultyLevels)
+                                {
+                                    <option value="@level">@YogaRules.LevelLabel(level)</option>
+                                }
+                            </InputSelect>
+                            <span id="plan-level-hint" class="mt-1 block text-xs font-normal text-[#6F6966]">@(string.IsNullOrEmpty(form.YogaDifficultyLevel) ? "Gói cấp cao hơn đặt được cả các lớp cấp thấp hơn." : $"Đặt được lớp: {YogaRules.CoveredLabels(form.YogaDifficultyLevel)}.")</span>
+                        </label>
+                    }
                     <label class="text-sm font-semibold text-[#242424]" for="plan-duration">
                         Thời hạn (ngày)
                         <InputNumber id="plan-duration" class="@Field" @bind-Value="form.DurationInDays" min="1" step="1" required ParsingErrorMessage="Thời hạn phải là số ngày nguyên."
@@ -88,7 +103,7 @@
         <section class="rounded-xl border border-[#D8D1CD] bg-[#F8F5F2] p-5 sm:p-6 shadow-sm" aria-labelledby="membership-plan-details">
             <h2 id="membership-plan-details" class="break-words text-base font-bold text-[#242424] border-b border-[#D8D1CD] pb-3" tabindex="-1" @ref="_panelHeading">@plan.Name</h2>
             <dl class="mt-4 grid gap-4 text-sm sm:grid-cols-2">
-                <div><dt class="font-semibold text-[#6F6966]">Loại dịch vụ</dt><dd class="font-bold text-[#242424]">@ServiceLabel(plan.ServiceType)</dd></div>
+                <div><dt class="font-semibold text-[#6F6966]">Loại dịch vụ</dt><dd class="font-bold text-[#242424]">@ServiceLabel(plan)</dd></div>
                 <div><dt class="font-semibold text-[#6F6966]">Thời hạn</dt><dd class="font-bold text-[#242424]">@Duration(plan)</dd></div>
                 <div><dt class="font-semibold text-[#6F6966]">Giá</dt><dd class="font-bold text-[#B83A3A]">@Vnd.Format(plan.Price)</dd></div>
                 <div><dt class="font-semibold text-[#6F6966]">Trạng thái</dt><dd class="font-semibold text-[#242424]">@StatusLabel(plan.Status)</dd></div>
@@ -158,7 +173,7 @@
                         {
                             <tr @key="row.Id">
                                 <th scope="row" class="max-w-56 break-words">@row.Name</th>
-                                <td>@ServiceLabel(row.ServiceType)</td>
+                                <td>@ServiceLabel(row)</td>
                                 <td>@Duration(row)</td>
                                 <td class="whitespace-nowrap font-semibold text-[#B83A3A]">@Vnd.Format(row.Price)</td>
                                 <td>@row.SubscriberCount</td>
@@ -283,7 +298,8 @@
             DurationInDays = plan.DurationInDays,
             Price = plan.Price,
             Status = IsActive(plan.Status) ? Active : Inactive,
-            ServiceType = plan.ServiceType
+            ServiceType = plan.ServiceType,
+            YogaDifficultyLevel = plan.YogaDifficultyLevel
         };
         _focusPanel = true;
     }
@@ -353,8 +369,10 @@
     private static int PageCount(PagedResponse<MembershipPlanResponse> page) => Math.Max(1, (int)Math.Ceiling((double)page.TotalCount / page.PageSize));
     private static bool IsActive(string status) => string.Equals(status, Active, StringComparison.OrdinalIgnoreCase);
     private static string StatusLabel(string status) => IsActive(status) ? "Đang mở bán" : "Ngừng bán";
-    private static string ServiceLabel(string type) =>
-        string.Equals(type, MembershipPlanServiceTypes.Yoga, StringComparison.OrdinalIgnoreCase) ? "Yoga" : "Gym";
+    private static bool IsYoga(string? type) => string.Equals(type, MembershipPlanServiceTypes.Yoga, StringComparison.OrdinalIgnoreCase);
+    // Yoga plans show their level; old ones without a level are not sold until the manager sets one.
+    private static string ServiceLabel(MembershipPlanResponse plan) => !IsYoga(plan.ServiceType) ? "Gym"
+        : plan.YogaDifficultyLevel is { } level ? $"Yoga · {YogaRules.LevelLabel(level)}" : "Yoga · Chưa có cấp độ · không bán";
     private static string Duration(MembershipPlanResponse plan) => plan.DurationInMonths is > 0 ? $"{plan.DurationInMonths} tháng"
         : plan.DurationInDays is { } days ? $"{days} ngày" : "—";
 

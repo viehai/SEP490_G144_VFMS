@@ -33,12 +33,15 @@ else if (_page is { Items.Count: > 0 } catalog)
                 <div>
                     <header class="pb-6 border-b border-[#D8D1CD]">
                         <span class="font-heading text-xs font-bold uppercase tracking-widest text-[#6F6966] block mb-1">
-                            @(IsYoga(plan.ServiceType) ? "GÓI YOGA" : "GÓI TẬP GYM")@if (saving > 0)
+                            @(IsYoga(plan.ServiceType) ? "GÓI YOGA" : "GÓI TẬP GYM")@if (IsYoga(plan.ServiceType) && plan.YogaDifficultyLevel is { } level)
+                            {
+                                <span> · @VFMS.Contracts.Yoga.Validators.YogaRules.LevelLabel(level).ToUpperInvariant()</span>
+                            }@if (saving > 0)
                             {
                                 <span class="text-[#B83A3A]"> · TIẾT KIỆM @saving%</span>
                             }
                         </span>
-                        <h3 class="font-heading text-2xl font-black uppercase text-[#242424]">@plan.Name</h3>
+                        <h3 class="font-heading text-2xl font-black uppercase text-[#242424]"><a href="/membership-plans/@plan.Id" class="hover:text-[#B83A3A] hover:underline">@plan.Name</a></h3>
                         @if (text.Tagline is not null)
                         {
                             <p class="font-body text-xs text-[#6F6966] mt-1">@text.Tagline</p>
