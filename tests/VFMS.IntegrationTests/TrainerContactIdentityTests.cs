@@ -48,7 +48,7 @@ public class TrainerContactIdentityTests : IAsyncLifetime
     public async Task ChangedEmailCannotBypassCooldownWithTheSameNormalizedPhone()
     {
         Success(await service.Submit(Request("first@example.test", "0900000010"), null, default));
-        var result = await service.Submit(Request("different@example.test", "(0900) 000-010"), null, default);
+        var result = await service.Submit(Request("different@example.test", "0900 000 010"), null, default);
         Assert.Equal("RECRUITMENT_COOLDOWN", result.ErrorCode);
         Assert.Equal(1, await db.TrainerApplications.CountAsync());
     }
@@ -87,8 +87,83 @@ public class TrainerContactIdentityTests : IAsyncLifetime
     {
         await AddUser("employee", "staff@example.test", "0900000010", role);
         Assert.Equal("TRAINER_NOT_ELIGIBLE", (await service.Submit(
-            Request("different@example.test", "(0900) 000-010"), null, default)).ErrorCode);
+            Request("different@example.test", "0900 000 010"), null, default)).ErrorCode);
         Assert.Empty(await db.TrainerApplications.ToListAsync());
+    }
+
+    [Fact]
+    public async Task PlusEightyFourAndLocalPhoneSpellingsAreTheSameNumber()
+    {
+        await AddUser("employee", "staff@example.test", "+84900000077", "Staff");
+        Success(await service.Submit(Request("first@example.test", "0900000010"), null, default));
+        Assert.Equal("RECRUITMENT_COOLDOWN", (await service.Submit(Request("different@example.test", "+84900000010"), null, default)).ErrorCode);
+        Assert.Equal("TRAINER_NOT_ELIGIBLE", (await service.Submit(Request("other@example.test", "0900000077"), null, default)).ErrorCode);
+        Assert.Equal("0900000010", (await db.TrainerApplications.SingleAsync()).PhoneNumber);
+    }
+
+    [Fact]
+    public async Task SignedInCustomerApplicationUsesAccountDetailsNotTheForm()
+    {
+        var user = await AddUser("customer", "owner@example.test", "+84900000020", "Customer");
+        Success(await service.Submit(Request("typed@example.test", "0900000098") with { FullName = "Typed Name" }, user.UserId, default));
+        var application = await db.TrainerApplications.SingleAsync();
+        Assert.Equal(("customer", "owner@example.test", "0900000020"), (application.FullName, application.Email, application.PhoneNumber));
+    }
+
+    [Fact]
+    public async Task SignedInCustomerWithAnAccountNameOver50CharactersMustFixItFirst()
+    {
+        var user = await AddUser("customer", "owner@example.test", "0900000020", "Customer");
+        user.FullName = new string('a', 51);
+        await db.SaveChangesAsync();
+        Assert.Equal("TRAINER_ACCOUNT_DETAILS_INVALID", (await service.Submit(Request("typed@example.test", "0900000098"), user.UserId, default)).ErrorCode);
+        Assert.Empty(await db.TrainerApplications.ToListAsync());
+    }
+
+    [Fact]
+    public async Task ApplicantPrefillTakesDateOfBirthAndGenderFromThePhysicalProfile()
+    {
+        var user = await AddUser("customer", "owner@example.test", "0900000020", "Customer");
+        db.Add(new PhysicalProfile { MemberUserId = user.UserId, DateOfBirth = new DateOnly(1995, 5, 6), Gender = "Female" });
+        await db.SaveChangesAsync();
+        var prefill = (await service.ApplicantPrefill(user.UserId, default)).Data!;
+        Assert.Equal(("owner@example.test", "0900000020", new DateOnly(1995, 5, 6), "Female"), (prefill.Email, prefill.PhoneNumber, prefill.DateOfBirth, prefill.Gender));
+        Success(await service.Submit(Request("typed@example.test", "0900000098") with { DateOfBirth = new DateOnly(2001, 1, 1), Gender = "Male" }, user.UserId, default));
+        var application = await db.TrainerApplications.SingleAsync();
+        Assert.Equal((new DateOnly(1995, 5, 6), "Female"), (application.DateOfBirth, application.Gender));
+        Assert.Equal("TRAINER_FORBIDDEN", (await service.ApplicantPrefill("manager", default)).ErrorCode);
+    }
+
+    [Fact]
+    public async Task TrackingCodeShowsStatusAndRejectionReasonButNeverTheInterviewNote()
+    {
+        Success(await service.Submit(Request("first@example.test", "0900000010"), null, default));
+        var application = await db.TrainerApplications.SingleAsync();
+        var code = application.TrackingCode;
+        Assert.Equal(("Pending", null), ((await service.Track(code, default)).Data!.Status, (await service.Track(code, default)).Data!.RejectionReason));
+
+        Success(await service.Review(application.Id, new("Interview", "Private interview note"), "manager", default));
+        var interviewing = (await service.Track(code, default)).Data!;
+        Assert.Equal("Interviewing", interviewing.Status);
+        Assert.Null(interviewing.RejectionReason);
+
+        Success(await service.Review(application.Id, new("Reject", "Thiếu chứng chỉ"), "manager", default));
+        var rejected = (await service.Track(" " + code + " ", default)).Data!;
+        Assert.Equal(("Rejected", "Thiếu chứng chỉ", "PT"), (rejected.Status, rejected.RejectionReason, rejected.TrainerRole));
+
+        Assert.Equal("TRAINER_APPLICATION_NOT_FOUND", (await service.Track("TR-unknown", default)).ErrorCode);
+        Assert.Equal("TRAINER_APPLICATION_NOT_FOUND", (await service.Track(new string('x', 200), default)).ErrorCode);
+    }
+
+    [Fact]
+    public async Task ManagerFindsAnApplicationByItsTrackingCode()
+    {
+        Success(await service.Submit(Request("first@example.test", "0900000010"), null, default));
+        Success(await service.Submit(Request("second@example.test", "0900000011"), null, default));
+        var code = (await db.TrainerApplications.OrderBy(a => a.Id).FirstAsync()).TrackingCode;
+        var page = (await service.Applications(new TrainerApplicationFilter(TrackingCode: code), "manager", default)).Data!;
+        Assert.Equal(1, page.TotalCount);
+        Assert.Equal(code, page.Items.Single().TrackingCode);
     }
 
     [Fact]

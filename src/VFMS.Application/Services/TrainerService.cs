@@ -57,6 +57,40 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
     private void Mail(TrainerApplication application, string email, string subject, string body) =>
         repo.QueueEmail(application, email, subject, body);
 
+    // UC 3.1: the status page link is left out when no page URL is configured, so a submission never fails over it.
+    private string TrackingLine(TrainerApplication application) =>
+        setupLinks?.TryBuildTracking(application.TrackingCode) is { } link ? $" Xem trạng thái hồ sơ tại: {link}" : "";
+
+    private async Task<TrainerApplicantPrefill?> ApplicantDetails(string actor, CancellationToken ct)
+    {
+        var user = await repo.GetUserAsync(actor, ct);
+        if (user == null)
+            return null;
+        var physical = await repo.GetPhysicalProfileAsync(actor, ct);
+        var gender = physical?.Gender is "Male" or "Female" or "Other" ? physical.Gender : null;
+        return new(user.FullName, UserIdentityRules.NormalizeEmail(user.Email), user.PhoneNumber, physical?.DateOfBirth, gender);
+    }
+
+    public async Task<Result<TrainerApplicantPrefill>> ApplicantPrefill(string actor, CancellationToken ct)
+    {
+        if (!await HasRole(actor, "Customer", ct) && !await HasRole(actor, "Member", ct))
+            return Error<TrainerApplicantPrefill>("TRAINER_FORBIDDEN", "Cần tài khoản khách hàng hoặc hội viên để thực hiện thao tác này.", 403);
+        return await ApplicantDetails(actor, ct) is { } details
+            ? Result<TrainerApplicantPrefill>.Success(details)
+            : Error<TrainerApplicantPrefill>("TRAINER_NOT_FOUND", "Không tìm thấy tài khoản.", 404);
+    }
+
+    public async Task<Result<TrainerApplicationTracking>> Track(string trackingCode, CancellationToken ct)
+    {
+        var code = trackingCode?.Trim() ?? "";
+        var a = code.Length is > 0 and <= 64 ? await repo.GetApplicationByTrackingCodeAsync(code, ct) : null;
+        if (a == null)
+            return Error<TrainerApplicationTracking>("TRAINER_APPLICATION_NOT_FOUND", "Không tìm thấy hồ sơ ứng với mã này.", 404);
+        return Result<TrainerApplicationTracking>.Success(new(a.TrackingCode, a.ApplicationType, a.ApplicationStatus.ToString(),
+            a.SubmittedAt, a.TrainerRole?.RoleName,
+            a.ApplicationStatus == TrainerApplicationStatus.Rejected ? a.ReviewNote : null));
+    }
+
     private static string HashSetupToken(string token) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"VFMS:trainer-setup:v1:{token}")));
 
@@ -140,10 +174,29 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
         if (!update && actor != null && !trainer && !await HasRole(actor, "Customer", ct) && !await HasRole(actor, "Member", ct))
             return Error<TrainerApplicationReceipt>("TRAINER_FORBIDDEN", "Cần tài khoản khách hàng hoặc hội viên để thực hiện thao tác này.", 403);
 
+        // UC 3.1: a signed-in Customer or Member applies with their account details; the form cannot change them.
+        if (!update && actor != null && !trainer)
+        {
+            var locked = await ApplicantDetails(actor, ct);
+            if (locked == null)
+                return Error<TrainerApplicationReceipt>("TRAINER_FORBIDDEN", "Cần tài khoản khách hàng hoặc hội viên để thực hiện thao tác này.", 403);
+            r = r with
+            {
+                FullName = locked.FullName,
+                Email = locked.Email,
+                PhoneNumber = locked.PhoneNumber,
+                DateOfBirth = locked.DateOfBirth ?? r.DateOfBirth,
+                Gender = locked.Gender ?? r.Gender
+            };
+            if (!(await new SubmitTrainerApplicationValidator().ValidateAsync(r, ct)).IsValid)
+                return Error<TrainerApplicationReceipt>("TRAINER_ACCOUNT_DETAILS_INVALID",
+                    "Thông tin tài khoản (họ tên, email, số điện thoại hoặc ngày sinh) chưa hợp lệ để ứng tuyển. Vui lòng cập nhật hồ sơ cá nhân.", 400);
+        }
+
         var email = UserIdentityRules.NormalizeEmail(r.Email);
         var phoneNumber = "";
         var now = DateTime.UtcNow;
-        if (!update && !UserIdentityRules.TryNormalizePhone(r.PhoneNumber, out phoneNumber))
+        if (!update && !TrainerApplicantRules.TryNormalizePhone(r.PhoneNumber, out phoneNumber))
             return Error<TrainerApplicationReceipt>("TRAINER_VALIDATION", "Số điện thoại không hợp lệ.", 400);
         if (!update && (trainer ||
             actor != null && (await repo.GetUsersWithAnyRoleAsync([actor], StaffRoles, ct)).Count > 0 ||
@@ -222,7 +275,7 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
         };
         repo.Add(a);
         await repo.SaveChangesAsync(ct);
-        Mail(a, email, "Đã nhận hồ sơ ứng tuyển huấn luyện viên", $"Mã theo dõi hồ sơ của bạn là {a.TrackingCode}. Hồ sơ đang chờ xét duyệt.");
+        Mail(a, email, "Đã nhận hồ sơ ứng tuyển huấn luyện viên", $"Mã theo dõi hồ sơ của bạn là {a.TrackingCode}. Hồ sơ đang chờ xét duyệt.{TrackingLine(a)}");
         if (update)
         {
             var managers = await repo.GetActiveUserIdsInRoleAsync("Manager", ct);
@@ -552,7 +605,10 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
         else
         {
             a.ApplicationStatus = r.Action == "Interview" ? TrainerApplicationStatus.Interviewing : TrainerApplicationStatus.Rejected;
-            if (r.Action == "Reject") Mail(a, a.Email, "Kết quả xét duyệt hồ sơ ứng tuyển huấn luyện viên", $"Hồ sơ {a.TrackingCode} đã bị từ chối. Vui lòng liên hệ phòng tập để biết chi tiết.");
+            if (r.Action == "Reject")
+                Mail(a, a.Email, "Kết quả xét duyệt hồ sơ ứng tuyển huấn luyện viên", $"Hồ sơ {a.TrackingCode} đã bị từ chối. Lý do: {Note(r)}.{TrackingLine(a)}");
+            else if (before != nameof(TrainerApplicationStatus.Interviewing))
+                Mail(a, a.Email, "Hồ sơ ứng tuyển huấn luyện viên đang được phỏng vấn", $"Hồ sơ {a.TrackingCode} đã chuyển sang trạng thái đang phỏng vấn. Vui lòng chờ phòng tập liên hệ.{TrackingLine(a)}");
         }
         if (r.Action == "Interview")
         {
@@ -808,7 +864,7 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
             {
                 var body = mail.Body ?? throw new InvalidOperationException("The queued email can no longer be read.");
                 if (body.StartsWith("SETUP:", StringComparison.Ordinal))
-                    body = "Vui lòng thiết lập mật khẩu huấn luyện viên trong vòng 48 giờ: " +
+                    body = $"Email đăng nhập của bạn là {item.Recipient}. Vui lòng thiết lập mật khẩu huấn luyện viên trong vòng 48 giờ: " +
                         (setupLinks ?? throw new InvalidOperationException("Configure the trainer password setup page URL.")).Build(body[6..]);
                 await email.SendAsync(item.Recipient, item.Subject == SetupSubject ? "Thiết lập tài khoản huấn luyện viên" : item.Subject, body, ct);
                 item.SentAt = DateTime.UtcNow;

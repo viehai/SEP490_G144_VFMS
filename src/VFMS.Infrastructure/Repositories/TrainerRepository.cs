@@ -147,6 +147,11 @@ public sealed class TrainerRepository(VfmsDbContext db, IDataProtectionProvider 
         }
         if (!string.IsNullOrEmpty(filter.TrainerRole))
             query = query.Where(x => x.TrainerRole!.RoleName == filter.TrainerRole);
+        if (!string.IsNullOrWhiteSpace(filter.TrackingCode))
+        {
+            var trackingCode = filter.TrackingCode.Trim();
+            query = query.Where(x => x.TrackingCode == trackingCode);
+        }
         if (filter.From != null)
             query = query.Where(x => x.SubmittedAt >= filter.From);
         if (filter.To != null)
@@ -167,15 +172,22 @@ public sealed class TrainerRepository(VfmsDbContext db, IDataProtectionProvider 
         CancellationToken cancellationToken = default)
     {
         email = UserIdentityRules.NormalizeEmail(email);
-        var phone = UserIdentityRules.TryNormalizePhone(phoneNumber, out var normalized) ? normalized : null;
+        var phones = TrainerApplicantRules.PhoneVariants(phoneNumber);
         var isGmail = email.EndsWith(GmailSuffix, StringComparison.Ordinal);
         var identity = email.Replace(".", "");
         return await Context.TrainerApplications.Where(x => x.ApplicationType == "Recruitment" &&
             (x.Id == applicationId || (userId != null && (x.ApplicantUserId == userId || x.HiredUserId == userId)) ||
-             (phone != null && x.PhoneNumber == phone) || x.Email.ToLower() == email ||
+             phones.Contains(x.PhoneNumber) || x.Email.ToLower() == email ||
              (isGmail && x.Email.ToLower().EndsWith(GmailSuffix) && x.Email.ToLower().Replace(".", "") == identity)))
             .ToListAsync(cancellationToken);
     }
+
+    public Task<TrainerApplication?> GetApplicationByTrackingCodeAsync(string trackingCode, CancellationToken cancellationToken = default) =>
+        Context.TrainerApplications.Include(x => x.TrainerRole)
+            .FirstOrDefaultAsync(x => x.TrackingCode == trackingCode, cancellationToken);
+
+    public Task<PhysicalProfile?> GetPhysicalProfileAsync(string userId, CancellationToken cancellationToken = default) =>
+        Context.PhysicalProfiles.FirstOrDefaultAsync(x => x.MemberUserId == userId, cancellationToken);
 
     public Task<TrainerApplication?> GetHiredRecruitmentAsync(int id, CancellationToken cancellationToken = default) =>
         Context.TrainerApplications.FirstOrDefaultAsync(x => x.Id == id && x.ApplicationType == "Recruitment" &&
@@ -202,10 +214,10 @@ public sealed class TrainerRepository(VfmsDbContext db, IDataProtectionProvider 
     private IQueryable<ApplicationUser> AccountsWithContacts(string email, string? phoneNumber)
     {
         email = UserIdentityRules.NormalizeEmail(email);
-        var phone = UserIdentityRules.TryNormalizePhone(phoneNumber ?? "", out var normalized) ? normalized : null;
+        var phones = TrainerApplicantRules.PhoneVariants(phoneNumber);
         var isGmail = email.EndsWith(GmailSuffix, StringComparison.Ordinal);
         var identity = email.Replace(".", "");
-        return Context.ApplicationUsers.Where(user => user.Email.ToLower() == email || (phone != null && user.PhoneNumber == phone) ||
+        return Context.ApplicationUsers.Where(user => user.Email.ToLower() == email || phones.Contains(user.PhoneNumber) ||
             (isGmail && user.Email.ToLower().EndsWith(GmailSuffix) && user.Email.ToLower().Replace(".", "") == identity));
     }
 

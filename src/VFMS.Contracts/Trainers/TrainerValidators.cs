@@ -57,12 +57,14 @@ public sealed class SubmitTrainerApplicationValidator : AbstractValidator<Submit
         // UC 3.3: a ProfileUpdate takes personal details from the account and TrainerProfile, so only Recruitment checks them.
         When(x => x.ApplicationType == "Recruitment", () =>
         {
-            RuleFor(x => x.FullName).NotEmpty().WithMessage("Họ tên không được để trống.").MaximumLength(256).WithMessage("Họ tên không được vượt quá {MaxLength} ký tự.");
-            RuleFor(x => x.Email).NotEmpty().WithMessage("Email không được để trống.").Must(UserIdentityRules.IsValidEmail).WithMessage("Email không hợp lệ. Vui lòng kiểm tra lại.");
-            RuleFor(x => x.PhoneNumber).NotEmpty().WithMessage("Số điện thoại không được để trống.").Must(UserIdentityRules.IsValidPhone).WithMessage("Số điện thoại không hợp lệ. Vui lòng kiểm tra lại.");
-            RuleFor(x => x.DateOfBirth).Must(d => d < DateOnly.FromDateTime(DateTime.UtcNow) && d.Year >= 1900).WithMessage("Ngày sinh không hợp lệ. Vui lòng kiểm tra lại.");
+            RuleFor(x => x.FullName).NotEmpty().WithMessage("Họ tên không được để trống.")
+                .Must(TrainerApplicantRules.IsValidName).WithMessage("Họ tên chỉ gồm chữ cái, tối đa 50 ký tự.");
+            RuleFor(x => x.Email).NotEmpty().WithMessage("Email không được để trống.").Must(TrainerApplicantRules.IsValidEmail).WithMessage("Email không hợp lệ. Vui lòng kiểm tra lại.");
+            RuleFor(x => x.PhoneNumber).NotEmpty().WithMessage("Số điện thoại không được để trống.").Must(TrainerApplicantRules.IsValidPhone).WithMessage("Số điện thoại không hợp lệ. Vui lòng nhập số điện thoại Việt Nam.");
+            RuleFor(x => x.DateOfBirth).Must(TrainerApplicantRules.IsAdult).WithMessage("Ứng viên phải từ 18 tuổi trở lên.");
             RuleFor(x => x.Gender).Must(x => x is "Male" or "Female" or "Other").WithMessage("Giới tính không hợp lệ. Vui lòng kiểm tra lại.");
-            RuleFor(x => x.ExperienceYears).InclusiveBetween(0, 80).WithMessage("Số năm kinh nghiệm phải từ {From} đến {To}.");
+            RuleFor(x => x).Must(x => TrainerApplicantRules.IsPlausibleExperience(x.DateOfBirth, x.ExperienceYears))
+                .WithMessage("Số năm kinh nghiệm không được vượt quá số năm kể từ khi đủ 18 tuổi.").OverridePropertyName("ExperienceYears");
             RuleFor(x => x.Bio).NotEmpty().WithMessage("Giới thiệu không được để trống.").MaximumLength(4000).WithMessage("Giới thiệu không được vượt quá {MaxLength} ký tự.");
         });
         // UC 3.1: free-text specialization; a ProfileUpdate may leave it empty to keep the published one (UC 3.3).
@@ -138,6 +140,7 @@ public sealed class TrainerApplicationFilterValidator : AbstractValidator<Traine
         RuleFor(x => x.ApplicationType).Must(x => x == null || x is "Recruitment" or "ProfileUpdate").WithMessage("Loại hồ sơ không hợp lệ. Vui lòng kiểm tra lại.");
         RuleFor(x => x.Page).InclusiveBetween(1, 10000).WithMessage("Số trang phải từ {From} đến {To}.");
         RuleFor(x => x.PageSize).InclusiveBetween(1, 100).WithMessage("Số mục mỗi trang phải từ {From} đến {To}.");
+        RuleFor(x => x.TrackingCode).MaximumLength(64).WithMessage("Mã theo dõi không được vượt quá {MaxLength} ký tự.");
         RuleFor(x => x.TrainerRole).Must(x => string.IsNullOrEmpty(x) || TrainerRoleNames.IsValid(x)).WithMessage("Vị trí huấn luyện viên không hợp lệ. Vui lòng kiểm tra lại.");
         RuleFor(x => x.Status).Must(x => x == null || x is "Pending" or "Interviewing" or "Hired" or "Rejected" or "UnderReview" or "Approved" or "Blacklisted").WithMessage("Trạng thái không hợp lệ. Vui lòng kiểm tra lại.");
         RuleFor(x => x).Must(x => x.From == null || x.To == null || x.From <= x.To).WithMessage("Ngày kết thúc phải bằng hoặc sau ngày bắt đầu.");

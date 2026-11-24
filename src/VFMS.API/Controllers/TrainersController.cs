@@ -28,6 +28,15 @@ public sealed class TrainersController(ITrainerService service) : ControllerBase
     public async Task<IActionResult> Submit(SubmitTrainerApplicationRequest request, CancellationToken ct) =>
         this.ToActionResult(await service.Submit(request, User.GetUserId(), ct));
 
+    [HttpGet("applications/track/{trackingCode}"), AllowAnonymous, EnableRateLimiting("trainer-public")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> Track(string trackingCode, CancellationToken ct) =>
+        this.ToActionResult(await service.Track(trackingCode, ct));
+
+    [HttpGet("applicant-prefill"), Authorize(Roles = "Customer,Member")]
+    public async Task<IActionResult> ApplicantPrefill(CancellationToken ct) =>
+        this.ToActionResult(await service.ApplicantPrefill(Actor, ct));
+
     [HttpGet("recruitment-status"), AllowAnonymous]
     public async Task<IActionResult> RecruitmentStatus(CancellationToken ct) =>
         this.ToActionResult(await service.RecruitmentStatus(ct));

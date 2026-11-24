@@ -91,6 +91,46 @@ public sealed class TrainerApiClientTests
         Assert.Equal(HttpStatusCode.Unauthorized, error.StatusCode);
     }
 
+    [Fact]
+    public async Task ApplicantPrefillNeedsASignedInAccount()
+    {
+        using var api = CreateClient(request =>
+        {
+            Assert.Equal("/api/trainers/applicant-prefill", request.RequestUri!.AbsolutePath);
+            Assert.Equal("Bearer access", request.Headers.Authorization?.ToString());
+            return Task.FromResult(Json(new TrainerApplicantPrefill("Nguyễn Văn An", "an@example.vn", "0912345678", new DateOnly(1995, 5, 6), "Male")));
+        }, authenticated: true);
+        Assert.Equal("0912345678", (await api.ApplicantPrefillAsync()).PhoneNumber);
+
+        using var guest = CreateClient(_ => throw new InvalidOperationException("Unexpected API request."));
+        var error = await Assert.ThrowsAsync<AuthApiException>(guest.ApplicantPrefillAsync);
+        Assert.Equal(HttpStatusCode.Unauthorized, error.StatusCode);
+    }
+
+    [Fact]
+    public async Task TrackingLookupIsPublicAndEncodesTheCode()
+    {
+        using var api = CreateClient(request =>
+        {
+            Assert.Null(request.Headers.Authorization);
+            Assert.EndsWith("/api/trainers/applications/track/TR-a%2Fb", request.RequestUri!.AbsoluteUri);
+            return Task.FromResult(Json(new TrainerApplicationTracking("TR-a/b", "Recruitment", "Rejected", DateTime.UtcNow, "PT", "Thiếu chứng chỉ")));
+        });
+        var tracking = await api.TrackAsync(" TR-a/b ");
+        Assert.Equal(("Rejected", "Thiếu chứng chỉ"), (tracking.Status, tracking.RejectionReason));
+    }
+
+    [Fact]
+    public async Task ManagerListFiltersByTrackingCode()
+    {
+        using var api = CreateClient(request =>
+        {
+            Assert.Equal("?TrackingCode=TR-abc&Page=1", request.RequestUri!.Query);
+            return Task.FromResult(Json(new PagedResponse<TrainerApplicationResponse>(1, 10, 0, [])));
+        }, authenticated: true);
+        Assert.Empty((await api.ApplicationsAsync(new(TrackingCode: "TR-abc"))).Items);
+    }
+
     [Theory]
     [InlineData("You can submit again after 2026-11-13T18:09:23.2543535.")]
     [InlineData("Bạn có thể nộp lại hồ sơ sau 2026-11-13T18:09:23.2543535.")]

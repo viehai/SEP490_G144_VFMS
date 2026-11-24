@@ -59,9 +59,18 @@ public sealed class TrainerApiClient(HttpClient http, AuthSession session) : IDi
     public Task<PagedResponse<TrainerApplicationResponse>> ApplicationsAsync(TrainerApplicationFilter filter, bool mine = false) =>
         Send<PagedResponse<TrainerApplicationResponse>>(HttpMethod.Get, $"{Root}/{(mine ? "me/" : "")}applications" + Query(
             ("Status", filter.Status), ("TrainerRole", filter.TrainerRole), ("ApplicationType", filter.ApplicationType),
+            ("TrackingCode", filter.TrackingCode),
             ("From", filter.From?.ToString("O", CultureInfo.InvariantCulture)),
             ("To", filter.To?.ToString("O", CultureInfo.InvariantCulture)),
             ("Page", filter.Page.ToString(CultureInfo.InvariantCulture))), auth: true);
+
+    /// <summary>UC 3.1: locked account details for a signed-in Customer or Member; fails for guests and other roles.</summary>
+    public Task<TrainerApplicantPrefill> ApplicantPrefillAsync() =>
+        Send<TrainerApplicantPrefill>(HttpMethod.Get, $"{Root}/applicant-prefill", auth: true);
+
+    /// <summary>UC 3.1: public status lookup by tracking code.</summary>
+    public Task<TrainerApplicationTracking> TrackAsync(string trackingCode) =>
+        Send<TrainerApplicationTracking>(HttpMethod.Get, $"{Root}/applications/track/{Uri.EscapeDataString(trackingCode.Trim())}");
 
     public Task<TrainerApplicationResponse> ApplicationAsync(int id) =>
         Send<TrainerApplicationResponse>(HttpMethod.Get, $"{Root}/applications/{id}", auth: true);

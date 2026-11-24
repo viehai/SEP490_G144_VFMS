@@ -173,6 +173,115 @@ public class TrainerValidationTests
         Assert.False(validator.Validate(request with { ApplicationType = "Recruitment", PhoneNumber = "" }).IsValid);
     }
 
+    // UC 3.1 applicant field rules.
+    private static SubmitTrainerApplicationRequest Applicant => new("Nguyễn Văn An", "an.nguyen@example.vn", "0912345678",
+        new(2000, 1, 1), "Male", "Strength", 3, "Coach", true, [new("proof.pdf", "%PDF-1.7"u8.ToArray())], TrainerRole: "PT");
+
+    private static bool Valid(SubmitTrainerApplicationRequest request) => new SubmitTrainerApplicationValidator().Validate(request).IsValid;
+
+    [Theory]
+    [InlineData("Nguyễn Văn An", true)]
+    [InlineData("O'Brien-Smith Jr.", true)]
+    [InlineData("", false)]
+    [InlineData("12345", false)]
+    [InlineData("@@@", false)]
+    [InlineData("An 2", false)]
+    [InlineData(" An", true)]
+    public void Name_has_letters_only(string name, bool valid) => Assert.Equal(valid, Valid(Applicant with { FullName = name }));
+
+    [Fact]
+    public void Name_is_at_most_50_characters()
+    {
+        Assert.True(Valid(Applicant with { FullName = new string('a', 50) }));
+        Assert.False(Valid(Applicant with { FullName = new string('a', 51) }));
+    }
+
+    [Theory]
+    [InlineData("a.b@gmail.com", true)]
+    [InlineData("ab@gmail.com", true)]
+    [InlineData("an@school.edu.vn", true)]
+    [InlineData("an@b-c.com", true)]
+    [InlineData("an@localhost", false)]
+    [InlineData("an@b.c", false)]
+    [InlineData("an@b.123", false)]
+    [InlineData("an@-b.com", false)]
+    [InlineData("an@b-.com", false)]
+    [InlineData("an@b..com", false)]
+    [InlineData("an@.com", false)]
+    [InlineData("an@b.com.", false)]
+    public void Email_domain_needs_a_dot_and_a_letters_only_top_level_domain(string email, bool valid) =>
+        Assert.Equal(valid, Valid(Applicant with { Email = email }));
+
+    [Theory]
+    [InlineData("0912345678", "0912345678")]
+    [InlineData("+84912345678", "0912345678")]
+    [InlineData("84912345678", "0912345678")]
+    [InlineData("0912 345 678", "0912345678")]
+    [InlineData("0912-345-678", "0912345678")]
+    [InlineData("0212345678", null)]
+    [InlineData("091234567", null)]
+    [InlineData("09123456789", null)]
+    [InlineData("(0912) 345-678", null)]
+    [InlineData("+1912345678", null)]
+    public void Phone_is_a_vietnamese_number_stored_as_a_leading_zero(string phone, string? canonical)
+    {
+        Assert.Equal(canonical != null, Valid(Applicant with { PhoneNumber = phone }));
+        Assert.Equal(canonical != null, TrainerApplicantRules.TryNormalizePhone(phone, out var normalized));
+        Assert.Equal(canonical ?? "", normalized);
+    }
+
+    [Fact]
+    public void Phone_variants_cover_every_spelling_of_the_same_number()
+    {
+        Assert.Equal(["0912345678", "+84912345678", "84912345678"], TrainerApplicantRules.PhoneVariants("+84 912 345 678"));
+        Assert.Equal(["+15551234"], TrainerApplicantRules.PhoneVariants("+1 555 1234"));
+    }
+
+    [Fact]
+    public void Applicant_must_be_at_least_18_years_old()
+    {
+        var eighteenToday = TrainerApplicantRules.Today().AddYears(-18);
+        Assert.True(Valid(Applicant with { DateOfBirth = eighteenToday, ExperienceYears = 0 }));
+        Assert.False(Valid(Applicant with { DateOfBirth = eighteenToday.AddDays(1), ExperienceYears = 0 }));
+        Assert.False(Valid(Applicant with { DateOfBirth = new DateOnly(1899, 12, 31) }));
+    }
+
+    [Theory]
+    [InlineData(30, 0, true)]
+    [InlineData(30, 12, true)]
+    [InlineData(30, 13, false)]
+    [InlineData(30, -1, false)]
+    [InlineData(18, 0, true)]
+    [InlineData(18, 1, false)]
+    public void Experience_cannot_start_before_the_applicant_turned_18(int age, int experience, bool valid) =>
+        Assert.Equal(valid, Valid(Applicant with { DateOfBirth = TrainerApplicantRules.Today().AddYears(-age), ExperienceYears = experience }));
+
+    [Fact]
+    public void Experience_error_is_reported_on_the_experience_field_for_the_form()
+    {
+        var result = new SubmitTrainerApplicationValidator().Validate(Applicant with { ExperienceYears = 40 });
+        Assert.Equal(["ExperienceYears"], result.Errors.Select(e => e.PropertyName));
+    }
+
+    [Fact]
+    public void Tracking_code_filter_is_bounded()
+    {
+        var validator = new TrainerApplicationFilterValidator();
+        Assert.True(validator.Validate(new TrainerApplicationFilter(TrackingCode: "TR-abc")).IsValid);
+        Assert.False(validator.Validate(new TrainerApplicationFilter(TrackingCode: new string('x', 65))).IsValid);
+    }
+
+    [Fact]
+    public void Tracking_link_uses_the_configured_page_or_the_reset_site()
+    {
+        var configured = new VFMS.Application.Settings.TrainerSetupLinkSettings { TrackingPageUrl = "https://gym.example.test/careers/trainer/status" };
+        Assert.Equal("https://gym.example.test/careers/trainer/status?code=TR-1", configured.TryBuildTracking("TR-1"));
+        var fallback = new VFMS.Application.Settings.TrainerSetupLinkSettings { ResetUrl = "https://gym.example.test/auth/reset?x=1" };
+        Assert.Equal("https://gym.example.test/careers/trainer/status?code=TR-1", fallback.TryBuildTracking("TR-1"));
+        Assert.Null(new VFMS.Application.Settings.TrainerSetupLinkSettings().TryBuildTracking("TR-1"));
+        Assert.Null(new VFMS.Application.Settings.TrainerSetupLinkSettings { TrackingPageUrl = "http://gym.example.test/status" }.TryBuildTracking("TR-1"));
+    }
+
     [Fact]
     public void Only_interview_and_reject_require_a_note()
     {

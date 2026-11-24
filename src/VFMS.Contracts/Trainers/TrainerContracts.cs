@@ -15,7 +15,13 @@ public sealed record TrainerApplicationReceipt(string TrackingCode, string Statu
 public sealed record TrainerRecruitmentStatus(bool IsAcceptingApplications);
 public sealed record SetTrainerRecruitmentStatusRequest(bool IsAcceptingApplications);
 public sealed record TrainerApplicationFilter(string? Status = null, string? TrainerRole = null,
-    DateTime? From = null, DateTime? To = null, int Page = 1, int PageSize = 10, string? ApplicationType = null);
+    DateTime? From = null, DateTime? To = null, int Page = 1, int PageSize = 10, string? ApplicationType = null,
+    string? TrackingCode = null);
+/// <summary>UC 3.1: what the public status page shows for a tracking code. The reason appears only for a rejected application.</summary>
+public sealed record TrainerApplicationTracking(string TrackingCode, string ApplicationType, string Status,
+    DateTime SubmittedAt, string? TrainerRole, string? RejectionReason);
+/// <summary>UC 3.1: account details the signed-in applicant cannot change on the form. Date of birth and gender come from the member's physical profile when it has them.</summary>
+public sealed record TrainerApplicantPrefill(string FullName, string Email, string PhoneNumber, DateOnly? DateOfBirth, string? Gender);
 public sealed record ReviewTrainerApplicationRequest(string Action, string? Note, string? Level = null,
     string? ExistingUserId = null, bool IdentityVerified = false);
 public sealed record UpdateTrainerProfileRequest(string? Bio = null, TrainerFileInput? Avatar = null);

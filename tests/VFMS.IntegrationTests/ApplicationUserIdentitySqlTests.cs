@@ -129,7 +129,7 @@ public sealed class ApplicationUserIdentitySqlTests
         var requests = new[]
         {
             TrainerTestDatabase.Request with { Email = " PENDING@EXAMPLE.TEST ", PhoneNumber = "0912000041" },
-            TrainerTestDatabase.Request with { Email = "new-trainer@example.test", PhoneNumber = "(0912) 000-040" }
+            TrainerTestDatabase.Request with { Email = "new-trainer@example.test", PhoneNumber = "0912 000 040" }
         };
         foreach (var request in requests)
         {

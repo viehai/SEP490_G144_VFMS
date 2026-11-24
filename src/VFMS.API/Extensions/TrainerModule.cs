@@ -19,6 +19,7 @@ public static class TrainerModule
             return new TrainerSetupLinkSettings
             {
                 SetupPageUrl = configuration["TrainerMail:SetupPageUrl"],
+                TrackingPageUrl = configuration["TrainerMail:TrackingPageUrl"],
                 ResetUrl = configuration["PasswordReset:ResetUrl"]
             };
         });

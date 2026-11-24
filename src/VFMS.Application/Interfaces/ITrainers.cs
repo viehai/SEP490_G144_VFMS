@@ -33,6 +33,9 @@ public interface ITrainerRepository : IAuditedRepository
 
     // ── Applications ─────────────────────────────────────────────
     Task<TrainerApplication?> GetApplicationAsync(int id, CancellationToken cancellationToken = default);
+    /// <summary>UC 3.1: the application a tracking code identifies, with its Trainer Role.</summary>
+    Task<TrainerApplication?> GetApplicationByTrackingCodeAsync(string trackingCode, CancellationToken cancellationToken = default);
+    Task<PhysicalProfile?> GetPhysicalProfileAsync(string userId, CancellationToken cancellationToken = default);
     /// <summary>Filtered page, newest first; ownerUserId limits it to the trainer's own applications.</summary>
     Task<(IReadOnlyList<TrainerApplication> Items, int TotalCount)> SearchApplicationsAsync(
         TrainerApplicationFilter filter, string? ownerUserId, CancellationToken cancellationToken = default);
@@ -116,6 +119,10 @@ public interface ITrainerService
     Task<Result<PagedResponse<TrainerApplicationResponse>>> Applications(TrainerApplicationFilter filter, string actor, CancellationToken ct);
     Task<Result<PagedResponse<TrainerApplicationResponse>>> MyApplications(TrainerApplicationFilter filter, string actor, CancellationToken ct);
     Task<Result<TrainerApplicationResponse>> Application(int id, string actor, CancellationToken ct);
+    /// <summary>UC 3.1: public status lookup by tracking code; an unknown code and a malformed one answer the same way.</summary>
+    Task<Result<TrainerApplicationTracking>> Track(string trackingCode, CancellationToken ct);
+    /// <summary>UC 3.1: the locked account details a signed-in Customer or Member applies with.</summary>
+    Task<Result<TrainerApplicantPrefill>> ApplicantPrefill(string actor, CancellationToken ct);
     Task<Result<TrainerApplicationResponse>> Review(int id, ReviewTrainerApplicationRequest request, string actor, CancellationToken ct);
     Task<Result<bool>> ResendSetup(int applicationId, string actor, CancellationToken ct);
     Task<Result<bool>> Setup(TrainerSetupRequest request, CancellationToken ct);

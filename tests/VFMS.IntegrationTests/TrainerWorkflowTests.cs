@@ -654,7 +654,7 @@ public class TrainerWorkflowTests
         var service = fixture.Service;
         TrainerTestDatabase.Success(await service.Submit(request, null, default));
         Assert.Equal("RECRUITMENT_COOLDOWN", (await service.Submit(request with { PhoneNumber = "0900000011" }, null, default)).ErrorCode);
-        Assert.Equal("RECRUITMENT_COOLDOWN", (await service.Submit(request with { Email = "second@example.test", PhoneNumber = "(0900) 000-010" }, null, default)).ErrorCode);
+        Assert.Equal("RECRUITMENT_COOLDOWN", (await service.Submit(request with { Email = "second@example.test", PhoneNumber = "0900 000 010" }, null, default)).ErrorCode);
         var unrelated = TrainerTestDatabase.Success(await service.Submit(request with { Email = "unrelated@example.test", PhoneNumber = "0900000012" }, null, default));
         Assert.Equal(1, unrelated.SubmissionAttempt);
 
@@ -880,7 +880,7 @@ public class TrainerWorkflowTests
         db.ChangeTracker.Clear();
         var closed = await db.TrainerApplications.SingleAsync(x => x.Id == first.Id);
         Assert.Equal(TrainerApplicationStatus.Rejected, closed.ApplicationStatus);
-        Assert.Contains("Closed automatically", closed.ReviewNote);
+        Assert.Contains("Tự động đóng", closed.ReviewNote);
         var profile = await db.TrainerProfiles.SingleAsync();
         Assert.Equal(await db.TrainerApplications.Where(application => application.Id == second.Id)
             .Select(application => application.HiredUserId).SingleAsync(), profile.PTUserId);
