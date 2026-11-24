@@ -4,8 +4,10 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using VFMS.Client.Auth;
 using VFMS.Contracts.Common;
+using VFMS.Contracts.Feedback;
 using VFMS.Contracts.Memberships;
 using VFMS.Contracts.Packages;
+using VFMS.Contracts.Promotions;
 
 namespace VFMS.Client.Services;
 
@@ -17,6 +19,9 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
     private const string RenewalsPath = "api/membership-renewals";
     private const string MembershipsPath = "api/memberships";
     private const string TransactionsPath = "api/membership-transactions";
+    public Task<MyVoucherResponse[]> MyVouchersAsync(string? orderNumber = null, CancellationToken ct = default) =>
+        SendAsync<MyVoucherResponse[]>(HttpMethod.Get, orderNumber is null ? "api/my-vouchers" :
+            $"api/my-vouchers?orderNumber={Uri.EscapeDataString(orderNumber)}", ct);
     private const string FreezePolicyPath = "api/manager/membership-freeze-policy";
     private const string FreezeRequestsPath = "api/membership-freeze-requests";
     private const string FreezeReviewsPath = "api/manager/membership-freeze-requests";
@@ -78,6 +83,15 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
         }
         return await AuthApiClient.SendAsync<PagedResponse<PackageCatalogItemResponse>>(http, request, cancellationToken);
     }
+
+    public Task<PackageDetailResponse> GetPackageDetailAsync(string type, int id, CancellationToken cancellationToken = default) =>
+        SendAsync<PackageDetailResponse>(HttpMethod.Get,
+            FormattableString.Invariant($"api/packages/{Uri.EscapeDataString(type.Trim())}/{id}"),
+            cancellationToken, allowAnonymous: true);
+
+    public Task<PackageReviewsResponse> GetPackageReviewsAsync(int id, int page, int? rating, CancellationToken cancellationToken = default) =>
+        SendAsync<PackageReviewsResponse>(HttpMethod.Get, FormattableString.Invariant($"api/packages/{id}/reviews?page={page}") +
+            (rating is int stars ? FormattableString.Invariant($"&rating={stars}") : ""), cancellationToken, allowAnonymous: true);
 
     public Task<MembershipPurchaseResponse> PurchaseAsync(MembershipPurchaseRequest request, CancellationToken cancellationToken = default) =>
         SendAsync<MembershipPurchaseResponse>(HttpMethod.Post, PurchasesPath, cancellationToken, JsonContent.Create(request), ReadPurchaseAsync);

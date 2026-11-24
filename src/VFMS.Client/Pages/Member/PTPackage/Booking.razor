@@ -7,7 +7,7 @@
 <PageTitle>Chọn lịch và gói PT | Victor Fitness</PageTitle>
 
 <section class="trainer-page trainer-public trainer-stack">
-    <a class="trainer-back" href="/trainers">← Danh sách huấn luyện viên</a>
+    <a class="trainer-back" href="@DirectoryUrl">← Danh sách huấn luyện viên</a>
     <header><h1>Chọn lịch và gói PT</h1><p class="trainer-muted">Chọn một ca cho mỗi ngày lặp. Lịch dự kiến chỉ được giữ khi bạn tiếp tục thanh toán.</p></header>
     <TrainerFeedback Error="@_error" />
     @if (_loading) { <p role="status">Đang tải gói và lịch…</p> }
@@ -95,6 +95,7 @@
     private bool _loading, _busy, _needsGym;
     private string? _error, _holdError;
     private bool ValidStart => _start >= FirstMonday && _start.DayOfWeek == DayOfWeek.Monday;
+    private string DirectoryUrl => PackageId is { } packageId ? PackageCatalogLinks.Trainers(packageId) : "/trainers";
 
     private bool CanPreview => ValidStart && _selected.Count > 0 && _selected.Values.All(id =>
         _slots.Any(slot => slot.TemplateId == id && slot.BlockedReason is null));
@@ -104,6 +105,8 @@
         _loading = true;
         _error = null;
         _trainer = null;
+        _packages = [];
+        _packageId = 0;
         _slots = [];
         _selected.Clear();
         ClearPreview();
@@ -115,9 +118,16 @@
                 _error = "Bạn không thể mua gói PT của chính mình.";
                 return;
             }
-            _trainer = trainer;
             _packages = (await Trainers.PackagesAsync()).Where(p => p.IsActive && p.TrainerLevel == trainer.Profile.Level).ToArray();
-            _packageId = _packages.FirstOrDefault(p => p.Id == PackageId)?.Id ?? _packages.FirstOrDefault()?.Id ?? 0;
+            if (PackageId is { } packageId && (!trainer.Profile.IsAcceptingNewMembers || trainer.Profile.TrainerRole != "PT" ||
+                !_packages.Any(package => package.Id == packageId)))
+            {
+                _error = "Gói PT đã chọn hiện không thể đặt với huấn luyện viên này.";
+                return;
+            }
+
+            _trainer = trainer;
+            _packageId = PackageId ?? _packages.FirstOrDefault()?.Id ?? 0;
             if (_packageId != 0)
                 await RefreshSlotsAsync();
         }

@@ -1,6 +1,7 @@
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Feedback;
 using VFMS.Domain.Entities;
+using VFMS.Domain.Enums;
 
 namespace VFMS.Application.Interfaces;
 
@@ -12,6 +13,11 @@ public interface IFeedbackRepository
     Task<IReadOnlyList<VFMS.Contracts.Feedback.FeedbackTrainerResponse>> GetTrainersAsync(
         CancellationToken cancellationToken = default);
     Task<TrainerReview?> GetAsync(int id, CancellationToken cancellationToken = default);
+    Task<Package?> GetReviewablePackageAsync(int packageId, CancellationToken cancellationToken);
+    Task<PackageReviewsResponse> ListPackageReviewsAsync(int packageId, int page, int? rating, CancellationToken cancellationToken);
+    Task<TrainerReviewStatus?> GetPackageReviewStatusAsync(int packageId, string memberId, CancellationToken cancellationToken);
+    Task<bool> HasUsedPackageAsync(int packageId, ComponentType type, string memberId, CancellationToken cancellationToken);
+    Task<bool> TryAddPackageReviewAsync(TrainerReview review, CancellationToken cancellationToken);
     Task<ApplicationUser?> GetUserAsync(string userId, CancellationToken cancellationToken = default);
     Task<TrainerReview?> FindExistingAsync(
         string trainerUserId, string memberUserId, CancellationToken cancellationToken = default);
@@ -21,6 +27,8 @@ public interface IFeedbackRepository
 
 public interface IFeedbackService
 {
+    Task<Result<PackageReviewsResponse>> GetPackageReviewsAsync(
+        int packageId, string? memberId, int page, int? rating, CancellationToken cancellationToken);
     Task<Result<PagedResponse<FeedbackResponse>>> ListAsync(
         FeedbackListRequest request, string? memberUserId = null,
         CancellationToken cancellationToken = default);

@@ -11,7 +11,7 @@ public interface ICompetitionRepository : IAuditedRepository
     // ── Competitions ─────────────────────────────────────────────
 
     Task<(IReadOnlyList<Competition> Items, int TotalCount)> SearchCompetitionsAsync(
-        CompetitionStatus? status, string? search, int page, int pageSize, CancellationToken cancellationToken = default);
+        CompetitionStatus? status, string? search, int page, int pageSize, bool includeDrafts, CancellationToken cancellationToken = default);
 
     Task<Competition?> GetCompetitionAsync(int id, CancellationToken cancellationToken = default);
 
@@ -44,5 +44,11 @@ public interface ICompetitionRepository : IAuditedRepository
 
     Task<CompetitionPrize?> GetPrizeForRankAsync(int competitionId, int rank, CancellationToken cancellationToken = default);
 
-    Task<Voucher?> GetVoucherAsync(int voucherId, CancellationToken cancellationToken = default);
+    Task<T> WithResultsLockAsync<T>(Func<Task<T>> action, CancellationToken ct);
+    Task<Voucher?> LockRewardVoucherAsync(int voucherId, CancellationToken ct);
+    Task<List<Voucher>> RewardVoucherOptionsAsync(DateTime at, CancellationToken ct);
+    Task<int> CountCommittedAsync(int voucherId, int? excludingCompetitionId, CancellationToken ct);
+    Task<int> CountUserCommitmentsAsync(int voucherId, string userId, CancellationToken ct);
+    Task<List<CompetitionJoin>> GetFinalistsAsync(int competitionId, CancellationToken ct);
+    Task<Dictionary<int,string>> GetMemberAwardsAsync(string userId, int[] competitionIds, CancellationToken ct);
 }

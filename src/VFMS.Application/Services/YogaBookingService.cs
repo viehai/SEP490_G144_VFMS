@@ -61,7 +61,8 @@ public sealed class YogaBookingService : IYogaBookingService
         // Precondition: an active package that includes yoga, of this class type when the package names one (MSG-31).
         var memberships = (await _repository.GetMembershipsAsync(memberUserId, cancellationToken))
             .Where(m => m.PackageComponent.YogaClassTypeId is null || m.PackageComponent.YogaClassTypeId == yogaClass.YogaClassTypeId);
-        if (MembershipRules.Usable(memberships, YogaTime.Today(_clock), ComponentType.YOGA) is null)
+        var membership = MembershipRules.Usable(memberships, YogaTime.Today(_clock), ComponentType.YOGA);
+        if (membership is null)
             return Result<YogaBookingResponse>.Failure(
                 "An active membership package is required to book Yoga classes or Personal Trainer sessions.", "MEMBERSHIP_REQUIRED", 403);
 
@@ -100,6 +101,7 @@ public sealed class YogaBookingService : IYogaBookingService
         var booking = new YogaBooking
         {
             YogaClassId = yogaClass.Id,
+            OrderItemId = membership.OrderItemId,
             MemberUserId = memberUserId,
             MatNumber = mat,
             BookedAt = now,

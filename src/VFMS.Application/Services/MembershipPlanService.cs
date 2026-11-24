@@ -176,7 +176,10 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
 
     private static MembershipPlanCatalogItemResponse ToCatalogResponse(MembershipPlanReadModel plan) =>
         new(plan.Id, plan.Name, plan.Description, DisplayDays(plan.DurationDays, plan.DurationMonths), plan.Price,
-            FormatStatus(plan.Status), LegacyMonths(plan), plan.ServiceType.ToString());
+            FormatStatus(plan.Status), LegacyMonths(plan), plan.ServiceType.ToString())
+        {
+            IsSingleService = plan.IsSingleService
+        };
 
     private static ComponentType? ParseServiceType(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : Enum.Parse<ComponentType>(value.Trim(), ignoreCase: true);
@@ -230,10 +233,53 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
                 items.Select(ToCatalogItemResponse).ToArray()));
     }
 
+    public async Task<Result<PackageDetailResponse>> GetPackageDetailAsync(
+        string type, int id, CancellationToken cancellationToken)
+    {
+        if (!TryParseComponentType(type, out var componentType))
+            return Result<PackageDetailResponse>.Failure("Loại gói tập không hợp lệ.", "INVALID_COMPONENT_TYPE", 400);
+
+        var packages = await repository.ListActiveSingleServicePackagesAsync(cancellationToken);
+        var package = packages.SingleOrDefault(item => item.Id == id && item.ComponentType == componentType);
+        if (package is null)
+            return Result<PackageDetailResponse>.Failure("Không tìm thấy gói tập đang mở bán.", "PACKAGE_NOT_FOUND", 404);
+
+        var recommendations = packages.Where(item => item.Id != id)
+            .GroupBy(item => item.ComponentType)
+            .OrderBy(group => group.Key == componentType ? -1 : (int)group.Key)
+            .Select(group => group.Key == componentType
+                ? group.OrderBy(item => RecommendationDistance(package, item))
+                    .ThenBy(item => decimal.Abs(item.Price - package.Price))
+                    .ThenBy(item => item.Id).First()
+                : group.OrderBy(item => item.Price).ThenBy(item => item.Id).First())
+            .Select(ToCatalogItemResponse)
+            .ToArray();
+
+        return Result<PackageDetailResponse>.Success(new(ToCatalogItemResponse(package), recommendations));
+    }
+
+    private static long RecommendationDistance(PackageCatalogReadModel reference, PackageCatalogReadModel candidate)
+    {
+        if (reference.ComponentType == ComponentType.PT)
+            return Distance(reference.SessionCount, candidate.SessionCount);
+
+        return Distance(ComparableDuration(reference), ComparableDuration(candidate));
+    }
+
+    private static long Distance(long? reference, long? candidate) =>
+        reference is { } left && candidate is { } right ? Math.Abs(left - right) : long.MaxValue;
+
+    // Convert months to comparable days only for ranking catalog cards.
+    private static long? ComparableDuration(PackageCatalogReadModel package) =>
+        package.DurationDays is > 0 ? package.DurationDays.Value :
+        package.DurationMonths is > 0 ? 30L * package.DurationMonths.Value : null;
+
     private static bool TryParseComponentType(string? type, out ComponentType result)
     {
         result = default;
-        return type is not null && Enum.TryParse(type.Trim(), ignoreCase: true, out result);
+        var name = type?.Trim();
+        return Enum.TryParse(name, ignoreCase: true, out result) && Enum.IsDefined(result) &&
+            string.Equals(name, result.ToString(), StringComparison.OrdinalIgnoreCase);
     }
 
     private static PackageCatalogItemResponse ToCatalogItemResponse(PackageCatalogReadModel m) =>
@@ -256,5 +302,8 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
             m.MaxFreezeDaysPerRequest,
             m.MaxFreezeCount,
             m.AccessStartTime,
-            m.AccessEndTime);
+            m.AccessEndTime)
+        {
+            IsSingleService = m.IsSingleService
+        };
 }

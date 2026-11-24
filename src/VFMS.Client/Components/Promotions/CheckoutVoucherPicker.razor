@@ -1,0 +1,18 @@
+<button type="button" class="picker-toggle" disabled="@Disabled" aria-expanded="@(_open ? "true" : "false")" @onclick="() => _open = !_open">
+    @(_open ? "Đóng danh sách voucher" : "Chọn voucher")
+</button>
+@if (_open)
+{
+    <CheckoutVoucherChoices @key="OrderNumber" OrderNumber="@OrderNumber" OnChoose="ChooseAsync" Disabled="@Disabled" />
+}
+@code {
+    [Parameter, EditorRequired] public string OrderNumber { get; set; } = "";
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public EventCallback<string> OnChoose { get; set; }
+    private bool _open;
+    private async Task ChooseAsync(string code)
+    {
+        _open = false;
+        await OnChoose.InvokeAsync(code);
+    }
+}

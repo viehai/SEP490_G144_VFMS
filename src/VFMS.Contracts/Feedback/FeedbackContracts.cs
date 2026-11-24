@@ -1,3 +1,5 @@
+using VFMS.Contracts.Common;
+
 namespace VFMS.Contracts.Feedback;
 
 public sealed record FeedbackListRequest(
@@ -10,7 +12,7 @@ public sealed record FeedbackListRequest(
 
 public sealed record FeedbackReplyRequest(string? Reply);
 
-public sealed record FeedbackSubmitRequest(string? TrainerUserId, int Rating, string? Comment);
+public sealed record FeedbackSubmitRequest(string? TrainerUserId, int Rating, string? Comment, int? PackageId = null);
 
 public sealed record FeedbackResponse(
     int Id,
@@ -25,8 +27,20 @@ public sealed record FeedbackResponse(
     bool IsVisible,
     DateTime CreatedAt,
     DateTime? ReviewedAt,
-    string? ReviewedByName
+    string? ReviewedByName,
+    string? PackageName = null
 );
+
+public sealed record PublicPackageReview(
+    int Id, string MemberName, int Rating, string? Comment, DateTime CreatedAt, string? ManagerReply);
+
+public sealed record PackageReviewsResponse(
+    int TotalReviews, double? AverageRating, PagedResponse<PublicPackageReview> Reviews)
+{
+    public const int PageSize = 5;
+    public bool CanReview { get; init; }
+    public string? MyReviewStatus { get; init; }
+}
 
 public sealed record FeedbackTrainerResponse(
     string UserId,

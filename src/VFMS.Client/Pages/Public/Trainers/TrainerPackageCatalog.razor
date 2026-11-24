@@ -38,7 +38,7 @@
                 var bookingUrl = $"/pt-booking/{Id}?package={package.Id}";
                 <article class="trainer-panel pt-plan-card" @key="package.Id">
                     <div>
-                        <h2>@package.Name</h2>
+                        <h2><a class="trainer-link" href="@(PackageCatalogLinks.Detail("pt", package.Id))">@package.Name</a></h2>
                         <p class="trainer-muted">@package.Credits buổi · 60 phút mỗi buổi</p>
                     </div>
                     <strong class="pt-plan-price">@Money(package.Price)</strong>
@@ -60,7 +60,7 @@
                             }
                         </Authorized>
                         <NotAuthorized>
-                            <a class="trainer-button trainer-primary pt-plan-action" href="@($"/auth/login?returnUrl={Uri.EscapeDataString($"/trainers/{Id}/packages")}")">Đăng nhập để đăng ký</a>
+                            <a class="trainer-button trainer-primary pt-plan-action" href="@($"/auth/login?returnUrl={Uri.EscapeDataString(bookingUrl)}")">Đăng nhập để đăng ký</a>
                         </NotAuthorized>
                     </AuthorizeView>
                     @if (!string.IsNullOrWhiteSpace(package.Description))

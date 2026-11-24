@@ -47,16 +47,23 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
     private int _inactive;
     private DateOnly Today => DateOnly.FromDateTime(_clock.Now.ToOffset(TimeSpan.FromHours(7)).DateTime);
 
-    public async Task InitializeAsync()
+    public Task InitializeAsync() => StartApplicationAsync();
+
+    private async Task StartApplicationAsync(string? sqlServer = null)
     {
-        await _connection.OpenAsync();
+        if (sqlServer is null) await _connection.OpenAsync();
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Testing" });
         builder.WebHost.UseTestServer();
         builder.Services.AddControllers().AddApplicationPart(typeof(MembershipPurchasesController).Assembly);
         builder.Services.AddFluentValidationAutoValidation();
         builder.Services.AddValidatorsFromAssemblyContaining<MembershipPurchaseRequestValidator>();
-        var dbOptions = new DbContextOptionsBuilder<VfmsDbContext>().UseSqlite(_connection).Options;
-        builder.Services.AddScoped<VfmsDbContext>(_ => new TestContext(dbOptions));
+        if (sqlServer is null)
+        {
+            var dbOptions = new DbContextOptionsBuilder<VfmsDbContext>().UseSqlite(_connection).Options;
+            builder.Services.AddScoped<VfmsDbContext>(_ => new TestContext(dbOptions));
+        }
+        else
+            builder.Services.AddDbContext<VfmsDbContext>(options => options.UseSqlServer(sqlServer));
         builder.Services.AddSingleton<TimeProvider>(_clock);
         builder.Configuration["MembershipPayments:BankId"] = "MB";
         builder.Configuration["MembershipPayments:AccountNumber"] = BankAccount;
@@ -77,6 +84,7 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
         builder.Services.AddMembershipFreezeReviewModule();
         builder.Services.AddMembershipFreezeLifecycleModule();
         builder.Services.AddPromotionModule();
+        builder.Services.AddCompetitionModule();
         var worker = builder.Services.Single(service =>
             service.ServiceType == typeof(IHostedService) && service.ImplementationType == typeof(MembershipCommerceWorker));
         builder.Services.Remove(worker);

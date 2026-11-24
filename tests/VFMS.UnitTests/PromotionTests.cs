@@ -406,8 +406,9 @@ public sealed class PromotionTests
             Task.FromResult(Vouchers.SingleOrDefault(v => v.Id == id) is { } voucher ? Read(voucher) : null);
         public Task<Voucher?> GetForUpdateAsync(int id, CancellationToken ct) =>
             Task.FromResult(Vouchers.SingleOrDefault(v => v.Id == id));
-        public Task<int> GetUsedCountAsync(int id, CancellationToken ct) => Task.FromResult(UsedCount);
         public Task<int> GetCommittedCapacityAsync(int id, CancellationToken ct) => Task.FromResult(UsedCount);
+        public Task<int> GetMaxCommittedPerUserAsync(int id, CancellationToken ct) => Task.FromResult(0);
+        public Task<bool> HasRewardCommitmentsAsync(int id, CancellationToken ct) => Task.FromResult(false);
         public Task<bool> CodeExistsAsync(string normalizedCode, int? excludingId, CancellationToken ct) =>
             Task.FromResult(Vouchers.Any(v => v.Id != excludingId &&
                 string.Equals(v.Code.Trim(), normalizedCode, StringComparison.OrdinalIgnoreCase)));
@@ -454,6 +455,7 @@ public sealed class PromotionTests
 
         private PromotionReadModel Read(Voucher voucher) => new(voucher.Id, voucher.Name, voucher.Code,
             voucher.DiscountType, voucher.DiscountValue, voucher.MinimumSpend, voucher.MaxDiscountAmount,
-            voucher.MaxRedemptions, UsedCount, voucher.StartAt, voucher.EndAt, voucher.VoucherStatus);
+            voucher.MaxRedemptions, UsedCount, voucher.StartAt, voucher.EndAt, voucher.VoucherStatus, voucher.Audience,
+            voucher.MaxRedemptionsPerUser, voucher.NewCustomerDuration, voucher.NewCustomerUnit, 0);
     }
 }

@@ -14,9 +14,11 @@ public sealed class CompetitionRepository : AuditedRepositoryBase, ICompetitionR
     // ── Competitions ─────────────────────────────────────────────
 
     public async Task<(IReadOnlyList<Competition> Items, int TotalCount)> SearchCompetitionsAsync(
-        CompetitionStatus? status, string? search, int page, int pageSize, CancellationToken cancellationToken = default)
+        CompetitionStatus? status, string? search, int page, int pageSize, bool includeDrafts, CancellationToken cancellationToken = default)
     {
         var query = Context.Competitions.AsNoTracking().AsQueryable();
+        if (!includeDrafts)
+            query = query.Where(c => c.Status != CompetitionStatus.Draft);
         if (status.HasValue)
             query = query.Where(c => c.Status == status);
         if (search is not null)
@@ -104,8 +106,44 @@ public sealed class CompetitionRepository : AuditedRepositoryBase, ICompetitionR
     public Task<CompetitionPrize?> GetPrizeForRankAsync(int competitionId, int rank, CancellationToken cancellationToken = default) =>
         Context.CompetitionPrizes.FirstOrDefaultAsync(p => p.CompetitionId == competitionId && p.Rank == rank, cancellationToken);
 
-    public Task<Voucher?> GetVoucherAsync(int voucherId, CancellationToken cancellationToken = default) =>
-        Context.Vouchers.FirstOrDefaultAsync(v => v.Id == voucherId, cancellationToken);
+    public async Task<T> WithResultsLockAsync<T>(Func<Task<T>> action, CancellationToken ct)
+    {
+        await using var transaction = await Context.Database.BeginTransactionAsync(ct);
+        // Configuration, staff scoring and UC-66 confirmation share one short write lock.
+        await AppLockAsync("VFMS.CompetitionResults", "Hệ thống đang cập nhật kết quả cuộc thi. Vui lòng thử lại.", ct);
+        var result = await action();
+        await transaction.CommitAsync(ct);
+        return result;
+    }
+
+    public Task<Voucher?> LockRewardVoucherAsync(int voucherId, CancellationToken ct)
+    {
+        var rows = Context.Database.IsSqlServer()
+            ? Context.Vouchers.FromSqlInterpolated($"SELECT * FROM [Vouchers] WITH (XLOCK, HOLDLOCK) WHERE [Id] = {voucherId}")
+            : Context.Vouchers;
+        return rows.AsNoTracking().SingleOrDefaultAsync(v => v.Id == voucherId, ct);
+    }
+
+    public Task<List<Voucher>> RewardVoucherOptionsAsync(DateTime at, CancellationToken ct) =>
+        Context.Vouchers.AsNoTracking().Where(v => v.Audience == VoucherAudience.AssignedUsers &&
+            v.VoucherStatus == VoucherStatus.Active && v.StartAt <= at && v.EndAt > at)
+            .OrderBy(v => v.Name).ThenBy(v => v.Id).ToListAsync(ct);
+
+    public Task<int> CountCommittedAsync(int voucherId, int? excludingCompetitionId, CancellationToken ct) =>
+        CompetitionRewardCapacity.CommittedAsync(Context, voucherId, excludingCompetitionId, ct);
+
+    public async Task<int> CountUserCommitmentsAsync(int voucherId, string userId, CancellationToken ct) =>
+        await Context.VoucherGrants.IgnoreQueryFilters().CountAsync(g => g.VoucherId == voucherId && g.UserId == userId, ct) +
+        await Context.VoucherRedemptions.IgnoreQueryFilters().CountAsync(r => r.VoucherId == voucherId &&
+            r.VoucherGrantId == null && r.Order.PurchaserUserId == userId && r.RedemptionStatus != VoucherRedemptionStatus.Released, ct);
+
+    public Task<List<CompetitionJoin>> GetFinalistsAsync(int competitionId, CancellationToken ct) =>
+        ParticipantsWithDetails().Where(j => j.CompetitionId == competitionId && j.Status != CompetitionJoinStatus.Disqualified)
+            .OrderBy(j => j.Id).ToListAsync(ct);
+
+    public Task<Dictionary<int,string>> GetMemberAwardsAsync(string userId, int[] competitionIds, CancellationToken ct) =>
+        Context.VoucherGrants.AsNoTracking().Where(g => g.UserId == userId && competitionIds.Contains(g.CompetitionPrize.CompetitionId))
+            .ToDictionaryAsync(g => g.CompetitionPrize.CompetitionId, g => g.Voucher.Name, ct);
 
     private IQueryable<CompetitionJoin> ParticipantsWithDetails() =>
         Context.CompetitionJoins

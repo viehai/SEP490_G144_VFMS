@@ -1,0 +1,66 @@
+@using VFMS.Contracts.Promotions
+
+<fieldset id="promotion-Audience" class="min-w-0 border-t border-vfms-border pt-4 sm:col-span-2 lg:col-span-3">
+    <legend class="px-1 text-sm font-semibold text-vfms-text">Đối tượng áp dụng <span aria-hidden="true" class="text-vfms-primary">*</span></legend>
+    <InputRadioGroup @bind-Value:get="Model.Audience" @bind-Value:set="Model.ChangeAudience">
+        <div class="flex flex-wrap gap-2">
+            @foreach (var option in Enum.GetValues<PromotionAudience>())
+            {
+                <label class="@OptionClass(option)">
+                    <InputRadio Value="option" required class="h-4 w-4 shrink-0 accent-[#B83A3A]" />
+                    @PromotionFormModel.AudienceLabel(option)
+                </label>
+            }
+        </div>
+    </InputRadioGroup>
+    <ValidationMessage For="@(() => Model.Audience)" />
+    <div class="mt-3 rounded-lg bg-vfms-muted p-4">
+        @if (Model.Audience == PromotionAudience.NewCustomers)
+        {
+            <div class="grid min-w-0 items-end gap-4 md:grid-cols-2">
+                <div>
+                    <label class="block text-sm font-semibold" for="promotion-NewCustomerDuration">Thời gian được xem là khách hàng mới <span aria-hidden="true" class="text-vfms-primary">*</span></label>
+                    <div class="mt-2 grid min-w-0 grid-cols-2 gap-2">
+                        <InputNumber id="promotion-NewCustomerDuration" class="@FieldClass" @bind-Value="Model.NewCustomerDuration" required min="1" step="1"
+                                     ParsingErrorMessage="Nhập thời gian bằng số nguyên." aria-describedby="promotion-duration-hint promotion-duration-error" />
+                        <label class="sr-only" for="promotion-NewCustomerUnit">Đơn vị thời gian</label>
+                        <InputSelect id="promotion-NewCustomerUnit" class="@FieldClass" @bind-Value="Model.NewCustomerUnit" required aria-describedby="promotion-duration-hint promotion-duration-error">
+                            <option value="@PromotionDurationUnit.Days">Ngày</option>
+                            <option value="@PromotionDurationUnit.Months">Tháng</option>
+                        </InputSelect>
+                    </div>
+                    <div id="promotion-duration-error">
+                        <ValidationMessage For="@(() => Model.NewCustomerDuration)" />
+                        <ValidationMessage For="@(() => Model.NewCustomerUnit)" />
+                    </div>
+                </div>
+                <p id="promotion-duration-hint" class="text-sm text-vfms-text-secondary">
+                    @if (Model.NewCustomerDuration > 0 && Model.NewCustomerUnit.HasValue)
+                    {
+                        <text>Tài khoản được tạo chưa đủ @Model.NewCustomerDuration @(Model.NewCustomerUnit == PromotionDurationUnit.Months ? "tháng" : "ngày") có thể dùng mã khi đáp ứng các điều kiện còn lại.</text>
+                    }
+                    else
+                    {
+                        <text>Thời gian ưu đãi được tính từ khi tạo tài khoản.</text>
+                    }
+                </p>
+            </div>
+        }
+        else if (Model.Audience == PromotionAudience.AssignedUsers)
+        {
+            <p class="text-sm">Chỉ những tài khoản được hệ thống cấp voucher mới có thể sử dụng mã này, kể cả khi người khác biết mã giảm giá. Có thể sử dụng voucher này làm phần thưởng cuộc thi.</p>
+        }
+        else
+        {
+            <p class="text-sm text-vfms-text-secondary">Mọi khách hàng và hội viên đáp ứng điều kiện đơn hàng đều có thể sử dụng mã này.</p>
+        }
+    </div>
+</fieldset>
+
+@code {
+    [Parameter, EditorRequired] public PromotionFormModel Model { get; set; } = default!;
+    [Parameter, EditorRequired] public string FieldClass { get; set; } = string.Empty;
+
+    private string OptionClass(PromotionAudience option) => "inline-flex min-h-[44px] cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm " +
+        (Model.Audience == option ? "border-vfms-primary bg-vfms-muted font-semibold text-vfms-primary" : "border-vfms-border text-vfms-text");
+}
