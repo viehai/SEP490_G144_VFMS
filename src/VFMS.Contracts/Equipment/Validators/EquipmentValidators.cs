@@ -113,7 +113,8 @@ public sealed class EquipmentIssueListRequestValidator : AbstractValidator<Equip
     public EquipmentIssueListRequestValidator()
     {
         RuleFor(x => x.Status)
-            .Must(status => string.IsNullOrWhiteSpace(status) || EquipmentRules.IsOneOf(status, EquipmentRules.IssueStatuses))
+            .Must(status => string.IsNullOrWhiteSpace(status) || EquipmentRules.IsOneOf(status, EquipmentRules.IssueStatuses)
+                || string.Equals(status.Trim(), VFMS.Contracts.Operations.StatusFilters.OpenIssues, StringComparison.OrdinalIgnoreCase))
             .WithMessage("Status filter is invalid.");
         RuleFor(x => x.Search).MaximumLength(100);
         RuleFor(x => x.Sort)

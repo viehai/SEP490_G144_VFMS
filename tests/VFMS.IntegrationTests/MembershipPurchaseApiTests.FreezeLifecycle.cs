@@ -408,6 +408,7 @@ public sealed partial class MembershipPurchaseApiTests
         var memberships = await ListOwnedMembershipsAsync(member);
         var yoga = Assert.Single(memberships, item => item.ComponentType == "YOGA");
         var gym = Assert.Single(memberships, item => item.ComponentType == "GYM");
+        await ActivateMembershipAsync(member, gym.MembershipId, Today);
         await using var scope = _app.Services.CreateAsyncScope();
         var access = scope.ServiceProvider.GetRequiredService<IMembershipAccessService>();
         Assert.True((await access.CheckClassBookingAsync("member", yoga.MembershipId, CancellationToken.None)).IsSuccess);

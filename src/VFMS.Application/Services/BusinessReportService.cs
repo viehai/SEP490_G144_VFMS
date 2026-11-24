@@ -163,17 +163,17 @@ public sealed class BusinessReportService : IBusinessReportService
         {
             case "day":
                 start = end = date;
-                name = $"Daily report {date:yyyy-MM-dd}";
+                name = BusinessReportNames.For("Day", start, end);
                 return true;
             case "week":
                 start = date.AddDays(-(((int)date.DayOfWeek + 6) % 7)); // Monday
                 end = start.AddDays(6);
-                name = $"Weekly report {start:yyyy-MM-dd} to {end:yyyy-MM-dd}";
+                name = BusinessReportNames.For("Week", start, end);
                 return true;
             case "month":
                 start = new DateOnly(date.Year, date.Month, 1);
                 end = start.AddMonths(1).AddDays(-1);
-                name = $"Monthly report {start:yyyy-MM}";
+                name = BusinessReportNames.For("Month", start, end);
                 return true;
             default:
                 start = end = default;

@@ -1,6 +1,7 @@
 @inherits LayoutComponentBase
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
+@inject AuthSession Session
 @implements IAsyncDisposable
 
 <div class="min-h-screen flex flex-col bg-[#F2EFEC] text-[#252323] font-['Inter',sans-serif] w-full max-w-full overflow-x-hidden">
@@ -41,15 +42,12 @@
                     {
                         <a href="/pt/trainer-profile" class="@ManagerLinkClass" aria-label="Không gian làm việc huấn luyện viên Yoga">Khu Yoga</a>
                     }
-                    @if (auth.User.IsInRole("Member"))
+                    @if (auth.User.IsInRole("Member") || auth.User.IsInRole("Customer"))
                     {
                         <NavLink href="/my-memberships" Match="NavLinkMatch.Prefix" ActiveClass="text-[#B83A3A] underline underline-offset-4"
                                  class="@MyMembershipsClass">
                             Gói của tôi
                         </NavLink>
-                    }
-                    @if (auth.User.IsInRole("Member") || auth.User.IsInRole("Customer"))
-                    {
                         <NavLink href="/my-transactions" Match="NavLinkMatch.Prefix" ActiveClass="text-[#B83A3A] underline underline-offset-4"
                                  class="@MyMembershipsClass" title="Lịch sử giao dịch">
                             Giao dịch
@@ -123,6 +121,7 @@
                         DỊCH VỤ &amp; TẬP LUYỆN
                     </h5>
                     <ul class="space-y-2.5 text-sm text-[#D8D1CD] font-['Inter',sans-serif]">
+                        <li><a href="/gym-details" class="hover:text-white transition-colors">Thông Tin Phòng Tập &amp; Tiện Ích</a></li>
                         <li><a href="#" class="hover:text-white transition-colors">Gói Hội Viên Classic &amp; VIP</a></li>
                         <li><a href="/trainers" class="hover:text-white transition-colors">Huấn Luyện Viên Cá Nhân (PT 1-1)</a></li>
                         <li><a href="/careers/trainer" class="hover:text-white transition-colors">Ứng Tuyển Huấn Luyện Viên</a></li>
@@ -183,6 +182,7 @@
     private ElementReference _navbar;
     private IJSObjectReference? _navigationModule;
     private readonly string _navigationId = Guid.NewGuid().ToString("N");
+    private readonly CancellationTokenSource _roleCheck = new();
     private bool _disposed;
     private bool IsHome => string.IsNullOrEmpty(Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].Trim('/'));
     private string NavLinkCls => "inline-flex items-center min-h-[44px] text-[#252323] hover:text-[#B83A3A] font-bold transition-colors";
@@ -196,6 +196,7 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (_disposed) return;
+        if (firstRender) _ = WatchMembershipRoleAsync(_roleCheck.Token);
         var module = _navigationModule;
         if (module is null)
         {
@@ -210,9 +211,25 @@
         await module.InvokeVoidAsync("sync", _navigationId, _navbar, IsHome);
     }
 
+    private async Task WatchMembershipRoleAsync(CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
+        try
+        {
+            do
+            {
+                await Session.SyncMemberRoleAsync(ct);
+            }
+            while (await timer.WaitForNextTickAsync(ct));
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+    }
+
     public async ValueTask DisposeAsync()
     {
         _disposed = true;
+        _roleCheck.Cancel();
+        _roleCheck.Dispose();
         if (_navigationModule is null) return;
         try
         {

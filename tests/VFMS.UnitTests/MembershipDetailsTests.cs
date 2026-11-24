@@ -160,6 +160,8 @@ public sealed class MembershipDetailsTests
         public Task<ApplicationRole?> GetMemberRoleAsync(CancellationToken ct) => throw new NotSupportedException();
         public Task<Order?> FindOrderAsync(string orderNumber, string? purchaserId, bool forUpdate, CancellationToken ct) =>
             throw new NotSupportedException();
+        public Task<PagedResponse<StaffPackageOrderResponse>> ListStaffOrdersAsync(int gymId, StaffPackageOrderFilter filter,
+            DateTime nowUtc, CancellationToken ct) => throw new NotSupportedException();
         public Task<bool> SepayReferenceUsedAsync(string reference, CancellationToken ct) => throw new NotSupportedException();
         public Task<Voucher?> FindVoucherForUpdateAsync(string normalizedCode, CancellationToken ct) => throw new NotSupportedException();
         public Task<(int Confirmed, int Reserved)> CountVoucherCapacityAsync(int voucherId, CancellationToken ct) => throw new NotSupportedException();
@@ -173,7 +175,11 @@ public sealed class MembershipDetailsTests
         public Task<List<Order>> LoadRenewalOrdersAsync(int[] membershipIds, bool forUpdate, CancellationToken ct) =>
             throw new NotSupportedException();
         public Task<string?> FindRenewalPurchaserAsync(string orderNumber, CancellationToken ct) => throw new NotSupportedException();
-        public Task<List<MemberMembership>> LoadDueMembershipsAsync(DateOnly today, CancellationToken ct) =>
+        public Task<string[]> FindMembershipUsersDueAsync(DateOnly today, DateTime cutoffUtc, CancellationToken ct) =>
+            throw new NotSupportedException();
+        public Task<List<MemberMembership>> LoadDueMembershipsAsync(string[] userIds, DateOnly today, DateTime cutoffUtc, CancellationToken ct) =>
+            throw new NotSupportedException();
+        public Task<List<MemberMembership>> LoadOwnedOrderMembershipsAsync(string memberId, int membershipId, CancellationToken ct) =>
             throw new NotSupportedException();
         public void Add(Order order) => throw new NotSupportedException();
         public void Add(AuditLog audit) => throw new NotSupportedException();

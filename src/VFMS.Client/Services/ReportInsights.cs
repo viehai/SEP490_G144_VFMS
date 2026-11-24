@@ -44,7 +44,7 @@ public static class ReportInsights
 
     public static string Format(decimal value, string valueType) => valueType switch
     {
-        "Currency" => $"{Number(value, "#,##0.##")} ₫",
+        "Currency" => Vnd.Format(value),
         "Percentage" => $"{Number(value, "0.##")}%",
         _ => Number(value, "#,##0"),
     };
@@ -70,7 +70,7 @@ public static class ReportInsights
     public static byte[] ToCsv(BusinessReportResponse report, Func<ReportMetricResponse, string> label)
     {
         var csv = new StringBuilder();
-        Row(csv, "Báo cáo", report.ReportName);
+        Row(csv, "Báo cáo", BusinessReportNames.For(report.PeriodType, report.PeriodStart, report.PeriodEnd));
         Row(csv, "Kỳ", $"{report.PeriodStart:dd/MM/yyyy} - {report.PeriodEnd:dd/MM/yyyy}");
         if (report.PreviousPeriodStart is { } prevStart && report.PreviousPeriodEnd is { } prevEnd)
             Row(csv, "Kỳ trước", $"{prevStart:dd/MM/yyyy} - {prevEnd:dd/MM/yyyy}",

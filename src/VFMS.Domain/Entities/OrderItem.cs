@@ -17,7 +17,7 @@ public class OrderItem : BaseEntity
     public decimal UnitPriceSnapshot { get; set; }
     /// <summary>Snapshot of the package name at time of purchase.</summary>
     public string PackageNameSnapshot { get; set; } = string.Empty;
-    /// <summary>Requested activation start date (null = immediate).</summary>
+    /// <summary>Start date recorded at checkout or renewal. Post-payment activation dates are stored on the entitlements.</summary>
     public DateOnly? ActivationStartDate { get; set; }
     /// <summary>Purchased component terms, persisted so later catalog edits cannot alter fulfillment.</summary>
     public string? ComponentTermsSnapshot { get; set; }

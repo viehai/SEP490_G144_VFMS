@@ -13,13 +13,19 @@
     <PageHeader Overline="VFMS / GÓI PT" Title="Xác nhận tiền mặt gói PT"
                 Description="Hội viên đã chọn thanh toán tại quầy. Nhập mã đơn hội viên đọc và số tiền thực nhận; lịch tập được xác nhận ngay." />
     <TrainerFeedback Error="@_error" />
-    <form class="trainer-panel trainer-stack" style="max-width: 28rem" @onsubmit="ConfirmAsync" @onsubmit:preventDefault>
+    <EditForm Model="this" class="trainer-panel trainer-stack" style="max-width: 28rem" OnValidSubmit="ConfirmAsync">
         <fieldset class="trainer-stack" disabled="@_busy">
             <label>Mã đơn<input class="trainer-input" @bind="_orderNumber" required maxlength="50" placeholder="VD: ORD-20261117-..." /></label>
-            <label>Số tiền đã nhận (₫)<input class="trainer-input" type="number" min="1" step="1" required @bind="_amount" /></label>
-            <button class="trainer-button trainer-primary">@(_busy ? "Đang xác nhận…" : "Xác nhận đã nhận tiền")</button>
+            <div>
+                <label for="pt-cash-amount">Số tiền đã nhận (₫)
+                    <InputVnd id="pt-cash-amount" class="trainer-input" WholeUnits="true" required @bind-Value="_amount"
+                              ParsingErrorMessage="Nhập số tiền nguyên theo VND." aria-describedby="pt-cash-amount-error" />
+                </label>
+                <div id="pt-cash-amount-error"><ValidationMessage For="@(() => _amount)" /></div>
+            </div>
+            <button type="submit" class="trainer-button trainer-primary">@(_busy ? "Đang xác nhận…" : "Xác nhận đã nhận tiền")</button>
         </fieldset>
-    </form>
+    </EditForm>
     @if (_confirmed is { } order)
     {
         <div class="trainer-panel trainer-stack" role="status">
@@ -38,7 +44,12 @@
 
     private async Task ConfirmAsync()
     {
-        if (_busy || _amount is not > 0 || string.IsNullOrWhiteSpace(_orderNumber)) return;
+        if (_busy || string.IsNullOrWhiteSpace(_orderNumber)) return;
+        if (_amount is not >= 1)
+        {
+            _error = "Số tiền đã nhận phải từ 1 ₫.";
+            return;
+        }
         _busy = true;
         _error = null;
         _confirmed = null;

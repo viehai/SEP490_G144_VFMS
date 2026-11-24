@@ -1,0 +1,156 @@
+@using VFMS.Contracts.Equipment
+@* Searchable equipment picker (WAI-ARIA combobox): type a name, code, brand, model or category, accents ignored,
+   and choose from the list under the box. Used by the issue report form and the purchase proposal items. *@
+
+<div class="relative @Class">
+    <label class="@Ui.Label" for="@Id">@Label@if (Required) { <span class="text-vfms-primary" aria-hidden="true"> *</span> }</label>
+    <input id="@Id" type="text" role="combobox" class="@Ui.Field" autocomplete="off" maxlength="100"
+           aria-required="@(Required ? "true" : null)" aria-autocomplete="list" aria-controls="@ListId"
+           aria-expanded="@(_open ? "true" : "false")" aria-activedescendant="@ActiveOptionId"
+           placeholder="@(Loading ? "Đang tải thiết bị..." : Placeholder)"
+           value="@_query" @oninput="QueryChanged" @onfocus="OpenList" @onclick="OpenList" @onblur="() => _open = false" @onkeydown="KeyDown" />
+    @if (_open)
+    {
+        <ul id="@ListId" role="listbox" aria-label="Danh sách thiết bị"
+            class="absolute left-0 right-0 z-20 mt-1 max-h-72 overflow-auto rounded-lg border border-[#D8D1CD] bg-white py-1 shadow-lg">
+            @for (var i = 0; i < _options.Count; i++)
+            {
+                var index = i;
+                var item = _options[i];
+                <li id="@OptionId(index)" role="option" aria-selected="@(item?.Id == Value ? "true" : "false")"
+                    class="flex cursor-pointer items-center justify-between gap-3 px-3 py-2 text-sm @(index == _active ? "bg-[#F3E4E2]" : "hover:bg-[#ECE8E4]")"
+                    @onmousedown="() => Pick(item)" @onmousedown:preventDefault>
+                    @if (item is null)
+                    {
+                        <span class="text-[#6F6966]">@EmptyText</span>
+                    }
+                    else
+                    {
+                        <span class="min-w-0">
+                            <span class="block truncate font-semibold text-[#242424]">@item.Name</span>
+                            <span class="block truncate text-xs text-[#6F6966]">@string.Join(" · ", new[] { item.Code, item.Brand, item.CategoryName }.Where(text => !string.IsNullOrWhiteSpace(text)))</span>
+                        </span>
+                        @if (item.Status != "Operational")
+                        {
+                            <span class="@OperationsText.Badge(item.Status) shrink-0">@OperationsText.Label(item.Status)</span>
+                        }
+                    }
+                </li>
+            }
+            @if (_options.All(option => option is null))
+            {
+                <li class="px-3 py-2 text-sm text-[#6F6966]">Không tìm thấy thiết bị phù hợp.</li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Id { get; set; } = "";
+    [Parameter] public string Label { get; set; } = "Thiết bị";
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public IReadOnlyList<EquipmentResponse> Equipment { get; set; } = [];
+    [Parameter] public int? Value { get; set; }
+    [Parameter] public EventCallback<int?> ValueChanged { get; set; }
+    /// <summary>When set, the list starts with this "no equipment" choice (e.g. "Không có (mua mới)"), which sets the value to null.</summary>
+    [Parameter] public string? EmptyText { get; set; }
+    [Parameter] public bool Loading { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "Gõ tên, mã hoặc hãng, VD: máy chạy, TM-0002";
+    [Parameter] public string? Class { get; set; }
+
+    private static DateTime _enterAt = DateTime.MinValue;
+
+    /// <summary>
+    /// True right after Enter chose a machine in a picker. The browser sends the surrounding form on Enter in a text box,
+    /// so the form's submit handler calls this and stops: Enter in the picker only chooses.
+    /// </summary>
+    public static bool JustChoseWithEnter()
+    {
+        var chose = DateTime.UtcNow - _enterAt < TimeSpan.FromMilliseconds(500);
+        _enterAt = DateTime.MinValue;
+        return chose;
+    }
+
+    private List<EquipmentResponse?> _options = [];
+    private string _query = "";
+    private int? _shownValue;
+    private int _active = -1;
+    private bool _open;
+
+    private string ListId => $"{Id}-list";
+    private string OptionId(int index) => $"{Id}-option-{index}";
+    private string? ActiveOptionId => _open && _active >= 0 && _active < _options.Count ? OptionId(_active) : null;
+    private EquipmentResponse? Chosen => Equipment.FirstOrDefault(item => item.Id == Value);
+
+    protected override void OnParametersSet()
+    {
+        // Show the chosen machine's name when the value is set from outside (an edited proposal, a reset form).
+        if (Value != _shownValue || Value is not null && _query.Length == 0)
+        {
+            _shownValue = Value;
+            _query = Chosen is { } chosen ? EquipmentSearch.Display(chosen) : "";
+        }
+    }
+
+    private List<EquipmentResponse?> Filter(string query)
+    {
+        var list = Equipment.Where(item => EquipmentSearch.Matches(item, query)).Cast<EquipmentResponse?>().ToList();
+        if (EmptyText is not null && string.IsNullOrWhiteSpace(query)) list.Insert(0, null);
+        return list;
+    }
+
+    private async Task QueryChanged(ChangeEventArgs args)
+    {
+        _query = args.Value?.ToString() ?? "";
+        // Typing again after a choice clears it, so the form never sends a machine the text no longer names.
+        if (Value is not null && (Chosen is not { } chosen || _query != EquipmentSearch.Display(chosen)))
+            await SetAsync(null);
+        _options = Filter(_query);
+        _active = _options.FindIndex(option => option is not null);
+        _open = true;
+    }
+
+    private void OpenList()
+    {
+        if (_open) return;
+        // With a machine already chosen, show the whole list again so it is easy to switch.
+        _options = Filter(Value is not null ? "" : _query);
+        _active = Math.Max(0, _options.FindIndex(option => option?.Id == Value));
+        _open = true;
+    }
+
+    private async Task KeyDown(KeyboardEventArgs args)
+    {
+        switch (args.Key)
+        {
+            case "ArrowDown":
+                if (!_open) OpenList();
+                else if (_options.Count > 0) _active = (_active + 1) % _options.Count;
+                break;
+            case "ArrowUp":
+                if (_open && _options.Count > 0) _active = (_active - 1 + _options.Count) % _options.Count;
+                break;
+            case "Enter":
+                _enterAt = DateTime.UtcNow;
+                if (_open && _active >= 0 && _active < _options.Count) await Pick(_options[_active]);
+                break;
+            case "Escape":
+                _open = false;
+                break;
+        }
+    }
+
+    private async Task Pick(EquipmentResponse? item)
+    {
+        _query = item is null ? "" : EquipmentSearch.Display(item);
+        _open = false;
+        await SetAsync(item?.Id);
+    }
+
+    private async Task SetAsync(int? id)
+    {
+        _shownValue = id;
+        Value = id;
+        await ValueChanged.InvokeAsync(id);
+    }
+}

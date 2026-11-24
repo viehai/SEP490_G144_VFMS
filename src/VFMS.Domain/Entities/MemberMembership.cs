@@ -4,7 +4,7 @@ using VFMS.Domain.Enums;
 namespace VFMS.Domain.Entities;
 
 /// <summary>
-/// A member's active (or historical) service entitlement provisioned from an <see cref="OrderItem"/>.
+/// A purchased service entitlement provisioned from an <see cref="OrderItem"/>.
 /// Linked 1-to-1 with a <see cref="PackageComponent"/> and tracks lifecycle status.
 /// </summary>
 public class MemberMembership : BaseEntity
@@ -13,6 +13,7 @@ public class MemberMembership : BaseEntity
     public int PackageComponentId { get; set; }
     public string MemberUserId { get; set; } = string.Empty;
     public MembershipStatus MembershipStatus { get; set; } = MembershipStatus.Scheduled;
+    // AwaitingActivation has no service term until the customer or the commerce worker assigns it.
     public DateOnly StartDate { get; set; }
     public DateOnly EndDate { get; set; }
     /// <summary>Remaining PT sessions (null for GYM/YOGA components).</summary>

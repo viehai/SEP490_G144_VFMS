@@ -8,3 +8,15 @@ public sealed record StatusCountsResponse(IReadOnlyDictionary<string, int> Count
 {
     public int Total => Counts.Values.Sum();
 }
+
+/// <summary>
+/// Filter values that cover several statuses at once, for the work lists:
+/// <see cref="OpenIssues"/> = Reported, InProgress and Escalated issues; <see cref="ActiveOrders"/> = orders not yet Completed or Cancelled.
+/// </summary>
+public static class StatusFilters
+{
+    public const string OpenIssues = "Open";
+    public const string ActiveOrders = "Active";
+    public static readonly string[] OpenIssueStatuses = ["Reported", "InProgress", "Escalated"];
+    public static readonly string[] ActiveOrderStatuses = ["Pending", "Processing", "ReadyForPickup", "OutForDelivery"];
+}

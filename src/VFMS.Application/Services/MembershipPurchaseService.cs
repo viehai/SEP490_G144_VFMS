@@ -14,8 +14,8 @@ public sealed partial class MembershipPurchaseService(
     IPTPaymentFulfillment? ptPayment = null, ILockerPaymentFulfillment? lockerPayment = null)
     : IMembershipPurchaseService
 {
-    private static readonly TimeSpan OnlineWindow = TimeSpan.FromMinutes(15);
-    private static readonly TimeSpan CashWindow = TimeSpan.FromHours(24);
+    private static readonly TimeSpan OnlineWindow = TimeSpan.FromMinutes(PackageOrderTiming.OnlinePaymentMinutes);
+    private static readonly TimeSpan CashWindow = TimeSpan.FromHours(PackageOrderTiming.CounterPaymentHours);
     private static readonly TimeSpan VietnamOffset = TimeSpan.FromHours(7);
 
     public Task<Result<MembershipPurchaseResponse>> CreateAsync(
@@ -23,9 +23,11 @@ public sealed partial class MembershipPurchaseService(
         repository.ExecuteInSerializableTransactionAsync(async () =>
         {
             var today = LocalDate(clock.GetUtcNow());
-            if (request.Items.Any(item => item.ActivationDate is { } date && (date < today || date > today.AddDays(30))))
+            // All payment windows close within 24 hours, so payment can fall on the next local date.
+            var latestStart = today.AddDays(MembershipPurchaseMessages.ActivationWindowDays + 1);
+            if (request.Items.Any(item => item.ActivationDate is not null))
                 return Result<MembershipPurchaseResponse>.Failure(
-                    MembershipPurchaseMessages.ActivationDate, MembershipPurchaseMessages.ActivationDateCode);
+                    MembershipPurchaseMessages.ActivationAfterPayment, "MEMBERSHIP_ACTIVATION_AFTER_PAYMENT");
 
             var emails = request.Items.Select(item => NormalizeEmail(item.BeneficiaryEmail))
                 .OfType<string>().Distinct().ToArray();
@@ -51,12 +53,12 @@ public sealed partial class MembershipPurchaseService(
                     return Result<MembershipPurchaseResponse>.Failure(
                         "Người thụ hưởng phải có tài khoản Khách hàng hoặc Hội viên đang hoạt động.", "BENEFICIARY_NOT_ELIGIBLE");
 
-                if (!plans.TryGetValue(item.PlanId, out var plan) || !IsPurchasable(plan, today.AddDays(30)) ||
+                if (!plans.TryGetValue(item.PlanId, out var plan) || !IsPurchasable(plan, latestStart) ||
                     (IsYogaOnly(plan) && !yogaOpen))
                     return Result<MembershipPurchaseResponse>.Failure(
                         "Một hoặc nhiều gói tập không còn mở bán hoặc chưa có cấu hình thanh toán hợp lệ.", "PLAN_NOT_PURCHASABLE");
 
-                order.Items.Add(NewOrderItem(plan, beneficiary!.UserId, item.ActivationDate));
+                order.Items.Add(NewOrderItem(plan, beneficiary!.UserId, startDate: null));
             }
 
             return await SavePendingOrderAsync(order, ct);
@@ -217,23 +219,6 @@ public sealed partial class MembershipPurchaseService(
             return expired.Count;
         }, ct);
 
-    public Task AdvanceMembershipsAsync(CancellationToken ct) =>
-        repository.ExecuteInSerializableTransactionAsync(async () =>
-        {
-            var today = LocalDate(clock.GetUtcNow());
-            var due = await repository.LoadDueMembershipsAsync(today, ct);
-            foreach (var membership in due)
-                membership.MembershipStatus = membership.EndDate < today ? MembershipStatus.Expired : MembershipStatus.Active;
-
-            var activatedUsers = due.Where(membership => membership.MembershipStatus == MembershipStatus.Active)
-                .Select(membership => membership.MemberUserId).Distinct().ToArray();
-            if (activatedUsers.Length > 0)
-                await PromoteAsync(await repository.LockUsersAsync(activatedUsers, ct), ct);
-
-            await repository.SaveChangesAsync(ct);
-            return due.Count;
-        }, ct);
-
     private async Task FulfillAsync(
         Order order, decimal amount, DateTimeOffset transferredAt, string? gatewayReference, CancellationToken ct)
     {
@@ -241,37 +226,32 @@ public sealed partial class MembershipPurchaseService(
         var today = LocalDate(now);
         var userIds = order.Items.Select(item => item.BeneficiaryUserId).Distinct().ToArray();
         var beneficiaries = await repository.LockUsersAsync(userIds, ct);
-        var memberships = await repository.LoadCurrentMembershipsAsync(userIds, today, ct);
-        var endDates = memberships.GroupBy(membership => (membership.MemberUserId, membership.PackageComponent.ComponentType))
-            .ToDictionary(group => group.Key, group => group.Max(membership => membership.EndDate));
         var active = new HashSet<string>();
 
         foreach (var item in order.Items.OrderBy(item => item.Id))
         {
-            foreach (var component in ReadComponentTerms(item))
-            {
-                var start = item.ActivationStartDate is { } requested && requested > today ? requested : today;
-                var key = (item.BeneficiaryUserId, component.Type);
-                if (item.RenewedFromMembershipId is not null && item.ActivationStartDate is { } renewalStart)
-                    start = renewalStart;
-                else if (endDates.TryGetValue(key, out var lastEnd) && lastEnd >= start)
-                    start = lastEnd.AddDays(1);
+            var terms = ReadComponentTerms(item);
+            // Legacy pending orders may predate the terms snapshot. Save it before deferring the service term.
+            if (item.ActivationStartDate is null && item.ComponentTermsSnapshot is null)
+                item.ComponentTermsSnapshot = JsonSerializer.Serialize(terms);
 
-                var end = EndDate(start, component);
-                var status = end < today ? MembershipStatus.Expired
-                    : start > today ? MembershipStatus.Scheduled : MembershipStatus.Active;
-                if (!endDates.TryGetValue(key, out var latestEnd) || end > latestEnd)
-                    endDates[key] = end;
-                item.MemberMemberships.Add(new MemberMembership
+            foreach (var component in terms)
+            {
+                var membership = new MemberMembership
                 {
                     PackageComponentId = component.Id,
                     MemberUserId = item.BeneficiaryUserId,
-                    StartDate = start,
-                    EndDate = end,
-                    MembershipStatus = status,
+                    MembershipStatus = MembershipStatus.AwaitingActivation,
                     RemainingSessionCount = component.Type == ComponentType.PT ? component.SessionCount : null
-                });
-                if (status == MembershipStatus.Active)
+                };
+                // Pre-existing checkout dates and renewals already have a start date on the order line.
+                if (item.ActivationStartDate is { } requested)
+                {
+                    var start = item.RenewedFromMembershipId is null && requested < today ? today : requested;
+                    SetMembershipTerm(membership, component, start, today);
+                }
+                item.MemberMemberships.Add(membership);
+                if (membership.MembershipStatus == MembershipStatus.Active)
                     active.Add(item.BeneficiaryUserId);
             }
         }
@@ -336,7 +316,8 @@ public sealed partial class MembershipPurchaseService(
             subtotal, payment.AmountDue,
             order.Items.OrderBy(item => item.Id).Select(item => new MembershipPurchaseItemResponse(item.PackageId,
                 item.PackageNameSnapshot, item.BeneficiaryUserId == order.PurchaserUserId, item.ActivationStartDate,
-                item.UnitPriceSnapshot)).ToArray(),
+                item.UnitPriceSnapshot, item.MemberMemberships.Any(membership =>
+                    membership.MembershipStatus == MembershipStatus.AwaitingActivation))).ToArray(),
             qr, payment.Invoice?.InvoiceNumber,
             status == OrderStatus.Paid ? MembershipPurchaseMessages.PaidCode : onlineFailure ? MembershipPurchaseMessages.FailedCode : null,
             status == OrderStatus.Paid ? MembershipPurchaseMessages.Paid : onlineFailure ? MembershipPurchaseMessages.Failed
@@ -375,13 +356,13 @@ public sealed partial class MembershipPurchaseService(
         }
     }
 
-    private static bool IsValidComponent(PackageComponent component, DateOnly latestStart)
-    {
-        var fits = component.DurationDays is > 0
-            ? component.DurationDays - 1 <= DateOnly.MaxValue.DayNumber - latestStart.DayNumber
-            : component.DurationMonths is > 0 && component.DurationMonths <= (9999 - latestStart.Year) * 12 + 12 - latestStart.Month;
-        return fits && (component.ComponentType != ComponentType.PT || component.SessionCount is > 0);
-    }
+    private static bool IsValidComponent(PackageComponent component, DateOnly latestStart) =>
+        TermFits(component.DurationDays, component.DurationMonths, latestStart) &&
+        (component.ComponentType != ComponentType.PT || component.SessionCount is > 0);
+
+    private static bool TermFits(int? days, int? months, DateOnly start) => days is > 0
+        ? days.Value - 1 <= DateOnly.MaxValue.DayNumber - start.DayNumber
+        : months is > 0 && months.Value <= (DateOnly.MaxValue.Year - start.Year) * 12 + 12 - start.Month;
 
     private static bool CanPurchase(ApplicationUser? user) =>
         IsActive(user) && (HasRole(user!, UserRole.Customer) || HasRole(user!, UserRole.Member));

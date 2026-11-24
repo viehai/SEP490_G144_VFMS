@@ -4,7 +4,7 @@
 @using System.Net
 @using VFMS.Client.Components.Memberships
 @using VFMS.Contracts.Memberships
-@attribute [Authorize(Roles = "Member")]
+@attribute [Authorize(Roles = "Customer,Member")]
 @inject MembershipPlanApiClient Plans
 @implements IDisposable
 
@@ -39,10 +39,15 @@
                 <MembershipStatusBadge Status="@detail.Membership.Status" />
             </div>
             <MembershipTermDetails Membership="@detail.Membership" />
-            @if (detail.PurchasedAt.HasValue || detail.InvoiceNumber is not null)
+            @if (detail.Membership.Activation is { } window && window.EarliestDate <= window.Deadline && MembershipDisplay.Today <= window.Deadline)
+            {
+                <button type="button" class="min-h-[44px] rounded-lg bg-vfms-primary px-5 py-2 text-sm font-semibold text-white hover:bg-vfms-primary-hover"
+                        @onclick="() => _choosing = detail.Membership">Chọn ngày kích hoạt</button>
+            }
+            @if ((detail.Membership.Activation is null && detail.PurchasedAt.HasValue) || detail.InvoiceNumber is not null)
             {
                 <dl class="grid gap-3 border-t border-vfms-border pt-4 text-sm sm:grid-cols-3">
-                    @if (detail.PurchasedAt is { } purchasedAt)
+                    @if (detail.Membership.Activation is null && detail.PurchasedAt is { } purchasedAt)
                     {
                         <div>
                             <dt class="text-xs font-semibold text-vfms-text-secondary">Ngày mua</dt>
@@ -60,6 +65,9 @@
             }
         </section>
 
+        <AuthorizeView Roles="Member">
+            @if (detail.Membership.Status != MembershipStatuses.AwaitingActivation)
+            {
         <section class="space-y-4 rounded-xl border border-vfms-border bg-vfms-surface p-5 sm:p-6" aria-labelledby="membership-freeze-title">
             <h2 id="membership-freeze-title" class="font-heading text-xl font-bold text-vfms-text">Thông tin bảo lưu</h2>
             <dl class="grid gap-3 text-sm sm:grid-cols-3">
@@ -121,6 +129,8 @@
                 }
             </div>
         </section>
+            }
+        </AuthorizeView>
     }
     else
     {
@@ -128,15 +138,32 @@
     }
 </section>
 
+@if (_choosing is not null)
+{
+    <MembershipActivationDialog Membership="_choosing" Saved="ActivationSaved" Closed="CloseActivation" />
+}
+
 @code {
     [Parameter] public int MembershipId { get; set; }
 
     private CancellationTokenSource? _loadRequest;
     private MembershipDetailResponse? _detail;
+    private MembershipSummaryResponse? _choosing;
     private string? _loadError;
     private bool _notFound;
+    private int? _requestedMembershipId;
 
-    protected override Task OnParametersSetAsync() => LoadAsync();
+    protected override Task OnParametersSetAsync()
+    {
+        if (_requestedMembershipId == MembershipId) return Task.CompletedTask;
+        _requestedMembershipId = MembershipId;
+        _choosing = null;
+        return LoadAsync();
+    }
+
+    private void ActivationSaved(MembershipDetailResponse detail) => _detail = detail;
+
+    private void CloseActivation() => _choosing = null;
 
     private async Task LoadAsync()
     {

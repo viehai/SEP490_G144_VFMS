@@ -17,9 +17,8 @@ public sealed partial class MembershipPurchaseApiTests
     [Theory]
     [InlineData(null, null, HttpStatusCode.Unauthorized)]
     [InlineData(" ", "Member", HttpStatusCode.Unauthorized)]
-    [InlineData("buyer", "Customer", HttpStatusCode.Forbidden)]
     [InlineData("manager", "Manager", HttpStatusCode.Forbidden)]
-    public async Task MembershipListAndDetailRequireAnAuthenticatedMember(
+    public async Task MembershipListAndDetailRequireAnAuthenticatedCustomerOrMember(
         string? user, string? role, HttpStatusCode expected)
     {
         using var client = Client(user, role);
@@ -30,9 +29,9 @@ public sealed partial class MembershipPurchaseApiTests
     }
 
     [Fact]
-    public async Task MembershipListIsEmptyForAMemberWithoutAnyFulfilledPurchases()
+    public async Task MembershipListIsEmptyForACustomerBeforePayment()
     {
-        using var member = Client("member", "Member");
+        using var member = Client("buyer", "Customer");
         await CreateAsync(member, Purchase([new(_basic)]));
 
         using var response = await member.GetAsync($"{MembershipsRoute}/me");
@@ -53,8 +52,12 @@ public sealed partial class MembershipPurchaseApiTests
         // The test callback represents the bank confirmation time to the second.
         var purchasedAt = DateTimeOffset.FromUnixTimeSeconds(purchase.CreatedAt.AddSeconds(1).ToUnixTimeSeconds());
 
+        var pendingBuyer = Assert.Single(await ListOwnedMembershipsAsync(buyer));
+        await ActivateMembershipAsync(buyer, pendingBuyer.MembershipId, Today);
         using var buyerAsMember = Client("buyer", "Member");
-        using var beneficiary = Client("gift", "Member");
+        using var beneficiary = Client("gift", "Customer");
+        var pendingGift = (await ListOwnedMembershipsAsync(beneficiary)).First();
+        await ActivateMembershipAsync(beneficiary, pendingGift.MembershipId, Today);
         var bought = Assert.Single((await buyerAsMember.GetFromJsonAsync<MembershipSummaryResponse[]>(
             $"{MembershipsRoute}/me?memberId=gift&beneficiaryUserId=gift"))!);
         Assert.Equal(new MembershipSummaryResponse(bought.MembershipId, _basic, "Basic", "GYM", Today,
@@ -102,6 +105,69 @@ public sealed partial class MembershipPurchaseApiTests
         var unauthorizedProblem = await otherOwner.Content.ReadFromJsonAsync<JsonElement>();
         var missingProblem = await missing.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(missingProblem.GetProperty("code").GetString(), unauthorizedProblem.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task OnlyTheBeneficiaryCanSelectAValidDateAndARepeatedRequestKeepsTheExistingSelection()
+    {
+        using var buyer = Client("buyer", "Customer");
+        using var gift = Client("gift", "Customer");
+        var purchase = await CreateAsync(buyer, Purchase([new(_basic, "gift@example.test")]));
+        using var confirm = await NotifyAsync(purchase, 112);
+        Assert.Equal(HttpStatusCode.OK, confirm.StatusCode);
+        var membership = Assert.Single(await ListOwnedMembershipsAsync(gift));
+        Assert.Empty(await ListOwnedMembershipsAsync(buyer));
+
+        var path = $"{MembershipsRoute}/{membership.MembershipId}/activation";
+        using var wrongUser = await buyer.PutAsJsonAsync(path, new ScheduleMembershipActivationRequest(Today));
+        Assert.Equal(HttpStatusCode.NotFound, wrongUser.StatusCode);
+        foreach (var start in new DateOnly?[] { null, Today.AddDays(-1), Today.AddDays(31) })
+        {
+            using var invalid = await gift.PutAsJsonAsync(path, new ScheduleMembershipActivationRequest(start));
+            Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+            Assert.Equal("MSG-25", (await invalid.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
+        }
+
+        var chosen = Today.AddDays(30);
+        var scheduled = await ActivateMembershipAsync(gift, membership.MembershipId, chosen);
+        Assert.Equal(chosen, scheduled.Membership.StartDate);
+        Assert.Equal(scheduled.Membership, (await ActivateMembershipAsync(gift, membership.MembershipId, chosen)).Membership);
+        using var different = await gift.PutAsJsonAsync(path, new ScheduleMembershipActivationRequest(Today));
+        Assert.Equal(HttpStatusCode.Conflict, different.StatusCode);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DayThirtyAssignsAStartDateToPaidMembershipsWithNoSelection(bool hasSameService)
+    {
+        using var buyer = Client("buyer", "Customer");
+        var purchasedOn = Today;
+        if (hasSameService)
+        {
+            await UpdateRenewalPlanAsync("Basic 60 days", 500_000m, duration: 60);
+            var first = await CreateAsync(buyer, Purchase([new(_basic)]));
+            using var firstConfirmation = await NotifyAsync(first, 113);
+            Assert.Equal(HttpStatusCode.OK, firstConfirmation.StatusCode);
+            await ActivateMembershipAsync(buyer, Assert.Single(await ListOwnedMembershipsAsync(buyer)).MembershipId, purchasedOn);
+        }
+
+        var pending = await CreateAsync(buyer, Purchase([new(_basic)]));
+        using var confirmation = await NotifyAsync(pending, 114);
+        Assert.Equal(HttpStatusCode.OK, confirmation.StatusCode);
+        var awaiting = Assert.Single(await ListOwnedMembershipsAsync(buyer), row => row.Status == MembershipStatuses.AwaitingActivation);
+
+        _clock.Now = _clock.Now.AddDays(29);
+        await RunJobAsync((service, ct) => service.AdvanceMembershipsAsync(ct));
+        Assert.Equal(MembershipStatuses.AwaitingActivation, (await ReadMembershipDetailAsync(buyer, awaiting.MembershipId)).Membership.Status);
+
+        _clock.Now = _clock.Now.AddDays(1);
+        await RunJobAsync((service, ct) => service.AdvanceMembershipsAsync(ct));
+        var dated = (await ReadMembershipDetailAsync(buyer, awaiting.MembershipId)).Membership;
+        Assert.Equal(purchasedOn.AddDays(hasSameService ? 60 : 30), dated.StartDate);
+        Assert.Equal(hasSameService ? MembershipStatuses.Scheduled : MembershipStatuses.Active, dated.Status);
+        await using var scope = _app.Services.CreateAsyncScope();
+        Assert.Contains("Member", await RolesAsync(scope.ServiceProvider.GetRequiredService<VfmsDbContext>(), "buyer"));
     }
 
     [Fact]
@@ -197,4 +263,11 @@ public sealed partial class MembershipPurchaseApiTests
 
     private static async Task<MembershipDetailResponse> ReadMembershipDetailAsync(HttpClient client, int membershipId) =>
         (await client.GetFromJsonAsync<MembershipDetailResponse>($"{MembershipsRoute}/{membershipId}"))!;
+
+    private static async Task<MembershipDetailResponse> ActivateMembershipAsync(HttpClient client, int membershipId, DateOnly startDate)
+    {
+        using var response = await client.PutAsJsonAsync($"{MembershipsRoute}/{membershipId}/activation", new ScheduleMembershipActivationRequest(startDate));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        return (await response.Content.ReadFromJsonAsync<MembershipDetailResponse>())!;
+    }
 }

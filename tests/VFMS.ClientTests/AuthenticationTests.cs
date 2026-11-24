@@ -5,6 +5,7 @@ using Microsoft.JSInterop;
 using VFMS.Client.Auth;
 using VFMS.Client.Services;
 using VFMS.Contracts.Auth;
+using VFMS.Contracts.Users;
 using Xunit;
 
 namespace VFMS.ClientTests;
@@ -56,6 +57,48 @@ public sealed class AuthenticationTests
         var tokens = await Task.WhenAll(Enumerable.Range(0, 5).Select(_ => session.GetAccessTokenAsync()));
         Assert.All(tokens, token => Assert.Equal("rotated", token));
         Assert.Equal(1, calls);
+    }
+
+    [Fact]
+    public async Task ActivatedMembershipRefreshesTheCurrentCustomerSessionWithoutSigningInAgain()
+    {
+        var identity = User();
+        var storage = new FakeStorage
+        {
+            Json = JsonSerializer.Serialize(new StoredAuthSession(identity, DateTimeOffset.UtcNow.AddMinutes(20), true))
+        };
+        var activated = false;
+        var refreshes = 0;
+        using var api = Api(async request =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/api/users/me")
+            {
+                Assert.Equal("access", request.Headers.Authorization!.Parameter);
+                return Json(new UserProfileResponse(identity.UserId, identity.FullName, identity.Email,
+                    "0901234567", null, "Active", activated ? ["Member"] : ["Customer"], DateTime.UtcNow));
+            }
+
+            Assert.Equal("/api/auth/refresh", request.RequestUri.AbsolutePath);
+            Assert.Equal("refresh", (await request.Content!.ReadFromJsonAsync<RefreshTokenRequest>())!.RefreshToken);
+            refreshes++;
+            return Json(identity with { AccessToken = "member-access", RefreshToken = "member-refresh", Roles = ["Member"] });
+        });
+        var session = new AuthSession(storage, api);
+        Task<Microsoft.AspNetCore.Components.Authorization.AuthenticationState>? change = null;
+        session.AuthenticationStateChanged += state => change = state;
+
+        await session.SyncMemberRoleAsync(CancellationToken.None);
+        Assert.Null(change);
+        Assert.Equal(0, refreshes);
+
+        activated = true;
+        await session.SyncMemberRoleAsync(CancellationToken.None);
+        await session.SyncMemberRoleAsync(CancellationToken.None);
+        Assert.Equal(1, refreshes);
+        Assert.True((await change!).User.IsInRole("Member"));
+        Assert.Equal("member-access", await session.GetAccessTokenAsync());
+        Assert.Equal("member-refresh", JsonSerializer.Deserialize<StoredAuthSession>(storage.Json!)!.User.RefreshToken);
+        Assert.True(storage.RememberMe);
     }
 
     [Fact]

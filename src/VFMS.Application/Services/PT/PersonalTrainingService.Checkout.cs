@@ -10,12 +10,12 @@ namespace VFMS.Application.Services;
 
 public sealed partial class PersonalTrainingService
 {
-    private static readonly TimeSpan PaymentDuration = TimeSpan.FromMinutes(15);
-    private static readonly TimeSpan HoldDuration = TimeSpan.FromMinutes(20);
+    private static readonly TimeSpan PaymentDuration = TimeSpan.FromMinutes(PackageOrderTiming.OnlinePaymentMinutes);
+    private static readonly TimeSpan HoldDuration = TimeSpan.FromMinutes(PackageOrderTiming.PtOnlineHoldMinutes);
     // GBR-96: the Member must click 'Proceed to Payment' within the first 10 minutes of the order.
-    private static readonly TimeSpan ProceedWindow = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan ProceedWindow = TimeSpan.FromMinutes(PackageOrderTiming.PtChoosePaymentMinutes);
     // Counter (cash) orders hold the slots as long as a membership cash order (NewScope: UC 4.4).
-    private static readonly TimeSpan CounterHold = TimeSpan.FromHours(24);
+    private static readonly TimeSpan CounterHold = TimeSpan.FromHours(PackageOrderTiming.CounterPaymentHours);
     private static DateTime PaymentDeadline(Order order) =>
         order.CreatedAt.Add(order.Channel == OrderChannel.Counter ? CounterHold : PaymentDuration);
     private sealed record Booking(PTBookingPreview Preview, Package Package, TrainerProfile Trainer,
