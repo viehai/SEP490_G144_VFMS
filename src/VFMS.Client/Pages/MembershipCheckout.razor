@@ -6,7 +6,7 @@
 @using VFMS.Client.Components.Memberships
 @attribute [Authorize(Roles = "Customer,Member")]
 @inject MembershipPlanApiClient Plans
-@inject IJSRuntime JS
+@inject IServiceProvider Services
 @implements IDisposable
 
 <PageTitle>@(IsRenewal ? "Thanh toán gia hạn" : "Thanh toán gói tập") | Victor Fitness</PageTitle>
