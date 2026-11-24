@@ -1,5 +1,5 @@
 @page "/competitions"
-@layout StaffPTLayout
+@layout PublicLayout
 @using VFMS.Client.Components.Operations
 @inject CompetitionApiClient Api
 @inject NavigationManager Navigation
@@ -8,12 +8,12 @@
 <PageTitle>Cuộc thi | Victor Fitness</PageTitle>
 
 <div class="workspace-page space-y-8 font-['Inter',sans-serif] text-[#252525]">
-    <header class="flex flex-col justify-between gap-5 border-b-2 border-black pb-7 md:flex-row md:items-end">
+    <header class="flex flex-col justify-between gap-5 border-b border-[#D8D1CD] pb-7 md:flex-row md:items-end">
         <div>
-            <p class="workspace-heading mb-3 text-[10px] font-bold tracking-[.18em] text-[#71717A]">VFMS / MODULE 06 / COMPETITIONS</p>
-            <h1 class="workspace-heading text-3xl font-extrabold uppercase tracking-tight sm:text-4xl">Cuộc thi<span class="text-[#6366F1]">.</span></h1>
+            <p class="workspace-heading mb-3 text-[10px] font-bold tracking-[.18em] text-[#8C8581]">VFMS / MODULE 06 / COMPETITIONS</p>
+            <h1 class="workspace-heading text-3xl font-extrabold uppercase tracking-tight text-[#252323] sm:text-4xl">Cuộc thi<span class="text-[#B83A3A]">.</span></h1>
         </div>
-        <button type="button" @onclick="ReloadAsync" disabled="@_loading" class="workspace-heading inline-flex w-fit items-center gap-2 border border-black bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider rounded-none">Làm mới ↻</button>
+        <button type="button" @onclick="ReloadAsync" disabled="@_loading" class="workspace-heading inline-flex w-fit items-center gap-2 rounded-lg border border-[#D8D1CD] bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-[#252323] transition-colors hover:border-[#B83A3A] hover:text-[#B83A3A]">Làm mới ↻</button>
     </header>
 
     @if (_error is not null)
@@ -87,10 +87,10 @@
                                 <td class="px-6 py-5"><span class="@StatusClass(item.Status)">@CompetitionStatusLabel(item.Status)</span></td>
                                 <td class="px-6 py-5">
                                     <div class="flex flex-wrap gap-2">
-                                        <button type="button" @onclick='() => OpenDetailAsync(item.Id)' class="workspace-heading border border-black px-2 py-1 text-[10px] font-bold uppercase rounded-none">Chi tiết</button>
+                                        <button type="button" @onclick='() => OpenDetailAsync(item.Id)' class="workspace-heading rounded-lg border border-[#D8D1CD] bg-white px-2.5 py-1.5 text-[10px] font-bold uppercase text-[#383E43] hover:border-[#B83A3A] hover:text-[#B83A3A]">Chi tiết</button>
                                         @if (CanRegister(item))
                                         {
-                                            <button type="button" @onclick='() => RegisterAsync(item.Id)' class="workspace-heading border border-[#6366F1] bg-[#6366F1] px-2 py-1 text-[10px] font-bold uppercase text-white rounded-none">Đăng ký</button>
+                                            <button type="button" @onclick='() => RegisterAsync(item.Id)' class="workspace-heading rounded-lg bg-[#B83A3A] px-2.5 py-1.5 text-[10px] font-bold uppercase text-white hover:bg-[#9F3030]">Đăng ký</button>
                                         }
                                     </div>
                                 </td>
@@ -108,10 +108,10 @@
 
     @if (_isMember)
     {
-        <section class="overflow-hidden border-2 border-black bg-white rounded-none" aria-labelledby="comp-history-title">
-            <div class="flex flex-wrap items-center justify-between gap-3 border-b-2 border-black px-5 py-5 sm:px-6">
+        <section class="overflow-hidden rounded-2xl border border-[#D8D1CD] bg-white shadow-sm" aria-labelledby="comp-history-title">
+            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[#D8D1CD] bg-[#F7F4F1] px-5 py-5 sm:px-6">
                 <h2 id="comp-history-title" class="workspace-heading text-sm font-extrabold uppercase tracking-wider">Lịch sử tham gia của tôi</h2>
-                <button type="button" @onclick="ReloadHistoryAsync" disabled="@_historyLoading" class="text-xs text-[#6366F1]">Làm mới ↻</button>
+                <button type="button" @onclick="ReloadHistoryAsync" disabled="@_historyLoading" class="text-xs font-bold text-[#B83A3A] hover:text-[#9F3030]">Làm mới ↻</button>
             </div>
             @if (_historyLoading)
             {
@@ -348,11 +348,11 @@
 
     private static string StatusClass(string status) => status switch
     {
-        "Published" => "inline-block border border-[#10B981] bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase text-[#047857] rounded-none",
-        "Ongoing" => "inline-block border border-[#6366F1] bg-indigo-50 px-2 py-1 text-[10px] font-bold uppercase text-[#4338CA] rounded-none",
-        "Completed" => "inline-block border border-[#CFCFCF] bg-[#F7F7F7] px-2 py-1 text-[10px] font-bold uppercase text-[#545454] rounded-none",
-        "Cancelled" => "inline-block border border-[#EF4444] bg-red-50 px-2 py-1 text-[10px] font-bold uppercase text-[#B91C1C] rounded-none",
-        _ => "inline-block border border-[#F59E0B] bg-amber-50 px-2 py-1 text-[10px] font-bold uppercase text-[#92400E] rounded-none"
+        "Published" => "inline-block rounded-lg border border-[#A7C7B0] bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase text-[#047857]",
+        "Ongoing" => "inline-block rounded-lg border border-[#D7A7A7] bg-[#F7EAEA] px-2 py-1 text-[10px] font-bold uppercase text-[#9F3030]",
+        "Completed" => "inline-block rounded-lg border border-[#D8D1CD] bg-[#F7F4F1] px-2 py-1 text-[10px] font-bold uppercase text-[#545454]",
+        "Cancelled" => "inline-block rounded-lg border border-[#D7A7A7] bg-[#F7EAEA] px-2 py-1 text-[10px] font-bold uppercase text-[#9F3030]",
+        _ => "inline-block rounded-lg border border-[#E2C89A] bg-amber-50 px-2 py-1 text-[10px] font-bold uppercase text-[#92400E]"
     };
 
     private static string CompetitionStatusLabel(string status) => status switch

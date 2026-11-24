@@ -7,14 +7,14 @@
 <PageTitle>Quản lý cuộc thi | Victor Fitness</PageTitle>
 
 <div class="workspace-page space-y-8 font-['Inter',sans-serif] text-[#252525]">
-    <header class="flex flex-col justify-between gap-5 border-b-2 border-black pb-7 md:flex-row md:items-end">
+    <header class="flex flex-col justify-between gap-5 border-b border-[#D8D1CD] pb-7 md:flex-row md:items-end">
         <div>
-            <p class="workspace-heading mb-3 text-[10px] font-bold tracking-[.18em] text-[#71717A]">VFMS / MODULE 06 / MANAGER</p>
-            <h1 class="workspace-heading text-3xl font-extrabold uppercase tracking-tight sm:text-4xl">Quản lý cuộc thi<span class="text-[#6366F1]">.</span></h1>
+            <p class="workspace-heading mb-3 text-[10px] font-bold tracking-[.18em] text-[#8C8581]">VFMS / MODULE 06 / MANAGER</p>
+            <h1 class="workspace-heading text-3xl font-extrabold uppercase tracking-tight text-[#252323] sm:text-4xl">Quản lý cuộc thi<span class="text-[#B83A3A]">.</span></h1>
         </div>
         <div class="flex flex-wrap gap-3">
-            <button type="button" @onclick="ReloadAsync" disabled="@_loading" class="workspace-heading border border-black bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider rounded-none">Làm mới ↻</button>
-            <button type="button" @onclick="() => _showCreate = !_showCreate" class="workspace-heading border-2 border-black bg-black px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-white rounded-none">+ Tạo cuộc thi</button>
+            <button type="button" @onclick="ReloadAsync" disabled="@_loading" class="workspace-heading rounded-lg border border-[#D8D1CD] bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-[#252323] hover:border-[#B83A3A] hover:text-[#B83A3A]">Làm mới ↻</button>
+            <button type="button" @onclick="() => _showCreate = !_showCreate" class="workspace-heading rounded-lg bg-[#B83A3A] px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-white hover:bg-[#9F3030]">+ Tạo cuộc thi</button>
         </div>
     </header>
 
@@ -25,7 +25,7 @@
 
     @if (_showCreate)
     {
-        <section class="border-2 border-black bg-white p-6 rounded-none" aria-labelledby="create-title">
+        <section class="rounded-2xl border border-[#D8D1CD] bg-white p-6 shadow-sm" aria-labelledby="create-title">
             <h2 id="create-title" class="workspace-heading mb-5 text-sm font-extrabold uppercase tracking-wider">Tạo cuộc thi mới</h2>
             <div class="grid gap-4 md:grid-cols-2">
                 <div class="md:col-span-2">
@@ -58,8 +58,8 @@
                 </div>
             </div>
             <div class="mt-6 flex flex-wrap gap-3">
-                <button type="button" @onclick="CreateAsync" disabled="@_busy" class="workspace-heading border-2 border-black bg-black px-5 py-3 text-xs font-bold uppercase tracking-wider text-white disabled:opacity-50 rounded-none">Tạo cuộc thi ↗</button>
-                <button type="button" @onclick="() => _showCreate = false" class="workspace-heading border border-black bg-white px-5 py-3 text-xs font-bold uppercase tracking-wider rounded-none">Hủy</button>
+                <button type="button" @onclick="CreateAsync" disabled="@_busy" class="workspace-heading rounded-lg bg-[#B83A3A] px-5 py-3 text-xs font-bold uppercase tracking-wider text-white hover:bg-[#9F3030] disabled:opacity-50">Tạo cuộc thi ↗</button>
+                <button type="button" @onclick="() => _showCreate = false" class="workspace-heading rounded-lg border border-[#D8D1CD] bg-white px-5 py-3 text-xs font-bold uppercase tracking-wider text-[#383E43] hover:border-[#B83A3A] hover:text-[#B83A3A]">Hủy</button>
             </div>
         </section>
     }
@@ -190,15 +190,15 @@
                                         <div class="flex flex-wrap gap-2">
                                             @if (row.Status == "Disqualified")
                                             {
-                                                <button type="button" @onclick='() => ReinstateAsync(row.Id)' class="workspace-heading border border-[#10B981] bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase text-[#047857] rounded-none">Khôi phục</button>
+                                                <button type="button" @onclick='() => ReinstateAsync(row.Id)' class="workspace-heading rounded-lg border border-[#A7C7B0] bg-emerald-50 px-2.5 py-1.5 text-[10px] font-bold uppercase text-[#047857]">Khôi phục</button>
                                             }
                                             else if (row.Status != "Completed")
                                             {
-                                                <button type="button" @onclick='() => DisqualifyAsync(row.Id)' class="workspace-heading border border-[#EF4444] bg-red-50 px-2 py-1 text-[10px] font-bold uppercase text-[#B91C1C] rounded-none">Loại</button>
+                                                <button type="button" @onclick='() => DisqualifyAsync(row.Id)' class="workspace-heading rounded-lg border border-[#D7A7A7] bg-[#F7EAEA] px-2.5 py-1.5 text-[10px] font-bold uppercase text-[#9F3030]">Loại</button>
                                             }
                                             @if (row.Status != "Completed" && row.Status != "Disqualified")
                                             {
-                                                <button type="button" @onclick='() => OpenRecordResult(row)' class="workspace-heading border border-black px-2 py-1 text-[10px] font-bold uppercase rounded-none">Ghi điểm</button>
+                                                <button type="button" @onclick='() => OpenRecordResult(row)' class="workspace-heading rounded-lg border border-[#D8D1CD] bg-white px-2.5 py-1.5 text-[10px] font-bold uppercase text-[#383E43] hover:border-[#B83A3A] hover:text-[#B83A3A]">Ghi điểm</button>
                                             }
                                             @if (CanConfirmResult(row))
                                             {
@@ -237,8 +237,8 @@
                 </div>
             </div>
             <div class="flex flex-wrap gap-3 border-t border-[#CFCFCF] px-6 py-4">
-                <button type="button" @onclick="SaveResultAsync" disabled="@_busy" class="workspace-heading border-2 border-black bg-black px-5 py-3 text-xs font-bold uppercase tracking-wider text-white disabled:opacity-50">Lưu điểm ↗</button>
-                <button type="button" @onclick="CloseDetailsAsync" class="workspace-heading border border-black bg-white px-5 py-3 text-xs font-bold uppercase tracking-wider">Hủy</button>
+                <button type="button" @onclick="SaveResultAsync" disabled="@_busy" class="workspace-heading rounded-lg bg-[#B83A3A] px-5 py-3 text-xs font-bold uppercase tracking-wider text-white hover:bg-[#9F3030] disabled:opacity-50">Lưu điểm ↗</button>
+                <button type="button" @onclick="CloseDetailsAsync" class="workspace-heading rounded-lg border border-[#D8D1CD] bg-white px-5 py-3 text-xs font-bold uppercase tracking-wider text-[#383E43] hover:border-[#B83A3A] hover:text-[#B83A3A]">Hủy</button>
             </div>
         </WorkspaceModal>
     }
@@ -307,7 +307,7 @@
                                             <span class="block font-semibold">@row.PrizeName</span>
                                             @if (!string.IsNullOrWhiteSpace(row.VoucherCode))
                                             {
-                                                <span class="workspace-heading mt-1 block text-[10px] font-bold text-[#6366F1]">@row.VoucherCode</span>
+                                                <span class="workspace-heading mt-1 block text-[10px] font-bold text-[#B83A3A]">@row.VoucherCode</span>
                                             }
                                         }
                                         else
@@ -636,12 +636,12 @@
 
     private static string StatusClass(string status) => status switch
     {
-        "Published" => "inline-block border border-[#10B981] bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase text-[#047857] rounded-none",
-        "Ongoing" => "inline-block border border-[#6366F1] bg-indigo-50 px-2 py-1 text-[10px] font-bold uppercase text-[#4338CA] rounded-none",
-        "Completed" => "inline-block border border-[#CFCFCF] bg-[#F7F7F7] px-2 py-1 text-[10px] font-bold uppercase text-[#545454] rounded-none",
-        "Cancelled" => "inline-block border border-[#EF4444] bg-red-50 px-2 py-1 text-[10px] font-bold uppercase text-[#B91C1C] rounded-none",
-        "Disqualified" => "inline-block border border-[#EF4444] bg-red-50 px-2 py-1 text-[10px] font-bold uppercase text-[#B91C1C] rounded-none",
-        _ => "inline-block border border-[#F59E0B] bg-amber-50 px-2 py-1 text-[10px] font-bold uppercase text-[#92400E] rounded-none"
+        "Published" => "inline-block rounded-lg border border-[#A7C7B0] bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase text-[#047857]",
+        "Ongoing" => "inline-block rounded-lg border border-[#D7A7A7] bg-[#F7EAEA] px-2 py-1 text-[10px] font-bold uppercase text-[#9F3030]",
+        "Completed" => "inline-block rounded-lg border border-[#D8D1CD] bg-[#F7F4F1] px-2 py-1 text-[10px] font-bold uppercase text-[#545454]",
+        "Cancelled" => "inline-block rounded-lg border border-[#D7A7A7] bg-[#F7EAEA] px-2 py-1 text-[10px] font-bold uppercase text-[#9F3030]",
+        "Disqualified" => "inline-block rounded-lg border border-[#D7A7A7] bg-[#F7EAEA] px-2 py-1 text-[10px] font-bold uppercase text-[#9F3030]",
+        _ => "inline-block rounded-lg border border-[#E2C89A] bg-amber-50 px-2 py-1 text-[10px] font-bold uppercase text-[#92400E]"
     };
 
     private bool CanConfirmResult(CompetitionParticipantResponse participant) =>
