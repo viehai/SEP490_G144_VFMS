@@ -14,15 +14,37 @@ public sealed class PromotionFormModel
     public decimal? MinimumSpend { get; set; }
     public decimal? MaxDiscountAmount { get; set; }
     public int? MaxRedemptions { get; set; }
+    public int? MaxRedemptionsPerUser { get; set; }
+    public PromotionAudience Audience { get; set; } = PromotionAudience.AllCustomers;
+    public int? NewCustomerDuration { get; set; }
+    public PromotionDurationUnit? NewCustomerUnit { get; set; }
     public DateTime? StartAt { get; set; }
     public DateTime? EndAt { get; set; }
     public bool IsEnabled { get; set; } = true;
 
     public CreatePromotionRequest CreateRequest() => new(Name, Code, DiscountType, DiscountValue, MinimumSpend,
-        PercentageCap, MaxRedemptions, ToUtc(StartAt), ToUtc(EndAt), IsEnabled);
+        PercentageCap, MaxRedemptions, ToUtc(StartAt), ToUtc(EndAt), IsEnabled)
+        { Audience = Audience, NewCustomerDuration = NewCustomerDuration, NewCustomerUnit = NewCustomerUnit, MaxRedemptionsPerUser = MaxRedemptionsPerUser };
 
     public UpdatePromotionRequest UpdateRequest() => new(Name, Code, DiscountType, DiscountValue, MinimumSpend,
-        PercentageCap, MaxRedemptions, ToUtc(StartAt), ToUtc(EndAt), IsEnabled);
+        PercentageCap, MaxRedemptions, ToUtc(StartAt), ToUtc(EndAt), IsEnabled)
+        { Audience = Audience, NewCustomerDuration = NewCustomerDuration, NewCustomerUnit = NewCustomerUnit, MaxRedemptionsPerUser = MaxRedemptionsPerUser };
+
+    public void ChangeAudience(PromotionAudience audience)
+    {
+        if (Audience == audience) return;
+        Audience = audience;
+        NewCustomerDuration = audience == PromotionAudience.NewCustomers ? 1 : null;
+        NewCustomerUnit = audience == PromotionAudience.NewCustomers ? PromotionDurationUnit.Months : null;
+    }
+
+    public static string AudienceLabel(PromotionAudience audience) => audience switch
+    {
+        PromotionAudience.AllCustomers => "Tất cả khách hàng",
+        PromotionAudience.NewCustomers => "Khách hàng mới",
+        PromotionAudience.AssignedUsers => "Người được cấp voucher riêng",
+        _ => "Chưa xác định"
+    };
 
     private decimal? PercentageCap => DiscountType == PromotionDiscountType.Percentage ? MaxDiscountAmount : null;
 
@@ -35,6 +57,10 @@ public sealed class PromotionFormModel
         MinimumSpend = response.MinimumSpend,
         MaxDiscountAmount = response.MaxDiscountAmount,
         MaxRedemptions = response.MaxRedemptions,
+        MaxRedemptionsPerUser = response.MaxRedemptionsPerUser,
+        Audience = response.Audience,
+        NewCustomerDuration = response.NewCustomerDuration,
+        NewCustomerUnit = response.NewCustomerUnit,
         StartAt = ToGymTime(response.StartAt),
         EndAt = ToGymTime(response.EndAt),
         IsEnabled = response.IsEnabled

@@ -17,13 +17,13 @@ public interface ICompetitionService
     // ── Read (UC-56) ─────────────────────────────────────────────
 
     Task<Result<PagedResponse<CompetitionResponse>>> GetCompetitionsAsync(
-        CompetitionListRequest request, CancellationToken cancellationToken = default);
+        CompetitionListRequest request, CancellationToken cancellationToken = default, bool includeDrafts = false);
 
-    Task<Result<CompetitionResponse>> GetCompetitionAsync(int id, CancellationToken cancellationToken = default);
+    Task<Result<CompetitionResponse>> GetCompetitionAsync(int id, CancellationToken cancellationToken = default, bool includeDrafts = false);
 
     /// <summary>The leaderboard of a competition: participants ordered by rank, then score.</summary>
     Task<Result<IReadOnlyList<CompetitionLeaderboardEntry>>> GetLeaderboardAsync(
-        int id, CancellationToken cancellationToken = default);
+        int id, CancellationToken cancellationToken = default, bool includeDrafts = false);
 
     // ── Member actions (UC-57, UC-58) ────────────────────────────
 
@@ -32,6 +32,10 @@ public interface ICompetitionService
 
     Task<Result<PagedResponse<CompetitionParticipantResponse>>> GetMyHistoryAsync(
         CompetitionParticipantListRequest request, string memberUserId, CancellationToken cancellationToken = default);
+
+    Task<Result<IReadOnlyList<CompetitionRewardVoucher>>> RewardOptionsAsync(DateTime? competitionEnd, int? competitionId, CancellationToken ct);
+    Task<Result<CompetitionResponse>> ReplaceUnusableRewardsAsync(int id, IReadOnlyCollection<CompetitionPrizeRequest> prizes,
+        string managerUserId, string? ipAddress, CancellationToken ct);
 
     // ── Manager actions (UC-59) ──────────────────────────────────
 

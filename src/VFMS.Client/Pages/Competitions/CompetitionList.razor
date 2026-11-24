@@ -1,5 +1,5 @@
 @page "/competitions"
-@layout StaffPTLayout
+@layout PublicLayout
 @using VFMS.Client.Components.Operations
 @inject CompetitionApiClient Api
 @inject NavigationManager Navigation
@@ -7,10 +7,10 @@
 
 <PageTitle>Cuộc thi | Victor Fitness</PageTitle>
 
-<div class="workspace-page space-y-8 font-['Inter',sans-serif] text-[#252525]">
+<div class="workspace-page mx-auto max-w-7xl px-4 pb-12 pt-32 space-y-8 font-['Inter',sans-serif] text-[#252525]">
     <header class="flex flex-col justify-between gap-5 border-b-2 border-black pb-7 md:flex-row md:items-end">
         <div>
-            <p class="workspace-heading mb-3 text-[10px] font-bold tracking-[.18em] text-[#71717A]">VFMS / MODULE 06 / COMPETITIONS</p>
+            <p class="workspace-heading mb-3 text-[10px] font-bold tracking-[.18em] text-[#71717A]">VICTOR FITNESS / CUỘC THI</p>
             <h1 class="workspace-heading text-3xl font-extrabold uppercase tracking-tight sm:text-4xl">Cuộc thi<span class="text-[#6366F1]">.</span></h1>
         </div>
         <button type="button" @onclick="ReloadAsync" disabled="@_loading" class="workspace-heading inline-flex w-fit items-center gap-2 border border-black bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider rounded-none">Làm mới ↻</button>
@@ -35,7 +35,6 @@
                 <label for="comp-status" class="workspace-heading mb-2 block text-[10px] font-bold uppercase tracking-wider text-[#69706A]">Trạng thái</label>
                 <select id="comp-status" class="w-full rounded-xl border border-[#D8DED2] bg-[#FAFAF8] px-4 py-3 text-sm text-[#383E43] focus:border-[#5F6F52] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#5F6F52]/15" @bind="_status">
                     <option value="">Tất cả trạng thái</option>
-                    <option value="Draft">Bản nháp</option>
                     <option value="Published">Đã phát hành</option>
                     <option value="Ongoing">Đang diễn ra</option>
                     <option value="Completed">Đã kết thúc</option>
@@ -126,7 +125,7 @@
                 <div class="overflow-x-auto">
                     <table class="workspace-table w-full min-w-[700px] text-left text-sm">
                         <thead class="workspace-heading bg-[#F7F7F7] text-[10px] uppercase tracking-wider">
-                            <tr><th class="px-6 py-4">Cuộc thi</th><th class="px-6 py-4">Ngày đăng ký</th><th class="px-6 py-4">Điểm</th><th class="px-6 py-4">Hạng</th><th class="px-6 py-4">Ghi chú</th><th class="px-6 py-4">Trạng thái</th></tr>
+                            <tr><th class="px-6 py-4">Cuộc thi</th><th class="px-6 py-4">Ngày đăng ký</th><th class="px-6 py-4">Điểm</th><th class="px-6 py-4">Hạng</th><th class="px-6 py-4">Phần thưởng</th><th class="px-6 py-4">Ghi chú</th><th class="px-6 py-4">Trạng thái</th></tr>
                         </thead>
                         <tbody class="divide-y divide-[#CFCFCF]">
                             @foreach (var row in _history)
@@ -136,6 +135,13 @@
                                     <td class="px-6 py-5 text-xs text-[#545454]">@row.RegisteredAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
                                     <td class="workspace-heading px-6 py-5 text-xs font-bold">@(row.Score?.ToString("0.##") ?? "-")</td>
                                     <td class="workspace-heading px-6 py-5 text-xs font-bold">@(row.Rank?.ToString() ?? "-")</td>
+                                    <td class="px-6 py-5 text-xs">
+                                        @if (row.AwardedVoucherName != null)
+                                        {
+                                            <a href="/my-vouchers" class="font-semibold underline">@row.AwardedVoucherName</a>
+                                        }
+                                        else { <span>—</span> }
+                                    </td>
                                     <td class="max-w-sm whitespace-pre-line px-6 py-5 text-xs text-[#545454]">@(string.IsNullOrWhiteSpace(row.Note) ? "-" : row.Note)</td>
                                     <td class="px-6 py-5"><span class="@StatusClass(row.Status)">@ParticipantStatusLabel(row.Status)</span></td>
                                 </tr>
@@ -180,7 +186,7 @@
                 </div>
                 <div>
                     <h3 class="workspace-heading mb-2 text-xs font-extrabold uppercase tracking-wider">Trạng thái</h3>
-                    <span class="@StatusClass(_selectedCompetition.Status)">@_selectedCompetition.Status</span>
+                    <span class="@StatusClass(_selectedCompetition.Status)">@CompetitionStatusLabel(_selectedCompetition.Status)</span>
                 </div>
                 @if (_selectedCompetition.Prizes.Count > 0)
                 {
@@ -189,7 +195,13 @@
                         <ul class="space-y-2 text-sm text-[#545454]">
                             @foreach (var prize in _selectedCompetition.Prizes.OrderBy(prize => prize.Rank))
                             {
-                                <li>Hạng @prize.Rank — @prize.PrizeName</li>
+                                <li class="break-words">
+                                    <strong>Hạng @prize.Rank · @(prize.Reward?.Name ?? prize.PrizeName)</strong>
+                                    @if (prize.Reward is { } reward)
+                                    {
+                                        <span class="block">@CompetitionRewardDisplay.Value(reward). @CompetitionRewardDisplay.Terms(reward)</span>
+                                    }
+                                </li>
                             }
                         </ul>
                     </div>
@@ -319,11 +331,14 @@
         catch (CompetitionApiException error) { _error = error.Message; }
     }
 
-    private Task OpenDetailAsync(int id)
+    private async Task OpenDetailAsync(int id)
     {
-        _selectedCompetition = _items.FirstOrDefault(item => item.Id == id);
-        _error = null;
-        return Task.CompletedTask;
+        try
+        {
+            _selectedCompetition = await Api.GetCompetitionAsync(id);
+            _error = null;
+        }
+        catch (CompetitionApiException error) { _error = error.Message; }
     }
 
     private void CloseDetail() => _selectedCompetition = null;

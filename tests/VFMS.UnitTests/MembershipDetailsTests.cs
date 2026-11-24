@@ -158,13 +158,13 @@ public sealed class MembershipDetailsTests
             throw new NotSupportedException();
         public Task<List<ApplicationUser>> LockUsersAsync(string[] userIds, CancellationToken ct) => throw new NotSupportedException();
         public Task<ApplicationRole?> GetMemberRoleAsync(CancellationToken ct) => throw new NotSupportedException();
-        public Task<Order?> FindOrderAsync(string orderNumber, string? purchaserId, bool forUpdate, CancellationToken ct) =>
+        public Task<Order?> FindOrderAsync(string orderNumber, string? purchaserId, bool forUpdate, CancellationToken ct, bool membershipOnly = false) =>
             throw new NotSupportedException();
         public Task<PagedResponse<StaffPackageOrderResponse>> ListStaffOrdersAsync(int gymId, StaffPackageOrderFilter filter,
             DateTime nowUtc, CancellationToken ct) => throw new NotSupportedException();
         public Task<bool> SepayReferenceUsedAsync(string reference, CancellationToken ct) => throw new NotSupportedException();
         public Task<Voucher?> FindVoucherForUpdateAsync(string normalizedCode, CancellationToken ct) => throw new NotSupportedException();
-        public Task<(int Confirmed, int Reserved)> CountVoucherCapacityAsync(int voucherId, CancellationToken ct) => throw new NotSupportedException();
+        public Task<VoucherCapacity> ReadVoucherCapacityAsync(int voucherId, ApplicationUser purchaser, CancellationToken ct) => throw new NotSupportedException();
         public Task<List<Order>> LoadExpiredOrdersAsync(DateTime onlineCutoff, DateTime cashCutoff, CancellationToken ct) =>
             throw new NotSupportedException();
         public Task<List<MemberMembership>> LoadCurrentMembershipsAsync(string[] userIds, DateOnly today, CancellationToken ct) =>

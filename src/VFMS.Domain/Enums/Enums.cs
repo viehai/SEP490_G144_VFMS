@@ -126,6 +126,13 @@ public enum VoucherStatus
     Expired
 }
 
+public enum VoucherAudience
+{
+    AllCustomers,
+    NewCustomers,
+    AssignedUsers
+}
+
 public enum VoucherRedemptionStatus
 {
     Reserved,

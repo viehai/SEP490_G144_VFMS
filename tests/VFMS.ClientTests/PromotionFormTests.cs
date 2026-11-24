@@ -8,6 +8,28 @@ namespace VFMS.ClientTests;
 public sealed class PromotionFormTests
 {
     [Fact]
+    public void SelectingNewCustomersDefaultsToCalendarMonthAndSwitchingAudienceClearsTheWindow()
+    {
+        var form = PromotionFormModel.FromResponse(PromotionApiClientTests.Response());
+        form.ChangeAudience(PromotionAudience.NewCustomers);
+        Assert.Equal(1, form.NewCustomerDuration);
+        Assert.Equal(PromotionDurationUnit.Months, form.NewCustomerUnit);
+        form.NewCustomerUnit = PromotionDurationUnit.Days;
+        form.NewCustomerDuration = 14;
+        form.MaxRedemptionsPerUser = 2;
+        var newCustomer = form.UpdateRequest();
+        Assert.Equal(PromotionDurationUnit.Days, newCustomer.NewCustomerUnit);
+        Assert.Equal(14, newCustomer.NewCustomerDuration);
+        Assert.True(new UpdatePromotionRequestValidator().Validate(newCustomer).IsValid);
+        form.ChangeAudience(PromotionAudience.AssignedUsers);
+        var assigned = form.UpdateRequest();
+        Assert.Null(assigned.NewCustomerUnit);
+        Assert.Null(assigned.NewCustomerDuration);
+        Assert.Equal(2, assigned.MaxRedemptionsPerUser);
+        Assert.True(new UpdatePromotionRequestValidator().Validate(assigned).IsValid);
+    }
+
+    [Fact]
     public void Edit_RoundTripsUtcTimestampsThroughExplicitGymWallClock()
     {
         var response = PromotionApiClientTests.Response();

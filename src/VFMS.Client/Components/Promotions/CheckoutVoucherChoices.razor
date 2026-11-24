@@ -1,0 +1,41 @@
+@using VFMS.Contracts.Promotions
+@inject MembershipPlanApiClient Api
+@implements IDisposable
+<div class="choices" aria-label="Voucher cho đơn hàng">
+    @if (_loading) { <p role="status">Đang tìm voucher cho đơn hàng…</p> }
+    else if (_error is not null) { <p role="alert">@_error</p><button type="button" @onclick="LoadAsync">Thử lại</button> }
+    else if (_rows.Length == 0) { <p role="status">Hiện bạn chưa có voucher phù hợp với đơn này.</p> }
+    else
+    {
+        @foreach (var v in _rows)
+        {
+            <div class="choice">
+                <div><b>@v.Code</b> · @v.Name
+                    <p>Giảm @(v.DiscountType == PromotionDiscountType.Fixed ? Vnd.Format(v.DiscountValue) : Vnd.FormatAmount(v.DiscountValue) + "%")@(v.MaximumDiscount is > 0 ? $" · Tối đa {Vnd.Format(v.MaximumDiscount.Value)}" : "")</p>
+                    @if (v.CheckoutIssue is not null) { <small>@v.CheckoutIssue</small> }
+                </div>
+                <button type="button" disabled="@(Disabled || v.CheckoutIssue is not null)" @onclick="() => OnChoose.InvokeAsync(v.Code)" aria-label="@($"Chọn voucher {v.Code}")">Chọn</button>
+            </div>
+        }
+    }
+</div>
+@code {
+    [Parameter, EditorRequired] public string OrderNumber { get; set; } = "";
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public EventCallback<string> OnChoose { get; set; }
+    private readonly CancellationTokenSource _lifetime = new();
+    private MyVoucherResponse[] _rows = [];
+    private string? _error;
+    private bool _loading;
+    protected override Task OnInitializedAsync() => LoadAsync();
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try { _rows = await Api.MyVouchersAsync(OrderNumber, _lifetime.Token); }
+        catch (AuthApiException ex) { _error = ex.Message; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        finally { _loading = false; }
+    }
+    public void Dispose() { _lifetime.Cancel(); _lifetime.Dispose(); }
+}

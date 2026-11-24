@@ -25,13 +25,20 @@ public sealed class PromotionRepository(VfmsDbContext context) : AuditedReposito
         return vouchers.SingleOrDefaultAsync(v => v.Id == id && !v.IsDeleted, ct);
     }
 
-    public Task<int> GetUsedCountAsync(int id, CancellationToken ct) =>
-        Context.VoucherRedemptions.IgnoreQueryFilters()
-            .CountAsync(r => r.VoucherId == id && r.RedemptionStatus == VoucherRedemptionStatus.Confirmed, ct);
-
     public Task<int> GetCommittedCapacityAsync(int id, CancellationToken ct) =>
-        Context.VoucherRedemptions.IgnoreQueryFilters().CountAsync(r => r.VoucherId == id &&
-            (r.RedemptionStatus == VoucherRedemptionStatus.Confirmed || r.RedemptionStatus == VoucherRedemptionStatus.Reserved), ct);
+        CompetitionRewardCapacity.CommittedAsync(Context, id, null, ct);
+
+    public async Task<int> GetMaxCommittedPerUserAsync(int id, CancellationToken ct) =>
+        await Context.VoucherRedemptions.IgnoreQueryFilters()
+            .Where(r => r.VoucherId == id && (r.RedemptionStatus == VoucherRedemptionStatus.Confirmed ||
+                r.RedemptionStatus == VoucherRedemptionStatus.Reserved))
+            .GroupBy(r => r.Order.PurchaserUserId).Select(group => (int?)group.Count()).MaxAsync(ct) ?? 0;
+
+    public async Task<bool> HasRewardCommitmentsAsync(int id, CancellationToken ct) =>
+        await Context.VoucherGrants.IgnoreQueryFilters().AnyAsync(g => g.VoucherId == id, ct) ||
+        await Context.CompetitionPrizes.AnyAsync(p => p.VoucherId == id &&
+            (p.Competition.Status == CompetitionStatus.Published || p.Competition.Status == CompetitionStatus.Ongoing ||
+             p.Competition.Status == CompetitionStatus.Completed), ct);
 
     public Task<bool> CodeExistsAsync(string normalizedCode, int? excludingId, CancellationToken ct)
     {
@@ -63,5 +70,6 @@ public sealed class PromotionRepository(VfmsDbContext context) : AuditedReposito
             v.MinimumSpend, v.MaxDiscountAmount, v.MaxRedemptions,
             Context.VoucherRedemptions.IgnoreQueryFilters().Count(r =>
                 r.VoucherId == v.Id && r.RedemptionStatus == VoucherRedemptionStatus.Confirmed),
-            v.StartAt, v.EndAt, v.VoucherStatus));
+            v.StartAt, v.EndAt, v.VoucherStatus, v.Audience, v.MaxRedemptionsPerUser, v.NewCustomerDuration,
+            v.NewCustomerUnit, Context.VoucherGrants.Count(grant => grant.VoucherId == v.Id)));
 }

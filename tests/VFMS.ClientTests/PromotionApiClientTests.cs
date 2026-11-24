@@ -86,7 +86,8 @@ public sealed class PromotionApiClientTests
             return Json(Response() with { DiscountType = type, DiscountValue = discount, MaxDiscountAmount = cap }, HttpStatusCode.Created);
         });
 
-        var result = await api.CreateAsync(new("November campaign", "SAVE20", type, discount, 200_000m, cap, 100, Start, End, true));
+        var result = await api.CreateAsync(new("November campaign", "SAVE20", type, discount, 200_000m, cap, 100, Start, End, true)
+            { Audience = PromotionAudience.NewCustomers, MaxRedemptionsPerUser = 2, NewCustomerDuration = 1, NewCustomerUnit = PromotionDurationUnit.Months });
 
         Assert.Equal(type, result.DiscountType);
         Assert.Equal(cap, result.MaxDiscountAmount);
@@ -105,7 +106,8 @@ public sealed class PromotionApiClientTests
         });
 
         var result = await api.UpdateAsync(7, new("November campaign", "SAVE20", PromotionDiscountType.Percentage,
-            20m, 200_000m, 100_000m, 100, Start, End, true));
+            20m, 200_000m, 100_000m, 100, Start, End, true)
+            { Audience = PromotionAudience.NewCustomers, MaxRedemptionsPerUser = 2, NewCustomerDuration = 1, NewCustomerUnit = PromotionDurationUnit.Months });
 
         Assert.Equal(9, result.UsedCount);
     }
@@ -238,11 +240,14 @@ public sealed class PromotionApiClientTests
         Assert.EndsWith("Z", body.GetProperty("startAt").GetString());
         Assert.Equal(End, body.GetProperty("endAt").GetDateTime());
         Assert.True(body.GetProperty("isEnabled").GetBoolean());
-        Assert.Equal(10, body.EnumerateObject().Count());
+        Assert.Equal("NewCustomers", body.GetProperty("audience").GetString());
+        Assert.Equal("Months", body.GetProperty("newCustomerUnit").GetString());
+        Assert.Equal(1, body.GetProperty("newCustomerDuration").GetInt32());
+        Assert.Equal(2, body.GetProperty("maxRedemptionsPerUser").GetInt32());
         Assert.False(body.TryGetProperty("usedCount", out _));
         Assert.False(body.TryGetProperty("status", out _));
         Assert.False(body.TryGetProperty("actorUserId", out _));
-        Assert.False(body.TryGetProperty("maxRedemptionsPerUser", out _));
+        Assert.False(body.TryGetProperty("grantedCount", out _));
     }
 
     internal static CreatePromotionRequest CreateRequest() =>

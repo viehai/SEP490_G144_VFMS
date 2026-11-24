@@ -7,6 +7,7 @@ using VFMS.Contracts.Common;
 using VFMS.Contracts.Feedback;
 using VFMS.Contracts.Memberships;
 using VFMS.Contracts.Packages;
+using VFMS.Contracts.Promotions;
 
 namespace VFMS.Client.Services;
 
@@ -18,6 +19,9 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
     private const string RenewalsPath = "api/membership-renewals";
     private const string MembershipsPath = "api/memberships";
     private const string TransactionsPath = "api/membership-transactions";
+    public Task<MyVoucherResponse[]> MyVouchersAsync(string? orderNumber = null, CancellationToken ct = default) =>
+        SendAsync<MyVoucherResponse[]>(HttpMethod.Get, orderNumber is null ? "api/my-vouchers" :
+            $"api/my-vouchers?orderNumber={Uri.EscapeDataString(orderNumber)}", ct);
     private const string FreezePolicyPath = "api/manager/membership-freeze-policy";
     private const string FreezeRequestsPath = "api/membership-freeze-requests";
     private const string FreezeReviewsPath = "api/manager/membership-freeze-requests";

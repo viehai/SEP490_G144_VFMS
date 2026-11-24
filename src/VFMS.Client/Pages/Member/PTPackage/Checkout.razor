@@ -4,6 +4,7 @@
 @implements IDisposable
 @using VFMS.Contracts.Memberships
 @using VFMS.Client.Components.Operations
+@using VFMS.Client.Components.Promotions
 @inject PersonalTrainingApiClient Api
 @inject ToastService Toasts
 <PageTitle>Thanh toán gói PT | Victor Fitness</PageTitle>
@@ -43,6 +44,7 @@
                 {
                     <p>Còn <strong>@Remaining(order.ProceedBefore!.Value)</strong> để chọn cách thanh toán (trước @LocalTime(order.ProceedBefore.Value)). Sau khi chọn, số tiền được chốt.</p>
                     <label>Voucher (không bắt buộc)<input class="trainer-input" maxlength="80" @bind="_voucher" disabled="@_busy" /></label>
+                    <CheckoutVoucherPicker OrderNumber="@order.OrderNumber" Disabled="@_busy" OnChoose="code => _voucher = code" />
                     <div class="trainer-row">
                         <button type="button" class="trainer-button trainer-primary" disabled="@_busy" @onclick="() => PayAsync(MembershipPaymentMethods.VietQr)">Tạo mã VietQR</button>
                         <button type="button" class="trainer-button" disabled="@_busy" @onclick="() => PayAsync(MembershipPaymentMethods.Cash)">Thanh toán tại quầy</button>

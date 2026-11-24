@@ -16,12 +16,15 @@ public partial class Promotions : IDisposable
     private const string PrimaryButton = "min-h-[44px] rounded-lg bg-vfms-primary px-5 py-2 text-sm font-semibold text-white hover:bg-vfms-primary-hover disabled:opacity-50";
     private const string SecondaryButton = "min-h-[44px] rounded-lg border border-vfms-border bg-vfms-surface px-3 py-2 text-sm font-semibold text-vfms-text hover:bg-vfms-muted disabled:opacity-50";
     private static readonly CultureInfo Vietnamese = CultureInfo.GetCultureInfo("vi-VN");
-    private static readonly string[] FormFields = ["Name", "Code", "DiscountType", "DiscountValue", "MinimumSpend", "MaxDiscountAmount", "MaxRedemptions", "StartAt", "EndAt", "IsEnabled"];
+    private static readonly string[] FormFields = ["Name", "Code", "DiscountType", "DiscountValue", "MinimumSpend", "MaxDiscountAmount", "MaxRedemptions", "MaxRedemptionsPerUser", "StartAt", "EndAt", "IsEnabled", "Audience", "NewCustomerDuration", "NewCustomerUnit"];
     [Inject] private PromotionApiClient Api { get; set; } = default!;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly CreatePromotionRequestValidator _createValidator = new();
     private readonly UpdatePromotionRequestValidator _updateValidator = new();
     private IReadOnlyList<PromotionResponse>? _promotions;
+    private string _search = string.Empty;
+    private PromotionStatus? _statusFilter;
+    private PromotionAudience? _audienceFilter;
     private PromotionFormModel? _form;
     private EditContext? _editContext;
     private ValidationMessageStore? _messages;
@@ -40,6 +43,17 @@ public partial class Promotions : IDisposable
     private ElementReference _errorNotice;
     private ElementReference _successNotice;
     private bool Busy => _working || _loading;
+
+    private IEnumerable<PromotionResponse> FilteredRows()
+    {
+        var term = _search.Trim();
+        return (_promotions ?? []).Where(row =>
+                (_statusFilter is null || row.Status == _statusFilter) &&
+                (_audienceFilter is null || row.Audience == _audienceFilter) &&
+                (row.Name.Contains(term, StringComparison.OrdinalIgnoreCase) || row.Code.Contains(term, StringComparison.OrdinalIgnoreCase)))
+            .OrderByDescending(row => row.Status == PromotionStatus.Active)
+            .ThenBy(row => row.Status).ThenBy(row => row.Name, StringComparer.Create(Vietnamese, true));
+    }
 
     protected override Task OnInitializedAsync() => LoadAsync();
 
@@ -204,11 +218,11 @@ public partial class Promotions : IDisposable
         ? response.DiscountValue.ToString("0.##", Vietnamese) + "%" : Vnd.Format(response.DiscountValue);
     private static string StatusLabel(PromotionStatus status) => status switch
     {
-        PromotionStatus.Scheduled => "Đã lên lịch / Scheduled",
-        PromotionStatus.Active => "Đang áp dụng / Active",
-        PromotionStatus.Expired => "Hết hạn / Expired",
-        PromotionStatus.Disabled => "Đã tắt / Disabled",
-        _ => status.ToString()
+        PromotionStatus.Scheduled => "Sắp diễn ra",
+        PromotionStatus.Active => "Đang áp dụng",
+        PromotionStatus.Expired => "Hết hạn",
+        PromotionStatus.Disabled => "Ngừng sử dụng",
+        _ => "Chưa xác định"
     };
     private static string BadgeClass(PromotionStatus status) => "inline-flex rounded-full border px-3 py-1 text-xs font-semibold " + (status switch
     {
