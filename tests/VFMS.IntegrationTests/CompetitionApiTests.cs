@@ -33,6 +33,7 @@ public sealed class CompetitionApiTests
 {
     /// <summary>Unique per test run so seeded emails and names remain distinct.</summary>
     private static readonly string RunId = Guid.NewGuid().ToString("N")[..8];
+    private static int _nextPhone;
 
     [Fact]
     public async Task MemberCanRegisterOnlyOnceAndOnlyInsideTheRegistrationWindow()
@@ -155,11 +156,16 @@ public sealed class CompetitionApiTests
         Assert.Equal(1, confirmedBody.GetProperty("rank").GetInt32());
         Assert.Equal("Great form", confirmedBody.GetProperty("note").GetString());
 
-        // The winner got a notification with the voucher code.
+        // The entitlement and its notification survive repeated confirmation exactly once.
+        var again = await PostAsync(client, $"/api/competitions/{competitionId}/results/confirm-all", manager);
+        Assert.Equal(HttpStatusCode.OK, again.StatusCode);
+        var grants = app.Services.GetRequiredService<VfmsDbContext>().VoucherGrants;
+        var grant = await grants.SingleAsync();
+        Assert.Equal(member.UserId, grant.UserId);
+        Assert.Equal(voucherId, grant.VoucherId);
         var notifications = await app.Services.GetRequiredService<VfmsDbContext>()
             .Notifications.Where(n => n.RecipientUserId == member.UserId).ToListAsync();
-        Assert.Contains(notifications, n => n.NotificationType == nameof(NotificationType.CompetitionResult)
-            && n.Message.Contains($"PRIZE2026{RunId}", StringComparison.Ordinal));
+        Assert.Single(notifications.Where(n => n.NotificationType == nameof(NotificationType.CompetitionResult) && n.Message.Contains("Prize voucher")));
 
         // The leaderboard shows the confirmed participant.
         var leaderboard = await GetAsync(client, $"/api/competitions/{competitionId}/leaderboard", member);
@@ -169,7 +175,7 @@ public sealed class CompetitionApiTests
         Assert.NotNull(entries);
         Assert.Single(entries!);
         Assert.Equal("Champion", entries![0].PrizeName);
-        Assert.Equal($"PRIZE2026{RunId}", entries[0].VoucherCode);
+        Assert.Null(entries[0].VoucherCode);
         Assert.Equal("Great form", entries[0].Note);
     }
 
@@ -315,6 +321,52 @@ public sealed class CompetitionApiTests
         Assert.Equal(HttpStatusCode.Forbidden, created.StatusCode);
     }
 
+    [Fact]
+    public async Task RewardsMustBeAssignableAtCompetitionEndAndPublishedCapacityIsCommitted()
+    {
+        await using var app = await StartAsync();
+        using var client = app.GetTestClient();
+        await SeedGymAsync(app);
+        var manager = await SeedUserAsync(app, "Manager Rewards", "manager.rewards@example.com", "Manager");
+        var db = app.Services.GetRequiredService<VfmsDbContext>();
+        var id = await SeedVoucherAsync(app, "EXCLUSIVE", manager.UserId);
+        var voucher = await db.Vouchers.SingleAsync(v => v.Id == id);
+        var now = DateTime.UtcNow;
+        Task<HttpResponseMessage> Create(string name, params CompetitionPrizeRequest[] prizes) => CreateCompetitionAsync(client, manager,
+            name, now.AddDays(-1), now.AddHours(1), now.AddDays(1), now.AddDays(3), prizes: prizes);
+        var first = new CompetitionPrizeRequest("First", 1, VoucherId: id);
+        var second = new CompetitionPrizeRequest("Second", 2, VoucherId: id);
+        Assert.Equal(HttpStatusCode.BadRequest, (await Create("duplicate", first, first)).StatusCode);
+        foreach (var audience in new[] { VoucherAudience.AllCustomers, VoucherAudience.NewCustomers })
+        {
+            voucher.Audience = audience;
+            await db.SaveChangesAsync();
+            Assert.Equal(HttpStatusCode.Conflict, (await Create("wrong audience", first)).StatusCode);
+            var candidates = await GetAsync(client, "/api/competitions/reward-vouchers", manager);
+            Assert.Empty((await candidates.Content.ReadFromJsonAsync<CompetitionRewardVoucher[]>())!);
+        }
+        voucher.Audience = VoucherAudience.AssignedUsers;
+        voucher.EndAt = now.AddDays(1);
+        await db.SaveChangesAsync();
+        Assert.Equal(HttpStatusCode.Conflict, (await Create("expires before awards", first)).StatusCode);
+        voucher.EndAt = now.AddDays(10);
+        voucher.MaxRedemptions = 2;
+        await db.SaveChangesAsync();
+        var two = await Create("two prizes", first, second);
+        Assert.Equal(HttpStatusCode.Created, two.StatusCode);
+        var other = await Create("other draft", first);
+        var firstId = await ReadIdAsync(two);
+        var otherId = await ReadIdAsync(other);
+        Assert.Equal(HttpStatusCode.OK, (await PostAsync(client, $"/api/competitions/{firstId}/publish", manager)).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await PostAsync(client, $"/api/competitions/{otherId}/publish", manager)).StatusCode);
+        var publicDetail = await client.GetFromJsonAsync<CompetitionResponse>($"/api/competitions/{firstId}");
+        Assert.Equal(2, publicDetail!.Prizes.Count);
+        Assert.All(publicDetail.Prizes, prize => { Assert.Null(prize.VoucherCode); Assert.Equal(voucher.Name, prize.Reward!.Name); });
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/competitions/{otherId}")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await PostAsync(client, $"/api/competitions/{firstId}/cancel", manager)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await PostAsync(client, $"/api/competitions/{otherId}/publish", manager)).StatusCode);
+    }
+
     // ── Helpers ──────────────────────────────────────────────────
 
     private static async Task<WebApplication> StartAsync()
@@ -402,7 +454,7 @@ public sealed class CompetitionApiTests
             GymId = gymId,
             FullName = fullName,
             Email = uniqueEmail,
-            PhoneNumber = "0900000000",
+            PhoneNumber = FormattableString.Invariant($"09{Interlocked.Increment(ref _nextPhone):D8}"),
             PasswordHash = "hash",
             AccountStatus = AccountStatus.Active
         };
@@ -421,6 +473,7 @@ public sealed class CompetitionApiTests
         {
             Code = $"{code}{RunId}",
             Name = "Prize voucher",
+            Audience = VoucherAudience.AssignedUsers,
             DiscountType = DiscountType.FIXED,
             DiscountValue = 100_000,
             StartAt = DateTime.UtcNow.AddDays(-30),

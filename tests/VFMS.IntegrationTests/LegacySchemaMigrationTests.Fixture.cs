@@ -121,7 +121,7 @@ public sealed partial class LegacySchemaMigrationTests
         }
     }
 
-    private sealed class DisposableMigrationDatabase : IAsyncDisposable
+    internal sealed class DisposableMigrationDatabase : IAsyncDisposable
     {
         private const string Prefix = "VFMS_MigrationTest_";
         private readonly string _masterConnection;

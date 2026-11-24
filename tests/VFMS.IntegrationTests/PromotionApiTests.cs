@@ -133,7 +133,8 @@ public sealed partial class PromotionApiTests : IAsyncLifetime
         var listed = Assert.Single((await Body(await manager.GetAsync(Route), HttpStatusCode.OK)).EnumerateArray());
         Assert.Equal(created.GetRawText(), listed.GetRawText());
         Assert.False(detail.TryGetProperty("createdByUserId", out _));
-        Assert.False(detail.TryGetProperty("maxRedemptionsPerUser", out _));
+        Assert.Equal(JsonValueKind.Null, detail.GetProperty("maxRedemptionsPerUser").ValueKind);
+        Assert.Equal("AllCustomers", detail.GetProperty("audience").GetString());
 
         await using var scope = _app.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
@@ -336,9 +337,12 @@ public sealed partial class PromotionApiTests : IAsyncLifetime
         Assert.NotEqual(default, audit.OccurredAt);
     }
 
+    private static int _nextPhone;
+
     private static ApplicationUser User(string id, Gym gym) => new()
     {
         UserId = id, Gym = gym, FullName = id, Email = $"{id}@example.com",
+        PhoneNumber = FormattableString.Invariant($"09{Interlocked.Increment(ref _nextPhone):D8}"),
         PasswordHash = "unused-test-password-hash", AccountStatus = AccountStatus.Active
     };
 

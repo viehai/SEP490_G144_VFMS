@@ -3309,6 +3309,9 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<int?>("PTPurchaseId")
                         .HasColumnType("int");
 
+                    b.Property<int?>("PackageId")
+                        .HasColumnType("int");
+
                     b.Property<int>("Rating")
                         .HasColumnType("int");
 
@@ -3346,6 +3349,10 @@ namespace VFMS.Infrastructure.Migrations
                     b.HasIndex("TrainerProfileId");
 
                     b.HasIndex("TrainerUserId");
+
+                    b.HasIndex("PackageId", "MemberUserId")
+                        .IsUnique()
+                        .HasFilter("[PackageId] IS NOT NULL AND [IsDeleted] = 0");
 
                     b.ToTable("TrainerReviews");
                 });
@@ -3396,6 +3403,13 @@ namespace VFMS.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("Audience")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("AllCustomers");
+
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -3443,6 +3457,13 @@ namespace VFMS.Infrastructure.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
 
+                    b.Property<int?>("NewCustomerDuration")
+                        .HasColumnType("int");
+
+                    b.Property<string>("NewCustomerUnit")
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
                     b.Property<DateTime>("StartAt")
                         .HasColumnType("datetime2");
 
@@ -3462,6 +3483,45 @@ namespace VFMS.Infrastructure.Migrations
                     b.HasIndex("CreatedByUserId");
 
                     b.ToTable("Vouchers");
+                });
+
+            modelBuilder.Entity("VFMS.Domain.Entities.VoucherGrant", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CompetitionPrizeId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<int>("VoucherId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("VoucherId");
+
+                    b.HasIndex("CompetitionPrizeId", "UserId")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "VoucherId");
+
+                    b.ToTable("VoucherGrants");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.VoucherRedemption", b =>
@@ -3499,6 +3559,9 @@ namespace VFMS.Infrastructure.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
+                    b.Property<int?>("VoucherGrantId")
+                        .HasColumnType("int");
+
                     b.Property<int>("VoucherId")
                         .HasColumnType("int");
 
@@ -3510,6 +3573,10 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.HasIndex("OrderId")
                         .IsUnique();
+
+                    b.HasIndex("VoucherGrantId")
+                        .IsUnique()
+                        .HasFilter("[VoucherGrantId] IS NOT NULL AND [RedemptionStatus] <> 'Released'");
 
                     b.HasIndex("VoucherId", "RedemptionStatus");
 
@@ -4933,6 +5000,11 @@ namespace VFMS.Infrastructure.Migrations
                         .HasForeignKey("PTPurchaseId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("VFMS.Domain.Entities.Package", "Package")
+                        .WithMany()
+                        .HasForeignKey("PackageId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("VFMS.Domain.Entities.ApplicationUser", "ReviewedByUser")
                         .WithMany()
                         .HasForeignKey("ReviewedByUserId")
@@ -4951,6 +5023,8 @@ namespace VFMS.Infrastructure.Migrations
                     b.Navigation("MemberUser");
 
                     b.Navigation("PTPurchase");
+
+                    b.Navigation("Package");
 
                     b.Navigation("ReviewedByUser");
 
@@ -4979,6 +5053,33 @@ namespace VFMS.Infrastructure.Migrations
                     b.Navigation("CreatedByUser");
                 });
 
+            modelBuilder.Entity("VFMS.Domain.Entities.VoucherGrant", b =>
+                {
+                    b.HasOne("VFMS.Domain.Entities.CompetitionPrize", "CompetitionPrize")
+                        .WithMany()
+                        .HasForeignKey("CompetitionPrizeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("VFMS.Domain.Entities.ApplicationUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("VFMS.Domain.Entities.Voucher", "Voucher")
+                        .WithMany("Grants")
+                        .HasForeignKey("VoucherId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("CompetitionPrize");
+
+                    b.Navigation("User");
+
+                    b.Navigation("Voucher");
+                });
+
             modelBuilder.Entity("VFMS.Domain.Entities.VoucherRedemption", b =>
                 {
                     b.HasOne("VFMS.Domain.Entities.Order", "Order")
@@ -4986,6 +5087,11 @@ namespace VFMS.Infrastructure.Migrations
                         .HasForeignKey("VFMS.Domain.Entities.VoucherRedemption", "OrderId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("VFMS.Domain.Entities.VoucherGrant", "VoucherGrant")
+                        .WithMany()
+                        .HasForeignKey("VoucherGrantId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("VFMS.Domain.Entities.Voucher", "Voucher")
                         .WithMany("Redemptions")
@@ -4996,6 +5102,8 @@ namespace VFMS.Infrastructure.Migrations
                     b.Navigation("Order");
 
                     b.Navigation("Voucher");
+
+                    b.Navigation("VoucherGrant");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.WorkoutLog", b =>
@@ -5415,6 +5523,8 @@ namespace VFMS.Infrastructure.Migrations
 
             modelBuilder.Entity("VFMS.Domain.Entities.Voucher", b =>
                 {
+                    b.Navigation("Grants");
+
                     b.Navigation("Redemptions");
                 });
 

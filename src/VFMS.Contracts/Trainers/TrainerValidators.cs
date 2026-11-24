@@ -124,6 +124,7 @@ public sealed class TrainerSearchValidator : AbstractValidator<TrainerSearch>
         RuleFor(x => x.PageSize).InclusiveBetween(1, 100);
         RuleFor(x => x.Search).MaximumLength(200);
         RuleFor(x => x.TrainerRole).Must(x => string.IsNullOrEmpty(x) || TrainerRoleNames.IsValid(x));
+        RuleFor(x => x.Level).Must(x => x == null || x is "Junior" or "Senior" or "Expert" or "Master");
         RuleFor(x => x.Gender).Must(x => x == null || x is "Male" or "Female" or "Other");
         RuleFor(x => x.MinimumRating).InclusiveBetween(0, 5);
     }

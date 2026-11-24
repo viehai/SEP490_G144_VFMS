@@ -18,6 +18,9 @@ public class Voucher : BaseEntity
     public DateTime EndAt { get; set; }
     public int? MaxRedemptions { get; set; }
     public int? MaxRedemptionsPerUser { get; set; }
+    public VoucherAudience Audience { get; set; } = VoucherAudience.AllCustomers;
+    public int? NewCustomerDuration { get; set; }
+    public FreezeTierUnit? NewCustomerUnit { get; set; }
     public decimal? MinimumSpend { get; set; }
     public decimal? MaxDiscountAmount { get; set; }
     public VoucherStatus VoucherStatus { get; set; } = VoucherStatus.Active;
@@ -26,5 +29,6 @@ public class Voucher : BaseEntity
     // ── Navigation Properties ──────────────────────────────────
     public ApplicationUser CreatedByUser { get; set; } = null!;
     public ICollection<VoucherRedemption> Redemptions { get; set; } = [];
+    public ICollection<VoucherGrant> Grants { get; set; } = [];
 }
 

@@ -1,0 +1,109 @@
+@inject CompetitionApiClient Api
+
+<fieldset class="competition-rewards">
+    <legend>Phần thưởng cuộc thi</legend>
+    <p>Voucher sẽ được tự động cấp cho người đạt giải sau khi quản lý xác nhận kết quả.</p>
+    @if (_loading)
+    {
+        <p role="status">Đang tải voucher phần thưởng…</p>
+    }
+    else if (_loadError != null)
+    {
+        <p role="alert">@_loadError <button type="button" @onclick="LoadAsync">Tải lại</button></p>
+    }
+    else if (_options.Count == 0 && !ReadOnly)
+    {
+        <p>Chưa có voucher cấp riêng đủ điều kiện cho thời điểm trao giải. <a href="/manager/promotions">Quản lý khuyến mãi</a></p>
+    }
+    @foreach (var row in Rows)
+    {
+        var reward = _options.FirstOrDefault(v => v.Id == row.VoucherId) ?? row.Existing;
+        <div @key="row" class="reward-row">
+            <label>Thứ hạng <span>*</span>
+                <input type="number" min="1" step="1" required disabled="@(ReadOnly || ReplaceOnly)" @bind="row.Rank" />
+            </label>
+            <label>Voucher phần thưởng <span>*</span>
+                <select required disabled="@(ReadOnly || _loading)" @bind="row.VoucherId">
+                    <option value="">Chọn voucher</option>
+                    @if (row.Existing is { } existing && _options.All(v => v.Id != existing.Id))
+                    {
+                        <option value="@existing.Id">@existing.Name (đã cấu hình)</option>
+                    }
+                    @foreach (var option in _options)
+                    {
+                        <option value="@option.Id">@option.Name — @CompetitionRewardDisplay.Value(option)</option>
+                    }
+                </select>
+            </label>
+            @if (!ReadOnly && !ReplaceOnly)
+            {
+                <button type="button" aria-label="@($"Xóa giải thưởng hạng {row.Rank}")" @onclick="() => Rows.Remove(row)">Xóa</button>
+            }
+            @if (reward != null)
+            {
+                <p class="reward-terms">@reward.Name · @CompetitionRewardDisplay.Value(reward). @CompetitionRewardDisplay.Terms(reward)
+                    @if (reward.AvailableAwards is { } available) { <span>Còn @available lượt có thể trao.</span> }
+                </p>
+            }
+        </div>
+    }
+    @if (!ReadOnly && !ReplaceOnly)
+    {
+        <button type="button" class="add-reward" @onclick="Add" disabled="@(_loading || _options.Count == 0)">+ Thêm giải thưởng</button>
+    }
+</fieldset>
+
+@code {
+    [Parameter, EditorRequired] public List<RewardRow> Rows { get; set; } = [];
+    [Parameter] public DateTime EndUtc { get; set; }
+    [Parameter] public int? CompetitionId { get; set; }
+    [Parameter] public bool ReadOnly { get; set; }
+    [Parameter] public bool ReplaceOnly { get; set; }
+
+    public sealed class RewardRow
+    {
+        public int Rank { get; set; }
+        public int? VoucherId { get; set; }
+        public CompetitionRewardVoucher? Existing { get; init; }
+        public string? PrizeName { get; init; }
+        public string? Description { get; init; }
+    }
+
+    private List<CompetitionRewardVoucher> _options = [];
+    private (DateTime, int?)? _loaded;
+    private bool _loading;
+    private string? _loadError;
+    private int _version;
+
+    protected override Task OnParametersSetAsync()
+    {
+        if (ReadOnly || _loaded == (EndUtc, CompetitionId)) return Task.CompletedTask;
+        _loaded = (EndUtc, CompetitionId);
+        return LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var version = ++_version;
+        _loading = true;
+        _loadError = null;
+        try
+        {
+            var options = await Api.GetRewardOptionsAsync(EndUtc, CompetitionId);
+            if (version == _version) _options = options;
+        }
+        catch (Exception error) when (version == _version)
+        {
+            _options = [];
+            _loadError = error.Message;
+        }
+        finally { if (version == _version) _loading = false; }
+    }
+
+    private void Add()
+    {
+        var rank = 1;
+        while (Rows.Any(row => row.Rank == rank)) rank++;
+        Rows.Add(new RewardRow { Rank = rank });
+    }
+}

@@ -72,7 +72,7 @@ public sealed class MembershipPlanApiTests : IAsyncLifetime
         var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
         await db.Database.EnsureCreatedAsync();
         var gym = new Gym { GymName = "Membership plan test gym" };
-        db.ApplicationUsers.AddRange(TestUser(ManagerUserId, gym), TestUser(MemberUserId, gym));
+        db.ApplicationUsers.AddRange(TestUser(ManagerUserId, "0900000021", gym), TestUser(MemberUserId, "0900000022", gym));
         await db.SaveChangesAsync();
     }
 
@@ -576,12 +576,13 @@ public sealed class MembershipPlanApiTests : IAsyncLifetime
         await db.SaveChangesAsync();
     }
 
-    private static ApplicationUser TestUser(string id, Gym gym) => new()
+    private static ApplicationUser TestUser(string id, string phoneNumber, Gym gym) => new()
     {
         UserId = id,
         Gym = gym,
         FullName = id,
         Email = $"{id}@example.com",
+        PhoneNumber = phoneNumber,
         PasswordHash = "unused-test-password-hash",
         AccountStatus = AccountStatus.Active
     };

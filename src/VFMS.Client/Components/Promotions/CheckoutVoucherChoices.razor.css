@@ -1,0 +1,7 @@
+.choices { padding: .75rem; border: 1px solid #d8d1cd; border-radius: .5rem; font-size: .875rem; background: #faf8f6; }
+.choice { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .5rem 0; overflow-wrap: anywhere; }
+.choice + .choice { border-top: 1px solid #d8d1cd; }
+.choice > div { min-width: 0; }
+.choices button { min-height: 44px; padding: .5rem .75rem; border-radius: .4rem; color: #a93235; font-weight: 700; }
+.choices small { color: #854325; }
+.choices button:disabled { color: #706964; }

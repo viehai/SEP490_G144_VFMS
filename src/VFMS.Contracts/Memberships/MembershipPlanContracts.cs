@@ -65,6 +65,9 @@ public sealed record MembershipPlanCatalogItemResponse(
     string Status,
     int? DurationInMonths,
     string ServiceType = MembershipPlanServiceTypes.Gym,
-    string? YogaDifficultyLevel = null);
+    string? YogaDifficultyLevel = null)
+{
+    public bool IsSingleService { get; init; } = true;
+}
 
 public sealed record MembershipPlanDeleteResponse(bool Deactivated, string Message);

@@ -4,7 +4,7 @@
 <PageTitle>@(_detail?.Profile.FullName ?? "Hồ sơ huấn luyện viên") | Victor Fitness</PageTitle>
 
 <section class="trainer-page trainer-public trainer-stack">
-    <a class="trainer-back" href="/trainers">← Danh sách huấn luyện viên</a>
+    <a class="trainer-back" href="@DirectoryUrl">← Danh sách huấn luyện viên</a>
     <TrainerFeedback Error="@_error" />
     @if (_loading)
     {
@@ -36,7 +36,18 @@
             else
             {
                 <div class="trainer-row">
-                    @if (IsPT && detail.Profile.IsAcceptingNewMembers)
+                    @if (PackageId is not null)
+                    {
+                        @if (_package is { } package && IsPT && detail.Profile.IsAcceptingNewMembers && detail.Profile.Level == package.TrainerLevel)
+                        {
+                            <a class="trainer-button trainer-primary" href="@($"/pt-booking/{Id}?package={package.Id}")">Đặt lịch gói @package.Name</a>
+                        }
+                        else
+                        {
+                            <p class="trainer-muted">Gói PT đã chọn hiện không thể đặt với huấn luyện viên này.</p>
+                        }
+                    }
+                    else if (IsPT && detail.Profile.IsAcceptingNewMembers)
                     {
                         <a class="trainer-button trainer-primary" href="@($"/trainers/{Id}/packages")">Khám phá gói PT</a>
                     }
@@ -102,7 +113,10 @@
 
 @code {
     [Parameter] public int Id { get; set; }
+    [SupplyParameterFromQuery(Name = "package")] public int? PackageId { get; set; }
     private TrainerPublicDetail? _detail;
+    private PTPackageResponse? _package;
+    private string DirectoryUrl => PackageId is { } packageId ? PackageCatalogLinks.Trainers(packageId) : "/trainers";
     // UC 3.4: only a PT sells packages and publishes a weekly timetable.
     private bool IsPT => _detail?.Profile.TrainerRole == "PT";
     private bool _loading;
@@ -130,12 +144,19 @@
         _loading = true;
         _loadingReviews = false;
         _detail = null;
+        _package = null;
         _error = null;
         try
         {
             var detail = await Api.DetailAsync(Id);
             if (version != _requestVersion) return;
             _detail = detail;
+            if (PackageId is { } packageId)
+            {
+                var packages = await Api.PackagesAsync();
+                if (version == _requestVersion)
+                    _package = packages.FirstOrDefault(package => package.Id == packageId && package.IsActive);
+            }
         }
         catch (AuthApiException ex) { if (version == _requestVersion) _error = ex.Message; }
         finally { if (version == _requestVersion) _loading = false; }

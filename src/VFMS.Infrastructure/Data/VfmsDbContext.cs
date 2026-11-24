@@ -38,6 +38,7 @@ public class VfmsDbContext : DbContext
     public DbSet<MemberMembership> MemberMemberships { get; set; }
     public DbSet<Voucher> Vouchers { get; set; }
     public DbSet<VoucherRedemption> VoucherRedemptions { get; set; }
+    public DbSet<VoucherGrant> VoucherGrants { get; set; }
     public DbSet<FreezePolicy> FreezePolicies { get; set; }
     public DbSet<MembershipFreeze> MembershipFreezes { get; set; }
 
@@ -389,11 +390,23 @@ public class VfmsDbContext : DbContext
             entity.Property(e => e.MinimumSpend).HasColumnType("decimal(18,2)");
             entity.Property(e => e.MaxDiscountAmount).HasColumnType("decimal(18,2)");
             entity.Property(e => e.VoucherStatus).HasConversion<string>().HasMaxLength(20);
+            entity.Property(e => e.Audience).HasConversion<string>().HasMaxLength(20)
+                .HasDefaultValue(VFMS.Domain.Enums.VoucherAudience.AllCustomers);
+            entity.Property(e => e.NewCustomerUnit).HasConversion<string>().HasMaxLength(10);
 
             entity.HasOne(e => e.CreatedByUser)
                 .WithMany(u => u.CreatedVouchers)
                 .HasForeignKey(e => e.CreatedByUserId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<VoucherGrant>(entity =>
+        {
+            entity.HasIndex(e => new { e.CompetitionPrizeId, e.UserId }).IsUnique();
+            entity.HasIndex(e => new { e.UserId, e.VoucherId });
+            entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.Voucher).WithMany(v => v.Grants).HasForeignKey(e => e.VoucherId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.CompetitionPrize).WithMany().HasForeignKey(e => e.CompetitionPrizeId).OnDelete(DeleteBehavior.Restrict);
         });
 
         // ── VoucherRedemption ─────────────────────────────────────
@@ -405,6 +418,9 @@ public class VfmsDbContext : DbContext
             entity.Property(e => e.VoucherCodeSnapshot).HasMaxLength(50);
             entity.Property(e => e.VoucherNameSnapshot).HasMaxLength(256);
             entity.HasIndex(e => new { e.VoucherId, e.RedemptionStatus });
+            entity.HasIndex(e => e.VoucherGrantId).IsUnique()
+                .HasFilter("[VoucherGrantId] IS NOT NULL AND [RedemptionStatus] <> 'Released'");
+            entity.HasOne(e => e.VoucherGrant).WithMany().HasForeignKey(e => e.VoucherGrantId).OnDelete(DeleteBehavior.Restrict);
             entity.Property(e => e.RedemptionStatus).HasConversion<string>().HasMaxLength(20);
 
             entity.HasOne(e => e.Voucher)
@@ -1263,6 +1279,10 @@ public class VfmsDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.PTPurchaseId).IsUnique();
             entity.HasOne(e => e.PTPurchase).WithMany().HasForeignKey(e => e.PTPurchaseId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(e => new { e.PackageId, e.MemberUserId }).IsUnique()
+                .HasFilter("[PackageId] IS NOT NULL AND [IsDeleted] = 0");
+            entity.HasOne(e => e.Package).WithMany().HasForeignKey(e => e.PackageId)
                 .OnDelete(DeleteBehavior.Restrict);
             entity.Property(e => e.ReviewStatus).HasConversion<string>().HasMaxLength(30);
 

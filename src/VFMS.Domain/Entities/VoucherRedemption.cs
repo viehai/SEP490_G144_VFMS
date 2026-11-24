@@ -10,6 +10,8 @@ namespace VFMS.Domain.Entities;
 public class VoucherRedemption : BaseEntity
 {
     public int VoucherId { get; set; }
+    public int? VoucherGrantId { get; set; }
+    public VoucherGrant? VoucherGrant { get; set; }
     public int OrderId { get; set; }
     public decimal DiscountAmount { get; set; }
     /// <summary>Voucher code captured when applied (for example, SAVE10), independent of later campaign edits.</summary>

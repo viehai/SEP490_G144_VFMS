@@ -54,7 +54,7 @@ public sealed partial class MembershipPurchaseRepository(VfmsDbContext context) 
     public Task<ApplicationRole?> GetMemberRoleAsync(CancellationToken ct) =>
         context.ApplicationRoles.SingleOrDefaultAsync(role => role.RoleName == nameof(UserRole.Member), ct);
 
-    public async Task<Order?> FindOrderAsync(string orderNumber, string? purchaserId, bool forUpdate, CancellationToken ct)
+    public async Task<Order?> FindOrderAsync(string orderNumber, string? purchaserId, bool forUpdate, CancellationToken ct, bool membershipOnly = false)
     {
         var orders = forUpdate && context.Database.IsSqlServer()
             ? context.Orders.FromSqlInterpolated($"SELECT * FROM [Orders] WITH (UPDLOCK, HOLDLOCK) WHERE [OrderNumber] = {orderNumber}")
@@ -72,6 +72,9 @@ public sealed partial class MembershipPurchaseRepository(VfmsDbContext context) 
             .AsSplitQuery().SingleOrDefaultAsync(ct);
         if (order is not null)
         {
+            if (membershipOnly && (order.PaymentTransaction?.LockerRentalContractId is not null ||
+                await context.PTPurchases.IgnoreQueryFilters().AnyAsync(p => p.OrderId == order.Id, ct)))
+                return null;
             var redemptions = context.VoucherRedemptions.IgnoreQueryFilters();
             if (!forUpdate) redemptions = redemptions.AsNoTracking();
             order.VoucherRedemption = await redemptions.SingleOrDefaultAsync(row => row.OrderId == order.Id, ct);
@@ -93,20 +96,8 @@ public sealed partial class MembershipPurchaseRepository(VfmsDbContext context) 
         return vouchers.SingleOrDefaultAsync(voucher => !voucher.IsDeleted, ct);
     }
 
-    public async Task<(int Confirmed, int Reserved)> CountVoucherCapacityAsync(int voucherId, CancellationToken ct)
-    {
-        // Retain expired reservations until JOB-01 releases them. Counting only redemption
-        // state avoids reading another order while its Apply call waits for the voucher lock.
-        var rows = context.Database.IsSqlServer()
-            ? context.VoucherRedemptions.FromSqlInterpolated($"SELECT * FROM [VoucherRedemptions] WITH (UPDLOCK, HOLDLOCK) WHERE [VoucherId] = {voucherId}")
-            : context.VoucherRedemptions.Where(row => row.VoucherId == voucherId);
-        var counts = await rows.IgnoreQueryFilters()
-            .Where(row => row.RedemptionStatus == VoucherRedemptionStatus.Confirmed || row.RedemptionStatus == VoucherRedemptionStatus.Reserved)
-            .GroupBy(row => row.RedemptionStatus)
-            .Select(group => new { Status = group.Key, Count = group.Count() }).ToListAsync(ct);
-        return (counts.SingleOrDefault(row => row.Status == VoucherRedemptionStatus.Confirmed)?.Count ?? 0,
-            counts.SingleOrDefault(row => row.Status == VoucherRedemptionStatus.Reserved)?.Count ?? 0);
-    }
+    public async Task<VoucherCapacity> ReadVoucherCapacityAsync(int voucherId, ApplicationUser purchaser, CancellationToken ct) =>
+        (await VoucherCapacityReader.ReadForUserAsync(context, [voucherId], purchaser.UserId, ct))[voucherId];
 
     public Task<List<Order>> LoadExpiredOrdersAsync(DateTime onlineCutoff, DateTime cashCutoff, CancellationToken ct)
     {

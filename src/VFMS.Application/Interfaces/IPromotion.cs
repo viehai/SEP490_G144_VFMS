@@ -22,8 +22,9 @@ public interface IPromotionRepository : IAuditedRepository
     Task<IReadOnlyList<PromotionReadModel>> ListAsync(CancellationToken ct);
     Task<PromotionReadModel?> GetAsync(int id, CancellationToken ct);
     Task<Voucher?> GetForUpdateAsync(int id, CancellationToken ct);
-    Task<int> GetUsedCountAsync(int id, CancellationToken ct);
     Task<int> GetCommittedCapacityAsync(int id, CancellationToken ct);
+    Task<int> GetMaxCommittedPerUserAsync(int id, CancellationToken ct);
+    Task<bool> HasRewardCommitmentsAsync(int id, CancellationToken ct);
     Task<bool> CodeExistsAsync(string normalizedCode, int? excludingId, CancellationToken ct);
     Task ExecuteInSerializableTransactionAsync(Func<Task> work, CancellationToken ct);
 }
@@ -31,7 +32,8 @@ public interface IPromotionRepository : IAuditedRepository
 public sealed record PromotionReadModel(
     int Id, string Name, string Code, DiscountType DiscountType, decimal DiscountValue,
     decimal? MinimumSpend, decimal? MaxDiscountAmount, int? MaxRedemptions, int UsedCount,
-    DateTime StartAt, DateTime EndAt, VoucherStatus VoucherStatus);
+    DateTime StartAt, DateTime EndAt, VoucherStatus VoucherStatus, VoucherAudience Audience,
+    int? MaxRedemptionsPerUser, int? NewCustomerDuration, FreezeTierUnit? NewCustomerUnit, int GrantedCount);
 
 /// <summary>Persistence translates a competing insert's unique-code failure without leaking database types.</summary>
 public sealed class PromotionCodeConflictException(Exception innerException)

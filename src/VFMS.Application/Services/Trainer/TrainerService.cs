@@ -686,10 +686,12 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
     private static Result<bool> InvalidSetupToken() => Error<bool>("TRAINER_SETUP_INVALID", "Setup link is invalid or expired.", 400);
 
     // UC 3.4: the directory lists active PT and Yoga trainers; Yoga trainers teaching classes stay visible.
-    private IQueryable<TrainerProfileResponse> PublicProfiles() =>
+    private IQueryable<TrainerProfileResponse> PublicProfiles(TrainerLevel? level = null, bool? acceptingNewMembers = null) =>
         from profile in store.Query<TrainerProfile>()
         join user in store.Query<ApplicationUser>() on profile.PTUserId equals user.UserId
         where profile.IsActive && user.AccountStatus == AccountStatus.Active && !user.IsBanned
+            && (level == null || profile.Level == level)
+            && (acceptingNewMembers == null || profile.AcceptingNewMembers == acceptingNewMembers)
         select new TrainerProfileResponse
         {
             Id = profile.Id,
@@ -771,7 +773,8 @@ public sealed class TrainerService(ITrainerStore store, IPasswordHasher password
     public async Task<Result<PagedResponse<TrainerProfileResponse>>> Search(TrainerSearch r, CancellationToken ct)
     {
         if (!(await new TrainerSearchValidator().ValidateAsync(r, ct)).IsValid) return Error<PagedResponse<TrainerProfileResponse>>("TRAINER_VALIDATION", "Invalid filters.", 400);
-        var q = PublicProfiles();
+        var level = r.Level is { } requestedLevel ? Enum.Parse<TrainerLevel>(requestedLevel) : (TrainerLevel?)null;
+        var q = PublicProfiles(level, r.AcceptingNewMembers);
         if (r.Search != null)
             q = q.Where(x => x.FullName.Contains(r.Search) || x.Specialty.Contains(r.Search));
         if (!string.IsNullOrEmpty(r.TrainerRole))

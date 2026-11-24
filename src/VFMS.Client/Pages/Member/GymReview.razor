@@ -1,6 +1,7 @@
 @page "/gym-review"
 @layout PublicLayout
 @using Microsoft.AspNetCore.Authorization
+@using VFMS.Client.Components.Operations
 @using VFMS.Contracts.Common
 @using VFMS.Contracts.Feedback
 @attribute [Authorize(Roles = "Customer,Member")]
@@ -14,6 +15,7 @@
         <p class="text-xs font-bold tracking-wider text-[#B83A3A]">VFMS / REVIEW GYM &amp; SERVICES</p>
         <h1 class="mt-2 text-3xl font-black text-[#242424]">Đánh giá dịch vụ.</h1>
         <p class="mt-2 text-sm text-[#6F6966]">Chia sẻ cảm nhận hoặc góp ý về phòng gym bằng nội dung đánh giá.</p>
+        <a href="/membership-plans" class="mt-2 inline-flex min-h-[44px] items-center text-sm font-bold text-vfms-primary hover:underline">Chọn gói tập để đánh giá</a>
     </header>
 
     @if (_notice is not null)
@@ -70,7 +72,7 @@
                     @foreach (var review in page.Items)
                     {
                         <article @key="review.Id" class="p-5">
-                            <p class="text-sm font-bold text-[#242424]">Đánh giá phòng gym</p>
+                            <p class="text-sm font-bold text-[#242424]">@(review.PackageName ?? "Đánh giá phòng gym")</p>
                             <p class="mt-1 text-sm text-[#B83A3A]">@Stars(review.Rating)</p>
                             <p class="mt-2 text-sm text-[#6F6966]">@(review.Comment ?? "Không có nhận xét.")</p>
                             <p class="mt-2 text-xs text-[#8C8581]">@StatusLabel(review.Status) · @review.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</p>
@@ -83,6 +85,10 @@
                         </article>
                     }
                 </div>
+                @if (page.TotalCount > page.PageSize)
+                {
+                    <Pager Page="page.Page" PageSize="page.PageSize" TotalCount="page.TotalCount" Noun="đánh giá" Disabled="@Busy" OnPage="LoadMineAsync" />
+                }
             }
             else
             {
@@ -106,12 +112,12 @@
         await LoadMineAsync();
     }
 
-    private async Task LoadMineAsync()
+    private async Task LoadMineAsync(int page = 1)
     {
         _loading = true;
         try
         {
-            _mine = await Api.GetMyFeedbackAsync(new(null, null, null, 1, 20), _lifetime.Token);
+            _mine = await Api.GetMyFeedbackAsync(new(null, null, null, page, 20), _lifetime.Token);
         }
         catch (AuthApiException error) { _error = error.Message; }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }

@@ -64,9 +64,10 @@ public sealed class YogaBookingService : IYogaBookingService
         if (MembershipRules.Usable(memberships, YogaTime.Today(_clock), ComponentType.YOGA) is null)
             return Result<YogaBookingResponse>.Failure(
                 "Bạn cần có gói hội viên còn hiệu lực để đặt lớp Yoga hoặc buổi tập PT.", "MEMBERSHIP_REQUIRED", 403);
-        if (MembershipRules.Usable(
-                memberships.Where(m => YogaRules.PlanCovers(m.PackageComponent.YogaDifficultyLevel, yogaClass.DifficultyLevel)),
-                YogaTime.Today(_clock), ComponentType.YOGA) is null)
+        var membership = MembershipRules.Usable(
+            memberships.Where(m => YogaRules.PlanCovers(m.PackageComponent.YogaDifficultyLevel, yogaClass.DifficultyLevel)),
+            YogaTime.Today(_clock), ComponentType.YOGA);   // the booking records the purchase it uses
+        if (membership is null)
             return Result<YogaBookingResponse>.Failure(
                 $"Gói yoga của bạn chưa bao gồm lớp {YogaRules.LevelLabel(yogaClass.DifficultyLevel)}. Hãy mua gói có độ khó cao hơn để được đăng ký.",
                 "YOGA_LEVEL_NOT_COVERED", 403);
@@ -106,6 +107,7 @@ public sealed class YogaBookingService : IYogaBookingService
         var booking = new YogaBooking
         {
             YogaClassId = yogaClass.Id,
+            OrderItemId = membership.OrderItemId,
             MemberUserId = memberUserId,
             MatNumber = mat,
             BookedAt = now,

@@ -30,23 +30,26 @@ public sealed class CompetitionsController : ControllerBase
     // ── UC-56 View Competitions ──────────────────────────────────
 
     /// <summary>Published, ongoing and finished competitions, newest first.</summary>
+    [AllowAnonymous]
     [HttpGet]
     [ProducesResponseType(typeof(PagedResponse<CompetitionResponse>), 200)]
     public async Task<IActionResult> GetList([FromQuery] CompetitionListRequest request, CancellationToken cancellationToken) =>
-        this.ToActionResult(await _service.GetCompetitionsAsync(request, cancellationToken));
+        this.ToActionResult(await _service.GetCompetitionsAsync(request, cancellationToken, User.IsInRole("Manager") || User.IsInRole("Staff")));
 
+    [AllowAnonymous]
     [HttpGet("{id:int}")]
     [ProducesResponseType(typeof(CompetitionResponse), 200)]
     [ProducesResponseType(404)]
     public async Task<IActionResult> Get(int id, CancellationToken cancellationToken) =>
-        this.ToActionResult(await _service.GetCompetitionAsync(id, cancellationToken));
+        this.ToActionResult(await _service.GetCompetitionAsync(id, cancellationToken, User.IsInRole("Manager") || User.IsInRole("Staff")));
 
     /// <summary>The leaderboard of a competition, ordered by rank then score.</summary>
+    [AllowAnonymous]
     [HttpGet("{id:int}/leaderboard")]
     [ProducesResponseType(typeof(IReadOnlyList<CompetitionLeaderboardEntry>), 200)]
     [ProducesResponseType(404)]
     public async Task<IActionResult> GetLeaderboard(int id, CancellationToken cancellationToken) =>
-        this.ToActionResult(await _service.GetLeaderboardAsync(id, cancellationToken));
+        this.ToActionResult(await _service.GetLeaderboardAsync(id, cancellationToken, User.IsInRole("Manager") || User.IsInRole("Staff")));
 
     // ── UC-57 Competition Registration ────────────────────────────
 
@@ -70,6 +73,16 @@ public sealed class CompetitionsController : ControllerBase
         Run(userId => _service.GetMyHistoryAsync(request, userId, cancellationToken));
 
     // ── UC-59 Manage Competitions ─────────────────────────────────
+
+    [HttpGet("reward-vouchers")]
+    [Authorize(Roles = ManagerRoles)]
+    public async Task<IActionResult> RewardVouchers(DateTime? competitionEnd, int? competitionId, CancellationToken ct) =>
+        this.ToActionResult(await _service.RewardOptionsAsync(competitionEnd, competitionId, ct));
+
+    [HttpPut("{id:int}/rewards")]
+    [Authorize(Roles = ManagerRoles)]
+    public Task<IActionResult> ReplaceUnusableRewards(int id, [FromBody] CompetitionPrizeRequest[] prizes, CancellationToken ct) =>
+        Run(userId => _service.ReplaceUnusableRewardsAsync(id, prizes, userId, ClientIp, ct));
 
     /// <summary>Create a competition. It starts as "Draft" and must be published to accept registrations.</summary>
     [HttpPost]

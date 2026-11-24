@@ -11,6 +11,25 @@ public sealed class MembershipVoucherTests
 {
     private static readonly DateTimeOffset Now = new(2026, 11, 13, 9, 0, 0, TimeSpan.Zero);
 
+    [Fact]
+    public void NewCustomerCalendarMonthUsesVietnamDateAndExclusiveAnniversary()
+    {
+        // January 1 at 01:00 in Vietnam, still December 31 in UTC.
+        var created = new DateTime(2025, 12, 31, 18, 0, 0, DateTimeKind.Utc);
+        var deadline = new DateTime(2026, 1, 31, 18, 0, 0, DateTimeKind.Utc);
+        var voucher = new Voucher
+        {
+            Audience = VoucherAudience.NewCustomers, NewCustomerDuration = 1, NewCustomerUnit = FreezeTierUnit.Months,
+            StartAt = created, EndAt = deadline.AddDays(2), DiscountType = DiscountType.FIXED, DiscountValue = 100
+        };
+        Assert.Equal(deadline, VoucherCheckoutRules.NewCustomerDeadlineUtc(created, 1, FreezeTierUnit.Months));
+        Assert.True(VoucherCheckoutRules.Check(voucher, created, deadline.AddTicks(-1), new()).IsSuccess);
+        Assert.Equal("VOUCHER_ACCOUNT_AGE", VoucherCheckoutRules.Check(voucher, created, deadline, new()).ErrorCode);
+        var endJanuary = new DateTime(2024, 1, 30, 18, 0, 0, DateTimeKind.Utc);
+        Assert.Equal(new DateTime(2024, 2, 28, 18, 0, 0, DateTimeKind.Utc),
+            VoucherCheckoutRules.NewCustomerDeadlineUtc(endJanuary, 1, FreezeTierUnit.Months));
+    }
+
     [Theory]
     [InlineData(DiscountType.FIXED, "100000", null, "100000", "400000")]
     [InlineData(DiscountType.FIXED, "600000", null, "500000", "0")]
@@ -377,8 +396,8 @@ public sealed class MembershipVoucherTests
             Task.FromResult(new[] { Buyer, Staff }.Where(user => user.UserId == purchaserId).ToList());
         public Task<Voucher?> FindVoucherForUpdateAsync(string normalizedCode, CancellationToken ct) =>
             Task.FromResult(Vouchers.SingleOrDefault(voucher => voucher.Code.Equals(normalizedCode, StringComparison.OrdinalIgnoreCase)));
-        public Task<(int Confirmed, int Reserved)> CountVoucherCapacityAsync(int voucherId, CancellationToken ct) => Task.FromResult((Confirmed, Reserved));
-        public Task<Order?> FindOrderAsync(string orderNumber, string? purchaserId, bool forUpdate, CancellationToken ct) =>
+        public Task<VoucherCapacity> ReadVoucherCapacityAsync(int voucherId, ApplicationUser purchaser, CancellationToken ct) => Task.FromResult(new VoucherCapacity(Confirmed, Reserved));
+        public Task<Order?> FindOrderAsync(string orderNumber, string? purchaserId, bool forUpdate, CancellationToken ct, bool membershipOnly = false) =>
             Task.FromResult(orderNumber == Order.OrderNumber && (purchaserId is null || purchaserId == Order.PurchaserUserId) ? Order : null);
         public Task<PagedResponse<StaffPackageOrderResponse>> ListStaffOrdersAsync(int gymId, StaffPackageOrderFilter filter,
             DateTime nowUtc, CancellationToken ct) => throw new NotSupportedException();

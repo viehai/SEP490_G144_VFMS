@@ -45,7 +45,7 @@ public sealed class CompetitionRequestValidator : AbstractValidator<CompetitionR
         RuleForEach(x => x.Prizes).SetValidator(new CompetitionPrizeRequestValidator());
         RuleFor(x => x.Prizes)
             .Must(prizes => prizes == null || prizes.Select(p => p.Rank).Distinct().Count() == prizes.Count)
-            .WithMessage("Each rank can have only one prize.");
+            .WithMessage("Mỗi thứ hạng chỉ được chọn một phần thưởng.");
     }
 }
 
@@ -59,7 +59,7 @@ public sealed class CompetitionPrizeRequestValidator : AbstractValidator<Competi
         RuleFor(x => x.Rank)
             .GreaterThan(0).WithMessage("Rank must be greater than 0.");
         RuleFor(x => x.Description).MaximumLength(1000);
-        RuleFor(x => x.VoucherId).GreaterThan(0).When(x => x.VoucherId.HasValue);
+        RuleFor(x => x.VoucherId).NotNull().GreaterThan(0).WithMessage("Chọn voucher cho thứ hạng này.");
     }
 }
 

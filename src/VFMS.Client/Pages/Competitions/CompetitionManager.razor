@@ -1,20 +1,27 @@
 @page "/manager/competitions"
+@page "/staff/competitions"
 @layout ManagerAdminLayout
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Manager,Staff")]
+@using VFMS.Client.Components.Promotions
 @using VFMS.Client.Components.Operations
 @inject CompetitionApiClient Api
 @inject IJSRuntime JS
+@inject AuthenticationStateProvider AuthState
 
 <PageTitle>Quản lý cuộc thi | Victor Fitness</PageTitle>
 
 <div class="workspace-page space-y-8 font-['Inter',sans-serif] text-[#252525]">
     <header class="flex flex-col justify-between gap-5 border-b-2 border-black pb-7 md:flex-row md:items-end">
         <div>
-            <p class="workspace-heading mb-3 text-[10px] font-bold tracking-[.18em] text-[#71717A]">VFMS / MODULE 06 / MANAGER</p>
+            <p class="workspace-heading mb-3 text-[10px] font-bold tracking-[.18em] text-[#71717A]">VFMS / CUỘC THI</p>
             <h1 class="workspace-heading text-3xl font-extrabold uppercase tracking-tight sm:text-4xl">Quản lý cuộc thi<span class="text-[#6366F1]">.</span></h1>
         </div>
         <div class="flex flex-wrap gap-3">
             <button type="button" @onclick="ReloadAsync" disabled="@_loading" class="workspace-heading border border-black bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-wider rounded-none">Làm mới ↻</button>
-            <button type="button" @onclick="() => _showCreate = !_showCreate" class="workspace-heading border-2 border-black bg-black px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-white rounded-none">+ Tạo cuộc thi</button>
+            @if (_isManager)
+            {
+            <button type="button" @onclick="() => OpenFormAsync(null)" class="workspace-heading border-2 border-black bg-black px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-white rounded-none">+ Tạo cuộc thi</button>
+            }
         </div>
     </header>
 
@@ -26,7 +33,9 @@
     @if (_showCreate)
     {
         <section class="border-2 border-black bg-white p-6 rounded-none" aria-labelledby="create-title">
-            <h2 id="create-title" class="workspace-heading mb-5 text-sm font-extrabold uppercase tracking-wider">Tạo cuộc thi mới</h2>
+            <h2 id="create-title" class="workspace-heading mb-5 text-sm font-extrabold uppercase tracking-wider">@(_replaceOnly ? "Thay voucher chưa thể trao" : _editingId.HasValue ? "Chỉnh sửa cuộc thi" : "Tạo cuộc thi mới")</h2>
+            @if (!_replaceOnly)
+            {
             <div class="grid gap-4 md:grid-cols-2">
                 <div class="md:col-span-2">
                     <label for="c-name" class="workspace-heading mb-2 block text-[10px] font-bold uppercase tracking-wider">TÊN CUỘC THI *</label>
@@ -37,19 +46,19 @@
                     <textarea id="c-desc" rows="2" class="w-full border border-[#CFCFCF] px-3 py-2 text-sm" @bind="_formDescription"></textarea>
                 </div>
                 <div>
-                    <label for="c-reg-start" class="workspace-heading mb-2 block text-[10px] font-bold uppercase tracking-wider">BẮT ĐẦU ĐĂNG KÝ (UTC) *</label>
+                    <label for="c-reg-start" class="workspace-heading mb-2 block text-[10px] font-bold uppercase tracking-wider">BẮT ĐẦU ĐĂNG KÝ (UTC+7) *</label>
                     <input id="c-reg-start" type="datetime-local" class="w-full border border-[#CFCFCF] px-3 py-2 text-sm" @bind="_formRegistrationStart" />
                 </div>
                 <div>
-                    <label for="c-reg-end" class="workspace-heading mb-2 block text-[10px] font-bold uppercase tracking-wider">KẾT THÚC ĐĂNG KÝ (UTC) *</label>
+                    <label for="c-reg-end" class="workspace-heading mb-2 block text-[10px] font-bold uppercase tracking-wider">KẾT THÚC ĐĂNG KÝ (UTC+7) *</label>
                     <input id="c-reg-end" type="datetime-local" class="w-full border border-[#CFCFCF] px-3 py-2 text-sm" @bind="_formRegistrationEnd" />
                 </div>
                 <div>
-                    <label for="c-start" class="workspace-heading mb-2 block text-[10px] font-bold uppercase tracking-wider">BẮT ĐẦU THI (UTC) *</label>
+                    <label for="c-start" class="workspace-heading mb-2 block text-[10px] font-bold uppercase tracking-wider">BẮT ĐẦU THI (UTC+7) *</label>
                     <input id="c-start" type="datetime-local" class="w-full border border-[#CFCFCF] px-3 py-2 text-sm" @bind="_formStart" />
                 </div>
                 <div>
-                    <label for="c-end" class="workspace-heading mb-2 block text-[10px] font-bold uppercase tracking-wider">KẾT THÚC THI (UTC) *</label>
+                    <label for="c-end" class="workspace-heading mb-2 block text-[10px] font-bold uppercase tracking-wider">KẾT THÚC THI (UTC+7) *</label>
                     <input id="c-end" type="datetime-local" class="w-full border border-[#CFCFCF] px-3 py-2 text-sm" @bind="_formEnd" />
                 </div>
                 <div>
@@ -57,8 +66,14 @@
                     <input id="c-max" type="number" min="1" class="w-full border border-[#CFCFCF] px-3 py-2 text-sm" @bind="_formMaxParticipants" />
                 </div>
             </div>
+                <div class="mt-4">
+                    <label for="c-rules" class="workspace-heading mb-2 block text-[10px] font-bold uppercase tracking-wider">Thể lệ và cách tính điểm</label>
+                    <textarea id="c-rules" rows="2" class="w-full border border-[#CFCFCF] px-3 py-2 text-sm" @bind="_formRules"></textarea>
+                </div>
+            }
+            <CompetitionRewardEditor Rows="_rewardRows" EndUtc="ToUtc(_formEnd)" CompetitionId="_editingId" ReplaceOnly="_replaceOnly" ReadOnly="_published" />
             <div class="mt-6 flex flex-wrap gap-3">
-                <button type="button" @onclick="CreateAsync" disabled="@_busy" class="workspace-heading border-2 border-black bg-black px-5 py-3 text-xs font-bold uppercase tracking-wider text-white disabled:opacity-50 rounded-none">Tạo cuộc thi ↗</button>
+                <button type="button" @onclick="CreateAsync" disabled="@_busy" class="workspace-heading border-2 border-black bg-black px-5 py-3 text-xs font-bold uppercase tracking-wider text-white disabled:opacity-50 rounded-none">@(_busy ? "Đang lưu…" : _editingId.HasValue ? "Lưu thay đổi" : "Tạo cuộc thi")</button>
                 <button type="button" @onclick="() => _showCreate = false" class="workspace-heading border border-black bg-white px-5 py-3 text-xs font-bold uppercase tracking-wider rounded-none">Hủy</button>
             </div>
         </section>
@@ -124,15 +139,19 @@
                                 <td class="px-4 py-4"><span class="@StatusClass(item.Status)">@CompetitionStatusLabel(item.Status)</span></td>
                                 <td class="px-4 py-4">
                                     <div class="flex flex-wrap gap-2">
-                                        @if (item.Status == "Draft")
+                                        @if (_isManager && (item.Status == "Draft" || item.Status == "Published" && item.StartDate > DateTime.UtcNow))
+                                        {
+                                            <button type="button" @onclick="() => OpenFormAsync(item.Id)" class="workspace-heading rounded-lg border px-2.5 py-1.5 text-[10px] font-bold uppercase">Chỉnh sửa</button>
+                                        }
+                                        @if (_isManager && item.Status == "Draft")
                                         {
                                             <button type="button" @onclick='() => PublishAsync(item.Id)' class="workspace-heading rounded-lg border border-[#A9B79D] bg-[#EEF1EA] px-2.5 py-1.5 text-[10px] font-bold uppercase text-[#4E5D44]">Phát hành</button>
                                         }
-                                        @if (item.Status is "Draft" or "Published" or "Ongoing")
+                                        @if (_isManager && item.Status is ("Draft" or "Published" or "Ongoing"))
                                         {
                                             <button type="button" @onclick='() => CancelAsync(item.Id)' disabled="@_busy" class="workspace-heading rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-[10px] font-bold uppercase text-red-700 disabled:opacity-50">Hủy</button>
                                         }
-                                        @if (CanCompleteManually(item))
+                                        @if (_isManager && CanCompleteManually(item))
                                         {
                                             <button type="button" @onclick='() => CompleteAsync(item.Id)' disabled="@_busy" class="workspace-heading rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[10px] font-bold uppercase text-amber-800 disabled:opacity-50">Kết thúc</button>
                                         }
@@ -200,7 +219,7 @@
                                             {
                                                 <button type="button" @onclick='() => OpenRecordResult(row)' class="workspace-heading border border-black px-2 py-1 text-[10px] font-bold uppercase rounded-none">Ghi điểm</button>
                                             }
-                                            @if (CanConfirmResult(row))
+                                            @if (_isManager && CanConfirmResult(row))
                                             {
                                                 <button type="button" @onclick='() => ConfirmResultAsync(row.Id, row.Rank)' disabled="@_busy" class="workspace-heading rounded-lg bg-[#5F6F52] px-2.5 py-1.5 text-[10px] font-bold uppercase text-white hover:bg-[#4E5D44] disabled:opacity-50">Duyệt kết quả</button>
                                             }
@@ -272,10 +291,17 @@
                     else
                     {
                         <p class="mt-1 text-xs text-[#69706A]">@PendingResultCount kết quả có hạng đang chờ duyệt.</p>
-                        <p class="mt-1 max-w-2xl text-xs text-[#69706A]">Duyệt từng kết quả trong danh sách người tham gia để cấp voucher theo giải (nếu có); “Duyệt tất cả” chỉ xác nhận trạng thái các kết quả còn lại.</p>
+                        <p class="mt-1 max-w-2xl text-xs text-[#69706A]">Duyệt tất cả để xác nhận thứ hạng và cấp voucher cho những người đạt giải trong cùng một lần.</p>
                     }
                 </div>
+                @if (_isManager && _error != null && _selectedCompetitionId.HasValue && SelectedCompetitionStatus == "Completed")
+                {
+                    <button type="button" @onclick="() => OpenFormAsync(_selectedCompetitionId, true)" class="workspace-heading rounded-lg border px-4 py-2 text-xs font-bold">Đổi voucher chưa thể trao</button>
+                }
+                @if (_isManager)
+                {
                 <button type="button" @onclick='() => ConfirmAllAsync(_selectedCompetitionId!.Value)' disabled="@(!CanConfirmAllResults)" class="workspace-heading rounded-lg bg-[#5F6F52] px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-white hover:bg-[#4E5D44] disabled:cursor-not-allowed disabled:opacity-50">Duyệt tất cả (@PendingResultCount)</button>
+                }
             </div>
             @if (_leaderboard.Count == 0)
             {
@@ -305,10 +331,7 @@
                                         @if (!string.IsNullOrWhiteSpace(row.PrizeName))
                                         {
                                             <span class="block font-semibold">@row.PrizeName</span>
-                                            @if (!string.IsNullOrWhiteSpace(row.VoucherCode))
-                                            {
-                                                <span class="workspace-heading mt-1 block text-[10px] font-bold text-[#6366F1]">@row.VoucherCode</span>
-                                            }
+
                                         }
                                         else
                                         {
@@ -345,6 +368,12 @@
     private string? _error;
     private string? _notice;
 
+    private int? _editingId;
+    private bool _replaceOnly;
+    private bool _published;
+    private string? _formRules;
+    private string? _formImage;
+    private readonly List<CompetitionRewardEditor.RewardRow> _rewardRows = [];
     private string _formName = string.Empty;
     private string _formDescription = string.Empty;
     private DateTime _formRegistrationStart = DateTime.UtcNow;
@@ -369,7 +398,12 @@
     private bool HasFilters =>
         Blank(_search) is not null || Blank(_status) is not null;
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    private bool _isManager;
+    protected override async Task OnInitializedAsync()
+    {
+        _isManager = (await AuthState.GetAuthenticationStateAsync()).User.IsInRole("Manager");
+        await LoadAsync();
+    }
 
     private async Task LoadAsync()
     {
@@ -420,29 +454,61 @@
         return ApplyFiltersAsync();
     }
 
-    private async Task CreateAsync()
+    private static DateTime ToUtc(DateTime gymTime) => DateTime.SpecifyKind(gymTime.AddHours(-7), DateTimeKind.Utc);
+
+    private async Task OpenFormAsync(int? id, bool replaceOnly = false)
     {
         if (_busy) return;
         _busy = true;
-        _error = null;
-        _notice = null;
         try
         {
-            var request = new CompetitionRequest(_formName.Trim(),
-                DateTime.SpecifyKind(_formRegistrationStart, DateTimeKind.Utc),
-                DateTime.SpecifyKind(_formRegistrationEnd, DateTimeKind.Utc),
-                DateTime.SpecifyKind(_formStart, DateTimeKind.Utc),
-                DateTime.SpecifyKind(_formEnd, DateTimeKind.Utc),
-                Description: string.IsNullOrWhiteSpace(_formDescription) ? null : _formDescription.Trim(),
-                MaxParticipants: _formMaxParticipants);
-            await Api.CreateAsync(request);
+            var competition = id.HasValue ? await Api.GetCompetitionAsync(id.Value) : null;
+            _editingId = id;
+            _replaceOnly = replaceOnly;
+            _published = competition?.Status == "Published";
+            _rewardRows.Clear();
+            foreach (var prize in competition?.Prizes.Where(p => p.VoucherId.HasValue) ?? [])
+                _rewardRows.Add(new() { Rank = prize.Rank, VoucherId = prize.VoucherId, Existing = prize.Reward, PrizeName = prize.PrizeName, Description = prize.Description });
+            var now = DateTime.UtcNow;
+            _formName = competition?.Name ?? "";
+            _formDescription = competition?.Description ?? "";
+            _formRules = competition?.Rules;
+            _formImage = competition?.ImageUrl;
+            _formRegistrationStart = PromotionFormModel.ToGymTime(competition?.RegistrationStart ?? now);
+            _formRegistrationEnd = PromotionFormModel.ToGymTime(competition?.RegistrationEnd ?? now.AddDays(7));
+            _formStart = PromotionFormModel.ToGymTime(competition?.StartDate ?? now.AddDays(8));
+            _formEnd = PromotionFormModel.ToGymTime(competition?.EndDate ?? now.AddDays(9));
+            _formMaxParticipants = competition?.MaxParticipants;
+            _panel = Panel.None;
+            _showCreate = true;
+            _error = null;
+        }
+        catch (Exception error) { _error = error.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task CreateAsync()
+    {
+        if (_busy) return;
+        if (_rewardRows.Any(r => r.VoucherId == null || r.Rank < 1) || _rewardRows.GroupBy(r => r.Rank).Any(g => g.Count() > 1))
+        {
+            _error = "Chọn voucher và nhập một thứ hạng riêng cho mỗi giải.";
+            return;
+        }
+        _busy = true;
+        _error = null;
+        try
+        {
+            var prizes = _rewardRows.Select(r => new CompetitionPrizeRequest(r.PrizeName ?? $"Giải hạng {r.Rank}", r.Rank, r.Description, r.VoucherId)).ToArray();
+            var request = new CompetitionRequest(_formName.Trim(), ToUtc(_formRegistrationStart), ToUtc(_formRegistrationEnd),
+                ToUtc(_formStart), ToUtc(_formEnd), Blank(_formDescription), Blank(_formRules), _formMaxParticipants, _formImage, prizes);
+            if (_replaceOnly && _editingId is { } completed) await Api.ReplaceUnusableRewardsAsync(completed, prizes);
+            else if (_editingId is { } editing) await Api.UpdateAsync(editing, request);
+            else await Api.CreateAsync(request);
             _showCreate = false;
-            _formName = string.Empty;
-            _formDescription = string.Empty;
-            _formMaxParticipants = null;
             _page = 1;
             await LoadAsync();
-            _error = null;
+            if (_replaceOnly && _editingId.HasValue) await OpenResultsAsync(_editingId.Value);
         }
         catch (Exception error) { _error = error.Message; }
         finally { _busy = false; }
@@ -600,13 +666,9 @@
         _notice = null;
         try
         {
-            var grantPrizeVoucher = !string.IsNullOrWhiteSpace(
-                _leaderboard.FirstOrDefault(result => result.JoinId == joinId)?.VoucherCode);
-            await Api.ConfirmResultAsync(new ConfirmCompetitionResultRequest(joinId, null, rank, null, grantPrizeVoucher));
+            await Api.ConfirmResultAsync(new ConfirmCompetitionResultRequest(joinId, Rank: rank));
             await RefreshSelectedAsync();
-            _notice = grantPrizeVoucher
-                ? "Đã duyệt kết quả và cấp voucher phần thưởng."
-                : "Đã duyệt kết quả.";
+            _notice = "Đã duyệt kết quả.";
         }
         catch (Exception error) { _error = error.Message; }
         finally { _busy = false; }

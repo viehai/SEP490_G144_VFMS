@@ -309,13 +309,24 @@
                         </div>
 
                         <!-- CTA Button -->
-                        <div class="pt-5 border-t border-[#D8D1CD]">
+                        <div class="space-y-3 pt-5 border-t border-[#D8D1CD]">
+                            @if (package.IsSingleService)
+                            {
+                                <a href="@PackageCatalogLinks.Detail(package.ComponentType, package.Id, CurrentPage)"
+                                   aria-label="Xem chi tiết gói @package.Name"
+                                   class="flex min-h-[44px] items-center justify-center rounded-lg border border-vfms-border-strong px-4 py-2 text-center text-sm font-bold text-vfms-text hover:bg-vfms-surface-alt focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary">
+                                    Xem chi tiết
+                                </a>
+                            }
                             <AuthorizeView>
                                 <NotAuthorized>
-                                    <a href="@LoginUrl"
-                                       class="w-full min-h-[44px] flex items-center justify-center bg-[#B83A3A] hover:bg-[#9F3030] text-white px-4 py-3 font-['Montserrat',sans-serif] font-bold text-xs uppercase tracking-wider rounded-lg transition-colors text-center shadow-sm">
-                                        ĐĂNG NHẬP ĐỂ CHỌN GÓI
-                                    </a>
+                                    @if (!package.IsSingleService)
+                                    {
+                                        <a href="@LoginUrl"
+                                           class="w-full min-h-[44px] flex items-center justify-center bg-[#B83A3A] hover:bg-[#9F3030] text-white px-4 py-3 font-['Montserrat',sans-serif] font-bold text-xs uppercase tracking-wider rounded-lg transition-colors text-center shadow-sm">
+                                            ĐĂNG NHẬP ĐỂ CHỌN GÓI
+                                        </a>
+                                    }
                                 </NotAuthorized>
                                 <Authorized Context="auth">
                                     @if (package.ComponentType is "GYM" or "YOGA" && (auth.User.IsInRole("Customer") || auth.User.IsInRole("Member")))
@@ -335,7 +346,7 @@
                                     }
                                     else if (string.Equals(package.ComponentType, "PT", StringComparison.OrdinalIgnoreCase))
                                     {
-                                        <a href="/trainers"
+                                        <a href="@(package.IsSingleService ? PackageCatalogLinks.Trainers(package.Id) : "/trainers")"
                                            class="w-full min-h-[44px] flex items-center justify-center bg-[#B83A3A] hover:bg-[#9F3030] text-white px-4 py-3 font-['Montserrat',sans-serif] font-bold text-xs uppercase tracking-wider rounded-lg transition-colors text-center shadow-sm">
                                             CHỌN HUẤN LUYỆN VIÊN
                                         </a>

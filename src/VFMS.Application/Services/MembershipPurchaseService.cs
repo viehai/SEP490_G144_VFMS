@@ -108,7 +108,7 @@ public sealed partial class MembershipPurchaseService(
 
     public async Task<Result<MembershipPurchaseResponse>> GetAsync(string purchaserId, string orderNumber, CancellationToken ct)
     {
-        var order = await repository.FindOrderAsync(orderNumber, purchaserId, forUpdate: false, ct);
+        var order = await repository.FindOrderAsync(orderNumber, purchaserId, forUpdate: false, ct, membershipOnly: true);
         if (order?.PaymentTransaction is not { } payment || order.Items.Count == 0)
             return OrderNotFound<MembershipPurchaseResponse>();
 
@@ -181,7 +181,7 @@ public sealed partial class MembershipPurchaseService(
             if (!IsActive(staff) || !HasRole(staff!, UserRole.Staff))
                 return Result<MembershipPurchaseResponse>.Failure("Cần quyền nhân viên lễ tân.", "CASH_CONFIRMATION_FORBIDDEN", 403);
 
-            var order = await repository.FindOrderAsync(orderNumber, purchaserId: null, forUpdate: true, ct);
+            var order = await repository.FindOrderAsync(orderNumber, purchaserId: null, forUpdate: true, ct, membershipOnly: true);
             if (order?.PaymentTransaction is not { PaymentMethod: PaymentMethod.Cash } payment || order.Items.Count == 0 ||
                 order.Purchaser.GymId != staff!.GymId)
                 return OrderNotFound<MembershipPurchaseResponse>();

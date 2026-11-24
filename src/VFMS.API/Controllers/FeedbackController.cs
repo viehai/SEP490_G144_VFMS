@@ -16,6 +16,16 @@ public sealed class FeedbackController : ControllerBase
 
     public FeedbackController(IFeedbackService service) => _service = service;
 
+    [AllowAnonymous]
+    [HttpGet("~/api/packages/{packageId:int}/reviews")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> PackageReviews(
+        int packageId, CancellationToken cancellationToken, [FromQuery] int page = 1, [FromQuery] int? rating = null)
+    {
+        var memberId = User.IsInRole("Member") || User.IsInRole("Customer") ? User.GetUserId() : null;
+        return this.ToActionResult(await _service.GetPackageReviewsAsync(packageId, memberId, page, rating, cancellationToken));
+    }
+
     [HttpPost]
     [Authorize(Roles = "Customer,Member")]
     public async Task<IActionResult> Submit([FromBody] FeedbackSubmitRequest request, CancellationToken cancellationToken)

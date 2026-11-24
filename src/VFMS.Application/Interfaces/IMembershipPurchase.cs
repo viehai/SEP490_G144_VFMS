@@ -48,12 +48,12 @@ public interface IMembershipPurchaseRepository
     Task<List<ApplicationUser>> LoadCheckoutUsersAsync(string purchaserId, string[] emails, CancellationToken ct);
     Task<List<ApplicationUser>> LockUsersAsync(string[] userIds, CancellationToken ct);
     Task<ApplicationRole?> GetMemberRoleAsync(CancellationToken ct);
-    Task<Order?> FindOrderAsync(string orderNumber, string? purchaserId, bool forUpdate, CancellationToken ct);
+    Task<Order?> FindOrderAsync(string orderNumber, string? purchaserId, bool forUpdate, CancellationToken ct, bool membershipOnly = false);
     Task<PagedResponse<StaffPackageOrderResponse>> ListStaffOrdersAsync(int gymId, StaffPackageOrderFilter filter,
         DateTime nowUtc, CancellationToken ct);
     Task<bool> SepayReferenceUsedAsync(string reference, CancellationToken ct);
     Task<Voucher?> FindVoucherForUpdateAsync(string normalizedCode, CancellationToken ct);
-    Task<(int Confirmed, int Reserved)> CountVoucherCapacityAsync(int voucherId, CancellationToken ct);
+    Task<VoucherCapacity> ReadVoucherCapacityAsync(int voucherId, ApplicationUser purchaser, CancellationToken ct);
     Task<List<Order>> LoadExpiredOrdersAsync(DateTime onlineCutoff, DateTime cashCutoff, CancellationToken ct);
     Task<List<MemberMembership>> LoadCurrentMembershipsAsync(string[] userIds, DateOnly today, CancellationToken ct);
     Task<List<OwnedMembership>> ListOwnedMembershipsAsync(string memberId, CancellationToken ct);
@@ -70,6 +70,9 @@ public interface IMembershipPurchaseRepository
     void Add(AuditLog audit);
     Task SaveChangesAsync(CancellationToken ct);
 }
+
+public sealed record VoucherCapacity(int Confirmed = 0, int Reserved = 0, int PurchaserConfirmed = 0,
+    int PurchaserReserved = 0, int GrantsAvailable = 0, int? AvailableGrantId = null);
 
 public sealed record StaffPackageOrderFilter(
     string? Search, OrderStatus? Status, ComponentType? ServiceType, PaymentMethod? Method,

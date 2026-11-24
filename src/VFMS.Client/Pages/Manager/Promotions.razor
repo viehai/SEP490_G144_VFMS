@@ -10,7 +10,6 @@
 <div class="workspace-page promotions-page space-y-6">
     <header class="flex flex-wrap items-end justify-between gap-4 border-b border-vfms-border pb-5">
         <div>
-            <p class="workspace-heading text-xs text-vfms-primary">Marketing / Promotions</p>
             <h1 class="workspace-heading mt-2 text-3xl text-vfms-text">Khuyến mãi</h1>
             <p class="mt-2 text-sm text-vfms-text-secondary">Quản lý mã giảm giá, thời hạn và hạn mức sử dụng toàn hệ thống.</p>
         </div>
@@ -59,18 +58,18 @@
                 <fieldset disabled="@_working" aria-busy="@(_working ? "true" : "false")" class="grid min-w-0 gap-5 sm:grid-cols-2 lg:grid-cols-3">
                     <legend class="sr-only">Cấu hình khuyến mãi</legend>
                     <div class="min-w-0 sm:col-span-2">
-                        <label class="@Label" for="promotion-Name">Tên khuyến mãi</label>
+                        <label class="@Label" for="promotion-Name">Tên khuyến mãi <span aria-hidden="true" class="text-vfms-primary">*</span></label>
                         <InputText id="promotion-Name" class="@Field" @bind-Value="form.Name" maxlength="256" required aria-describedby="promotion-Name-error" />
                         <div id="promotion-Name-error"><ValidationMessage For="@(() => form.Name)" /></div>
                     </div>
                     <div class="min-w-0">
-                        <label class="@Label" for="promotion-Code">Mã giảm giá</label>
+                        <label class="@Label" for="promotion-Code">Mã giảm giá <span aria-hidden="true" class="text-vfms-primary">*</span></label>
                         <InputText id="promotion-Code" class="@Field" @bind-Value="form.Code" maxlength="50" required spellcheck="false" autocomplete="off" aria-describedby="promotion-code-hint promotion-Code-error" />
                         <p id="promotion-code-hint" class="mt-1 text-xs text-vfms-text-secondary">Mã duy nhất, không phân biệt chữ hoa/chữ thường.</p>
                         <div id="promotion-Code-error"><ValidationMessage For="@(() => form.Code)" /></div>
                     </div>
                     <div class="min-w-0">
-                        <label class="@Label" for="promotion-DiscountType">Loại giảm giá</label>
+                        <label class="@Label" for="promotion-DiscountType">Loại giảm giá <span aria-hidden="true" class="text-vfms-primary">*</span></label>
                         <InputSelect id="promotion-DiscountType" class="@Field" @bind-Value="form.DiscountType" @bind-Value:after="DiscountTypeChanged" required aria-describedby="promotion-DiscountType-error">
                             <option value="@PromotionDiscountType.Percentage">Phần trăm</option>
                             <option value="@PromotionDiscountType.Fixed">Số tiền cố định</option>
@@ -78,10 +77,10 @@
                         <div id="promotion-DiscountType-error"><ValidationMessage For="@(() => form.DiscountType)" /></div>
                     </div>
                     <div class="min-w-0">
-                        <label class="@Label" for="promotion-DiscountValue">Giá trị giảm (@(form.DiscountType == PromotionDiscountType.Percentage ? "%" : "₫"))</label>
+                        <label class="@Label" for="promotion-DiscountValue">Giá trị giảm (@(form.DiscountType == PromotionDiscountType.Percentage ? "%" : "₫")) <span aria-hidden="true" class="text-vfms-primary">*</span></label>
                         @if (form.DiscountType == PromotionDiscountType.Percentage)
                         {
-                            <PromotionPercentageInput id="promotion-DiscountValue" class="@Field" @bind-Value="form.DiscountValue" min="0" step="0.01" required aria-describedby="promotion-DiscountValue-error" />
+                            <PromotionPercentageInput id="promotion-DiscountValue" class="@Field" @bind-Value="form.DiscountValue" min="0" step="0.01" required ParsingErrorMessage="Nhập phần trăm giảm giá hợp lệ." aria-describedby="promotion-DiscountValue-error" />
                         }
                         else
                         {
@@ -92,7 +91,7 @@
                     @if (form.DiscountType == PromotionDiscountType.Percentage)
                     {
                         <div class="min-w-0">
-                            <label class="@Label" for="promotion-MaxDiscountAmount">Giảm tối đa (₫)</label>
+                            <label class="@Label" for="promotion-MaxDiscountAmount">Giảm tối đa (₫) <span aria-hidden="true" class="text-vfms-primary">*</span></label>
                             <InputVnd id="promotion-MaxDiscountAmount" class="@Field" @bind-Value="form.MaxDiscountAmount" required aria-describedby="promotion-MaxDiscountAmount-error" />
                             <div id="promotion-MaxDiscountAmount-error"><ValidationMessage For="@(() => form.MaxDiscountAmount)" /></div>
                         </div>
@@ -104,17 +103,23 @@
                     </div>
                     <div class="min-w-0">
                         <label class="@Label" for="promotion-MaxRedemptions">Tổng lượt sử dụng (tùy chọn)</label>
-                        <InputNumber id="promotion-MaxRedemptions" class="@Field" @bind-Value="form.MaxRedemptions" min="1" step="1" aria-describedby="promotion-quota-hint promotion-MaxRedemptions-error" />
+                        <InputNumber id="promotion-MaxRedemptions" class="@Field" @bind-Value="form.MaxRedemptions" min="1" step="1" ParsingErrorMessage="Nhập tổng số lượt bằng số nguyên." aria-describedby="promotion-quota-hint promotion-MaxRedemptions-error" />
                         <p id="promotion-quota-hint" class="mt-1 text-xs text-vfms-text-secondary">Để trống nếu không giới hạn. Áp dụng cho toàn bộ khách hàng.</p>
                         <div id="promotion-MaxRedemptions-error"><ValidationMessage For="@(() => form.MaxRedemptions)" /></div>
                     </div>
                     <div class="min-w-0">
-                        <label class="@Label" for="promotion-StartAt">Bắt đầu (UTC+7)</label>
+                        <label class="@Label" for="promotion-MaxRedemptionsPerUser">Số lượt tối đa mỗi tài khoản</label>
+                        <InputNumber id="promotion-MaxRedemptionsPerUser" class="@Field" @bind-Value="form.MaxRedemptionsPerUser" min="1" step="1" ParsingErrorMessage="Nhập số lượt mỗi tài khoản bằng số nguyên." aria-describedby="promotion-account-hint promotion-account-error" />
+                        <p id="promotion-account-hint" class="mt-1 text-xs text-vfms-text-secondary">Để trống nếu không giới hạn số lần mỗi khách hàng dùng mã.</p>
+                        <div id="promotion-account-error"><ValidationMessage For="@(() => form.MaxRedemptionsPerUser)" /></div>
+                    </div>
+                    <div class="min-w-0">
+                        <label class="@Label" for="promotion-StartAt">Bắt đầu (UTC+7) <span aria-hidden="true" class="text-vfms-primary">*</span></label>
                         <InputDate id="promotion-StartAt" class="@Field" Type="InputDateType.DateTimeLocal" @bind-Value="form.StartAt" step="1" required aria-describedby="promotion-StartAt-error" />
                         <div id="promotion-StartAt-error"><ValidationMessage For="@(() => form.StartAt)" /></div>
                     </div>
                     <div class="min-w-0">
-                        <label class="@Label" for="promotion-EndAt">Kết thúc (UTC+7)</label>
+                        <label class="@Label" for="promotion-EndAt">Kết thúc (UTC+7) <span aria-hidden="true" class="text-vfms-primary">*</span></label>
                         <InputDate id="promotion-EndAt" class="@Field" Type="InputDateType.DateTimeLocal" @bind-Value="form.EndAt" step="1" required aria-describedby="promotion-EndAt-error" />
                         <div id="promotion-EndAt-error"><ValidationMessage For="@(() => form.EndAt)" /></div>
                     </div>
@@ -124,6 +129,7 @@
                         </label>
                         <p class="text-xs text-vfms-text-secondary">Trạng thái thực tế phụ thuộc thời hạn và lượt sử dụng.</p>
                     </div>
+                    <PromotionAudienceFields Model="form" FieldClass="@Field" />
                     <div class="flex flex-wrap gap-3 sm:col-span-2 lg:col-span-3">
                         <button type="submit" class="@PrimaryButton">@(_working ? "Đang lưu..." : "Lưu khuyến mãi")</button>
                         <button type="button" class="@SecondaryButton" @onclick="CloseForm">Hủy</button>
@@ -146,8 +152,30 @@
         {
             <p role="status" class="rounded-xl border border-vfms-border bg-vfms-surface p-5 text-sm text-vfms-text-secondary">Chưa có khuyến mãi. Chọn Tạo khuyến mãi để bắt đầu.</p>
         }
-        else if (_promotions is { } rows)
+        else if (_promotions is not null)
         {
+            <div class="mb-4 grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                <label class="@Label">Tìm khuyến mãi
+                    <input type="search" class="@Field" placeholder="Tên hoặc mã voucher" @bind="_search" @bind:event="oninput" />
+                </label>
+                <label class="@Label">Trạng thái
+                    <select class="@Field" @bind="_statusFilter">
+                        <option value="">Tất cả trạng thái</option>
+                        @foreach (var status in Enum.GetValues<PromotionStatus>()) { <option value="@status">@StatusLabel(status)</option> }
+                    </select>
+                </label>
+                <label class="@Label">Đối tượng áp dụng
+                    <select class="@Field" @bind="_audienceFilter">
+                        <option value="">Tất cả đối tượng</option>
+                        @foreach (var audience in Enum.GetValues<PromotionAudience>()) { <option value="@audience">@PromotionFormModel.AudienceLabel(audience)</option> }
+                    </select>
+                </label>
+            </div>
+            var rows = FilteredRows().ToArray();
+            @if (rows.Length == 0)
+            {
+                <p role="status" class="rounded-xl border border-vfms-border bg-vfms-surface p-5 text-sm">Không tìm thấy khuyến mãi phù hợp với bộ lọc.</p>
+            }
             <ul class="space-y-3">
                 @foreach (var row in rows)
                 {
@@ -164,7 +192,15 @@
                                 <div><dt class="text-vfms-text-secondary">Giảm giá</dt><dd class="mt-1 font-semibold">@DiscountLabel(row)</dd>@if (row.MaxDiscountAmount is { } cap) { <dd class="mt-1 text-xs text-vfms-text-secondary">Tối đa @Vnd.Format(cap)</dd> }</div>
                                 <div><dt class="text-vfms-text-secondary">Đơn hàng tối thiểu</dt><dd class="mt-1">@(row.MinimumSpend is { } minimum ? Vnd.Format(minimum) : "Không yêu cầu")</dd></div>
                                 <div><dt class="text-vfms-text-secondary">Thời hạn (UTC+7)</dt><dd class="mt-1"><time datetime="@row.StartAt.ToString("O")">@DateLabel(row.StartAt)</time><span class="block text-xs text-vfms-text-secondary">đến <time datetime="@row.EndAt.ToString("O")">@DateLabel(row.EndAt)</time></span></dd></div>
-                                <div><dt class="text-vfms-text-secondary">Lượt sử dụng / tổng hạn mức</dt><dd class="mt-1 font-semibold">@row.UsedCount / @(row.MaxRedemptions?.ToString() ?? "Không giới hạn")</dd></div>
+                                <div><dt class="text-vfms-text-secondary">Lượt sử dụng / tổng hạn mức</dt><dd class="mt-1 font-semibold">@row.UsedCount / @(row.MaxRedemptions?.ToString() ?? "Không giới hạn")</dd>
+                                    @if (row.MaxRedemptions is { } limit && row.UsedCount >= limit) { <dd class="mt-1 text-xs text-vfms-text-secondary">Đã dùng hết lượt</dd> }
+                                </div>
+                                <div><dt class="text-vfms-text-secondary">Đối tượng áp dụng</dt><dd class="mt-1">@PromotionFormModel.AudienceLabel(row.Audience)</dd></div>
+                                <div><dt class="text-vfms-text-secondary">Số lượt tối đa mỗi tài khoản</dt><dd class="mt-1">@(row.MaxRedemptionsPerUser?.ToString() ?? "Không giới hạn")</dd></div>
+                                @if (row.Audience == PromotionAudience.AssignedUsers)
+                                {
+                                    <div><dt class="text-vfms-text-secondary">Voucher đã cấp</dt><dd class="mt-1">@row.GrantedCount</dd></div>
+                                }
                             </dl>
                             <div class="mt-4 flex flex-wrap gap-2 border-t border-vfms-border pt-4">
                                 <button type="button" class="@SecondaryButton" disabled="@Busy" aria-label="@($"Chỉnh sửa {row.Name}")" @onclick="() => StartEditAsync(row.Id)">Chỉnh sửa</button>

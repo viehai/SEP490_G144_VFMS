@@ -30,7 +30,7 @@ namespace VFMS.IntegrationTests;
 /// <summary>
 /// Integration tests cho GET /api/packages?type=gym|yoga|pt (public catalog).
 /// </summary>
-public sealed class PackageCatalogApiTests : IAsyncLifetime
+public sealed partial class PackageCatalogApiTests : IAsyncLifetime
 {
     private const string CatalogRoute = "/api/packages";
     private const string RoleHeader = "Test-Role";
@@ -56,6 +56,7 @@ public sealed class PackageCatalogApiTests : IAsyncLifetime
         builder.Services.AddScoped<VfmsDbContext>(_ => new TestContext(dbOptions));
         builder.Services.AddMembershipPlanModule();
         builder.Services.AddSystemAdministrationModule();
+        builder.Services.AddFeedbackModule();
 
         var mapsterConfig = new TypeAdapterConfig();
         mapsterConfig.Scan(typeof(SystemAdministrationMapping).Assembly);
@@ -91,11 +92,14 @@ public sealed class PackageCatalogApiTests : IAsyncLifetime
 
     // ── Helper ─────────────────────────────────────────────────
 
-    private HttpClient CreateClient(string? role = null)
+    private HttpClient CreateClient(string? role = null, string userId = "test-user")
     {
         var client = _app.GetTestClient();
         if (role is not null)
+        {
             client.DefaultRequestHeaders.Add(RoleHeader, role);
+            client.DefaultRequestHeaders.Add("Test-User", userId);
+        }
         return client;
     }
 
@@ -113,7 +117,9 @@ public sealed class PackageCatalogApiTests : IAsyncLifetime
         bool isDeleted = false,
         TrainerLevel? trainerLevel = null,
         int? sessionCount = null,
-        int? durationDays = null)
+        int? durationDays = null,
+        decimal price = 500_000m,
+        string? description = null)
     {
         await using var scope = _app.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
@@ -131,7 +137,8 @@ public sealed class PackageCatalogApiTests : IAsyncLifetime
         var package = new Package
         {
             Name = name,
-            Price = 500_000m,
+            Price = price,
+            Description = description,
             PackageStatus = status,
             IsDeleted = isDeleted,
             Components = [component]
@@ -255,9 +262,60 @@ public sealed class PackageCatalogApiTests : IAsyncLifetime
         var yogaItems = yogaBody.GetProperty("items").EnumerateArray().ToList();
 
         Assert.Contains(gymItems, i => i.GetProperty("name").GetString() == "COMBO GYM+YOGA"
-                                    && i.GetProperty("componentType").GetString() == "GYM");
+                                    && i.GetProperty("componentType").GetString() == "GYM"
+                                    && !i.GetProperty("isSingleService").GetBoolean());
         Assert.Contains(yogaItems, i => i.GetProperty("name").GetString() == "COMBO GYM+YOGA"
-                                      && i.GetProperty("componentType").GetString() == "YOGA");
+                                      && i.GetProperty("componentType").GetString() == "YOGA"
+                                      && !i.GetProperty("isSingleService").GetBoolean());
+        using var homeCatalog = await client.GetAsync("/api/membership-plans?serviceType=gym");
+        var homeItems = (await ReadBodyAsync(homeCatalog, HttpStatusCode.OK)).GetProperty("items").EnumerateArray();
+        Assert.Contains(homeItems, item => item.GetProperty("id").GetInt32() == combo.Id
+                                          && !item.GetProperty("isSingleService").GetBoolean());
+        using var comboDetail = await client.GetAsync($"{CatalogRoute}/gym/{combo.Id}");
+        Assert.Equal(HttpStatusCode.NotFound, comboDetail.StatusCode);
+    }
+
+    [Fact]
+    public async Task PackageDetailShowsMetadataAndRanksOneRecommendationPerService()
+    {
+        var current = await CreatePackage("PT 10 buổi", ComponentType.PT, trainerLevel: TrainerLevel.Senior,
+            sessionCount: 10, price: 950_000m, description: "Huấn luyện sức bền và kỹ thuật.");
+        await CreatePackage("PT 9 buổi", ComponentType.PT, sessionCount: 9, price: 700_000m);
+        var closestPt = await CreatePackage("PT 11 buổi", ComponentType.PT, sessionCount: 11, price: 1_000_000m);
+        await CreatePackage("PT 14 buổi", ComponentType.PT, sessionCount: 14, price: 900_000m);
+        await CreatePackage("GYM Premium", ComponentType.GYM, price: 900_000m);
+        var gym = await CreatePackage("GYM 30 ngày", ComponentType.GYM, durationDays: 30, price: 700_000m);
+        await CreatePackage("GYM Không bán", ComponentType.GYM, status: PackageStatus.Inactive, price: 300_000m);
+        await CreatePackage("YOGA đã xóa", ComponentType.YOGA, isDeleted: true, price: 400_000m);
+        var yoga = await CreatePackage("YOGA 30 ngày", ComponentType.YOGA, durationDays: 30, price: 500_000m);
+
+        using var client = CreateClient();
+        using var response = await client.GetAsync($"{CatalogRoute}/pt/{current.Id}");
+        var body = await ReadBodyAsync(response, HttpStatusCode.OK);
+        var package = body.GetProperty("package");
+        Assert.Equal(current.Id, package.GetProperty("id").GetInt32());
+        Assert.Equal("Huấn luyện sức bền và kỹ thuật.", package.GetProperty("description").GetString());
+        Assert.Equal("Senior", package.GetProperty("trainerLevel").GetString());
+        Assert.Equal(10, package.GetProperty("sessionCount").GetInt32());
+
+        Assert.Equal([closestPt.Id, gym.Id, yoga.Id], body.GetProperty("recommendations")
+            .EnumerateArray().Select(item => item.GetProperty("id").GetInt32()).ToArray());
+    }
+
+    [Fact]
+    public async Task PackageDetailRequiresMatchingTypeAndActiveStatus()
+    {
+        var gym = await CreatePackage("GYM Active", ComponentType.GYM);
+        var inactive = await CreatePackage("GYM Inactive", ComponentType.GYM, status: PackageStatus.Inactive);
+
+        using var client = CreateClient();
+        using var wrongType = await client.GetAsync($"{CatalogRoute}/yoga/{gym.Id}");
+        using var notSold = await client.GetAsync($"{CatalogRoute}/gym/{inactive.Id}");
+        using var invalidType = await client.GetAsync($"{CatalogRoute}/0/{gym.Id}");
+
+        Assert.Equal(HttpStatusCode.NotFound, wrongType.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, notSold.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, invalidType.StatusCode);
     }
 
     [Theory]
@@ -352,7 +410,7 @@ public sealed class PackageCatalogApiTests : IAsyncLifetime
                 return Task.FromResult(AuthenticateResult.NoResult());
 
             var identity = new ClaimsIdentity(
-                [new(ClaimTypes.NameIdentifier, "test-user"), new(ClaimTypes.Role, role.ToString())],
+                [new(ClaimTypes.NameIdentifier, Request.Headers["Test-User"].ToString()), new(ClaimTypes.Role, role.ToString())],
                 Scheme.Name);
             return Task.FromResult(AuthenticateResult.Success(
                 new AuthenticationTicket(new ClaimsPrincipal(identity), Scheme.Name)));

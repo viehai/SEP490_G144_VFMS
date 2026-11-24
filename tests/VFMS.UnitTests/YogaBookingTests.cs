@@ -103,8 +103,11 @@ public sealed class YogaBookingTests
         var result = await service.BookAsync("m1", new YogaBookingRequest(1));
 
         Assert.Equal((403, "MEMBERSHIP_REQUIRED"), (result.StatusCode, result.ErrorCode));
-        repo.Memberships.Add(Membership("m1", ComponentType.YOGA, "Beginner"));
+        var covered = Membership("m1", ComponentType.YOGA, "Beginner");
+        covered.OrderItemId = 42;
+        repo.Memberships.Add(covered);
         Assert.True((await service.BookAsync("m1", new YogaBookingRequest(1))).IsSuccess);
+        Assert.Equal(42, repo.Class!.Bookings.Single().OrderItemId);
     }
 
     // A yoga plan books classes of its level and every level below it; plans sold before levels existed book everything.
