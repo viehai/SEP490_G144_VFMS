@@ -170,7 +170,9 @@ How to tell which plan you got:
   Both buy buttons open `/membership-plans?type=yoga&level=…&classId=…&date=…&className=…`: only the plans that book that class, under "Các gói dưới đây cho phép đăng ký lớp X (level)", with **Xem tất cả gói Yoga**. The timetable asks `GET /api/yoga/my-plan` (any signed-in user) for `{ hasPlan, maxLevel }`.
 - Booking a class above your plan's level through the API is refused with 403 `YOGA_LEVEL_NOT_COVERED` ("Gói yoga của bạn chưa bao gồm lớp Nâng cao…"); no yoga plan at all is still `MEMBERSHIP_REQUIRED`. Joining the waitlist follows the same rule.
 - **Coming back to the class.** The filtered plans page remembers the class (sessionStorage `vfms.yoga.pendingClass`). When an order with one of those plans is **Paid**, the checkout page shows "Kích hoạt gói trong Gói của tôi, rồi đăng ký lớp đã chọn." and **Đăng ký lớp X ngay**, which opens the timetable on that class. Booking is not automatic: activate the plan in `/my-memberships`, then pick a mat.
-- **Plan details `/membership-plans/{id}`.** Click a plan name on `/membership-plans` or on the home page cards. It shows the price, term, description and, for yoga, the level, "Đăng ký được lớp: …" and the classes it can book in the next 4 weeks (each links to the timetable). A plan that is not on sale shows "Gói này không còn mở bán hoặc không tồn tại."
+- **Plan details (two pages since the 25/11 merge of main):**
+  - **Main's page `/membership-plans/{type}/{id}`** (for example `/membership-plans/yoga/6`) opens when you click a plan name on `/membership-plans` or on the home page cards. For a yoga plan it shows **Cấp độ Yoga** (it used to show "Dòng lớp Yoga"), plus reviews and suggested plans.
+  - **This branch's page `/membership-plans/{id}`** (for example `/membership-plans/6`) is no longer linked; open it by typing the URL. It shows the price, term, description and, for yoga, the level, "Đăng ký được lớp: …" and the classes it can book in the next 4 weeks, each linking to the timetable. A plan that is not on sale shows "Gói này không còn mở bán hoặc không tồn tại."
 - **Classes at the same time.** Two classes may share a time slot when both the studio and the trainer differ (same studio or same trainer is still `YOGA_SESSION_CONFLICT`). On the desktop timetable the cell shows an **N lớp cùng giờ** chip and lists them by studio; the phone list orders a day by time, then studio.
 - The class-type link on yoga plans ("Dòng lớp") is gone: only the level decides which classes a plan books.
 
@@ -285,7 +287,16 @@ Try it: book a mat someone else just took, cancel a yoga booking less than 2 hou
   dotnet test tests/VFMS.IntegrationTests --filter "FullyQualifiedName!~InvoicePdfPreservesMaximumPersistedDecimalPrecision"
   ```
 
-- **Main's unique phone-number rule broke 105 teammates' integration tests (23/11/2026).** Main added `EnforceApplicationUserIdentity` (one phone number per account). Several test classes create users without a phone, so the second user fails with `UNIQUE constraint failed: ApplicationUsers.PhoneNumber`. Main fails 108 integration tests; this branch fixed its own 3 (`YogaPersistenceTests`), so it fails 105. They are all in teammates' test classes, left to their owners: `PromotionApiTests` (59), `MembershipPlanApiTests` (38, including this branch's yoga plan tests, because the class's shared `TestUser` helper has no phone), `CompetitionApiTests` (5), `MembershipPurchaseApiTests` (2, one is the invoice test above) and `ConsultationPersistenceTests` (1). Expected result now (25/11/2026): Unit 700 and Client 504 pass; Integration 485 pass, 105 fail, 42 skipped. Two of the 105 (`InvoicePdfPreservesMaximumPersistedDecimalPrecision…`, `TransactionHistoryRetainsPaidPurchases…`) fail for other reasons (SQLite decimal precision, a duplicate user-role row), also in teammates' classes.
+- **Three teammates' integration tests still fail (25/11/2026, after merging main into this branch).** Main's latest changes fixed most of the phone-number failures from 23/11. These three are left to their owners:
+  - `ConsultationPersistenceTests`: a duplicate phone number (`UNIQUE constraint failed: ApplicationUsers.PhoneNumber`).
+  - `InvoicePdfPreservesMaximumPersistedDecimalPrecision…`: SQLite decimal precision, see above.
+  - `TransactionHistoryRetainsPaidPurchases…`: a duplicate user-role row.
+
+  Expected result now:
+  - Unit: 701 pass.
+  - Client: 511 pass.
+  - Integration: 611 pass, 3 fail, 47 skipped.
+- **PR #21 to main is open (25/11/2026):** https://github.com/viehai/SEP490_G144_VFMS/pull/21. Once it is merged, teammates who pull main get the migration `YogaPlanLevelReplacesClassType`. It drops `PackageComponents.YogaClassTypeId` and `YogaWaitlists.YogaClassTypeId`, so code or tests that still use `YogaClassType` on a plan no longer build, and yoga plans in test seeds need `YogaDifficultyLevel`.
 
 - **Yoga plans can't be renewed yet.** Renewal (`/my-memberships` → gia hạn) still only covers gym plans, so a yoga member buys a new yoga plan instead; it starts after the current one ends.
 - **Old SQL yoga parts removed (20/11/2026).** Before yoga plans existed, a YOGA part was added by SQL to the gym package "Gym 1 Month", so its buyers (the member and the three demo members) also got a yoga membership. That part and those 4 yoga memberships are now soft-deleted (`IsDeleted = 1`, by SQL, because no API removes a membership); nothing used them. The 4 accounts bought "Yoga 1 Tháng" through the real flow instead, so `/my-memberships` shows one Gym card and one Yoga card.
