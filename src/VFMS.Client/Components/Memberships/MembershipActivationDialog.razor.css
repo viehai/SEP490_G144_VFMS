@@ -1,0 +1,70 @@
+.activation-dialog {
+    --dialog-inset: clamp(1rem, 3vw, 1.5rem);
+}
+
+.activation-dialog ::deep .workspace-modal-panel {
+    max-width: 28rem;
+}
+
+.activation-dialog ::deep .workspace-modal-header {
+    align-items: center;
+    padding: 0.875rem var(--dialog-inset);
+}
+
+.activation-dialog ::deep .workspace-modal-header h2 { margin: 0; }
+.activation-dialog ::deep .workspace-modal-header button { border-radius: 0.5rem; }
+
+.activation-dialog ::deep .workspace-modal-body {
+    padding: 1rem var(--dialog-inset) 1.25rem;
+    overflow-wrap: anywhere;
+}
+
+fieldset {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+input[type="date"] {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    margin-top: 0.25rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--vfms-border-strong);
+    border-radius: 0.5rem;
+    background: white;
+    color: var(--vfms-text);
+}
+
+.activation-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 1rem;
+}
+
+.activation-actions button {
+    min-height: 44px;
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--vfms-border-strong);
+    border-radius: 0.5rem;
+    background: white;
+    color: var(--vfms-text);
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1.25;
+}
+
+.activation-actions button:hover { background: var(--vfms-surface-alt); }
+.activation-actions .activation-primary { border-color: var(--vfms-primary); background: var(--vfms-primary); color: white; }
+.activation-actions .activation-primary:hover { background: var(--vfms-primary-hover); }
+.activation-actions button:disabled { opacity: 0.6; }
+
+@media (max-width: 420px) {
+    .activation-actions .activation-primary { flex: 1; }
+}

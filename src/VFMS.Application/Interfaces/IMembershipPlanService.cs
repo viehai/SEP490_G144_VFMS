@@ -27,4 +27,5 @@ public interface IMembershipPlanService
     /// </summary>
     Task<Result<PagedResponse<PackageCatalogItemResponse>>> ListPackageCatalogAsync(
         PackageCatalogQuery request, CancellationToken cancellationToken);
+    Task<Result<PackageDetailResponse>> GetPackageDetailAsync(string type, int id, CancellationToken cancellationToken);
 }

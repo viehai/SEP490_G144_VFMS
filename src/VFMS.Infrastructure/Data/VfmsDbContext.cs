@@ -1272,6 +1272,10 @@ public class VfmsDbContext : DbContext
             entity.HasIndex(e => e.PTPurchaseId).IsUnique();
             entity.HasOne(e => e.PTPurchase).WithMany().HasForeignKey(e => e.PTPurchaseId)
                 .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(e => new { e.PackageId, e.MemberUserId }).IsUnique()
+                .HasFilter("[PackageId] IS NOT NULL AND [IsDeleted] = 0");
+            entity.HasOne(e => e.Package).WithMany().HasForeignKey(e => e.PackageId)
+                .OnDelete(DeleteBehavior.Restrict);
             entity.Property(e => e.ReviewStatus).HasConversion<string>().HasMaxLength(30);
 
             entity.HasOne(e => e.TrainerUser)

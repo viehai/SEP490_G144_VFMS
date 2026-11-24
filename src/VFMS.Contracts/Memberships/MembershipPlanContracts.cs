@@ -60,6 +60,9 @@ public sealed record MembershipPlanCatalogItemResponse(
     decimal Price,
     string Status,
     int? DurationInMonths,
-    string ServiceType = MembershipPlanServiceTypes.Gym);
+    string ServiceType = MembershipPlanServiceTypes.Gym)
+{
+    public bool IsSingleService { get; init; } = true;
+}
 
 public sealed record MembershipPlanDeleteResponse(bool Deactivated, string Message);

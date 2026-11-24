@@ -12,7 +12,10 @@ public sealed record MembershipPlanReadModel(
     decimal Price,
     PackageStatus Status,
     int SubscriberCount,
-    ComponentType ServiceType = ComponentType.GYM);
+    ComponentType ServiceType = ComponentType.GYM)
+{
+    public bool IsSingleService { get; init; } = true;
+}
 
 /// <summary>
 /// Read model cho public package catalog — phản ánh đúng các field trong PackageComponent.
@@ -36,7 +39,10 @@ public sealed record PackageCatalogReadModel(
     int? MaxFreezeDaysPerRequest,
     int? MaxFreezeCount,
     TimeOnly? AccessStartTime,
-    TimeOnly? AccessEndTime);
+    TimeOnly? AccessEndTime)
+{
+    public bool IsSingleService { get; init; } = true;
+}
 
 public interface IMembershipPlanRepository : IAuditedRepository
 {
@@ -59,4 +65,6 @@ public interface IMembershipPlanRepository : IAuditedRepository
     /// </summary>
     Task<(IReadOnlyList<PackageCatalogReadModel> Items, int TotalCount)> SearchByComponentTypeAsync(
         ComponentType componentType, int page, int pageSize, CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<PackageCatalogReadModel>> ListActiveSingleServicePackagesAsync(CancellationToken cancellationToken);
 }

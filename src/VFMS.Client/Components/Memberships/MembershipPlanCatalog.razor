@@ -67,7 +67,14 @@ else if (_page is { Items.Count: > 0 } catalog)
                         </ul>
                     }
                 </div>
-                <div class="mt-6">
+                <div class="mt-6 space-y-3">
+                    @if (plan.IsSingleService)
+                    {
+                        <a href="@PackageCatalogLinks.Detail(plan.ServiceType, plan.Id)" aria-label="Xem chi tiết gói @plan.Name"
+                           class="flex min-h-[44px] items-center justify-center rounded-lg border border-vfms-border-strong px-4 py-2 text-center text-sm font-bold text-vfms-text hover:bg-vfms-surface-alt focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary">
+                            Xem chi tiết
+                        </a>
+                    }
                     <AuthorizeView Roles="Customer,Member" Context="buyer">
                         <Authorized>
                             <button type="button" disabled="@(Cart.Count >= MembershipCart.MaximumItems)" aria-label="Thêm @plan.Name vào giỏ"

@@ -50,7 +50,14 @@ public sealed record PackageCatalogItemResponse(
     // --- Access window (GYM) ---
     TimeOnly? AccessStartTime,
     TimeOnly? AccessEndTime
-);
+)
+{
+    public bool IsSingleService { get; init; } = true;
+}
+
+public sealed record PackageDetailResponse(
+    PackageCatalogItemResponse Package,
+    IReadOnlyList<PackageCatalogItemResponse> Recommendations);
 
 public sealed class PackageCatalogQueryValidator : AbstractValidator<PackageCatalogQuery>
 {

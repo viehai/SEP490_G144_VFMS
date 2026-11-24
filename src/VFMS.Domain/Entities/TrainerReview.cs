@@ -12,6 +12,8 @@ public class TrainerReview : BaseEntity
 {
     public int? PTPurchaseId { get; set; }
     public PTPurchase? PTPurchase { get; set; }
+    public int? PackageId { get; set; }
+    public Package? Package { get; set; }
     public string TrainerUserId { get; set; } = string.Empty;
     public string MemberUserId { get; set; } = string.Empty;
     public int Rating { get; set; }   // 1-5

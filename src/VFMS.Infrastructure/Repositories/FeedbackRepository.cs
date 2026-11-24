@@ -7,21 +7,22 @@ using VFMS.Infrastructure.Data;
 
 namespace VFMS.Infrastructure.Repositories;
 
-public sealed class FeedbackRepository : IFeedbackRepository
+public sealed partial class FeedbackRepository : IFeedbackRepository
 {
     private readonly VfmsDbContext _context;
 
     public FeedbackRepository(VfmsDbContext context) => _context = context;
 
-    // Gym feedback rows have no PT contract; PT reviews (UC 4.10) are final and never managed here (GBR-102).
-    private IQueryable<TrainerReview> GymFeedback => _context.TrainerReviews.Where(review => review.PTPurchaseId == null);
+    // Gym and package feedback share moderation. Trainer contract reviews (GBR-102) are final.
+    private IQueryable<TrainerReview> ModeratedFeedback => _context.TrainerReviews.Where(review => review.PTPurchaseId == null);
 
     public async Task<(IReadOnlyList<TrainerReview> Items, int Total)> SearchAsync(
         string? search, string? status, int? rating, string? memberUserId, int page, int pageSize,
         CancellationToken cancellationToken = default)
     {
-        var query = GymFeedback
+        var query = ModeratedFeedback
             .AsNoTracking()
+            .Include(review => review.Package)
             .Include(review => review.TrainerUser)
             .Include(review => review.MemberUser)
             .Include(review => review.ReviewedByUser)
@@ -30,6 +31,7 @@ public sealed class FeedbackRepository : IFeedbackRepository
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(review =>
                 (review.Comment != null && review.Comment.Contains(search)) ||
+                (review.Package != null && review.Package.Name.Contains(search)) ||
                 review.MemberUser.FullName.Contains(search) ||
                 review.TrainerUser.FullName.Contains(search));
         if (!string.IsNullOrWhiteSpace(status)
@@ -66,7 +68,8 @@ public sealed class FeedbackRepository : IFeedbackRepository
             .ToListAsync(cancellationToken);
 
     public Task<TrainerReview?> GetAsync(int id, CancellationToken cancellationToken = default) =>
-        GymFeedback
+        ModeratedFeedback
+            .Include(review => review.Package)
             .Include(review => review.TrainerUser)
             .Include(review => review.MemberUser)
             .Include(review => review.ReviewedByUser)
@@ -77,8 +80,8 @@ public sealed class FeedbackRepository : IFeedbackRepository
 
     public Task<TrainerReview?> FindExistingAsync(
         string trainerUserId, string memberUserId, CancellationToken cancellationToken = default) =>
-        GymFeedback.FirstOrDefaultAsync(
-            review => review.TrainerUserId == trainerUserId && review.MemberUserId == memberUserId,
+        ModeratedFeedback.FirstOrDefaultAsync(
+            review => review.PackageId == null && review.TrainerUserId == trainerUserId && review.MemberUserId == memberUserId,
             cancellationToken);
 
     public async Task SaveAsync(
