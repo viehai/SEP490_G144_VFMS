@@ -3,6 +3,7 @@
 @using VFMS.Client.Components.Operations
 @using VFMS.Contracts.Yoga
 @using Microsoft.AspNetCore.Components.Authorization
+@using VFMS.Client.Components.Memberships
 @inject VfmsApiClient Api
 @inject IJSRuntime JS
 
@@ -75,7 +76,13 @@
                             @foreach (var day in Week)
                             {
                                 <td class="@($"border-l border-t border-[#D8D1CD] p-1.5 align-top {(day == _today ? "bg-[#F3E4E2]/40" : "")}")">
-                                    @foreach (var x in _sessions.Where(x => x.ScheduledDate == day && x.StartTime == slot))
+                                    @{ var cell = _sessions.Where(x => x.ScheduledDate == day && x.StartTime == slot).OrderBy(x => x.StudioName).ToList(); }
+                                    @if (cell.Count > 1)
+                                    {
+                                        @* Classes at the same time run in different studios with different instructors. *@
+                                        <p class="mb-1.5 inline-flex rounded-full border border-[#C9C0BB] bg-[#F8F5F2] px-2 py-0.5 text-[10px] font-semibold text-[#242424]">@cell.Count lớp cùng giờ</p>
+                                    }
+                                    @foreach (var x in cell)
                                     {
                                         @SessionCard(x)
                                     }
@@ -101,7 +108,7 @@
         <div class="space-y-4 md:hidden">
             @foreach (var day in Week)
             {
-                var daySessions = _sessions.Where(x => x.ScheduledDate == day).ToList();
+                var daySessions = _sessions.Where(x => x.ScheduledDate == day).OrderBy(x => x.StartTime).ThenBy(x => x.StudioName).ToList();
                 <section>
                     <h2 class="@($"mb-2 font-['Montserrat'] text-xs font-extrabold uppercase tracking-wider {(day == _today ? "text-[#B83A3A]" : "text-[#242424]")}")">@DayName(day) @day.ToString("dd/MM")</h2>
                     <div class="space-y-2">
@@ -221,6 +228,7 @@
         "ALREADY_WAITLISTED" => "Bạn đã ở trong danh sách chờ của lớp này.",
         "MAT_TAKEN" => "Thảm này vừa có người đặt. Hãy chọn thảm khác.",
         "REGISTRATION_CLOSED" => "Lớp này đã đóng đăng ký.",
+        "YOGA_LEVEL_NOT_COVERED" => ex.Message,   // names the class level and says to buy a higher plan
         _ => ex.Message
     };
 
@@ -244,6 +252,9 @@
     private Dictionary<int, MyYogaBookingResponse> _booked = [];
     private Dictionary<int, MyYogaWaitlistResponse> _waiting = [];
     private bool _isMember;
+    private YogaMyPlanResponse? _plan;   // null when signed out
+
+    private static PendingYogaClass Pending(YogaSessionResponse s) => new(s.YogaClassId, s.ClassName, s.DifficultyLevel, s.ScheduledDate);
 
     private (string Status, string Label, bool CanBook, bool Mine) State(YogaSessionResponse s)
     {
@@ -257,12 +268,27 @@
     private RenderFragment SessionCard(YogaSessionResponse s)
     {
         var (status, label, canBook, mine) = State(s);
+        var action = YogaPlanAccess.For(_isMember, _plan, s.DifficultyLevel);
+        var noteId = $"yoga-upgrade-{s.Id}";
         var tone = (s.YogaClassId == ClassId ? "ring-2 ring-[#B83A3A] ring-offset-1 " : "") + (mine ? "border-[#B83A3A] bg-[#F3E4E2]" : s.FreeSeats > 0 ? "border-[#D8D1CD] bg-white" : "border-amber-200 bg-amber-50");
-        return @<article data-yoga-class="@s.YogaClassId" class="@($"mb-1.5 space-y-1.5 rounded-lg border p-2 last:mb-0 {tone}")" aria-label="@($"{s.ClassName}, {DayName(s.ScheduledDate)} {s.StartTime:HH:mm}, {label}")">
+        return @<article data-yoga-class="@s.YogaClassId" class="@($"mb-1.5 space-y-1.5 rounded-lg border p-2 last:mb-0 {tone}")" aria-label="@($"{s.ClassName}, {DayName(s.ScheduledDate)} {s.StartTime:HH:mm}, {label}{(!mine && action == YogaCardAction.Upgrade ? ", chưa thuộc gói của bạn" : "")}")">
             <p class="font-semibold leading-tight text-[#242424]">@s.ClassName</p>
             <p class="text-[11px] leading-snug text-[#6F6966]">@s.StartTime.ToString("HH:mm")–@s.EndTime.ToString("HH:mm") · @VFMS.Client.Components.Memberships.YogaClassCard.LevelName(s.DifficultyLevel)<br />@s.StudioName (tầng @s.FloorNumber) · @s.InstructorName</p>
             <StatusBadge Status="@status" Label="@label" />
-            @if (_isMember)
+            @if (!mine && action == YogaCardAction.BuyAndBook)
+            {
+                <a href="@Pending(s).PlansHref" class="flex min-h-[44px] w-full items-center justify-center rounded-lg bg-[#B83A3A] px-2 py-1.5 text-center text-xs font-semibold text-white transition hover:bg-[#9F3030]">Mua gói và đăng ký</a>
+            }
+            else if (!mine && action == YogaCardAction.Upgrade)
+            {
+                @* Not greyed out: the member can act by buying a higher-level plan. Icon + text, not colour alone. *@
+                <p id="@noteId" class="flex items-start gap-1.5 text-[11px] font-medium leading-snug text-[#B45309]">
+                    <svg class="mt-px h-3.5 w-3.5 flex-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="m16 12-4-4-4 4" /><path d="M12 16V8" /></svg>
+                    <span>Mua gói có độ khó cao hơn để được đăng ký.</span>
+                </p>
+                <a href="@Pending(s).PlansHref" aria-describedby="@noteId" class="flex min-h-[44px] w-full items-center justify-center rounded-lg border border-[#B83A3A] bg-[#F8F5F2] px-2 py-1.5 text-xs font-semibold text-[#B83A3A] transition hover:bg-[#F3E4E2]">Mua gói</a>
+            }
+            else if (_isMember)
             {
                 @if (canBook)
                 {
@@ -312,7 +338,13 @@
         _today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7));
         var start = DateOnly.TryParseExact(Date, "yyyy-MM-dd", out var d) ? d : _today;
         _from = start.AddDays(-(((int)start.DayOfWeek + 6) % 7));
-        _isMember = AuthState is not null && (await AuthState).User.IsInRole("Member");
+        var user = AuthState is null ? null : (await AuthState).User;
+        _isMember = user?.IsInRole("Member") == true;
+        if (user?.Identity?.IsAuthenticated == true)
+        {
+            try { _plan = await Api.GetAsync<YogaMyPlanResponse>("api/yoga/my-plan"); }
+            catch (ApiException) { /* treated as no plan: the card offers buying, and the booking API still checks */ }
+        }
         try { _instructors = await Api.GetAsync<List<YogaInstructorResponse>>("api/yoga/instructors"); }
         catch (ApiException) { /* filter stays empty; VfmsApiClient already logged which call failed */ }
         await Task.WhenAll(Load(), LoadMine());
