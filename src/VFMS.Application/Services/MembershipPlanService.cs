@@ -71,8 +71,16 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
         MutateAsync(id, async plan =>
         {
             var gym = PrimaryComponent(plan);   // the type never changes on update
-            if (gym.ComponentType == ComponentType.YOGA && !YogaRules.IsDifficulty(request.YogaDifficultyLevel))
-                return YogaLevelRequired();
+            if (gym.ComponentType == ComponentType.YOGA)
+            {
+                // Buyers keep the level they bought until their membership ends, so a bought plan's level is fixed.
+                var used = await repository.HasUsageAsync(id, cancellationToken);
+                if (used && CanonicalLevel(request.YogaDifficultyLevel) != gym.YogaDifficultyLevel)
+                    return Result<MembershipPlanResponse>.Failure(
+                        "Gói đã có người mua nên không đổi được cấp độ. Hãy tạo gói mới với cấp độ khác.", "YOGA_LEVEL_LOCKED", 409);
+                if (!used && !YogaRules.IsDifficulty(request.YogaDifficultyLevel))
+                    return YogaLevelRequired();
+            }
             var oldStatus = plan.PackageStatus;
             var before = Snapshot(plan, gym);
             Apply(plan, gym, request);
@@ -162,9 +170,11 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
             gym.DurationMonths = null;
         }
         if (gym.ComponentType == ComponentType.YOGA)
-            gym.YogaDifficultyLevel = YogaRules.DifficultyLevels.First(level =>
-                level.Equals(request.YogaDifficultyLevel!.Trim(), StringComparison.OrdinalIgnoreCase));
+            gym.YogaDifficultyLevel = CanonicalLevel(request.YogaDifficultyLevel);
     }
+
+    private static string? CanonicalLevel(string? level) =>
+        YogaRules.DifficultyLevels.FirstOrDefault(code => code.Equals(level?.Trim(), StringComparison.OrdinalIgnoreCase));
 
     private static Result<MembershipPlanResponse> YogaLevelRequired() => Result<MembershipPlanResponse>.Failure(
         "Hãy chọn cấp độ yoga: Cơ bản, Trung bình hoặc Nâng cao.", "YOGA_LEVEL_REQUIRED", 400);

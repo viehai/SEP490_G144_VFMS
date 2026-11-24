@@ -25,10 +25,6 @@ public sealed class MembershipPlanRequestValidator : AbstractValidator<Membershi
         RuleFor(x => x.YogaDifficultyLevel)
             .Must(level => string.IsNullOrWhiteSpace(level) || Yoga.Validators.YogaRules.IsDifficulty(level))
             .WithMessage(MembershipPlanRules.YogaLevelMessage);
-        RuleFor(x => x.YogaDifficultyLevel)
-            .Must(level => !string.IsNullOrWhiteSpace(level))
-            .When(x => string.Equals(x.ServiceType?.Trim(), MembershipPlanServiceTypes.Yoga, StringComparison.OrdinalIgnoreCase))
-            .WithMessage(MembershipPlanRules.YogaLevelMessage);
     }
 }
 

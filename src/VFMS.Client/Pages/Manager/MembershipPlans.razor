@@ -70,7 +70,7 @@
                                     <option value="@level">@YogaRules.LevelLabel(level)</option>
                                 }
                             </InputSelect>
-                            <span id="plan-level-hint" class="mt-1 block text-xs font-normal text-[#6F6966]">@(string.IsNullOrEmpty(form.YogaDifficultyLevel) ? "Gói cấp cao hơn đặt được cả các lớp cấp thấp hơn." : $"Đặt được lớp: {YogaRules.CoveredLabels(form.YogaDifficultyLevel)}.")</span>
+                            <span id="plan-level-hint" class="mt-1 block text-xs font-normal text-[#6F6966]">@(string.IsNullOrEmpty(form.YogaDifficultyLevel) ? "Gói cấp cao hơn đặt được cả các lớp cấp thấp hơn." : $"Đặt được lớp: {YogaRules.CoveredLabels(form.YogaDifficultyLevel)}.") @(_selected is null ? "" : "Không đổi được khi gói đã có người mua.")</span>
                         </label>
                     }
                     <label class="text-sm font-semibold text-[#242424]" for="plan-duration">

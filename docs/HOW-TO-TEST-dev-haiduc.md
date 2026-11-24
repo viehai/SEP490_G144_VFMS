@@ -157,7 +157,8 @@ How to tell which plan you got:
 **Yoga plan levels (25/11/2026; rules waiting for the BR list in `docs/BR-pending-yoga-plan-levels.md`):**
 - Every yoga plan has a level: **Cơ bản**, **Trung bình** or **Nâng cao**. A higher level includes the lower ones: Cơ bản books Cơ bản classes, Trung bình books Cơ bản and Trung bình, Nâng cao books every class.
 - Manager, `/manager/membership-plans` → **Thêm gói mới** → **Loại dịch vụ: Yoga** shows a required **Cấp độ yoga** dropdown; its hint lists the classes the level books. Saving without a level is refused ("Hãy chọn cấp độ yoga…", `YOGA_LEVEL_REQUIRED`). The list shows **Yoga · Trung bình**.
-- **The local plan "Yoga 1 Tháng" has no level after the migration**, so it shows **Yoga · Chưa có cấp độ · không bán** and is hidden from every catalog until you edit it and pick a level. Demo Yoga's membership (bought before levels) still books every class.
+- **Buyers keep the level they bought.** Once a yoga plan has an order or a membership, its level can't be changed (`YOGA_LEVEL_LOCKED`, "Gói đã có người mua nên không đổi được cấp độ…"); create a new plan for another level. Name, price, term and status can still be edited.
+- **The local plan "Yoga 1 Tháng" has no level after the migration and has buyers**, so it shows **Yoga · Chưa có cấp độ · không bán**, stays hidden from every catalog and can't get a level. Its buyers (Demo Yoga and the demo members) keep booking every class until their membership ends, and can't buy or extend it again.
 - A yoga plan sells only while a bookable class **at or below its level** exists. Example: if only Nâng cao classes are open, Cơ bản and Trung bình plans are hidden and refused at checkout (`PLAN_NOT_PURCHASABLE`).
 - **Timetable `/yoga/schedule`, for everyone.** Each class you have not booked shows one of:
   - signed out, or signed in without a usable yoga plan (a Customer, or a Member with only a gym plan): **Mua gói và đăng ký**;
