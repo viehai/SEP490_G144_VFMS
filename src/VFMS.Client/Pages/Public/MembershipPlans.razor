@@ -129,7 +129,7 @@
                 </button>
             </div>
         }
-        else if (_catalog is null || _catalog.Items.Count == 0)
+        else if (_catalog is null || !Shown.Any())
         {
             <!-- Empty State -->
             <div class="bg-[#F8F5F2] border border-[#D8D1CD] rounded-xl p-10 sm:p-14 text-center max-w-xl mx-auto shadow-sm" role="status">
@@ -416,7 +416,7 @@
 
     private string LoginUrl => $"/auth/login?returnUrl={Uri.EscapeDataString(Navigation.Uri)}";
 
-    private string EmptyStateMessage => CurrentType switch
+    private string EmptyStateMessage => ForClass is not null && CurrentType == "yoga" ? "Hiện chưa có gói Yoga đăng ký được lớp này." : CurrentType switch
     {
         "yoga" => "Hiện chưa có gói Yoga đang mở bán.",
         "pt" => "Hiện chưa có gói PT đang mở bán.",
