@@ -209,6 +209,24 @@ public sealed class YogaBookingsController : ControllerBase
             : Unauthorized();
 }
 
+/// <summary>The signed-in user's yoga plan level, for the timetable's buy / book buttons. Any role (Customers have no plan yet).</summary>
+[ApiController]
+[Route("api/yoga/my-plan")]
+[Authorize]
+[Produces("application/json")]
+public sealed class YogaMyPlanController : ControllerBase
+{
+    private readonly IYogaBookingService _service;
+
+    public YogaMyPlanController(IYogaBookingService service) => _service = service;
+
+    [HttpGet]
+    public async Task<IActionResult> Get(CancellationToken cancellationToken) =>
+        User.GetUserId() is { } userId
+            ? this.ToActionResult(await _service.GetMyPlanAsync(userId, cancellationToken))
+            : Unauthorized();
+}
+
 /// <summary>UC-42 Take Yoga Attendance: the session's instructor or any Staff.</summary>
 [ApiController]
 [Route("api/yoga/sessions/{sessionId:int}/attendance")]

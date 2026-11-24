@@ -121,6 +121,18 @@ public sealed class YogaBookingService : IYogaBookingService
             booking.Id, yogaClass.Id, yogaClass.ClassName, "Confirmed", mat, null, "Đặt lớp yoga thành công."), 201);   // MSG-04
     }
 
+    public async Task<Result<YogaMyPlanResponse>> GetMyPlanAsync(string userId, CancellationToken cancellationToken = default)
+    {
+        var today = YogaTime.Today(_clock);
+        var plans = (await _repository.GetMembershipsAsync(userId, cancellationToken))
+            .Where(m => MembershipRules.Usable([m], today, ComponentType.YOGA) is not null)
+            .Select(m => m.PackageComponent.YogaDifficultyLevel)
+            .ToList();
+        return Result<YogaMyPlanResponse>.Success(plans.Count == 0 ? new(false, null)
+            : plans.Any(l => l is null) ? new(true, null)   // an old plan without a level books every class
+            : new(true, plans.MaxBy(YogaRules.LevelRank)));
+    }
+
     public async Task<Result<MyYogaBookingsResponse>> GetMyBookingsAsync(string memberUserId, CancellationToken cancellationToken = default)
     {
         var now = _clock.GetUtcNow().UtcDateTime;

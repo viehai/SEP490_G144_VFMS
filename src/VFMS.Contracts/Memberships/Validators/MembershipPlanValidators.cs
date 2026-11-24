@@ -22,6 +22,13 @@ public sealed class MembershipPlanRequestValidator : AbstractValidator<Membershi
             .Must(MembershipPlanRules.IsStatus).WithMessage(MembershipPlanRules.StatusMessage);
         RuleFor(x => x.ServiceType)
             .Must(MembershipPlanRules.IsServiceType).WithMessage(MembershipPlanRules.ServiceTypeMessage);
+        RuleFor(x => x.YogaDifficultyLevel)
+            .Must(level => string.IsNullOrWhiteSpace(level) || Yoga.Validators.YogaRules.IsDifficulty(level))
+            .WithMessage(MembershipPlanRules.YogaLevelMessage);
+        RuleFor(x => x.YogaDifficultyLevel)
+            .Must(level => !string.IsNullOrWhiteSpace(level))
+            .When(x => string.Equals(x.ServiceType?.Trim(), MembershipPlanServiceTypes.Yoga, StringComparison.OrdinalIgnoreCase))
+            .WithMessage(MembershipPlanRules.YogaLevelMessage);
     }
 }
 
@@ -54,6 +61,7 @@ internal static class MembershipPlanRules
 {
     public const string StatusMessage = "Status must be ACTIVE or INACTIVE.";
     public const string ServiceTypeMessage = "Service type must be GYM or YOGA.";
+    public const string YogaLevelMessage = "Hãy chọn cấp độ yoga: Cơ bản, Trung bình hoặc Nâng cao.";
 
     public static bool IsServiceType(string? type) =>
         string.Equals(type?.Trim(), MembershipPlanServiceTypes.Gym, StringComparison.OrdinalIgnoreCase) ||

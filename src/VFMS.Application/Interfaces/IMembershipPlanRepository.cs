@@ -12,7 +12,8 @@ public sealed record MembershipPlanReadModel(
     decimal Price,
     PackageStatus Status,
     int SubscriberCount,
-    ComponentType ServiceType = ComponentType.GYM);
+    ComponentType ServiceType = ComponentType.GYM,
+    string? YogaDifficultyLevel = null);
 
 /// <summary>
 /// Read model cho public package catalog — phản ánh đúng các field trong PackageComponent.

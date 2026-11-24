@@ -34,6 +34,8 @@ public interface IYogaBookingService
 {
     Task<Result<YogaMatMapResponse>> GetMatMapAsync(int classId, CancellationToken cancellationToken = default);
     Task<Result<YogaBookingResponse>> BookAsync(string memberUserId, YogaBookingRequest request, CancellationToken cancellationToken = default);
+    /// <summary>Which class levels the user's usable yoga plans book (timetable buttons). Any signed-in user.</summary>
+    Task<Result<YogaMyPlanResponse>> GetMyPlanAsync(string userId, CancellationToken cancellationToken = default);
     /// <summary>UC-40 View My Yoga Bookings.</summary>
     Task<Result<MyYogaBookingsResponse>> GetMyBookingsAsync(string memberUserId, CancellationToken cancellationToken = default);
     /// <summary>UC-39 Cancel Yoga Booking.</summary>

@@ -84,7 +84,8 @@ public sealed class MembershipPlanRepository(VfmsDbContext context)
         var packages = await Context.Packages
             .AsNoTracking()
             .Where(p => p.PackageStatus == PackageStatus.Active
-                     && p.Components.Any(c => c.ComponentType == componentType))
+                     && p.Components.Any(c => c.ComponentType == componentType
+                                           && (c.ComponentType != ComponentType.YOGA || c.YogaDifficultyLevel != null)))   // yoga plans without a level are not sold
             .Include(p => p.Components.Where(c => c.ComponentType == componentType))
             .OrderBy(p => p.Name).ThenBy(p => p.Id)
             .ToListAsync(cancellationToken);
@@ -133,9 +134,15 @@ public sealed class MembershipPlanRepository(VfmsDbContext context)
                 component.ComponentType == ComponentType.GYM || component.ComponentType == ComponentType.YOGA));
         if (sellableAtUtc is { } now)
         {
+            // A yoga plan sells only with a level and a bookable class it covers (higher levels include lower ones).
             var bookable = Context.YogaClasses.Where(YogaClassRules.Bookable(now));
-            plans = plans.Where(package => bookable.Any() ||
-                package.Components.Any(component => component.ComponentType == ComponentType.GYM));
+            plans = plans.Where(package =>
+                package.Components.Any(component => component.ComponentType == ComponentType.GYM) ||
+                package.Components.Any(component => component.ComponentType == ComponentType.YOGA && (
+                    (component.YogaDifficultyLevel == "Advanced" && bookable.Any()) ||
+                    (component.YogaDifficultyLevel == "Intermediate" &&
+                        bookable.Any(c => c.DifficultyLevel == "Beginner" || c.DifficultyLevel == "Intermediate")) ||
+                    (component.YogaDifficultyLevel == "Beginner" && bookable.Any(c => c.DifficultyLevel == "Beginner")))));
         }
         return status.HasValue ? plans.Where(package => package.PackageStatus == status.Value) : plans;
     }
@@ -161,5 +168,7 @@ public sealed class MembershipPlanRepository(VfmsDbContext context)
                 Context.MemberMemberships.Count(membership => membership.MembershipStatus == MembershipStatus.Active &&
                     membership.PackageComponent.PackageId == plan.package.Id &&
                     membership.PackageComponent.ComponentType == plan.Type),
-                plan.Type));
+                plan.Type,
+                plan.package.Components.Where(component => component.ComponentType == plan.Type)
+                    .OrderBy(component => component.Id).Select(component => component.YogaDifficultyLevel).FirstOrDefault()));
 }

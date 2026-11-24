@@ -109,6 +109,7 @@ public sealed class MembershipPlanApiTests : IAsyncLifetime
         var gymId = (await CreatePlanAsync(manager, "Gym Monthly")).GetProperty("id").GetInt32();
         var request = PlanRequest("Yoga Monthly");
         request["serviceType"] = "YOGA";
+        request["yogaDifficultyLevel"] = "Advanced";   // yoga plans need a level
         var yoga = await ReadBodyAsync(await manager.PostAsJsonAsync(ManagementRoute, request), HttpStatusCode.Created);
         var yogaId = yoga.GetProperty("id").GetInt32();
         Assert.Equal("YOGA", yoga.GetProperty("serviceType").GetString());
@@ -155,6 +156,7 @@ public sealed class MembershipPlanApiTests : IAsyncLifetime
         var gymId = (await CreatePlanAsync(manager, "Gym Monthly")).GetProperty("id").GetInt32();
         var request = PlanRequest("Yoga Monthly");
         request["serviceType"] = "YOGA";
+        request["yogaDifficultyLevel"] = "Advanced";   // yoga plans need a level
         var yogaId = (await ReadBodyAsync(await manager.PostAsJsonAsync(ManagementRoute, request), HttpStatusCode.Created))
             .GetProperty("id").GetInt32();
 

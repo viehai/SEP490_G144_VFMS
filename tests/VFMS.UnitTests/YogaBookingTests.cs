@@ -150,6 +150,25 @@ public sealed class YogaBookingTests
     }
 
     [Fact]
+    public async Task MyPlanReportsTheHighestLevelTheUsablePlansBook()
+    {
+        var (repo, service, _) = Setup();
+        repo.Memberships.Clear();
+        repo.Memberships.Add(Membership("m1", ComponentType.YOGA, "Beginner"));
+        repo.Memberships.Add(Membership("m1", ComponentType.YOGA, "Intermediate"));
+        repo.Memberships.Add(Membership("m2", ComponentType.YOGA));                 // old plan, no level
+        repo.Memberships.Add(Membership("m3", ComponentType.GYM));
+        var expired = Membership("m4", ComponentType.YOGA, "Advanced");
+        expired.EndDate = Today.AddDays(-1);
+        repo.Memberships.Add(expired);
+
+        Assert.Equal(new YogaMyPlanResponse(true, "Intermediate"), (await service.GetMyPlanAsync("m1")).Data);
+        Assert.Equal(new YogaMyPlanResponse(true, null), (await service.GetMyPlanAsync("m2")).Data);
+        Assert.Equal(new YogaMyPlanResponse(false, null), (await service.GetMyPlanAsync("m3")).Data);
+        Assert.Equal(new YogaMyPlanResponse(false, null), (await service.GetMyPlanAsync("m4")).Data);
+    }
+
+    [Fact]
     public async Task RegistrationMustBeOpenAndBeforeTheDeadline()   // GBR-78
     {
         var (_, service, yogaClass) = Setup();

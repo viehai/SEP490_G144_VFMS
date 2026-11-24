@@ -148,6 +148,9 @@ public sealed record MyYogaPastSessionResponse(
 
 public sealed record MyYogaWaitlistResponse(int YogaClassId, string ClassName, int Position, bool SeatOffered);
 
+/// <summary>The signed-in user's yoga plan for the timetable. MaxLevel is the highest class level it books; null with HasPlan = all levels (old plan).</summary>
+public sealed record YogaMyPlanResponse(bool HasPlan, string? MaxLevel);
+
 public sealed record MyYogaBookingsResponse(
     IReadOnlyList<MyYogaBookingResponse> Upcoming, IReadOnlyList<MyYogaPastSessionResponse> Past, IReadOnlyList<MyYogaWaitlistResponse> Waitlist);
 
