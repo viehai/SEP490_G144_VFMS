@@ -715,6 +715,10 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<int>("GymId")
                         .HasColumnType("int");
 
+                    b.Property<string>("ImageUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
@@ -2616,9 +2620,6 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<int?>("EquipmentId")
                         .HasColumnType("int");
 
-                    b.Property<decimal>("EstimatedUnitPrice")
-                        .HasColumnType("decimal(18,2)");
-
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
@@ -2634,6 +2635,9 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.Property<string>("Reason")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal?>("UnitPrice")
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
@@ -3394,6 +3398,53 @@ namespace VFMS.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("TrainerRoles");
+                });
+
+            modelBuilder.Entity("VFMS.Domain.Entities.UploadedImage", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<byte[]>("Content")
+                        .IsRequired()
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<Guid>("ImageKey")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UploadedByUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ImageKey")
+                        .IsUnique();
+
+                    b.ToTable("UploadedImages");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.Voucher", b =>

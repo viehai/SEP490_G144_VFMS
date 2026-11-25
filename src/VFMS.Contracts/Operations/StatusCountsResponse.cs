@@ -11,12 +11,12 @@ public sealed record StatusCountsResponse(IReadOnlyDictionary<string, int> Count
 
 /// <summary>
 /// Filter values that cover several statuses at once, for the work lists:
-/// <see cref="OpenIssues"/> = Reported, InProgress and Escalated issues; <see cref="ActiveOrders"/> = orders not yet Completed or Cancelled.
+/// <see cref="OpenIssues"/> = InProgress and Escalated issues; <see cref="ActiveOrders"/> = orders not yet Completed or Cancelled.
 /// </summary>
 public static class StatusFilters
 {
     public const string OpenIssues = "Open";
     public const string ActiveOrders = "Active";
-    public static readonly string[] OpenIssueStatuses = ["Reported", "InProgress", "Escalated"];
+    public static readonly string[] OpenIssueStatuses = ["InProgress", "Escalated"];
     public static readonly string[] ActiveOrderStatuses = ["Pending", "Processing", "ReadyForPickup", "OutForDelivery"];
 }
