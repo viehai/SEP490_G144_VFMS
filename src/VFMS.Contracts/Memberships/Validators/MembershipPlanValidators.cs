@@ -36,6 +36,9 @@ public sealed class MembershipPlanRequestValidator : AbstractValidator<Membershi
             .Must(MembershipPlanRules.IsStatus).WithMessage(MembershipPlanRules.StatusMessage);
         RuleFor(x => x.ServiceType)
             .Must(MembershipPlanRules.IsServiceType).WithMessage(MembershipPlanRules.ServiceTypeMessage);
+        RuleFor(x => x.YogaDifficultyLevel)
+            .Must(level => string.IsNullOrWhiteSpace(level) || Yoga.Validators.YogaRules.IsDifficulty(level))
+            .WithMessage(MembershipPlanRules.YogaLevelMessage);
     }
 
     private static bool IsValidDuration(int? value, MembershipDurationUnit unit)
@@ -77,6 +80,7 @@ internal static class MembershipPlanRules
 {
     public const string StatusMessage = "Chọn trạng thái đang bán hoặc ngừng bán.";
     public const string ServiceTypeMessage = "Chọn loại dịch vụ Gym hoặc Yoga.";
+    public const string YogaLevelMessage = "Hãy chọn cấp độ yoga: Cơ bản, Trung bình hoặc Nâng cao.";
 
     public static bool IsServiceType(string? type) =>
         string.Equals(type?.Trim(), MembershipPlanServiceTypes.Gym, StringComparison.OrdinalIgnoreCase) ||

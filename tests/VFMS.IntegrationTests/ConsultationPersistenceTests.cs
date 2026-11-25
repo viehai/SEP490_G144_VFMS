@@ -31,6 +31,7 @@ public sealed class ConsultationPersistenceTests : IAsyncLifetime
             UserId = CustomerUserId,
             Gym = gym,
             Email = "customer@example.com",
+            PhoneNumber = "0901000001",
             FullName = "Nguyen Van A",
             PasswordHash = "test"
         };
@@ -39,6 +40,7 @@ public sealed class ConsultationPersistenceTests : IAsyncLifetime
             UserId = ManagerUserId,
             Gym = gym,
             Email = "manager@example.com",
+            PhoneNumber = "0901000002",
             FullName = "Manager",
             PasswordHash = "test"
         };

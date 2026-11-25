@@ -97,14 +97,10 @@ public interface IEquipmentIssueService
         int id, string? onlyReportedByUserId, CancellationToken cancellationToken = default);
 
     // Staff (UC-72)
-    Task<Result<EquipmentIssueResponse>> StartHandlingAsync(int id, string staffUserId, string? ipAddress, CancellationToken cancellationToken = default);
     Task<Result<EquipmentIssueResponse>> ResolveAsync(int id, string note, string staffUserId, string? ipAddress, CancellationToken cancellationToken = default);
     Task<Result<EquipmentIssueResponse>> EscalateAsync(int id, string note, string staffUserId, string? ipAddress, CancellationToken cancellationToken = default);
-    Task<Result<EquipmentIssueResponse>> MarkSafeAsync(int id, string note, string staffUserId, string? ipAddress, CancellationToken cancellationToken = default);
 
     // Manager (UC-73)
-    Task<Result<EquipmentIssueResponse>> StartRepairAsync(int id, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default);
     Task<Result<EquipmentIssueResponse>> ConfirmSafeAsync(int id, string note, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default);
-    Task<Result<EquipmentIssueResponse>> MarkNotSafeAsync(int id, string note, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default);
     Task<Result<EquipmentIssueResponse>> DisposeAsync(int id, string note, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default);
 }

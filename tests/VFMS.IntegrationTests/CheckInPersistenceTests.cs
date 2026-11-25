@@ -41,7 +41,7 @@ public sealed class CheckInPersistenceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task KioskQrCheckInSavesVisitUsesTokenAndBlocksReEntry()   // SCRUM-44
+    public async Task KioskQrCheckInSavesVisitUsesTokenAndBlocksSecondOpenVisit()   // SCRUM-44
     {
         await using var db = new SqliteTestContext(_options);
         var (service, qr) = Services(db);
@@ -56,13 +56,16 @@ public sealed class CheckInPersistenceTests : IAsyncLifetime
         Assert.Equal((CheckInMethod.QRCode, CheckInStatus.Active), (visit.CheckinMethod, visit.Status));
         Assert.NotNull(visit.MemberMembershipId);
         Assert.Equal(403, replay.StatusCode);              // the token was used up
-        Assert.Equal("ANTI_PASSBACK", again.ErrorCode);
+        Assert.Equal("ALREADY_CHECKED_IN", again.ErrorCode);   // still inside; no cooldown after check-out
 
         var checkedOut = await service.KioskCheckOutAsync(new KioskScanRequest(null, (await qr.IssueAsync("m1")).Data!.Token));   // SCRUM-45
         Assert.True(checkedOut.IsSuccess, checkedOut.ErrorMessage);
         var closed = await db.CheckIns.AsNoTracking().SingleAsync();
         Assert.Equal((CheckInStatus.CheckedOut, CheckInMethod.QRCode), (closed.Status, closed.CheckoutMethod!.Value));
         Assert.Equal("An Member", checkedOut.Data!.MemberName);
+
+        var reEntry = await service.KioskCheckInAsync(new KioskScanRequest(null, (await qr.IssueAsync("m1")).Data!.Token));
+        Assert.True(reEntry.IsSuccess, reEntry.ErrorMessage);   // right after check-out: no cooldown
     }
 
     [Fact]

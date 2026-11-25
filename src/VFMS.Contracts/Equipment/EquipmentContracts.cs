@@ -24,7 +24,8 @@ public sealed record EquipmentRequest(
     DateOnly? PurchaseDate = null,
     decimal? PurchasePrice = null,
     string? DescriptionUrl = null,
-    string? Note = null
+    string? Note = null,
+    string? ImageUrl = null
 );
 
 /// <summary>Status: Operational, UnderMaintenance, Damaged, Retired. A note is required to retire.</summary>
@@ -56,12 +57,13 @@ public sealed record EquipmentResponse(
     string? Note,
     DateTime CreatedAt,
     DateTime UpdatedAt,
-    int RecentIssueCount = 0
+    int RecentIssueCount = 0,
+    string? ImageUrl = null
 );
 
 /// <summary>
-/// Issue history of one piece of equipment. Open issues are Reported, InProgress or Escalated; closed ones are
-/// Resolved or MarkedSafe. <see cref="RepeatedIssues"/> is true when it had at least
+/// Issue history of one piece of equipment. Open issues are InProgress or Escalated; closed ones are
+/// Resolved. <see cref="RepeatedIssues"/> is true when it had at least
 /// <see cref="RepeatedIssueThreshold"/> reports in the last <see cref="RecentDays"/> days.
 /// </summary>
 public sealed record EquipmentIssueSummaryResponse(
@@ -94,7 +96,7 @@ public sealed record ReportEquipmentIssueRequest(
 );
 
 /// <summary>
-/// Status: Reported, InProgress, Escalated, Resolved, MarkedSafe. Search matches the equipment name or code.
+/// Status: InProgress, Escalated, Resolved. Search matches the equipment name or code.
 /// Sort: newest (default) or severity (Safety, then Damage, Malfunction, Other; newest first within each).
 /// </summary>
 public sealed record EquipmentIssueListRequest(

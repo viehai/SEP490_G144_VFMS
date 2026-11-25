@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using VFMS.Application.Interfaces;
 using VFMS.Application.Services;
 using VFMS.Contracts.Memberships;
+using VFMS.Contracts.Yoga.Validators;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
 using VFMS.Infrastructure.Data;
@@ -100,14 +101,13 @@ public sealed class MembershipPlanRepository(VfmsDbContext context)
     /// Component được project theo type đã yêu cầu (first match, ordered by Id).
     /// </summary>
     public async Task<(IReadOnlyList<PackageCatalogReadModel> Items, int TotalCount)> SearchByComponentTypeAsync(
-        ComponentType componentType, int page, int pageSize, CancellationToken cancellationToken = default)
+        ComponentType componentType, int page, int pageSize, DateTime nowUtc, CancellationToken cancellationToken = default)
     {
-        var query = Context.Packages.AsNoTracking()
+        var query = WithSellableYoga(Context.Packages.AsNoTracking(), nowUtc)
             .Where(p => p.PackageStatus == PackageStatus.Active
                      && p.Components.Any(c => c.ComponentType == componentType));
         var total = await query.CountAsync(cancellationToken);
         var packages = await query.Include(p => p.Components)
-                .ThenInclude(c => c.YogaClassType)
             .OrderBy(p => p.Name).ThenBy(p => p.Id)
             .Skip((page - 1) * pageSize).Take(pageSize)
             .ToListAsync(cancellationToken);
@@ -117,12 +117,11 @@ public sealed class MembershipPlanRepository(VfmsDbContext context)
         return (items, total);
     }
 
-    public async Task<IReadOnlyList<PackageCatalogReadModel>> ListActiveSingleServicePackagesAsync(CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<PackageCatalogReadModel>> ListActiveSingleServicePackagesAsync(DateTime nowUtc, CancellationToken cancellationToken)
     {
-        var packages = await Context.Packages.AsNoTracking()
+        var packages = await WithSellableYoga(Context.Packages.AsNoTracking(), nowUtc)
             .Where(package => package.PackageStatus == PackageStatus.Active && package.Components.Count == 1)
             .Include(package => package.Components)
-                .ThenInclude(component => component.YogaClassType)
             .ToListAsync(cancellationToken);
 
         return packages.Select(package => ToCatalogItem(package, package.Components.Single())).ToArray();
@@ -145,8 +144,7 @@ public sealed class MembershipPlanRepository(VfmsDbContext context)
             component.DurationDays,
             component.DurationMonths,
             component.SessionCount,
-            component.YogaClassTypeId,
-            component.YogaClassType?.TypeName,
+            component.YogaDifficultyLevel,
             component.ApplicableTrainerLevel?.ToString(),
             component.PTFreezeMinimumDays,
             component.PTFreezeMaxTotalDays,
@@ -169,12 +167,22 @@ public sealed class MembershipPlanRepository(VfmsDbContext context)
             .Where(package => package.Components.Any(component =>
                 component.ComponentType == ComponentType.GYM || component.ComponentType == ComponentType.YOGA));
         if (sellableAtUtc is { } now)
-        {
-            var bookable = Context.YogaClasses.Where(YogaClassRules.Bookable(now));
-            plans = plans.Where(package => bookable.Any() ||
-                package.Components.Any(component => component.ComponentType == ComponentType.GYM));
-        }
+            plans = WithSellableYoga(plans, now);
         return status.HasValue ? plans.Where(package => package.PackageStatus == status.Value) : plans;
+    }
+
+    private IQueryable<Package> WithSellableYoga(IQueryable<Package> packages, DateTime nowUtc)
+    {
+        var bookable = Context.YogaClasses.Where(YogaClassRules.Bookable(nowUtc));
+        return packages.Where(p => !p.Components.Any(c => c.ComponentType == ComponentType.YOGA &&
+            (c.YogaDifficultyLevel == null || !YogaRules.DifficultyLevels.Contains(c.YogaDifficultyLevel))))
+            .Where(p => !p.Components.Any(c => c.ComponentType == ComponentType.YOGA) ||
+                p.Components.Any(c => c.ComponentType == ComponentType.GYM) ||
+                p.Components.Any(c => c.ComponentType == ComponentType.YOGA && (
+                    (c.YogaDifficultyLevel == "Advanced" && bookable.Any()) ||
+                    (c.YogaDifficultyLevel == "Intermediate" &&
+                        bookable.Any(y => y.DifficultyLevel == "Beginner" || y.DifficultyLevel == "Intermediate")) ||
+                    (c.YogaDifficultyLevel == "Beginner" && bookable.Any(y => y.DifficultyLevel == "Beginner")))));
     }
 
     // The main part is the GYM component, or the YOGA component of a yoga-only plan.
@@ -198,7 +206,9 @@ public sealed class MembershipPlanRepository(VfmsDbContext context)
                 Context.MemberMemberships.Count(membership => membership.MembershipStatus == MembershipStatus.Active &&
                     membership.PackageComponent.PackageId == plan.package.Id &&
                     membership.PackageComponent.ComponentType == plan.Type),
-                plan.Type)
+                plan.Type,
+                plan.package.Components.Where(component => component.ComponentType == plan.Type)
+                    .OrderBy(component => component.Id).Select(component => component.YogaDifficultyLevel).FirstOrDefault())
             {
                 IsSingleService = plan.package.Components.Count == 1,
                 MaxFreezeCount = plan.package.Components.Where(c => c.ComponentType == plan.Type).OrderBy(c => c.Id).Select(c => c.MaxFreezeCount).FirstOrDefault(),

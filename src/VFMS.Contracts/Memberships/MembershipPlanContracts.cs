@@ -39,6 +39,9 @@ public sealed class MembershipPlanRequest
 
     /// <summary>GYM or YOGA. Used on create only: an update keeps the plan's type.</summary>
     public string ServiceType { get; set; } = MembershipPlanServiceTypes.Gym;
+
+    /// <summary>YOGA plans only, required: Beginner / Intermediate / Advanced, the highest class level it books.</summary>
+    public string? YogaDifficultyLevel { get; set; }
 }
 
 public sealed class MembershipPlanStatusRequest
@@ -68,7 +71,8 @@ public sealed record MembershipPlanResponse(
     string Status,
     int SubscriberCount,
     int? DurationInMonths,
-    string ServiceType = MembershipPlanServiceTypes.Gym)
+    string ServiceType = MembershipPlanServiceTypes.Gym,
+    string? YogaDifficultyLevel = null)
 {
     public int? DurationValue => DurationInMonths ?? DurationInDays;
     public MembershipDurationUnit DurationUnit => DurationInMonths.HasValue ? MembershipDurationUnit.Month : MembershipDurationUnit.Day;
@@ -90,7 +94,8 @@ public sealed record MembershipPlanCatalogItemResponse(
     decimal Price,
     string Status,
     int? DurationInMonths,
-    string ServiceType = MembershipPlanServiceTypes.Gym)
+    string ServiceType = MembershipPlanServiceTypes.Gym,
+    string? YogaDifficultyLevel = null)
 {
     public bool IsSingleService { get; init; } = true;
     public string? TargetAudience { get; init; }

@@ -118,6 +118,11 @@ public sealed partial class LegacySchemaMigrationTests
             modelBuilder.Entity<Package>().Ignore(row => row.FreezeAllowanceOverrideDays);
             modelBuilder.Entity<Package>().Ignore(row => row.FreezeAllowanceOverrideUnit);
             modelBuilder.Entity<MemberMembership>().Ignore(row => row.GrantedFreezeAllowanceDays);
+            modelBuilder.Entity<PackageComponent>().Ignore(row => row.YogaDifficultyLevel);
+            modelBuilder.Entity<PackageComponent>().Ignore(row => row.MinFreezeDaysPerRequest);
+            modelBuilder.Entity<MemberMembership>().Ignore(row => row.GrantedFreezeCount);
+            modelBuilder.Entity<MemberMembership>().Ignore(row => row.GrantedMinFreezeDays);
+            modelBuilder.Entity<MemberMembership>().Ignore(row => row.GrantedMaxFreezeDays);
             // The deployed legacy layout has only the Guid FK; the three inline fields arrive during upgrade.
             modelBuilder.Entity<MembershipFreeze>().Ignore(row => row.SupportingDocumentFileName);
             modelBuilder.Entity<MembershipFreeze>().Ignore(row => row.SupportingDocumentContentType);

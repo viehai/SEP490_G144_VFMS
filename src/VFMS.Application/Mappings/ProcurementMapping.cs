@@ -11,7 +11,7 @@ public sealed class ProcurementMapping : IRegister
     {
         config.NewConfig<PurchaseProposalItem, PurchaseProposalItemResponse>()
             .Map(d => d.EquipmentName, s => s.Equipment == null ? null : s.Equipment.EquipmentName)
-            .Map(d => d.LineTotal, s => s.Quantity * s.EstimatedUnitPrice);
+            .Map(d => d.LineTotal, s => s.UnitPrice == null ? (decimal?)null : s.Quantity * s.UnitPrice.Value);
 
         config.NewConfig<PurchaseProposalReview, PurchaseProposalReviewResponse>()
             .Map(d => d.Action, s => s.Action.ToString())
@@ -22,7 +22,10 @@ public sealed class ProcurementMapping : IRegister
             .Map(d => d.SubmittedAt, s => s.ProposalStatus == PurchaseProposalStatus.Draft ? (DateTime?)null : s.SubmittedAt)
             .Map(d => d.ProposedByName, s => s.ProposedByUser == null ? null : s.ProposedByUser.FullName)
             // Items replaced during a draft edit are soft-deleted but can still be in the tracked collection.
-            .Map(d => d.TotalBudget, s => s.Items.Where(i => !i.IsDeleted).Sum(i => i.Quantity * i.EstimatedUnitPrice))
+            // The cost is known only once the Manager has priced every item, when the purchase is completed.
+            .Map(d => d.TotalCost, s => s.ProposalStatus == PurchaseProposalStatus.Completed
+                ? s.Items.Where(i => !i.IsDeleted).Sum(i => i.Quantity * (i.UnitPrice ?? 0m))
+                : (decimal?)null)
             .Map(d => d.Items, s => s.Items.Where(i => !i.IsDeleted).OrderBy(i => i.Id))
             .Map(d => d.Reviews, s => s.Reviews.OrderBy(r => r.ReviewedAt).ThenBy(r => r.Id));
     }

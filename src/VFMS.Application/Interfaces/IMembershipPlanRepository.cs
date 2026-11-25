@@ -14,7 +14,8 @@ public sealed record MembershipPlanReadModel(
     decimal Price,
     PackageStatus Status,
     int SubscriberCount,
-    ComponentType ServiceType = ComponentType.GYM)
+    ComponentType ServiceType = ComponentType.GYM,
+    string? YogaDifficultyLevel = null)
 {
     public bool IsSingleService { get; init; } = true;
     public string? TargetAudience { get; init; }
@@ -38,8 +39,7 @@ public sealed record PackageCatalogReadModel(
     int? DurationDays,
     int? DurationMonths,
     int? SessionCount,
-    int? YogaClassTypeId,
-    string? YogaClassTypeName,
+    string? YogaDifficultyLevel,
     string? ApplicableTrainerLevel,
     int? PTFreezeMinimumDays,
     int? PTFreezeMaxTotalDays,
@@ -78,8 +78,8 @@ public interface IMembershipPlanRepository : IAuditedRepository
     /// thuộc <paramref name="componentType"/>.
     /// </summary>
     Task<(IReadOnlyList<PackageCatalogReadModel> Items, int TotalCount)> SearchByComponentTypeAsync(
-        ComponentType componentType, int page, int pageSize, CancellationToken cancellationToken = default);
+        ComponentType componentType, int page, int pageSize, DateTime nowUtc, CancellationToken cancellationToken = default);
 
-    Task<IReadOnlyList<PackageCatalogReadModel>> ListActiveSingleServicePackagesAsync(CancellationToken cancellationToken);
+    Task<IReadOnlyList<PackageCatalogReadModel>> ListActiveSingleServicePackagesAsync(DateTime nowUtc, CancellationToken cancellationToken);
     Task<CatalogMembershipFreezeRules?> GetCatalogFreezeRulesAsync(CancellationToken cancellationToken);
 }

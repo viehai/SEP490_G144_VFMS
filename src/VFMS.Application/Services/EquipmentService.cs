@@ -277,12 +277,13 @@ public sealed class EquipmentService : IEquipmentService
         equipment.PurchaseDate = request.PurchaseDate;
         equipment.PurchasePrice = request.PurchasePrice;
         equipment.EquipmentDescriptionUrl = Clean(request.DescriptionUrl);
+        equipment.ImageUrl = Clean(request.ImageUrl);
         equipment.Note = Clean(request.Note);
     }
 
     private static string Describe(Equipment e) =>
         $"Name={e.EquipmentName}; Code={e.EquipmentCode}; CategoryId={e.CatalogCategoryId}; Brand={e.EquipmentBrand}; " +
-        $"Model={e.EquipmentModel}; PurchaseDate={e.PurchaseDate}; PurchasePrice={e.PurchasePrice}";
+        $"Model={e.EquipmentModel}; PurchaseDate={e.PurchaseDate}; PurchasePrice={e.PurchasePrice}; Image={e.ImageUrl}";
 
     internal static bool TryParse<TEnum>(string? value, out TEnum parsed) where TEnum : struct, Enum =>
         Enum.TryParse(value?.Trim(), ignoreCase: true, out parsed) && Enum.IsDefined(parsed) &&

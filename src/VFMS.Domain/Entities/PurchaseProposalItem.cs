@@ -11,7 +11,8 @@ public class PurchaseProposalItem : BaseEntity
     public int? EquipmentId { get; set; }
     public string ItemName { get; set; } = string.Empty;
     public int Quantity { get; set; }
-    public decimal EstimatedUnitPrice { get; set; }
+    /// <summary>Price actually paid per unit, entered by the Manager when the purchase is done; Staff do not price items.</summary>
+    public decimal? UnitPrice { get; set; }
     public string? Reason { get; set; }
 
     // ── Navigation Properties ──────────────────────────────────

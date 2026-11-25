@@ -36,7 +36,7 @@
             <div class="flex flex-wrap items-start justify-between gap-3">
                 <div>
                     <h2 id="log-detail-title" class="text-base font-bold text-vfms-text">#@log.Id · @ActionLabel(log.ActionType) · @OperationsText.AuditEntity(log.AuditEntity, log.EntityId)</h2>
-                    <p class="mt-1 text-xs text-vfms-text-secondary">@log.OccurredAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") · @(log.ActorName ?? "Hệ thống")@(log.IpAddress is { } ip ? $" · IP {ip}" : "")</p>
+                    <p class="mt-1 text-xs text-vfms-text-secondary">@log.OccurredAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") · @(log.ActorName ?? "Hệ thống")</p>
                 </div>
                 <button type="button" class="@Button" @onclick="() => _selected = null">Đóng chi tiết</button>
             </div>
@@ -105,7 +105,7 @@
             <div class="overflow-x-auto">
                 <table class="workspace-table min-w-[820px]">
                     <thead>
-                        <tr><th scope="col">Thời gian</th><th scope="col">Người thực hiện</th><th scope="col">Thao tác</th><th scope="col">Đối tượng</th><th scope="col">IP</th><th scope="col">Chi tiết</th></tr>
+                        <tr><th scope="col">Thời gian</th><th scope="col">Người thực hiện</th><th scope="col">Thao tác</th><th scope="col">Đối tượng</th><th scope="col">Chi tiết</th></tr>
                     </thead>
                     <tbody>
                         @foreach (var row in list.Items)
@@ -115,7 +115,6 @@
                                 <td>@(row.ActorName ?? "Hệ thống")</td>
                                 <td><span class="inline-block whitespace-nowrap rounded-md border border-vfms-border bg-vfms-surface-alt px-2.5 py-1 text-[11px] font-semibold text-vfms-text">@ActionLabel(row.ActionType)</span></td>
                                 <td>@OperationsText.AuditEntity(row.AuditEntity, row.EntityId)</td>
-                                <td>@(row.IpAddress ?? "—")</td>
                                 <td><button type="button" class="@Button" @onclick="() => OpenAsync(row.Id)">Xem</button></td>
                             </tr>
                         }

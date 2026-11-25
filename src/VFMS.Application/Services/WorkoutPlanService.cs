@@ -68,12 +68,12 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
     {
         if (!request.ConsentToAiProcessing)
             return Result<WorkoutPlanResponse>.Failure(
-                "Please agree to the processing of your fitness survey before generating a plan.", "WORKOUT_CONSENT_REQUIRED");
+                "Vui lòng đồng ý cho xử lý khảo sát thể lực trước khi tạo giáo án.", "WORKOUT_CONSENT_REQUIRED");
 
         var profile = await _repository.GetProfileAsync(userId, cancellationToken);
         if (!IsComplete(profile))
             return Result<WorkoutPlanResponse>.Failure(
-                "Complete the fitness survey before generating a workout plan.", "WORKOUT_SURVEY_INCOMPLETE");   // GBR-93
+                "Hãy hoàn thành khảo sát thể lực trước khi tạo giáo án.", "WORKOUT_SURVEY_INCOMPLETE");   // GBR-93
 
         var catalog = (await _repository.GetActiveExercisesAsync(cancellationToken))
             .Select(e => new CatalogExercise(e.Id, e.Name, e.MuscleGroup, e.DifficultyLevel))
@@ -121,10 +121,10 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
                            ?? await _repository.GetFallbackTemplateAsync(nameof(FitnessGoal.GeneralFitness), cancellationToken);
             if (template is null || template.PlanItems.Count == 0)
                 return Result<WorkoutPlanResponse>.Failure(
-                    "The workout plan service is unavailable and no standard plan is configured. Please try again later.",
+                    "Dịch vụ tạo giáo án đang gián đoạn và chưa có giáo án chuẩn. Vui lòng thử lại sau.",
                     "WORKOUT_GENERATION_UNAVAILABLE", 503);
 
-            plan.Name = template.Name ?? "Standard plan";
+            plan.Name = template.Name ?? "Giáo án chuẩn";
             plan.IsFallback = true;
             plan.NutritionAdvice = StandardNutrition(profile.FitnessGoal);
             foreach (var item in template.PlanItems.OrderBy(i => i.DayNumber).ThenBy(i => i.OrderInDay))
@@ -151,10 +151,10 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
             await _repository.SaveChangesAsync(cancellationToken);
             _repository.Add(plan);
             _repository.Add(AuditedWriter.Notify(userId, null,
-                plan.IsFallback ? "Standard workout plan ready" : "Your workout plan is ready",
+                plan.IsFallback ? "Giáo án chuẩn đã sẵn sàng" : "Giáo án của bạn đã sẵn sàng",
                 plan.IsFallback
-                    ? "The AI service is unavailable, so we prepared a standard plan for your goal."
-                    : "Your personalised workout plan has been generated.",
+                    ? "Dịch vụ AI đang gián đoạn nên chúng tôi đã chuẩn bị giáo án chuẩn theo mục tiêu của bạn."
+                    : "Giáo án cá nhân của bạn đã được tạo.",
                 nameof(WorkoutPlan), NotificationType.WorkoutPlanGenerated));
             await _repository.SaveChangesAsync(cancellationToken);
         }, cancellationToken);
@@ -170,7 +170,7 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
         var active = (await _repository.GetActivePlansAsync(userId, cancellationToken))
             .OrderByDescending(p => p.GeneratedAt).FirstOrDefault();
         if (active is null)
-            return Result<WorkoutPlanResponse>.Failure("You do not have an active workout plan yet.", "WORKOUT_NO_ACTIVE_PLAN", 404);
+            return Result<WorkoutPlanResponse>.Failure("Bạn chưa có giáo án đang dùng.", "WORKOUT_NO_ACTIVE_PLAN", 404);
         var plan = await _repository.GetPlanAsync(active.Id, cancellationToken) ?? active;
         return Result<WorkoutPlanResponse>.Success(await PlanResponseAsync(plan, cancellationToken));
     }
@@ -239,13 +239,13 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
             return error;
         var exercise = (await _repository.GetActiveExercisesAsync(cancellationToken)).FirstOrDefault(e => e.Id == request.ExerciseId);
         if (exercise is null)
-            return Result<WorkoutPlanItemResponse>.Failure("Exercise not found.", "WORKOUT_EXERCISE_NOT_FOUND");
+            return Result<WorkoutPlanItemResponse>.Failure("Không tìm thấy bài tập.", "WORKOUT_EXERCISE_NOT_FOUND");
         Equipment? equipment = null;
         if (request.EquipmentId is { } equipmentId)
         {
             equipment = (await _repository.GetUsableEquipmentAsync(cancellationToken)).FirstOrDefault(e => e.Id == equipmentId);
             if (equipment is null)
-                return Result<WorkoutPlanItemResponse>.Failure("This equipment is not available.", "WORKOUT_EQUIPMENT_UNAVAILABLE");
+                return Result<WorkoutPlanItemResponse>.Failure("Thiết bị này hiện không sử dụng được.", "WORKOUT_EQUIPMENT_UNAVAILABLE");
         }
 
         item!.ExerciseId = exercise.Id;
@@ -268,7 +268,7 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
         if (plan is null || plan.MemberUserId != userId || plan.IsTemplate)
             return PlanNotFound<WorkoutPlanResponse>();
         if (plan.PlanStatus != WorkoutPlanStatus.Active)
-            return Result<WorkoutPlanResponse>.Failure("This plan is already archived.", "WORKOUT_PLAN_ARCHIVED", 409);
+            return Result<WorkoutPlanResponse>.Failure("Giáo án này đã được lưu trữ.", "WORKOUT_PLAN_ARCHIVED", 409);
         plan.PlanStatus = WorkoutPlanStatus.Archived;
         plan.UpdatedAt = DateTime.UtcNow;
         await _repository.SaveChangesAsync(cancellationToken);
@@ -321,10 +321,10 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
         if (plan is null || plan.MemberUserId != userId || plan.IsTemplate)
             return (null, PlanNotFound<WorkoutPlanItemResponse>());
         if (plan.PlanStatus != WorkoutPlanStatus.Active)
-            return (null, Result<WorkoutPlanItemResponse>.Failure("Archived plans cannot be changed.", "WORKOUT_PLAN_ARCHIVED", 409));
+            return (null, Result<WorkoutPlanItemResponse>.Failure("Không thể sửa giáo án đã lưu trữ.", "WORKOUT_PLAN_ARCHIVED", 409));
         var item = plan.PlanItems.FirstOrDefault(i => i.Id == itemId);
         return item is null
-            ? (null, Result<WorkoutPlanItemResponse>.Failure("Exercise not found in this plan.", "WORKOUT_ITEM_NOT_FOUND", 404))
+            ? (null, Result<WorkoutPlanItemResponse>.Failure("Không tìm thấy bài tập trong giáo án này.", "WORKOUT_ITEM_NOT_FOUND", 404))
             : (item, null);
     }
 
@@ -365,7 +365,7 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
             .ToArray();
         if (items.Length == 0)
             return null;
-        var name = string.IsNullOrWhiteSpace(plan.Name) ? "Personalised plan" : plan.Name.Trim()[..Math.Min(plan.Name.Trim().Length, 200)];
+        var name = string.IsNullOrWhiteSpace(plan.Name) ? "Giáo án cá nhân" : plan.Name.Trim()[..Math.Min(plan.Name.Trim().Length, 200)];
         var nutrition = string.IsNullOrWhiteSpace(plan.NutritionAdvice)
             ? null
             : plan.NutritionAdvice.Trim()[..Math.Min(plan.NutritionAdvice.Trim().Length, 1000)];
@@ -424,5 +424,5 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
             i.EquipmentId, i.Equipment?.EquipmentName);
     }
 
-    private static Result<T> PlanNotFound<T>() => Result<T>.Failure("Workout plan not found.", "WORKOUT_PLAN_NOT_FOUND", 404);
+    private static Result<T> PlanNotFound<T>() => Result<T>.Failure("Không tìm thấy giáo án.", "WORKOUT_PLAN_NOT_FOUND", 404);
 }

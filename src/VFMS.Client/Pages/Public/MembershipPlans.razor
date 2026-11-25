@@ -3,6 +3,8 @@
 @using VFMS.Client.Components.Memberships
 @using VFMS.Contracts.Common
 @using VFMS.Contracts.Packages
+@using VFMS.Contracts.Yoga.Validators
+@inject IJSRuntime JS
 @inject MembershipPlanApiClient PlanApi
 @inject NavigationManager Navigation
 @inject MembershipCart Cart
@@ -70,6 +72,17 @@
             </button>
         </div>
 
+        @if (ForClass is { } wanted && CurrentType == "yoga")
+        {
+            <div class="mb-8 flex flex-wrap items-center justify-between gap-3 border-l-4 border-[#B83A3A] pl-4" role="status">
+                <p class="text-sm text-[#242424]">
+                    Các gói dưới đây cho phép đăng ký lớp <strong>@wanted.Name</strong> (@YogaRules.LevelLabel(wanted.Level)).
+                    Sau khi thanh toán, quay lại <a href="@wanted.ScheduleHref" class="font-bold text-[#B83A3A] hover:underline">lịch lớp</a> để chọn thảm.
+                </p>
+                <a href="/membership-plans?type=yoga" class="inline-flex min-h-[44px] items-center text-sm font-bold text-[#B83A3A] hover:underline">Xem tất cả gói Yoga</a>
+            </div>
+        }
+
         <!-- ============================================================== -->
         <!-- 3. MAIN CATALOG CONTENT                                        -->
         <!-- ============================================================== -->
@@ -116,7 +129,7 @@
                 </button>
             </div>
         }
-        else if (_catalog is null || _catalog.Items.Count == 0)
+        else if (_catalog is null || !Shown.Any())
         {
             <!-- Empty State -->
             <div class="bg-[#F8F5F2] border border-[#D8D1CD] rounded-xl p-10 sm:p-14 text-center max-w-xl mx-auto shadow-sm" role="status">
@@ -137,7 +150,7 @@
             <!-- 4. CARDS GRID (3 Columns Desktop, 2 Tablet, 1 Mobile)          -->
             <!-- ============================================================== -->
             <div id="catalog-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" aria-live="polite">
-                @foreach (var package in _catalog.Items)
+                @foreach (var package in Shown)
                 {
                     <article @key="package.Id" class="bg-[#F8F5F2] border border-[#D8D1CD] rounded-xl p-6 sm:p-7 flex flex-col justify-between hover:border-[#B83A3A] transition-colors duration-200 shadow-sm group">
                         <div>
@@ -151,7 +164,14 @@
 
                             <!-- Package Name -->
                             <h2 class="font-['Montserrat',sans-serif] text-xl sm:text-2xl font-black uppercase text-[#242424] mt-4 tracking-tight leading-snug">
-                                @package.Name
+                                @if (package.ComponentType is "GYM" or "YOGA")
+                                {
+                                    <a href="@PackageCatalogLinks.Detail(package.ComponentType, package.Id, CurrentPage)" class="hover:text-[#B83A3A] hover:underline">@package.Name</a>
+                                }
+                                else
+                                {
+                                    @package.Name
+                                }
                             </h2>
 
                             <!-- Optional Description -->
@@ -221,11 +241,11 @@
                                         </li>
                                     }
 
-                                    @if (!string.IsNullOrWhiteSpace(package.YogaClassTypeName))
+                                    @if (package.YogaDifficultyLevel is { } level)
                                     {
                                         <li class="flex items-start gap-2.5">
                                             <span class="text-[#B83A3A] font-bold">▪</span>
-                                            <span><strong>Dòng lớp:</strong> @package.YogaClassTypeName</span>
+                                            <span><strong>Cấp độ:</strong> @YogaRules.LevelLabel(level) · đăng ký được lớp @YogaRules.CoveredLabels(level)</span>
                                         </li>
                                     }
 
@@ -332,7 +352,7 @@
             <!-- ============================================================== -->
             <!-- 5. PAGINATION                                                  -->
             <!-- ============================================================== -->
-            @if (_catalog.TotalCount > PageSize)
+            @if (_catalog.TotalCount > PageSize && ForClass is null)
             {
                 var totalPages = (int)Math.Ceiling((double)_catalog.TotalCount / PageSize);
                 <nav aria-label="Phân trang gói tập" class="mt-12 flex flex-wrap items-center justify-center gap-3 font-['Inter',sans-serif] text-sm">
@@ -369,6 +389,23 @@
     [SupplyParameterFromQuery(Name = "page")]
     public int? PageQuery { get; set; }
 
+    // Set by the yoga timetable's "Mua gói" button: show only plans that book that class.
+    [SupplyParameterFromQuery(Name = "level")] public string? LevelQuery { get; set; }
+    [SupplyParameterFromQuery(Name = "classId")] public int? ClassIdQuery { get; set; }
+    [SupplyParameterFromQuery(Name = "date")] public string? DateQuery { get; set; }
+    [SupplyParameterFromQuery(Name = "className")] public string? ClassNameQuery { get; set; }
+
+    private PendingYogaClass? ForClass =>
+        CurrentType == "yoga" && ClassIdQuery is { } id && YogaRules.IsDifficulty(LevelQuery) && DateOnly.TryParse(DateQuery, out var date)
+            ? new PendingYogaClass(id, string.IsNullOrWhiteSpace(ClassNameQuery) ? "đã chọn" : ClassNameQuery.Trim(), LevelQuery!.Trim(), date)
+            : null;
+
+    // Yoga plans by level (lowest first); for a picked class only the plans that cover it.
+    private IEnumerable<PackageCatalogItemResponse> Shown => CurrentType != "yoga" ? _catalog!.Items
+        : _catalog!.Items
+            .Where(p => ForClass is not { } wanted || (p.YogaDifficultyLevel is not null && YogaRules.PlanCovers(p.YogaDifficultyLevel, wanted.Level)))
+            .OrderBy(p => YogaRules.LevelRank(p.YogaDifficultyLevel)).ThenBy(p => p.Price);
+
     private string CurrentType => NormalizeType(TypeQuery);
     private int CurrentPage => Math.Max(1, PageQuery ?? 1);
 
@@ -377,10 +414,12 @@
     private PagedResponse<PackageCatalogItemResponse>? _catalog;
     private string? _loadedType;
     private int? _loadedPage;
+    private bool _loadedAll;
+    private int _loadVersion;
 
     private string LoginUrl => $"/auth/login?returnUrl={Uri.EscapeDataString(Navigation.Uri)}";
 
-    private string EmptyStateMessage => CurrentType switch
+    private string EmptyStateMessage => ForClass is not null && CurrentType == "yoga" ? "Hiện chưa có gói Yoga đăng ký được lớp này." : CurrentType switch
     {
         "yoga" => "Hiện chưa có gói Yoga đang mở bán.",
         "pt" => "Hiện chưa có gói PT đang mở bán.",
@@ -392,34 +431,50 @@
         var targetType = CurrentType;
         var targetPage = CurrentPage;
 
-        // Tránh gọi lại API nếu parameters không thay đổi
-        if (_catalog is not null && _loadedType == targetType && _loadedPage == targetPage && _errorMessage is null)
-        {
-            return;
-        }
-
-        await LoadCatalogAsync(targetType, targetPage);
+        if (_loading || _catalog is null || _loadedType != targetType || _loadedPage != targetPage || _loadedAll != (ForClass is not null) || _errorMessage is not null)
+            await LoadCatalogAsync(targetType, targetPage);
+        else if (ForClass is { } wanted)
+            await (wanted with { PlanIds = Shown.Select(p => p.Id).ToArray() }).SaveAsync(JS);
     }
 
     private async Task LoadCatalogAsync(string type, int page)
     {
+        var version = ++_loadVersion;
+        var wanted = ForClass;
         _loading = true;
         _errorMessage = null;
 
         try
         {
-            _catalog = await PlanApi.GetPackagesAsync(type, page, PageSize);
+            var result = wanted is null ? await PlanApi.GetPackagesAsync(type, page, PageSize) : await PlanApi.GetPackagesAsync(type, 1, 100);
+            if (wanted is not null && result.TotalCount > result.Items.Count)
+            {
+                var items = result.Items.ToList();
+                for (var next = 2; version == _loadVersion && items.Count < result.TotalCount; next++)
+                {
+                    var batch = await PlanApi.GetPackagesAsync(type, next, 100);
+                    if (batch.Items.Count == 0) break;
+                    items.AddRange(batch.Items);
+                }
+                result = result with { Items = items };
+            }
+            if (version != _loadVersion) return;
+            _catalog = result;
             _loadedType = type;
             _loadedPage = page;
+            _loadedAll = wanted is not null;
+            if (wanted is not null)
+                await (wanted with { PlanIds = Shown.Select(p => p.Id).ToArray() }).SaveAsync(JS);
         }
         catch (Exception)
         {
+            if (version != _loadVersion) return;
             _errorMessage = "Không thể tải danh sách gói lúc này.";
             _catalog = null;
         }
         finally
         {
-            _loading = false;
+            if (version == _loadVersion) _loading = false;
         }
     }
 

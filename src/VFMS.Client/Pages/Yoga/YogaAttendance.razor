@@ -17,11 +17,11 @@
 @* UC-42 Take Yoga Attendance: the session's instructor or any Staff (GBR-86); a member's QR marks them Attended (GBR-88). *@
 <div class="workspace-page space-y-8 font-['Inter',sans-serif] text-[#242424]">
     <PageHeader Overline="VFMS / YOGA / ĐIỂM DANH" Title="@(_roster?.ClassName ?? "Điểm danh")"
-                Description="@(_roster is null ? "" : $"Buổi {_roster.Date:dddd dd/MM/yyyy} lúc {_roster.StartTime:HH\\:mm}. Đánh dấu từng học viên rồi gửi danh sách.")">
+                Description="@(_roster is null ? "" : $"Buổi {VFMS.Client.Components.Memberships.YogaClassCard.DayName(_roster.Date)} {_roster.Date:dd/MM/yyyy} lúc {_roster.StartTime:HH\\:mm}. Đánh dấu từng học viên rồi gửi danh sách.")">
         <a href="@BackHref" class="text-sm font-semibold text-[#B83A3A] underline underline-offset-4">← Danh sách buổi học</a>
     </PageHeader>
 
-    <Alerts Notice="@_notice" Error="@_error" />
+    <StatusMessage Notice="@_notice" Error="@_error" />
 
     @if (_loading)
     {
