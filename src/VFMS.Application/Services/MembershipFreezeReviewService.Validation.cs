@@ -36,6 +36,8 @@ public sealed partial class MembershipFreezeReviewService
             return Result<int>.Success(actual);
         }
 
+        if (membership.PackageComponent.ComponentType == ComponentType.YOGA)
+            return InvalidApproval(MembershipFreezeRequestService.YogaFreezeUnsupportedMessage, MembershipFreezeRequestService.YogaFreezeUnsupportedCode);
         if (freeze.AppliedExpiryExtensionDays is not null ||
             MembershipPurchaseService.GetCurrentMembershipStatus(membership.MembershipStatus, membership.EndDate, today) != MembershipStatus.Active ||
             membership.StartDate > today)
@@ -44,14 +46,18 @@ public sealed partial class MembershipFreezeReviewService
             return InvalidApproval("Ngày bắt đầu đã qua. Yêu cầu không thể được duyệt hồi tố.", "FREEZE_REVIEW_PERIOD");
         if (freeze.RequestedStartDate > membership.EndDate)
             return InvalidApproval("Ngày bắt đầu bảo lưu nằm ngoài thời hạn hiệu lực hiện tại của gói.", "FREEZE_REVIEW_MEMBERSHIP");
-        var snapshot = AppliedPolicy(membership, freeze);
-        if (snapshot is null || snapshot.Policy!.MinimumFreezeDays <= 0 ||
-            snapshot.Policy.MaximumFreezeDays < snapshot.Policy.MinimumFreezeDays ||
-            days < snapshot.Policy.MinimumFreezeDays || days > snapshot.Policy.MaximumFreezeDays)
+        var snapshot = MembershipFreezeRequestService.ReadAppliedPolicy(freeze.AppliedPolicySnapshot);
+        if (snapshot?.Policy is not { MinimumFreezeDays: > 0 } conditions ||
+            days < conditions.MinimumFreezeDays || days > conditions.MaximumFreezeDays)
             return InvalidApproval("Thiếu hoặc không hợp lệ quy tắc đã áp dụng khi gửi yêu cầu.", "FREEZE_POLICY_SNAPSHOT");
+        var allowance = MembershipFreezeRequestService.ApplicableAllowance(membership, snapshot);
+        if (membership.GrantedFreezeCount is { } count && membership.FreezeCount >= count)
+            return InvalidApproval("Gói đã dùng hết số lượt bảo lưu.", "FREEZE_VISITS_EXHAUSTED");
+        if (membership.GrantedFreezeCount is null && allowance is null)
+            return InvalidApproval("Chưa xác định được số ngày được bảo lưu của gói đã mua.", "FREEZE_POLICY_SNAPSHOT");
         var used = MembershipFreezeRequestService.ConsumedDays(membership);
-        if (used + days > snapshot.Quotas[0].MaximumCumulativeFreezeDays || used + days > int.MaxValue)
-            return InvalidApproval("Hạn mức bảo lưu còn lại không đủ để duyệt yêu cầu.", "MSG-27");
+        if (membership.GrantedFreezeCount is null && used + days > allowance)
+            return InvalidApproval("Số ngày còn được bảo lưu không đủ để duyệt yêu cầu.", "MSG-27");
         if ((long)membership.EndDate.DayNumber + days > DateOnly.MaxValue.DayNumber || membership.FreezeCount == int.MaxValue)
             return InvalidApproval("Gia hạn vượt quá phạm vi được hỗ trợ.", "FREEZE_REVIEW_PERIOD");
         if (membership.MembershipFreezes.Any(other => other.Id != freeze.Id &&
@@ -60,18 +66,6 @@ public sealed partial class MembershipFreezeReviewService
                 (other.ActualEndDate ?? other.RequestedEndDate) >= freeze.RequestedStartDate))
             return InvalidApproval("Thời gian yêu cầu trùng với kỳ bảo lưu đã có hiệu lực hoặc đã được duyệt.", "FREEZE_OVERLAP");
         return Result<int>.Success(days);
-    }
-
-    private static MembershipFreezePolicyResponse? AppliedPolicy(MemberMembership membership, MembershipFreeze freeze)
-    {
-        var snapshot = MembershipFreezeRequestService.ReadAppliedPolicy(freeze.AppliedPolicySnapshot);
-        if (snapshot?.Policy is null || snapshot.Quotas is null)
-            return null;
-        var (days, months) = MembershipPurchaseService.PurchasedDuration(membership.OrderItem.ComponentTermsSnapshot,
-            membership.PackageComponentId, membership.PackageComponent.DurationDays, membership.PackageComponent.DurationMonths);
-        var matches = snapshot.Quotas.Where(quota => quota is not null && quota.Duration == (days is > 0 ? days : months) &&
-            quota.Unit == (days is > 0 ? MembershipFreezeTierUnits.Days : MembershipFreezeTierUnits.Months)).ToArray();
-        return matches is [var tier] && tier.MaximumCumulativeFreezeDays >= 0 ? snapshot with { Quotas = [tier] } : null;
     }
 
     private static Result<int> InvalidApproval(string message, string code) => Result<int>.Failure(message, code, 409);

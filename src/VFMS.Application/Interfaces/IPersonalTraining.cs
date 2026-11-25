@@ -108,10 +108,6 @@ public interface IPersonalTrainingRepository : IAuditedRepository
 
     // ── Payments and vouchers (UC 4.4) ───────────────────────────
     Task<IReadOnlyList<PaymentTransaction>> GetRefundsAsync(int paymentId, CancellationToken cancellationToken = default);
-    Task<Voucher?> GetActiveVoucherAsync(string normalizedCode, DateTime now, CancellationToken cancellationToken = default);
-    /// <summary>Confirmed redemptions plus reservations of pending orders; purchaserId counts one user's only.</summary>
-    Task<int> CountActiveRedemptionsAsync(int voucherId, int? excludingOrderId, string? purchaserId,
-        CancellationToken cancellationToken = default);
     Task<VoucherRedemption?> GetRedemptionForOrderAsync(int orderId, CancellationToken cancellationToken = default);
     Task<bool> IsTransferRecordedAsync(PaymentTransaction payment, string reference, CancellationToken cancellationToken = default);
     void RecordExtraTransfer(PaymentTransaction payment, SepayTransfer transfer, DateTime now);

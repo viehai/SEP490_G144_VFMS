@@ -37,6 +37,12 @@ public sealed class CompetitionApiClient(HttpClient http, AuthSession session)
         int id, CancellationToken cancellationToken = default) =>
         await GetAsync<List<CompetitionLeaderboardEntry>>($"api/competitions/{id}/leaderboard", cancellationToken);
 
+    public Task<List<CompetitionRewardVoucher>> GetRewardOptionsAsync(DateTime competitionEnd, int? competitionId, CancellationToken ct = default) =>
+        GetAsync<List<CompetitionRewardVoucher>>($"api/competitions/reward-vouchers?competitionEnd={Uri.EscapeDataString(competitionEnd.ToString("O"))}&competitionId={competitionId}", ct);
+
+    public Task<CompetitionResponse> ReplaceUnusableRewardsAsync(int competitionId, IReadOnlyCollection<CompetitionPrizeRequest> prizes, CancellationToken ct = default) =>
+        PutAsync<CompetitionResponse>($"api/competitions/{competitionId}/rewards", prizes, ct);
+
     // UC-57 Registration, UC-58 History
     public Task<CompetitionParticipantResponse> RegisterAsync(int competitionId, CancellationToken cancellationToken = default) =>
         PostAsync<CompetitionParticipantResponse>($"api/competitions/{competitionId}/register", null, cancellationToken);
@@ -142,7 +148,7 @@ public sealed class CompetitionApiClient(HttpClient http, AuthSession session)
     private static async Task<T> ReadAsync<T>(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         var value = await response.Content.ReadFromJsonAsync<T>(JsonOptions, cancellationToken);
-        return value ?? throw new CompetitionApiException("May chu khong tra ve du lieu.", response.StatusCode);
+        return value ?? throw new CompetitionApiException("Máy chủ chưa trả về dữ liệu.", response.StatusCode);
     }
 
     private static async Task<string> ReadProblemAsync(HttpResponseMessage response, CancellationToken cancellationToken)
@@ -158,12 +164,12 @@ public sealed class CompetitionApiClient(HttpClient http, AuthSession session)
             using var document = JsonDocument.Parse(text);
             var root = document.RootElement;
             if (root.TryGetProperty("detail", out var detail) && detail.ValueKind == JsonValueKind.String)
-                return detail.GetString() ?? "Khong the hoan tat yeu cau.";
+                return detail.GetString() ?? "Không thể hoàn tất yêu cầu.";
             if (root.TryGetProperty("errorMessage", out var message) && message.ValueKind == JsonValueKind.String)
-                return message.GetString() ?? "Khong the hoan tat yeu cau.";
+                return message.GetString() ?? "Không thể hoàn tất yêu cầu.";
         }
         catch (JsonException) { /* The server may return a non-JSON error page. */ }
-        return "Khong the hoan tat yeu cau. Vui long thu lai.";
+        return "Không thể hoàn tất yêu cầu. Vui lòng thử lại.";
     }
 }
 

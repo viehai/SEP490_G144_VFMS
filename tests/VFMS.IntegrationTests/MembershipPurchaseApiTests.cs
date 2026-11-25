@@ -47,16 +47,23 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
     private int _inactive;
     private DateOnly Today => DateOnly.FromDateTime(_clock.Now.ToOffset(TimeSpan.FromHours(7)).DateTime);
 
-    public async Task InitializeAsync()
+    public Task InitializeAsync() => StartApplicationAsync();
+
+    private async Task StartApplicationAsync(string? sqlServer = null)
     {
-        await _connection.OpenAsync();
+        if (sqlServer is null) await _connection.OpenAsync();
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Testing" });
         builder.WebHost.UseTestServer();
         builder.Services.AddControllers().AddApplicationPart(typeof(MembershipPurchasesController).Assembly);
         builder.Services.AddFluentValidationAutoValidation();
         builder.Services.AddValidatorsFromAssemblyContaining<MembershipPurchaseRequestValidator>();
-        var dbOptions = new DbContextOptionsBuilder<VfmsDbContext>().UseSqlite(_connection).AddInterceptors(UniqueTestPhoneInterceptor.Instance).Options;
-        builder.Services.AddScoped<VfmsDbContext>(_ => new TestContext(dbOptions));
+        if (sqlServer is null)
+        {
+            var dbOptions = new DbContextOptionsBuilder<VfmsDbContext>().UseSqlite(_connection).AddInterceptors(UniqueTestPhoneInterceptor.Instance).Options;
+            builder.Services.AddScoped<VfmsDbContext>(_ => new TestContext(dbOptions));
+        }
+        else
+            builder.Services.AddDbContext<VfmsDbContext>(options => options.UseSqlServer(sqlServer));
         builder.Services.AddSingleton<TimeProvider>(_clock);
         builder.Configuration["MembershipPayments:BankId"] = "MB";
         builder.Configuration["MembershipPayments:AccountNumber"] = BankAccount;
@@ -77,6 +84,7 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
         builder.Services.AddMembershipFreezeReviewModule();
         builder.Services.AddMembershipFreezeLifecycleModule();
         builder.Services.AddPromotionModule();
+        builder.Services.AddCompetitionModule();
         var worker = builder.Services.Single(service =>
             service.ServiceType == typeof(IHostedService) && service.ImplementationType == typeof(MembershipCommerceWorker));
         builder.Services.Remove(worker);
@@ -412,7 +420,25 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
         Assert.Equal(500_000m, gym.AmountDue);
     }
 
-    private async Task<int> SeedYogaPlanAsync()
+    [Fact]
+    public async Task YogaPlanSellsOnlyWithALevelThatCoversABookableClass()
+    {
+        await SeedYogaClassAsync("staff", _clock.Now.UtcDateTime.AddDays(7), level: "Intermediate");
+        var beginner = await SeedYogaPlanAsync("Beginner");     // covers no bookable class
+        var noLevel = await SeedYogaPlanAsync(null);            // old plan: no longer sold
+        var intermediate = await SeedYogaPlanAsync("Intermediate");
+        using var buyer = Client("buyer", "Customer");
+
+        foreach (var refusedPlan in new[] { beginner, noLevel })
+        {
+            using var refused = await buyer.PostAsJsonAsync(Route, Purchase([new(refusedPlan)], MembershipPaymentMethods.Cash));
+            Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+            Assert.Contains("PLAN_NOT_PURCHASABLE", await refused.Content.ReadAsStringAsync());
+        }
+        Assert.Equal(600_000m, (await CreateAsync(buyer, Purchase([new(intermediate)], MembershipPaymentMethods.Cash))).AmountDue);
+    }
+
+    private async Task<int> SeedYogaPlanAsync(string? level = "Advanced")
     {
         int yogaPlan;
         await using (var seed = _app.Services.CreateAsyncScope())
@@ -421,7 +447,7 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
             var plan = new Package
             {
                 Name = "Yoga", Price = 600_000m, PackageStatus = PackageStatus.Active,
-                Components = [new PackageComponent { ComponentType = ComponentType.YOGA, DurationDays = 30 }]
+                Components = [new PackageComponent { ComponentType = ComponentType.YOGA, DurationDays = 30, YogaDifficultyLevel = level }]
             };
             seedDb.Packages.Add(plan);
             await seedDb.SaveChangesAsync();
@@ -435,7 +461,7 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
     /// The instructor gets the YogaInstructor role unless <paramref name="instructorTeaches"/> is false.
     /// </summary>
     private async Task SeedYogaClassAsync(string instructorId, DateTime deadlineUtc,
-        YogaClassStatus status = YogaClassStatus.Open, bool instructorTeaches = true)
+        YogaClassStatus status = YogaClassStatus.Open, bool instructorTeaches = true, string level = "Beginner")
     {
         await using var scope = _app.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
@@ -449,7 +475,7 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
         {
             YogaClassType = new YogaClassType { TypeName = "Hatha" }, ClassName = "Hatha Morning",
             InstructorUserId = instructorId, MinParticipants = 1, MaxParticipants = 10, DurationMinutes = 60,
-            ClassStatus = status, RegistrationDeadline = deadlineUtc,
+            ClassStatus = status, RegistrationDeadline = deadlineUtc, DifficultyLevel = level,
             StartDate = DateOnly.FromDateTime(deadlineUtc).AddDays(1), EndDate = DateOnly.FromDateTime(deadlineUtc).AddDays(60)
         });
         await db.SaveChangesAsync();

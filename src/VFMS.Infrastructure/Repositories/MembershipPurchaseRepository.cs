@@ -1,3 +1,4 @@
+using VFMS.Contracts.Yoga.Validators;
 using System.Data;
 using Microsoft.EntityFrameworkCore;
 using VFMS.Application.Interfaces;
@@ -22,8 +23,19 @@ public sealed partial class MembershipPurchaseRepository(VfmsDbContext context) 
         context.Packages.AsNoTracking().Where(plan => ids.Contains(plan.Id))
             .Include(plan => plan.Components).ToListAsync(ct);
 
+    public Task<FreezePolicy?> GetPurchaseFreezePolicyAsync(CancellationToken ct) =>
+        context.FreezePolicies.AsNoTracking().Where(policy => policy.IsGlobal && policy.PolicyStatus == PolicyStatus.Active)
+            .SingleOrDefaultAsync(ct);
+
     public Task<bool> AnyBookableYogaClassAsync(DateTime nowUtc, CancellationToken ct) =>
         context.YogaClasses.AnyAsync(YogaClassRules.Bookable(nowUtc), ct);
+
+    public Task<bool> AnyBookableYogaClassAsync(DateTime nowUtc, string maxLevel, CancellationToken ct)
+    {
+        var covered = YogaRules.DifficultyLevels.Take(YogaRules.LevelRank(maxLevel)).ToArray();
+        return context.YogaClasses.Where(YogaClassRules.Bookable(nowUtc))
+            .AnyAsync(yogaClass => covered.Contains(yogaClass.DifficultyLevel), ct);
+    }
 
     public Task<List<ApplicationUser>> LoadCheckoutUsersAsync(string purchaserId, string[] emails, CancellationToken ct)
     {
@@ -46,7 +58,7 @@ public sealed partial class MembershipPurchaseRepository(VfmsDbContext context) 
     public Task<ApplicationRole?> GetMemberRoleAsync(CancellationToken ct) =>
         context.ApplicationRoles.SingleOrDefaultAsync(role => role.RoleName == nameof(UserRole.Member), ct);
 
-    public async Task<Order?> FindOrderAsync(string orderNumber, string? purchaserId, bool forUpdate, CancellationToken ct)
+    public async Task<Order?> FindOrderAsync(string orderNumber, string? purchaserId, bool forUpdate, CancellationToken ct, bool membershipOnly = false)
     {
         var orders = forUpdate && context.Database.IsSqlServer()
             ? context.Orders.FromSqlInterpolated($"SELECT * FROM [Orders] WITH (UPDLOCK, HOLDLOCK) WHERE [OrderNumber] = {orderNumber}")
@@ -64,6 +76,9 @@ public sealed partial class MembershipPurchaseRepository(VfmsDbContext context) 
             .AsSplitQuery().SingleOrDefaultAsync(ct);
         if (order is not null)
         {
+            if (membershipOnly && (order.PaymentTransaction?.LockerRentalContractId is not null ||
+                await context.PTPurchases.IgnoreQueryFilters().AnyAsync(p => p.OrderId == order.Id, ct)))
+                return null;
             var redemptions = context.VoucherRedemptions.IgnoreQueryFilters();
             if (!forUpdate) redemptions = redemptions.AsNoTracking();
             order.VoucherRedemption = await redemptions.SingleOrDefaultAsync(row => row.OrderId == order.Id, ct);
@@ -85,20 +100,8 @@ public sealed partial class MembershipPurchaseRepository(VfmsDbContext context) 
         return vouchers.SingleOrDefaultAsync(voucher => !voucher.IsDeleted, ct);
     }
 
-    public async Task<(int Confirmed, int Reserved)> CountVoucherCapacityAsync(int voucherId, CancellationToken ct)
-    {
-        // Retain expired reservations until JOB-01 releases them. Counting only redemption
-        // state avoids reading another order while its Apply call waits for the voucher lock.
-        var rows = context.Database.IsSqlServer()
-            ? context.VoucherRedemptions.FromSqlInterpolated($"SELECT * FROM [VoucherRedemptions] WITH (UPDLOCK, HOLDLOCK) WHERE [VoucherId] = {voucherId}")
-            : context.VoucherRedemptions.Where(row => row.VoucherId == voucherId);
-        var counts = await rows.IgnoreQueryFilters()
-            .Where(row => row.RedemptionStatus == VoucherRedemptionStatus.Confirmed || row.RedemptionStatus == VoucherRedemptionStatus.Reserved)
-            .GroupBy(row => row.RedemptionStatus)
-            .Select(group => new { Status = group.Key, Count = group.Count() }).ToListAsync(ct);
-        return (counts.SingleOrDefault(row => row.Status == VoucherRedemptionStatus.Confirmed)?.Count ?? 0,
-            counts.SingleOrDefault(row => row.Status == VoucherRedemptionStatus.Reserved)?.Count ?? 0);
-    }
+    public async Task<VoucherCapacity> ReadVoucherCapacityAsync(int voucherId, ApplicationUser purchaser, CancellationToken ct) =>
+        (await VoucherCapacityReader.ReadForUserAsync(context, [voucherId], purchaser.UserId, ct))[voucherId];
 
     public Task<List<Order>> LoadExpiredOrdersAsync(DateTime onlineCutoff, DateTime cashCutoff, CancellationToken ct)
     {
@@ -132,7 +135,11 @@ public sealed partial class MembershipPurchaseRepository(VfmsDbContext context) 
             .Select(membership => new OwnedMembership(membership.Id, membership.OrderItem.PackageId,
                 membership.OrderItem.PackageNameSnapshot, membership.PackageComponent.ComponentType,
                 membership.StartDate, membership.EndDate, membership.MembershipStatus,
-                membership.OrderItem.Order.PaymentTransaction!.PaidAt ?? membership.OrderItem.Order.CompletedAt))
+                membership.OrderItem.Order.PaymentTransaction!.PaidAt ?? membership.OrderItem.Order.CompletedAt)
+            {
+                PackageComponentId = membership.PackageComponentId,
+                ComponentTermsSnapshot = membership.OrderItem.ComponentTermsSnapshot
+            })
             .ToListAsync(ct);
 
     public Task<OwnedMembershipDetail?> FindOwnedMembershipAsync(string memberId, int membershipId, CancellationToken ct) =>
@@ -141,7 +148,11 @@ public sealed partial class MembershipPurchaseRepository(VfmsDbContext context) 
                 new OwnedMembership(membership.Id, membership.OrderItem.PackageId,
                     membership.OrderItem.PackageNameSnapshot, membership.PackageComponent.ComponentType,
                     membership.StartDate, membership.EndDate, membership.MembershipStatus,
-                    membership.OrderItem.Order.PaymentTransaction!.PaidAt ?? membership.OrderItem.Order.CompletedAt),
+                    membership.OrderItem.Order.PaymentTransaction!.PaidAt ?? membership.OrderItem.Order.CompletedAt)
+                {
+                    PackageComponentId = membership.PackageComponentId,
+                    ComponentTermsSnapshot = membership.OrderItem.ComponentTermsSnapshot
+                },
                 membership.OrderItem.Order.PaymentTransaction!.PaidAt ?? membership.OrderItem.Order.CompletedAt,
                 membership.OrderItem.Order.PurchaserUserId == memberId
                     ? membership.OrderItem.Order.PaymentTransaction!.Invoice!.InvoiceNumber : null,
@@ -149,7 +160,9 @@ public sealed partial class MembershipPurchaseRepository(VfmsDbContext context) 
                 membership.MembershipFreezes.OrderByDescending(period => period.RequestedStartDate)
                     .ThenByDescending(period => period.Id)
                     .Select(period => new OwnedMembershipFreeze(period.RequestedStartDate, period.RequestedEndDate,
-                        period.ActualStartDate, period.ActualEndDate, period.RequestStatus)).ToList()))
+                        period.ActualStartDate, period.ActualEndDate, period.RequestStatus, period.CreatedAt,
+                        period.RequestStatus == FreezeRequestStatus.Rejected ? period.ReviewNote : null)).ToList(),
+                membership.GrantedFreezeAllowanceDays, membership.GrantedFreezeCount, membership.GrantedMinFreezeDays, membership.GrantedMaxFreezeDays))
             .SingleOrDefaultAsync(ct);
 
     private IQueryable<MemberMembership> OwnedMemberships(string memberId) =>

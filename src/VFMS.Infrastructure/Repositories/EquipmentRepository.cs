@@ -60,7 +60,7 @@ public abstract class AuditedRepositoryBase : IAuditedRepository
 public sealed class EquipmentRepository : AuditedRepositoryBase, IEquipmentRepository
 {
     private static readonly EquipmentIssueStatus[] OpenStatuses =
-        [EquipmentIssueStatus.Reported, EquipmentIssueStatus.InProgress, EquipmentIssueStatus.Escalated];
+        [EquipmentIssueStatus.InProgress, EquipmentIssueStatus.Escalated];
 
     public EquipmentRepository(VfmsDbContext context) : base(context) { }
 
@@ -164,6 +164,8 @@ public sealed class EquipmentRepository : AuditedRepositoryBase, IEquipmentRepos
         var query = IssuesWithDetails().AsNoTracking();
         if (filter.Status.HasValue)
             query = query.Where(i => i.IssueStatus == filter.Status);
+        if (filter.OpenOnly)
+            query = query.Where(i => OpenStatuses.Contains(i.IssueStatus));
         if (filter.EquipmentId.HasValue)
             query = query.Where(i => i.EquipmentId == filter.EquipmentId);
         if (filter.ReportedByUserId is { } reporter)
@@ -203,8 +205,7 @@ public sealed class EquipmentRepository : AuditedRepositoryBase, IEquipmentRepos
             .Select(g => new
             {
                 Total = g.Count(),
-                Open = g.Count(i => i.IssueStatus == EquipmentIssueStatus.Reported || i.IssueStatus == EquipmentIssueStatus.InProgress ||
-                                    i.IssueStatus == EquipmentIssueStatus.Escalated),
+                Open = g.Count(i => i.IssueStatus == EquipmentIssueStatus.InProgress || i.IssueStatus == EquipmentIssueStatus.Escalated),
                 Recent = g.Count(i => i.ReportedAt >= recentSinceUtc),
                 Safety = g.Count(i => i.IncidentType == IncidentType.Safety),
                 LastReportedAt = g.Max(i => (DateTime?)i.ReportedAt),
@@ -213,7 +214,7 @@ public sealed class EquipmentRepository : AuditedRepositoryBase, IEquipmentRepos
         if (stats is null)
             return new EquipmentIssueStats(0, 0, 0, 0, null, null);
         var lastClosedAt = await issues
-            .Where(i => i.IssueStatus == EquipmentIssueStatus.Resolved || i.IssueStatus == EquipmentIssueStatus.MarkedSafe)
+            .Where(i => i.IssueStatus == EquipmentIssueStatus.Resolved)
             .MaxAsync(i => i.ResolvedAt, cancellationToken);
         return new EquipmentIssueStats(stats.Total, stats.Open, stats.Recent, stats.Safety, stats.LastReportedAt, lastClosedAt);
     }

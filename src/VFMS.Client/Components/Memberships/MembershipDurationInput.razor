@@ -1,0 +1,70 @@
+@using System.Diagnostics.CodeAnalysis
+@using System.Globalization
+@using System.Linq.Expressions
+@using VFMS.Contracts.Memberships
+@inherits InputBase<int?>
+
+<div class="membership-duration min-w-0">
+    <label for="@Id" class="block text-sm font-semibold text-vfms-text">
+        @Label
+        @if (Required)
+        {
+            <span aria-hidden="true" class="text-vfms-primary">*</span>
+        }
+    </label>
+    <div class="mt-1 grid min-w-0 grid-cols-[minmax(0,1fr)_6rem] gap-2">
+        <input id="@Id" type="number" inputmode="numeric" min="@Minimum" step="1" required="@Required"
+               placeholder="@Placeholder" class="@($"{FieldClass} {CssClass}")" aria-describedby="@DescriptionIds"
+               aria-invalid="@InvalidNumber" @bind="CurrentValueAsString" @bind:event="oninput" />
+        <InputSelect id="@(Id + "-unit")" Value="@Unit" ValueChanged="@UnitChanged" ValueExpression="@UnitExpression"
+                     class="@FieldClass" aria-label="@($"Đơn vị — {Label}")" aria-describedby="@DescriptionIds">
+            <option value="@MembershipDurationUnit.Day">Ngày</option>
+            <option value="@MembershipDurationUnit.Month">Tháng</option>
+        </InputSelect>
+    </div>
+    @if (HelpText is not null)
+    {
+        <p id="@(Id + "-help")" class="mt-1 text-xs leading-relaxed text-vfms-text-secondary">@HelpText</p>
+    }
+    <div id="@(Id + "-conversion")" aria-live="polite">
+        @if (ShowFreezeConversion && Unit == MembershipDurationUnit.Month &&
+             int.TryParse(CurrentValueAsString, NumberStyles.Integer, CultureInfo.InvariantCulture, out var months) &&
+             MembershipFreezeDuration.TryToDays(months, Unit, out var days))
+        {
+            <p class="mt-1 text-xs leading-relaxed text-vfms-text-secondary">@months tháng tương đương @days ngày bảo lưu.</p>
+        }
+    </div>
+    <div id="@(Id + "-error")"><ValidationMessage For="@ValueExpression" /><ValidationMessage For="@UnitExpression" /></div>
+</div>
+
+@code {
+    private const string FieldClass = "block min-h-[44px] min-w-0 w-full rounded-lg border border-vfms-border bg-vfms-surface px-3 py-2 text-base text-vfms-text focus:border-vfms-primary sm:text-sm";
+
+    [Parameter, EditorRequired] public string Id { get; set; } = default!;
+    [Parameter, EditorRequired] public string Label { get; set; } = default!;
+    [Parameter] public string? HelpText { get; set; }
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public int Minimum { get; set; }
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public bool ShowFreezeConversion { get; set; }
+    [Parameter] public MembershipDurationUnit Unit { get; set; }
+    [Parameter] public EventCallback<MembershipDurationUnit> UnitChanged { get; set; }
+    [Parameter, EditorRequired] public Expression<Func<MembershipDurationUnit>> UnitExpression { get; set; } = default!;
+
+    private string DescriptionIds => $"{(HelpText is null ? "" : Id + "-help ")}{Id}-conversion {Id}-error";
+    private string? InvalidNumber => EditContext?.GetValidationMessages(FieldIdentifier).Any() == true ? "true" : null;
+
+    protected override bool TryParseValueFromString(string? value, out int? result, [NotNullWhen(false)] out string? validationErrorMessage)
+    {
+        if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
+        {
+            result = parsed;
+            validationErrorMessage = null;
+            return true;
+        }
+
+        result = null;
+        validationErrorMessage = "Vui lòng nhập số nguyên hợp lệ.";
+        return false;
+    }
+}

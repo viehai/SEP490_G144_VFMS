@@ -38,9 +38,11 @@ public sealed partial class MembershipPurchaseService(
 
             var planIds = request.Items.Select(item => item.PlanId).Distinct().ToArray();
             var plans = (await repository.LoadPlansAsync(planIds, ct)).ToDictionary(plan => plan.Id);
-            // A yoga-only plan is sold only while a yoga class can be booked, as in the public catalog.
-            var yogaOpen = !plans.Values.Any(IsYogaOnly) ||
-                await repository.AnyBookableYogaClassAsync(clock.GetUtcNow().UtcDateTime, ct);
+            // A yoga-only plan is sold only with a level and while a class it covers can be booked, as in the public catalog.
+            var yogaOpen = new Dictionary<int, bool>();
+            foreach (var yoga in plans.Values.Where(IsYogaOnly))
+                yogaOpen[yoga.Id] = YogaLevel(yoga) is { } level &&
+                    await repository.AnyBookableYogaClassAsync(clock.GetUtcNow().UtcDateTime, level, ct);
             var byEmail = users.ToLookup(user => NormalizeEmail(user.Email));
             var order = NewOrder(purchaserId, today,
                 request.PaymentMethod == MembershipPaymentMethods.Cash ? OrderChannel.Counter : OrderChannel.Online);
@@ -54,7 +56,7 @@ public sealed partial class MembershipPurchaseService(
                         "Người thụ hưởng phải có tài khoản Khách hàng hoặc Hội viên đang hoạt động.", "BENEFICIARY_NOT_ELIGIBLE");
 
                 if (!plans.TryGetValue(item.PlanId, out var plan) || !IsPurchasable(plan, latestStart) ||
-                    (IsYogaOnly(plan) && !yogaOpen))
+                    (IsYogaOnly(plan) && !yogaOpen[plan.Id]))
                     return Result<MembershipPurchaseResponse>.Failure(
                         "Một hoặc nhiều gói tập không còn mở bán hoặc chưa có cấu hình thanh toán hợp lệ.", "PLAN_NOT_PURCHASABLE");
 
@@ -106,7 +108,7 @@ public sealed partial class MembershipPurchaseService(
 
     public async Task<Result<MembershipPurchaseResponse>> GetAsync(string purchaserId, string orderNumber, CancellationToken ct)
     {
-        var order = await repository.FindOrderAsync(orderNumber, purchaserId, forUpdate: false, ct);
+        var order = await repository.FindOrderAsync(orderNumber, purchaserId, forUpdate: false, ct, membershipOnly: true);
         if (order?.PaymentTransaction is not { } payment || order.Items.Count == 0)
             return OrderNotFound<MembershipPurchaseResponse>();
 
@@ -179,7 +181,7 @@ public sealed partial class MembershipPurchaseService(
             if (!IsActive(staff) || !HasRole(staff!, UserRole.Staff))
                 return Result<MembershipPurchaseResponse>.Failure("Cần quyền nhân viên lễ tân.", "CASH_CONFIRMATION_FORBIDDEN", 403);
 
-            var order = await repository.FindOrderAsync(orderNumber, purchaserId: null, forUpdate: true, ct);
+            var order = await repository.FindOrderAsync(orderNumber, purchaserId: null, forUpdate: true, ct, membershipOnly: true);
             if (order?.PaymentTransaction is not { PaymentMethod: PaymentMethod.Cash } payment || order.Items.Count == 0 ||
                 order.Purchaser.GymId != staff!.GymId)
                 return OrderNotFound<MembershipPurchaseResponse>();
@@ -227,6 +229,7 @@ public sealed partial class MembershipPurchaseService(
         var userIds = order.Items.Select(item => item.BeneficiaryUserId).Distinct().ToArray();
         var beneficiaries = await repository.LockUsersAsync(userIds, ct);
         var active = new HashSet<string>();
+        var freezePolicy = await repository.GetPurchaseFreezePolicyAsync(ct);
 
         foreach (var item in order.Items.OrderBy(item => item.Id))
         {
@@ -242,8 +245,17 @@ public sealed partial class MembershipPurchaseService(
                     PackageComponentId = component.Id,
                     MemberUserId = item.BeneficiaryUserId,
                     MembershipStatus = MembershipStatus.AwaitingActivation,
+                    GrantedFreezeAllowanceDays = component.Type == ComponentType.YOGA ? 0 : null,
                     RemainingSessionCount = component.Type == ComponentType.PT ? component.SessionCount : null
                 };
+                if (component.Type == ComponentType.GYM)
+                {
+                    var config = item.Package?.Components.FirstOrDefault(row => row.Id == component.Id);
+                    membership.GrantedFreezeCount = config?.MaxFreezeCount ?? freezePolicy?.DefaultMaxFreezeCount ?? 0;
+                    membership.GrantedMinFreezeDays = config?.MinFreezeDaysPerRequest ?? freezePolicy?.MinFreezeDaysPerRequest;
+                    membership.GrantedMaxFreezeDays = config?.MaxFreezeDaysPerRequest ?? freezePolicy?.DefaultMaxFreezeDays;
+                    membership.GrantedFreezeAllowanceDays = null;
+                }
                 // Pre-existing checkout dates and renewals already have a start date on the order line.
                 if (item.ActivationStartDate is { } requested)
                 {
@@ -327,6 +339,9 @@ public sealed partial class MembershipPurchaseService(
 
     private static bool IsYogaOnly(Package plan) =>
         plan.Components.All(component => component.ComponentType != ComponentType.GYM);
+
+    private static string? YogaLevel(Package plan) =>
+        plan.Components.FirstOrDefault(component => component.ComponentType == ComponentType.YOGA)?.YogaDifficultyLevel;
 
     private static bool IsPurchasable(Package plan, DateOnly latestStart) =>
         plan.PackageStatus == PackageStatus.Active && plan.Price > 0 && decimal.Truncate(plan.Price) == plan.Price &&

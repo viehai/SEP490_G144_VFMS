@@ -1,11 +1,14 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using VFMS.Client.Auth;
 using VFMS.Contracts.Common;
+using VFMS.Contracts.Feedback;
 using VFMS.Contracts.Memberships;
 using VFMS.Contracts.Packages;
+using VFMS.Contracts.Promotions;
 
 namespace VFMS.Client.Services;
 
@@ -17,6 +20,9 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
     private const string RenewalsPath = "api/membership-renewals";
     private const string MembershipsPath = "api/memberships";
     private const string TransactionsPath = "api/membership-transactions";
+    public Task<MyVoucherResponse[]> MyVouchersAsync(string? orderNumber = null, CancellationToken ct = default) =>
+        SendAsync<MyVoucherResponse[]>(HttpMethod.Get, orderNumber is null ? "api/my-vouchers" :
+            $"api/my-vouchers?orderNumber={Uri.EscapeDataString(orderNumber)}", ct);
     private const string FreezePolicyPath = "api/manager/membership-freeze-policy";
     private const string FreezeRequestsPath = "api/membership-freeze-requests";
     private const string FreezeReviewsPath = "api/manager/membership-freeze-requests";
@@ -30,6 +36,10 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
             path += $"&status={Uri.EscapeDataString(request.Status)}";
         if (!string.IsNullOrWhiteSpace(request.ServiceType))
             path += $"&serviceType={Uri.EscapeDataString(request.ServiceType)}";
+        if (request.DurationUnit is { } durationUnit)
+            path += $"&durationUnit={durationUnit}";
+        if (request.FreezeAllowanceFilter is { } freezeFilter)
+            path += $"&freezeAllowanceFilter={freezeFilter}";
         return SendAsync<PagedResponse<MembershipPlanResponse>>(HttpMethod.Get, path, cancellationToken);
     }
 
@@ -63,6 +73,10 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
             (string.IsNullOrWhiteSpace(serviceType) ? "" : $"&serviceType={Uri.EscapeDataString(serviceType)}"), cancellationToken,
             allowAnonymous: true);   // the public price list on the home page
 
+    /// <summary>One plan that is on sale (404 otherwise), for the plan details page.</summary>
+    public Task<MembershipPlanCatalogItemResponse> GetCatalogItemAsync(int id, CancellationToken cancellationToken = default) =>
+        SendAsync<MembershipPlanCatalogItemResponse>(HttpMethod.Get, $"api/membership-plans/{id}", cancellationToken, allowAnonymous: true);
+
     /// <summary>
     /// Gọi public catalog endpoint GET /api/packages?type={type}&page={page}&pageSize={pageSize}.
     /// Hỗ trợ cả người dùng nặc danh (anonymous) và người dùng đã đăng nhập.
@@ -78,6 +92,15 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
         }
         return await AuthApiClient.SendAsync<PagedResponse<PackageCatalogItemResponse>>(http, request, cancellationToken);
     }
+
+    public Task<PackageDetailResponse> GetPackageDetailAsync(string type, int id, CancellationToken cancellationToken = default) =>
+        SendAsync<PackageDetailResponse>(HttpMethod.Get,
+            FormattableString.Invariant($"api/packages/{Uri.EscapeDataString(type.Trim())}/{id}"),
+            cancellationToken, allowAnonymous: true);
+
+    public Task<PackageReviewsResponse> GetPackageReviewsAsync(int id, int page, int? rating, CancellationToken cancellationToken = default) =>
+        SendAsync<PackageReviewsResponse>(HttpMethod.Get, FormattableString.Invariant($"api/packages/{id}/reviews?page={page}") +
+            (rating is int stars ? FormattableString.Invariant($"&rating={stars}") : ""), cancellationToken, allowAnonymous: true);
 
     public Task<MembershipPurchaseResponse> PurchaseAsync(MembershipPurchaseRequest request, CancellationToken cancellationToken = default) =>
         SendAsync<MembershipPurchaseResponse>(HttpMethod.Post, PurchasesPath, cancellationToken, JsonContent.Create(request), ReadPurchaseAsync);
@@ -161,8 +184,20 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
             FormattableString.Invariant($"{FreezeRequestsPath}/{requestId}"), cancellationToken);
 
     public Task<MembershipFreezeRequestResponse> CreateFreezeRequestAsync(
-        MembershipFreezeRequest request, CancellationToken cancellationToken = default) =>
-        SendAsync<MembershipFreezeRequestResponse>(HttpMethod.Post, FreezeRequestsPath, cancellationToken, JsonContent.Create(request));
+        MembershipFreezeRequest request, Stream content, string fileName, string contentType, CancellationToken cancellationToken = default)
+    {
+        var form = DocumentForm(content, fileName, contentType);
+        if (request.MembershipId is { } id)
+            form.Add(new StringContent(id.ToString(CultureInfo.InvariantCulture)), nameof(request.MembershipId));
+        if (request.StartDate is { } start)
+            form.Add(new StringContent(start.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)), nameof(request.StartDate));
+        if (request.EndDate is { } end)
+            form.Add(new StringContent(end.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)), nameof(request.EndDate));
+        if (request.RequestedDays is { } days)
+            form.Add(new StringContent(days.ToString(CultureInfo.InvariantCulture)), nameof(request.RequestedDays));
+        form.Add(new StringContent(request.Reason ?? ""), nameof(request.Reason));
+        return SendAsync<MembershipFreezeRequestResponse>(HttpMethod.Post, FreezeRequestsPath, cancellationToken, form);
+    }
 
     public Task<MembershipFreezeRequestResponse> UpdateFreezeRequestAsync(
         int requestId, MembershipFreezeRequest request, CancellationToken cancellationToken = default) =>
@@ -178,19 +213,19 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
             FormattableString.Invariant($"{FreezeRequestsPath}/{requestId}/early-unfreeze"), cancellationToken);
 
     public Task<MembershipFreezeDocumentResponse> UploadFreezeDocumentAsync(
-        int requestId, Stream content, string fileName, string contentType, CancellationToken cancellationToken = default)
+        int requestId, Stream content, string fileName, string contentType, CancellationToken cancellationToken = default) =>
+        SendAsync<MembershipFreezeDocumentResponse>(HttpMethod.Post,
+            FormattableString.Invariant($"{FreezeRequestsPath}/{requestId}/document"), cancellationToken,
+            DocumentForm(content, fileName, contentType));
+
+    private static MultipartFormDataContent DocumentForm(Stream content, string fileName, string contentType)
     {
-        var upload = new MultipartFormDataContent();
+        var form = new MultipartFormDataContent();
         var file = new StreamContent(content);
         file.Headers.ContentType = new MediaTypeHeaderValue(contentType);
-        upload.Add(file, "file", fileName);
-        return SendAsync<MembershipFreezeDocumentResponse>(HttpMethod.Post,
-            FormattableString.Invariant($"{FreezeRequestsPath}/{requestId}/document"), cancellationToken, upload);
+        form.Add(file, "file", fileName);
+        return form;
     }
-
-    public Task<bool> RemoveFreezeDocumentAsync(int requestId, CancellationToken cancellationToken = default) =>
-        SendAsync<bool>(HttpMethod.Delete,
-            FormattableString.Invariant($"{FreezeRequestsPath}/{requestId}/document"), cancellationToken);
 
     public Task<MembershipFreezeDocumentDownload> DownloadFreezeDocumentAsync(int requestId, CancellationToken cancellationToken = default) =>
         SendAsync<MembershipFreezeDocumentDownload>(HttpMethod.Get,
@@ -206,6 +241,14 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
         var path = FormattableString.Invariant($"{FreezeReviewsPath}?page={request.Page}&pageSize={request.PageSize}");
         if (!string.IsNullOrWhiteSpace(request.Type))
             path += $"&type={Uri.EscapeDataString(request.Type.Trim())}";
+        if (!string.IsNullOrWhiteSpace(request.Status))
+            path += $"&status={Uri.EscapeDataString(request.Status.Trim())}";
+        if (!string.IsNullOrWhiteSpace(request.Search))
+            path += $"&search={Uri.EscapeDataString(request.Search.Trim())}";
+        if (request.FromDate is { } from)
+            path += FormattableString.Invariant($"&fromDate={from:yyyy-MM-dd}");
+        if (request.ToDate is { } to)
+            path += FormattableString.Invariant($"&toDate={to:yyyy-MM-dd}");
         return SendAsync<PagedResponse<MembershipFreezeReviewSummaryResponse>>(HttpMethod.Get, path, cancellationToken);
     }
 

@@ -32,10 +32,10 @@ public sealed class YogaBookingTests
         return (repo, new YogaBookingService(repo, new FixedClock(NowOffset)), yogaClass);
     }
 
-    private static MemberMembership Membership(string user, ComponentType type = ComponentType.YOGA, int? classTypeId = null) => new()
+    private static MemberMembership Membership(string user, ComponentType type = ComponentType.YOGA, string? level = null) => new()
     {
         MemberUserId = user, MembershipStatus = MembershipStatus.Active, StartDate = Today.AddDays(-5), EndDate = Today.AddDays(25),
-        PackageComponent = new PackageComponent { ComponentType = type, YogaClassTypeId = classTypeId }
+        PackageComponent = new PackageComponent { ComponentType = type, YogaDifficultyLevel = level }
     };
 
     [Fact]
@@ -93,20 +93,82 @@ public sealed class YogaBookingTests
         Assert.Equal(YogaWaitlistStatus.Promoted, entry.WaitlistStatus);
     }
 
-    [Theory]
-    [InlineData(ComponentType.GYM, null)]   // gym-only package
-    [InlineData(ComponentType.YOGA, 99)]    // yoga package for another class type
-    public async Task BookingNeedsAnActiveYogaPackageForThisClassType(ComponentType type, int? classTypeId)   // MSG-31
+    [Fact]
+    public async Task BookingNeedsAnActiveYogaPackage()   // MSG-31
     {
         var (repo, service, _) = Setup();
         repo.Memberships.Clear();
-        repo.Memberships.Add(Membership("m1", type, classTypeId));
+        repo.Memberships.Add(Membership("m1", ComponentType.GYM));   // gym-only package
 
         var result = await service.BookAsync("m1", new YogaBookingRequest(1));
 
         Assert.Equal((403, "MEMBERSHIP_REQUIRED"), (result.StatusCode, result.ErrorCode));
-        repo.Memberships.Add(Membership("m1", ComponentType.YOGA, 4));
+        var covered = Membership("m1", ComponentType.YOGA, "Beginner");
+        covered.OrderItemId = 42;
+        repo.Memberships.Add(covered);
         Assert.True((await service.BookAsync("m1", new YogaBookingRequest(1))).IsSuccess);
+        Assert.Equal(42, repo.Class!.Bookings.Single().OrderItemId);
+    }
+
+    // A yoga plan books classes of its level and every level below it; plans sold before levels existed book everything.
+    [Theory]
+    [InlineData("Beginner", "Beginner", true)]
+    [InlineData("Beginner", "Intermediate", false)]
+    [InlineData("Beginner", "Advanced", false)]
+    [InlineData("Intermediate", "Beginner", true)]
+    [InlineData("Intermediate", "Intermediate", true)]
+    [InlineData("Intermediate", "Advanced", false)]
+    [InlineData("Advanced", "Beginner", true)]
+    [InlineData("Advanced", "Advanced", true)]
+    [InlineData(null, "Advanced", true)]
+    public async Task PlanLevelDecidesWhichClassesCanBeBooked(string? planLevel, string classLevel, bool allowed)
+    {
+        var (repo, service, yogaClass) = Setup();
+        yogaClass.DifficultyLevel = classLevel;
+        repo.Memberships.Clear();
+        repo.Memberships.Add(Membership("m1", ComponentType.YOGA, planLevel));
+
+        var result = await service.BookAsync("m1", new YogaBookingRequest(1));
+
+        Assert.Equal(allowed, result.IsSuccess);
+        if (!allowed)
+        {
+            Assert.Equal((403, "YOGA_LEVEL_NOT_COVERED"), (result.StatusCode, result.ErrorCode));
+            Assert.Contains("mua gói có độ khó cao hơn", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task WaitlistNeedsAPlanThatCoversTheLevelToo()
+    {
+        var (repo, service, yogaClass) = Setup(max: 1);
+        yogaClass.DifficultyLevel = "Advanced";
+        repo.Memberships.Clear();
+        repo.Memberships.Add(Membership("m1", ComponentType.YOGA, "Advanced"));
+        repo.Memberships.Add(Membership("m2", ComponentType.YOGA, "Beginner"));
+        Assert.True((await service.BookAsync("m1", new YogaBookingRequest(1))).IsSuccess);   // class is now full
+
+        Assert.Equal("YOGA_LEVEL_NOT_COVERED", (await service.BookAsync("m2", new YogaBookingRequest(1))).ErrorCode);
+        Assert.Empty(repo.Waitlist);
+    }
+
+    [Fact]
+    public async Task MyPlanReportsTheHighestLevelTheUsablePlansBook()
+    {
+        var (repo, service, _) = Setup();
+        repo.Memberships.Clear();
+        repo.Memberships.Add(Membership("m1", ComponentType.YOGA, "Beginner"));
+        repo.Memberships.Add(Membership("m1", ComponentType.YOGA, "Intermediate"));
+        repo.Memberships.Add(Membership("m2", ComponentType.YOGA));                 // old plan, no level
+        repo.Memberships.Add(Membership("m3", ComponentType.GYM));
+        var expired = Membership("m4", ComponentType.YOGA, "Advanced");
+        expired.EndDate = Today.AddDays(-1);
+        repo.Memberships.Add(expired);
+
+        Assert.Equal(new YogaMyPlanResponse(true, "Intermediate"), (await service.GetMyPlanAsync("m1")).Data);
+        Assert.Equal(new YogaMyPlanResponse(true, null), (await service.GetMyPlanAsync("m2")).Data);
+        Assert.Equal(new YogaMyPlanResponse(false, null), (await service.GetMyPlanAsync("m3")).Data);
+        Assert.Equal(new YogaMyPlanResponse(false, null), (await service.GetMyPlanAsync("m4")).Data);
     }
 
     [Fact]
@@ -168,7 +230,7 @@ public sealed class YogaBookingTests
 
         var result = await service.CancelAsync("m1", 5, new CancelYogaBookingRequest());
 
-        Assert.Equal(("Cancelled", "Yoga booking updated successfully."), (result.Data!.Status, result.Data.Message));
+        Assert.Equal(("Cancelled", "Cập nhật đặt lớp yoga thành công."), (result.Data!.Status, result.Data.Message));
         Assert.Equal(YogaBookingStatus.Cancelled, yogaClass.Bookings.Single().BookingStatus);
         Assert.Equal(YogaClassStatus.Open, yogaClass.ClassStatus);
         Assert.Empty(repo.Attendances);
@@ -212,7 +274,7 @@ public sealed class YogaBookingTests
 
         var result = await service.CancelAsync("m1", 5, new CancelYogaBookingRequest(ConfirmLateCancellation: true));
 
-        Assert.Contains("suspended until 14/11/2026 10:00", result.Data!.Message);
+        Assert.Contains("bị khóa đặt lớp yoga đến 14/11/2026 10:00", result.Data!.Message);
     }
 
     [Fact]

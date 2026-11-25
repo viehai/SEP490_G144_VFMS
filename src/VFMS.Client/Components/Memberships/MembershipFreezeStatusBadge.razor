@@ -3,16 +3,24 @@
 @code {
     [Parameter, EditorRequired] public string Status { get; set; } = "";
 
+    internal static int Priority(string status) => status switch
+    {
+        "Active" => 0,
+        "Pending" => 1,
+        "Approved" => 2,
+        _ => 3
+    };
+
     private string StatusLabel => Status switch
     {
         "Pending" => "Chờ duyệt",
         "Approved" => "Đã duyệt",
         "Rejected" => "Đã từ chối",
         "Active" => "Đang bảo lưu",
-        "Completed" => "Đã hoàn tất",
-        "Expired" => "Đã hết hạn",
+        "Completed" => "Đã kết thúc",
+        "Expired" => "Hết hạn yêu cầu",
         "Cancelled" => "Đã hủy",
-        _ => Status
+        _ => "Chưa xác định"
     };
 
     private string StatusClass => Status switch

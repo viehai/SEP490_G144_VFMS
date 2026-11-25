@@ -84,7 +84,7 @@ public sealed class VfmsApiClient(HttpClient http, AuthSession session, ILogger<
     }
 
     // One log line per failed call, so the browser console names the endpoint, status and code.
-    // 4xx answers are expected rules (anti-passback, late cancel): Warning. No answer, 5xx or a bad body: Error.
+    // 4xx answers are expected rules (already checked in, late cancel): Warning. No answer, 5xx or a bad body: Error.
     private ApiException Logged(ApiException ex)
     {
         var level = ex.StatusCode is { } status && (int)status < 500 && ex.InnerException is null ? LogLevel.Warning : LogLevel.Error;

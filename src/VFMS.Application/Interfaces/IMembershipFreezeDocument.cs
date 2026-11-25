@@ -18,8 +18,9 @@ public interface IMembershipFreezeDocumentStore
     Task<MembershipFreezeDocumentResponse?> GetMetadataAsync(Guid id, CancellationToken ct);
     Task<IReadOnlyDictionary<Guid, MembershipFreezeDocumentResponse>> GetMetadataAsync(Guid[] ids, CancellationToken ct);
     Task<MembershipFreezeDocumentContent?> ReadAsync(Guid id, CancellationToken ct);
-    void Set(MembershipFreeze request, Guid id, string fileName, string contentType, byte[] content);
-    void Remove(MembershipFreeze request);
+    void Set(MembershipFreeze request, MembershipFreezeDocumentContent content);
 }
+
+public sealed record MembershipFreezeDocumentUpload(string FileName, string ContentType, long Length, Stream Content);
 
 public sealed record MembershipFreezeDocumentContent(MembershipFreezeDocumentResponse Document, byte[] Content);

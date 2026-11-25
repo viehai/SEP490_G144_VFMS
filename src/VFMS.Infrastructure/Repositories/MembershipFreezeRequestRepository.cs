@@ -39,5 +39,6 @@ public sealed class MembershipFreezeRequestRepository(VfmsDbContext context)
 
     private static IQueryable<MembershipFreezeReadModel> Project(IQueryable<MembershipFreeze> requests) =>
         requests.Select(request => new MembershipFreezeReadModel(request,
-                request.MemberMembership.OrderItem.PackageNameSnapshot, request.MemberMembership.MembershipStatus));
+                request.MemberMembership.OrderItem.PackageNameSnapshot, request.MemberMembership.MembershipStatus,
+                request.MemberMembership.PackageComponent.ComponentType));
 }

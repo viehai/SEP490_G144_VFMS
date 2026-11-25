@@ -126,6 +126,13 @@ public enum VoucherStatus
     Expired
 }
 
+public enum VoucherAudience
+{
+    AllCustomers,
+    NewCustomers,
+    AssignedUsers
+}
+
 public enum VoucherRedemptionStatus
 {
     Reserved,
@@ -365,13 +372,15 @@ public enum EquipmentStatus
     Retired
 }
 
+/// <summary>
+/// A new report goes straight to Staff (InProgress). Staff close it themselves (Resolved) or pass it to the
+/// Manager (Escalated), who repairs or retires the equipment (Resolved).
+/// </summary>
 public enum EquipmentIssueStatus
 {
-    Reported,
     InProgress,
-    Resolved,
     Escalated,
-    MarkedSafe
+    Resolved
 }
 
 public enum IncidentType

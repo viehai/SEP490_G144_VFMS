@@ -12,6 +12,7 @@
 @inject OperationsApiClient Api
 @inject IJSRuntime JS
 @inject AuthenticationStateProvider AuthState
+@inject ToastService Toasts
 @implements IDisposable
 
 <PageTitle>Thực phẩm bổ sung | Victor Fitness</PageTitle>
@@ -111,7 +112,7 @@
                             <button type="button" class="relative block aspect-[4/3] w-full bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-vfms-primary" aria-label="Xem chi tiết @product.Name" @onclick="() => _detail = product">
                                 @if (product.ImageUrl is { } image && !_brokenImages.Contains(product.Id))
                                 {
-                                    <img src="@image" alt="@product.Name" class="h-full w-full object-contain p-3" loading="lazy" @onerror="() => _brokenImages.Add(product.Id)" />
+                                    <img src="@Api.ImageSrc(image)" alt="@product.Name" class="h-full w-full object-contain p-3" loading="lazy" @onerror="() => _brokenImages.Add(product.Id)" />
                                 }
                                 else
                                 {
@@ -166,7 +167,7 @@
 
         <aside class="h-fit space-y-4 rounded-[12px] border border-vfms-border bg-vfms-surface p-5 lg:sticky lg:top-28" aria-labelledby="cart-title">
             <div class="flex items-baseline justify-between border-b border-vfms-border pb-3">
-                <h2 id="cart-title" class="font-heading text-base font-bold uppercase tracking-wide text-vfms-text">Giỏ hàng</h2>
+                <h2 id="cart-title" tabindex="-1" @ref="_cartTitle" class="font-heading text-base font-bold uppercase tracking-wide text-vfms-text scroll-mt-32 focus:outline-none">Giỏ hàng</h2>
                 <span class="text-xs font-semibold text-vfms-text-secondary">@_cart.Sum(line => line.Quantity) sản phẩm</span>
             </div>
             @if (_cart.Count == 0)
@@ -206,11 +207,11 @@
                         </InputRadioGroup>
                         @if (_checkout.FulfillmentType == "HomeDelivery")
                         {
-                            <label class="@Ui.Label block" for="recipient">Người nhận
-                                <InputText id="recipient" class="@Ui.Field" @bind-Value="_checkout.RecipientName" maxlength="150" />
+                            <label class="@Ui.Label block" for="recipient">Người nhận <span class="text-vfms-primary" aria-hidden="true">*</span>
+                                <InputText aria-required="true" id="recipient" class="@Ui.Field" @bind-Value="_checkout.RecipientName" maxlength="150" />
                             </label>
-                            <label class="@Ui.Label block" for="address">Địa chỉ giao hàng
-                                <InputTextArea id="address" class="@Ui.Field" rows="2" @bind-Value="_checkout.DeliveryAddress" maxlength="500" />
+                            <label class="@Ui.Label block" for="address">Địa chỉ giao hàng <span class="text-vfms-primary" aria-hidden="true">*</span>
+                                <InputTextArea aria-required="true" id="address" class="@Ui.Field" rows="2" @bind-Value="_checkout.DeliveryAddress" maxlength="500" />
                             </label>
                             <label class="@Ui.Label block" for="delivery-note">Ghi chú
                                 <InputText id="delivery-note" class="@Ui.Field" @bind-Value="_checkout.DeliveryNote" maxlength="500" />
@@ -224,6 +225,17 @@
         </aside>
     </div>
 </section>
+
+@if (_cart.Count > 0)
+{
+    @* Always in reach while scrolling the products; toasts use the bottom-right corner. *@
+    <button type="button" @onclick="ShowCartAsync"
+            class="fixed bottom-4 left-4 z-40 flex items-center gap-3 rounded-full bg-vfms-primary px-5 py-3 text-sm font-semibold text-white shadow-lg hover:bg-vfms-primary-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary"
+            aria-label="@($"Xem giỏ hàng: {CartCount} sản phẩm, {OperationsText.Money(CartTotal)}")">
+        <span aria-hidden="true">Giỏ hàng · @CartCount</span>
+        <span aria-hidden="true" class="border-l border-white/40 pl-3 font-heading font-extrabold">@OperationsText.Money(CartTotal)</span>
+    </button>
+}
 
 @if (_detail is { } detail)
 {
@@ -273,6 +285,7 @@
     private string _search = "", _category = "", _brand = "", _price = "", _sort = DefaultSort;
     private bool HasFilters => !string.IsNullOrWhiteSpace(_search) || _category != "" || _brand != "" || _price != "" || _sort != DefaultSort;
     private string? _notice, _error;
+    private ElementReference _cartTitle;
     private bool _loading, _working;
     private readonly HashSet<int> _brokenImages = [];
     private SupplementCartStorage? _storage;
@@ -427,9 +440,11 @@
             _cart.Add(line);
         }
         line.Quantity = Math.Clamp(wanted, 1, max);
-        _notice = wanted > max
+        // A toast stays on screen wherever the member has scrolled to (the page notice sits at the top).
+        Toasts.Show(wanted > max
             ? $"“{product.Name}” chỉ còn {max} sản phẩm, giỏ hàng đã có đủ {max}."
-            : quantity == 1 ? $"Đã thêm “{product.Name}” vào giỏ." : $"Đã thêm {quantity} × “{product.Name}” vào giỏ.";
+            : (quantity == 1 ? $"Đã thêm “{product.Name}” vào giỏ." : $"Đã thêm {quantity} × “{product.Name}” vào giỏ.")
+              + $" Giỏ hàng: {CartCount} sản phẩm, {OperationsText.Money(CartTotal)}.");
         await SaveCartAsync();
     }
 
@@ -437,6 +452,16 @@
     {
         _detail = null;
         await AddAsync(product, quantity);
+    }
+
+    private int CartCount => _cart.Sum(line => line.Quantity);
+    private decimal CartTotal => _cart.Sum(line => line.Product.UnitPrice * line.Quantity);
+
+    /// <summary>Focusing the cart heading scrolls the cart into view and tells screen readers where they are.</summary>
+    private async Task ShowCartAsync()
+    {
+        try { await _cartTitle.FocusAsync(preventScroll: false); }
+        catch (InvalidOperationException) { } // the cart is not rendered (page still loading)
     }
 
     private Task RemoveAsync(CartLine line)

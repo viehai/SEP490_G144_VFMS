@@ -30,6 +30,17 @@ public sealed class OperationsApiClientTests
         return new OperationsApiClient(http, new AuthSession(new Storage(stored), new AuthApiClient(http)));
     }
 
+    [Theory]
+    [InlineData("/api/images/0f8fad5bd9cb469fa165708f3a5e1c22", "https://api.example.test/api/images/0f8fad5bd9cb469fa165708f3a5e1c22", "https://api.example.test/api/images/0f8fad5bd9cb469fa165708f3a5e1c22?download=true")]
+    [InlineData("https://cdn.example.com/whey.png", "https://cdn.example.com/whey.png", "https://cdn.example.com/whey.png")]
+    [InlineData(null, null, null)]
+    public void UploadedImagesAreLoadedFromTheApi(string? stored, string? src, string? download)
+    {
+        var api = Client(new { });
+        Assert.Equal(src, api.ImageSrc(stored));
+        Assert.Equal(download, api.ImageDownloadHref(stored));
+    }
+
     [Fact]
     public async Task EquipmentListSendsBrandAndSort()
     {
@@ -70,13 +81,13 @@ public sealed class OperationsApiClientTests
     {
         using var api = Client(new PagedResponse<EquipmentIssueResponse>(1, 20, 0, []));
 
-        await api.GetIssuesAsync(new EquipmentIssueListRequest(Status: "Reported", Search: "TM-0001", Sort: "severity"));
+        await api.GetIssuesAsync(new EquipmentIssueListRequest(Status: "InProgress", Search: "TM-0001", Sort: "severity"));
 
         var query = Uri.UnescapeDataString(_requests.Single().Query);
         Assert.Equal("/api/equipment-issues", _requests.Single().AbsolutePath);
         Assert.Contains("search=TM-0001", query);
         Assert.Contains("sort=severity", query);
-        Assert.Contains("status=Reported", query);
+        Assert.Contains("status=InProgress", query);
     }
 
     [Fact]
@@ -145,17 +156,18 @@ public sealed class OperationsApiClientTests
 
     [Theory]
     [InlineData(null, "Tất cả (6)")]
-    [InlineData("Reported", "Mới báo (4)")]
-    [InlineData("Resolved", "Đã xử lý (0)")]
+    [InlineData("InProgress", "Đang xử lý (4)")]
+    [InlineData("Escalated", "Chờ quản lý sửa (2)")]
+    [InlineData("Resolved", "Đã xong (0)")]
     public void StatusOptionsShowTheirCount(string? status, string expected)
     {
-        var counts = new StatusCountsResponse(new Dictionary<string, int> { ["Reported"] = 4, ["Escalated"] = 2, ["Resolved"] = 0 });
+        var counts = new StatusCountsResponse(new Dictionary<string, int> { ["InProgress"] = 4, ["Escalated"] = 2, ["Resolved"] = 0 });
         Assert.Equal(expected, OperationsText.CountLabel(status, counts));
     }
 
     [Fact]
     public void WithoutCountsTheOptionIsJustTheLabel() =>
-        Assert.Equal("Mới báo", OperationsText.CountLabel("Reported", null));
+        Assert.Equal("Đang xử lý", OperationsText.CountLabel("InProgress", null));
 
     [Theory]
     [InlineData("issues", "/api/equipment-issues/counts")]

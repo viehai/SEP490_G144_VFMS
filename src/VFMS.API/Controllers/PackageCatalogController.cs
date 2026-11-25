@@ -28,4 +28,11 @@ public sealed class PackageCatalogController(IMembershipPlanService service) : C
         [FromQuery] PackageCatalogQuery request,
         CancellationToken cancellationToken) =>
         this.ToActionResult(await service.ListPackageCatalogAsync(request, cancellationToken));
+
+    [HttpGet("{type}/{id:int}")]
+    [ProducesResponseType(typeof(PackageDetailResponse), 200)]
+    [ProducesResponseType(400)]
+    [ProducesResponseType(404)]
+    public async Task<IActionResult> Detail(string type, int id, CancellationToken cancellationToken) =>
+        this.ToActionResult(await service.GetPackageDetailAsync(type, id, cancellationToken));
 }

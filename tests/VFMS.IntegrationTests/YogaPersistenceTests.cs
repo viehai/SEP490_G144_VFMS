@@ -27,12 +27,12 @@ public sealed class YogaPersistenceTests : IAsyncLifetime
         var instructor = new ApplicationUser
         {
             UserId = "yi-1", Gym = gym, Email = "yi@example.com", FullName = "Lan Yoga", PasswordHash = "x",
-            AccountStatus = AccountStatus.Active
+            PhoneNumber = "0901000010", AccountStatus = AccountStatus.Active
         };
         db.AddRange(gym, role, instructor, new ApplicationUser
         {
             UserId = "manager", Gym = gym, Email = "m@example.com", FullName = "Manager", PasswordHash = "x",
-            AccountStatus = AccountStatus.Active
+            PhoneNumber = "0901000011", AccountStatus = AccountStatus.Active
         });
         db.ApplicationUserRoles.Add(new ApplicationUserRole { User = instructor, Role = role });
         await db.SaveChangesAsync();
@@ -65,7 +65,7 @@ public sealed class YogaPersistenceTests : IAsyncLifetime
         await using var db = new SqliteTestContext(_options);
         var gym = await db.Gyms.FirstAsync();
         foreach (var id in new[] { "b1", "b2", "b3" })
-            db.AddRange(new ApplicationUser { UserId = id, Gym = gym, Email = id + "@example.com", FullName = id, PasswordHash = "x", AccountStatus = AccountStatus.Active },
+            db.AddRange(new ApplicationUser { UserId = id, Gym = gym, Email = id + "@example.com", FullName = id, PhoneNumber = "090100002" + id[1], PasswordHash = "x", AccountStatus = AccountStatus.Active },
                 TestSeed.Membership(id, ComponentType.YOGA));
         await db.SaveChangesAsync();
         var classId = await CreatePublishedClassAsync(db, max: 2);
@@ -76,6 +76,8 @@ public sealed class YogaPersistenceTests : IAsyncLifetime
         var third = await service.BookAsync("b3", new YogaBookingRequest(classId));
 
         Assert.True(first.IsSuccess, first.ErrorMessage);
+        Assert.Equal(await db.MemberMemberships.Where(m => m.MemberUserId == "b1").Select(m => m.OrderItemId).SingleAsync(),
+            (await db.YogaBookings.SingleAsync(b => b.MemberUserId == "b1")).OrderItemId);
         Assert.Equal(1, second.Data!.MatNumber);   // lowest free mat
         Assert.Equal(("Waitlisted", 1), (third.Data!.Status, third.Data.WaitlistPosition!.Value));
         Assert.Equal(YogaClassStatus.Full, (await db.YogaClasses.AsNoTracking().SingleAsync()).ClassStatus);
@@ -103,7 +105,7 @@ public sealed class YogaPersistenceTests : IAsyncLifetime
         await using var db = new SqliteTestContext(_options);
         var gym = await db.Gyms.FirstAsync();
         foreach (var id in new[] { "a1", "a2" })
-            db.AddRange(new ApplicationUser { UserId = id, Gym = gym, Email = id + "@example.com", FullName = id, PasswordHash = "x", AccountStatus = AccountStatus.Active },
+            db.AddRange(new ApplicationUser { UserId = id, Gym = gym, Email = id + "@example.com", FullName = id, PhoneNumber = "090100003" + id[1], PasswordHash = "x", AccountStatus = AccountStatus.Active },
                 TestSeed.Membership(id, ComponentType.YOGA));
         await db.SaveChangesAsync();
         var classId = await CreatePublishedClassAsync(db, max: 2);
@@ -137,6 +139,39 @@ public sealed class YogaPersistenceTests : IAsyncLifetime
     private sealed class At(DateTimeOffset now) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => now;
+    }
+
+    [Fact]
+    public async Task WeeklySessionsFillChosenWeekdaysAndSaveNothingWhenOneDateClashes()
+    {
+        await using var db = new SqliteTestContext(_options);
+        var repository = new YogaRepository(db);
+        var studios = new YogaStudioService(repository, TimeProvider.System);
+        var classes = new YogaClassService(repository, TimeProvider.System);
+        var start = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7)).AddDays(10);
+        while (start.DayOfWeek != DayOfWeek.Monday) start = start.AddDays(1);
+        var studio = (await studios.CreateAsync(new YogaStudioRequest("Lotus", 2, 20), "manager", null)).Data!.Id;
+        var type = (await classes.CreateClassTypeAsync(new YogaClassTypeRequest("Vinyasa", null), "manager", null)).Data!.Id;
+        async Task<int> NewClass(string name) => (await classes.CreateClassAsync(new YogaClassRequest(
+            type, name, "yi-1", "Beginner", 2, 1, 15, 60, DateTime.UtcNow.AddDays(5), start, start.AddDays(13)), "manager", null)).Data!.Id;
+        var flow = await NewClass("Morning Flow");
+        var other = await NewClass("Evening Flow");
+        var weekly = new YogaWeeklySessionsRequest(studio, [DayOfWeek.Monday, DayOfWeek.Wednesday], new(9, 0));
+
+        // Another class already holds the studio on the second Wednesday: nothing is saved, the message names the date.
+        Assert.True((await classes.CreateSessionAsync(new YogaSessionRequest(other, studio, start.AddDays(9), new(9, 30), new(10, 30)), "manager", null)).IsSuccess);
+        var clash = await classes.CreateWeeklySessionsAsync(flow, weekly, "manager", null);
+        Assert.Equal("YOGA_SESSION_CONFLICT", clash.ErrorCode);
+        Assert.StartsWith($"Ngày {start.AddDays(9):dd/MM/yyyy}", clash.ErrorMessage);
+        Assert.False(await db.YogaClassSchedules.AnyAsync(s => s.YogaClassId == flow));
+
+        var created = await classes.CreateWeeklySessionsAsync(flow, weekly with { StartTime = new(7, 0) }, "manager", null);
+        Assert.True(created.IsSuccess, created.ErrorMessage);
+        Assert.Equal((4, 0), (created.Data!.Created, created.Data.Skipped));
+        Assert.Equal([start, start.AddDays(2), start.AddDays(7), start.AddDays(9)],
+            await db.YogaClassSchedules.Where(s => s.YogaClassId == flow).OrderBy(s => s.ScheduledDate).Select(s => s.ScheduledDate).ToListAsync());
+        Assert.Equal("YOGA_NO_SESSION_DATES",   // a second run finds no free date
+            (await classes.CreateWeeklySessionsAsync(flow, weekly with { StartTime = new(7, 0) }, "manager", null)).ErrorCode);
     }
 
     [Fact]

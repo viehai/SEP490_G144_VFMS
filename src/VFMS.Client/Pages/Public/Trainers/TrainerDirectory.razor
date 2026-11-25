@@ -4,38 +4,58 @@
 <PageTitle>Huấn luyện viên | Victor Fitness</PageTitle>
 
 <section class="trainer-page trainer-public trainer-stack">
+    @if (PackageId is not null)
+    {
+        <a class="trainer-back" href="@BackToPackagesUrl">← Về gói PT</a>
+    }
     <header class="trainer-row trainer-between">
         <div>
-            <h1>Huấn luyện viên</h1>
-            <p class="trainer-muted mt-2">Tìm PT hoặc huấn luyện viên Yoga theo vị trí và chuyên môn, xem chứng chỉ và đánh giá.</p>
+            <h1>@(PackageId is null ? "Huấn luyện viên" : "Chọn huấn luyện viên PT")</h1>
+            @if (_package is { } package)
+            {
+                <p class="trainer-muted mt-2">@package.Name · Cấp @package.TrainerLevel</p>
+            }
+            else if (PackageId is null)
+            {
+                <p class="trainer-muted mt-2">Tìm PT hoặc huấn luyện viên Yoga theo vị trí và chuyên môn, xem chứng chỉ và đánh giá.</p>
+            }
         </div>
-        <a href="/careers/trainer" class="trainer-button">Ứng tuyển huấn luyện viên</a>
+        @if (PackageId is null)
+        {
+            <a href="/careers/trainer" class="trainer-button">Ứng tuyển huấn luyện viên</a>
+        }
     </header>
 
-    <form class="trainer-panel trainer-stack" @onsubmit="SearchAsync" @onsubmit:preventDefault>
-        <div class="trainer-grid">
-            <label>Tên hoặc chuyên môn<input class="trainer-input" maxlength="200" @bind="_search" /></label>
-            <label>Vị trí
-                <select class="trainer-input" @bind="_trainerRole">
-                    <option value="">Tất cả</option><option value="PT">PT</option><option value="Yoga">Yoga</option>
-                </select>
-            </label>
-            <label>Giới tính
-                <select class="trainer-input" @bind="_gender">
-                    <option value="">Tất cả</option><option value="Male">Nam</option><option value="Female">Nữ</option><option value="Other">Khác</option>
-                </select>
-            </label>
-            <label>Điểm tối thiểu
-                <select class="trainer-input" @bind="_rating">
-                    <option value="0">Tất cả</option><option value="3">3 sao</option><option value="4">4 sao</option><option value="5">5 sao</option>
-                </select>
-            </label>
-        </div>
-        <div class="trainer-row">
-            <button class="trainer-button trainer-primary" disabled="@_loading">Tìm huấn luyện viên</button>
-            <button type="button" class="trainer-button" disabled="@_loading" @onclick="ResetAsync">Xóa bộ lọc</button>
-        </div>
-    </form>
+    @if (PackageId is null || _package is not null)
+    {
+        <form class="trainer-panel trainer-stack" @onsubmit="SearchAsync" @onsubmit:preventDefault>
+            <div class="trainer-grid">
+                <label>Tên hoặc chuyên môn<input class="trainer-input" maxlength="200" @bind="_search" /></label>
+                @if (PackageId is null)
+                {
+                    <label>Vị trí
+                        <select class="trainer-input" @bind="_trainerRole">
+                            <option value="">Tất cả</option><option value="PT">PT</option><option value="Yoga">Yoga</option>
+                        </select>
+                    </label>
+                }
+                <label>Giới tính
+                    <select class="trainer-input" @bind="_gender">
+                        <option value="">Tất cả</option><option value="Male">Nam</option><option value="Female">Nữ</option><option value="Other">Khác</option>
+                    </select>
+                </label>
+                <label>Điểm tối thiểu
+                    <select class="trainer-input" @bind="_rating">
+                        <option value="0">Tất cả</option><option value="3">3 sao</option><option value="4">4 sao</option><option value="5">5 sao</option>
+                    </select>
+                </label>
+            </div>
+            <div class="trainer-row">
+                <button class="trainer-button trainer-primary" disabled="@_loading">Tìm huấn luyện viên</button>
+                <button type="button" class="trainer-button" disabled="@_loading" @onclick="ResetAsync">Xóa bộ lọc</button>
+            </div>
+        </form>
+    }
 
     <TrainerFeedback Error="@_error" />
     @if (_loading)
@@ -44,7 +64,7 @@
     }
     else if (_results is { TotalCount: 0 })
     {
-        <p class="trainer-panel">Không tìm thấy dữ liệu phù hợp.</p>
+        <p class="trainer-panel">@(_package is null ? "Không tìm thấy dữ liệu phù hợp." : "Chưa tìm thấy PT nhận học viên mới phù hợp với gói và bộ lọc hiện tại.")</p>
     }
     else if (_results is { } result)
     {
@@ -55,7 +75,7 @@
                     <div class="trainer-row">
                         <TrainerAvatar Trainer="trainer" />
                         <div>
-                            <h2><a class="trainer-link" href="@($"/trainers/{trainer.Id}")">@trainer.FullName</a></h2>
+                            <h2><a class="trainer-link" href="@TrainerProfileUrl(trainer.Id)">@trainer.FullName</a></h2>
                             <p class="trainer-muted">@trainer.TrainerRole · @trainer.Specialty</p>
                             @if (trainer.TrainerRole == "PT")
                             {
@@ -68,6 +88,11 @@
                         @if (trainer.AverageRating > 0) { <StarRating Value="trainer.AverageRating" /> }
                         else { <span class="trainer-muted">Chưa có đánh giá</span> }
                     </div>
+                    @if (_package is { } selected)
+                    {
+                        <a class="trainer-button trainer-primary" href="@($"/pt-booking/{trainer.Id}?package={selected.Id}")"
+                           aria-label="@($"Chọn huấn luyện viên {trainer.FullName}")">Chọn huấn luyện viên</a>
+                    }
                 </article>
             }
         </div>
@@ -76,14 +101,34 @@
 </section>
 
 @code {
+    [SupplyParameterFromQuery(Name = "package")] public int? PackageId { get; set; }
     private string _search = "", _trainerRole = "", _gender = "";
     private int _rating;
     private TrainerSearch _filter = new();
     private PagedResponse<TrainerProfileResponse>? _results;
+    private PTPackageResponse? _package;
     private bool _loading;
     private string? _error;
+    private int _requestVersion;
+    private int? _loadedPackageId;
 
-    protected override Task OnInitializedAsync() => LoadAsync(1);
+    private string BackToPackagesUrl => _package is { } package
+        ? PackageCatalogLinks.Detail("pt", package.Id)
+        : PackageCatalogLinks.Catalog("pt");
+
+    private string TrainerProfileUrl(int trainerId) => _package is { } package
+        ? $"/trainers/{trainerId}?package={package.Id}"
+        : $"/trainers/{trainerId}";
+
+    protected override Task OnParametersSetAsync()
+    {
+        if (_requestVersion != 0 && _loadedPackageId == PackageId) return Task.CompletedTask;
+
+        _loadedPackageId = PackageId;
+        _package = null;
+        _results = null;
+        return ResetAsync();
+    }
 
     private Task SearchAsync()
     {
@@ -100,11 +145,31 @@
 
     private async Task LoadAsync(int page)
     {
-        if (_loading) return;
+        var version = ++_requestVersion;
         _loading = true;
         _error = null;
-        try { _results = await Api.SearchAsync(_filter with { Page = page }); }
-        catch (AuthApiException ex) { _error = ex.Message; }
-        finally { _loading = false; }
+        try
+        {
+            if (PackageId is { } packageId && _package is null)
+            {
+                var packages = await Api.PackagesAsync();
+                if (version != _requestVersion) return;
+                _package = packages.FirstOrDefault(package => package.Id == packageId && package.IsActive);
+                if (_package is null)
+                {
+                    _error = "Gói PT này hiện không mở bán.";
+                    return;
+                }
+            }
+
+            var filter = _filter with { Page = page };
+            if (_package is { } selected)
+                filter = filter with { TrainerRole = "PT", Level = selected.TrainerLevel, AcceptingNewMembers = true };
+
+            var result = await Api.SearchAsync(filter);
+            if (version == _requestVersion) _results = result;
+        }
+        catch (AuthApiException ex) { if (version == _requestVersion) _error = ex.Message; }
+        finally { if (version == _requestVersion) _loading = false; }
     }
 }

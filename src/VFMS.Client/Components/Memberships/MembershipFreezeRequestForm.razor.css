@@ -1,0 +1,7 @@
+.freeze-form ::deep input.valid.modified:not(:focus-visible) {
+    outline: none;
+}
+
+.freeze-form ::deep input[type="date"]:focus-visible {
+    outline: 2px solid var(--vfms-primary);
+}

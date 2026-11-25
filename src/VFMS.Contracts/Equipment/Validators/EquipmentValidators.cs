@@ -6,7 +6,7 @@ internal static class EquipmentRules
 {
     public static readonly string[] EquipmentStatuses = ["Operational", "UnderMaintenance", "Damaged", "Retired"];
     public static readonly string[] IncidentTypes = ["Malfunction", "Damage", "Safety", "Other"];
-    public static readonly string[] IssueStatuses = ["Reported", "InProgress", "Escalated", "Resolved", "MarkedSafe"];
+    public static readonly string[] IssueStatuses = ["InProgress", "Escalated", "Resolved"];
     public static readonly string[] EquipmentSorts = ["name", "code", "newest", "purchase_date"];
     public static readonly string[] IssueSorts = ["newest", "severity"];
 
@@ -56,6 +56,10 @@ public sealed class EquipmentRequestValidator : AbstractValidator<EquipmentReque
             .MaximumLength(2048)
             .Must(EquipmentRules.IsHttpUrl).WithMessage("Description URL must be a valid HTTP or HTTPS URL.");
         RuleFor(x => x.Note).MaximumLength(1000);
+        RuleFor(x => x.ImageUrl)
+            .MaximumLength(500)
+            .Must(url => EquipmentRules.IsHttpUrl(url) || VFMS.Contracts.Common.UploadedImages.IsUploadedPath(url))
+            .WithMessage("The image must be an uploaded image or an HTTP or HTTPS link.");
     }
 }
 
@@ -113,7 +117,8 @@ public sealed class EquipmentIssueListRequestValidator : AbstractValidator<Equip
     public EquipmentIssueListRequestValidator()
     {
         RuleFor(x => x.Status)
-            .Must(status => string.IsNullOrWhiteSpace(status) || EquipmentRules.IsOneOf(status, EquipmentRules.IssueStatuses))
+            .Must(status => string.IsNullOrWhiteSpace(status) || EquipmentRules.IsOneOf(status, EquipmentRules.IssueStatuses)
+                || string.Equals(status.Trim(), VFMS.Contracts.Operations.StatusFilters.OpenIssues, StringComparison.OrdinalIgnoreCase))
             .WithMessage("Status filter is invalid.");
         RuleFor(x => x.Search).MaximumLength(100);
         RuleFor(x => x.Sort)

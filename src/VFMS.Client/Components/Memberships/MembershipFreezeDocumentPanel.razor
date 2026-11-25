@@ -3,17 +3,16 @@
 @inject MembershipPlanApiClient Api
 @inject IJSRuntime JS
 
-<section class="space-y-3 border-t border-vfms-border pt-4" aria-label="Tài liệu hỗ trợ bảo lưu">
-    <p class="text-sm font-semibold text-vfms-text">Tài liệu hỗ trợ (tùy chọn)</p>
+<section class="space-y-3 border-t border-vfms-border pt-4" aria-label="Tài liệu minh chứng bảo lưu">
+    @if (!CanEdit)
+    {
+        <p class="text-sm font-semibold text-vfms-text">Tài liệu minh chứng</p>
+    }
     @if (_document is { } document)
     {
         <div class="flex flex-wrap items-center gap-3 text-sm">
             <span class="min-w-0 break-all text-vfms-text">@document.FileName <span class="text-vfms-text-secondary">(@((document.Size / 1024d).ToString("0.#")) KiB)</span></span>
             <button type="button" class="@Button" disabled="@Unavailable" @onclick="DownloadAsync">Tải tài liệu</button>
-            @if (CanEdit)
-            {
-                <button type="button" class="@Button" disabled="@Unavailable" @onclick="RemoveAsync">Gỡ tài liệu</button>
-            }
         </div>
     }
     else
@@ -23,10 +22,7 @@
     @if (CanEdit)
     {
         <div class="space-y-2">
-            <label for="@($"freeze-document-{RequestId}")" class="block text-sm text-vfms-text">Chọn PDF, PNG hoặc JPEG, tối đa 5 MiB</label>
-            <InputFile @key="_inputVersion" id="@($"freeze-document-{RequestId}")" OnChange="SelectFile" accept=".pdf,.png,.jpg,.jpeg"
-                       disabled="@Unavailable" class="block min-h-[44px] max-w-full text-sm text-vfms-text"
-                       aria-describedby="@($"freeze-document-{RequestId}-feedback")" />
+            <MembershipFreezeDocumentChooser @key="_inputVersion" InputId="@($"freeze-document-{RequestId}")" Required="@(_document is null)" Disabled="@Unavailable" Selected="SelectFile" />
             <button type="button" class="@Button" disabled="@(Unavailable || _file is null)" @onclick="UploadAsync">
                 @(_document is null ? "Đính kèm tài liệu" : "Thay tài liệu")
             </button>
@@ -52,7 +48,6 @@
     private readonly CancellationTokenSource _lifetime = new();
     private MembershipFreezeDocumentResponse? _document;
     private IBrowserFile? _file;
-    private string _contentType = "";
     private string? _error;
     private string? _notice;
     private int _inputVersion;
@@ -61,36 +56,18 @@
 
     protected override void OnParametersSet() => _document = Document;
 
-    private void SelectFile(InputFileChangeEventArgs args)
+    private void SelectFile(IBrowserFile? file)
     {
         _error = _notice = null;
-        _file = args.File;
-        if (_file.Size > MembershipFreezeDocumentLimits.MaximumBytes || _file.Size == 0)
-        {
-            _error = "Chọn tài liệu có nội dung, tối đa 5 MiB.";
-            _file = null;
-            return;
-        }
-        _contentType = Path.GetExtension(_file.Name).ToLowerInvariant() switch
-        {
-            ".pdf" => "application/pdf",
-            ".png" => "image/png",
-            ".jpg" or ".jpeg" => "image/jpeg",
-            _ => ""
-        };
-        if (_contentType.Length == 0)
-        {
-            _error = "Chọn tài liệu PDF, PNG hoặc JPEG.";
-            _file = null;
-        }
+        _file = file;
     }
 
     private Task UploadAsync() => RunAsync(async ct =>
     {
-        if (!CanEdit || _file is not { } file)
+        if (!CanEdit || _file is not { } file || MembershipFreezeDocumentChooser.ContentType(file) is not { } contentType)
             return;
         await using var content = file.OpenReadStream(MembershipFreezeDocumentLimits.MaximumBytes, ct);
-        var document = await Api.UploadFreezeDocumentAsync(RequestId, content, file.Name, _contentType, ct);
+        var document = await Api.UploadFreezeDocumentAsync(RequestId, content, file.Name, contentType, ct);
         if (ct.IsCancellationRequested)
             return;
         _document = document;
@@ -98,18 +75,6 @@
         _inputVersion++;
         _notice = "Đã đính kèm tài liệu.";
         await Changed.InvokeAsync(document);
-    });
-
-    private Task RemoveAsync() => RunAsync(async ct =>
-    {
-        if (!CanEdit || !await JS.InvokeAsync<bool>("confirm", ct, "Gỡ tài liệu khỏi yêu cầu bảo lưu?"))
-            return;
-        await Api.RemoveFreezeDocumentAsync(RequestId, ct);
-        if (ct.IsCancellationRequested)
-            return;
-        _document = null;
-        _notice = "Đã gỡ tài liệu.";
-        await Changed.InvokeAsync(null);
     });
 
     private Task DownloadAsync() => RunAsync(async ct =>

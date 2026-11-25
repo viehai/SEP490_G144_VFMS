@@ -1,0 +1,193 @@
+@using System.Globalization
+@using VFMS.Client.Components.Operations
+@using VFMS.Contracts.Feedback
+@inject MembershipPlanApiClient Plans
+@inject SystemAdministrationApiClient Feedback
+@implements IDisposable
+
+<section id="package-reviews" aria-labelledby="package-reviews-title" class="scroll-mt-28 space-y-5 rounded-xl border border-vfms-border bg-vfms-surface p-5 sm:p-6">
+    <div class="flex flex-wrap items-end justify-between gap-4">
+        <div>
+            <h2 id="package-reviews-title" class="font-heading text-xl font-bold">Đánh giá của hội viên</h2>
+            @if (_data?.AverageRating is double average)
+            {
+                <p class="mt-2 text-sm text-vfms-text-secondary">
+                    <strong class="text-lg text-vfms-text">@average.ToString("0.#", Vietnamese)/5 sao</strong> · @_data.TotalReviews đánh giá
+                </p>
+            }
+        </div>
+        @if (_data?.TotalReviews > 0)
+        {
+            <label class="@Ui.Label">Lọc theo số sao
+                <select class="@Ui.Field" @bind="_ratingFilter" @bind:after="() => LoadAsync(1)" disabled="@Busy">
+                    <option value="">Tất cả số sao</option>
+                    @for (var n = 5; n >= 1; n--)
+                    {
+                        <option value="@n">@n sao</option>
+                    }
+                </select>
+            </label>
+        }
+    </div>
+
+    @if (_loadError)
+    {
+        <div class="space-y-2">
+            <p role="alert" class="text-sm">Chưa tải được đánh giá của gói này.</p>
+            <button type="button" class="@Ui.Button" disabled="@Busy" @onclick="() => LoadAsync(_requestedPage)">Thử lại</button>
+        </div>
+    }
+    else if (_loading)
+    {
+        <p role="status" class="text-sm text-vfms-text-secondary">Đang tải đánh giá…</p>
+    }
+    else if (_data is { } data)
+    {
+        @if (data.Reviews.Items.Count > 0)
+        {
+            <ul class="divide-y divide-vfms-border border-y border-vfms-border">
+                @foreach (var review in data.Reviews.Items)
+                {
+                    <li @key="review.Id" class="space-y-2 py-4 text-sm">
+                        <div class="flex flex-wrap items-baseline justify-between gap-2">
+                            <strong class="break-words">@review.MemberName</strong>
+                            <span class="text-xs text-vfms-text-secondary">@PTDisplay.LocalDate(review.CreatedAt)</span>
+                        </div>
+                        <p class="text-vfms-primary"><span aria-hidden="true">@Stars(review.Rating)</span><span class="sr-only">@review.Rating trên 5 sao</span></p>
+                        @if (!string.IsNullOrWhiteSpace(review.Comment))
+                        {
+                            <p class="whitespace-pre-wrap break-words">@review.Comment</p>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(review.ManagerReply))
+                        {
+                            <div class="border-l-2 border-vfms-border pl-3 text-vfms-text-secondary">
+                                <p class="font-semibold">Phản hồi từ phòng tập</p>
+                                <p class="whitespace-pre-wrap break-words">@review.ManagerReply</p>
+                            </div>
+                        }
+                    </li>
+                }
+            </ul>
+            @if (data.Reviews.TotalCount > data.Reviews.PageSize)
+            {
+                <Pager Page="data.Reviews.Page" PageSize="data.Reviews.PageSize" TotalCount="data.Reviews.TotalCount"
+                       Noun="đánh giá" AriaLabel="Trang đánh giá gói tập" Disabled="@Busy" OnPage="LoadAsync" />
+            }
+        }
+        else
+        {
+            <p class="text-sm text-vfms-text-secondary">@(data.TotalReviews == 0 ? "Gói này chưa có đánh giá nào được công khai." : $"Chưa có đánh giá {_ratingFilter} sao.")</p>
+        }
+
+        <AuthorizeView Roles="Customer,Member">
+            <Authorized>
+                @if (data.MyReviewStatus is { } status)
+                {
+                    <p role="status" class="text-sm font-semibold">@StatusMessage(status)</p>
+                }
+                else if (data.CanReview)
+                {
+                    <form class="space-y-3 border-t border-vfms-border pt-4" @onsubmit="SubmitAsync" @onsubmit:preventDefault>
+                        <h3 class="font-heading font-bold">Viết đánh giá</h3>
+                        <fieldset disabled="@Busy">
+                            <legend class="@Ui.Label">Số sao <span class="text-vfms-primary" aria-hidden="true">*</span></legend>
+                            <div class="flex">
+                                @for (var star = 1; star <= 5; star++)
+                                {
+                                    var value = star;
+                                    <label class="inline-flex h-11 w-11 cursor-pointer items-center justify-center rounded text-2xl text-vfms-primary focus-within:outline focus-within:outline-2">
+                                        <input type="radio" name="package-rating" value="@value" class="sr-only" required
+                                               checked="@(_stars == value)" @onchange="() => _stars = value" />
+                                        <span aria-hidden="true">@(_stars >= value ? "★" : "☆")</span><span class="sr-only">@value sao</span>
+                                    </label>
+                                }
+                            </div>
+                        </fieldset>
+                        <label class="block @Ui.Label">Nhận xét (không bắt buộc)
+                            <textarea class="@Ui.Field" rows="3" maxlength="1000" disabled="@Busy" @bind="_comment" @bind:event="oninput"></textarea>
+                        </label>
+                        @if (_submitError != null)
+                        {
+                            <p role="alert" class="text-sm text-vfms-primary">@_submitError</p>
+                        }
+                        <button type="submit" class="@Ui.PrimaryButton disabled:opacity-60" disabled="@(_stars == 0 || Busy)">@(_submitting ? "Đang gửi…" : "Gửi đánh giá")</button>
+                    </form>
+                }
+                else
+                {
+                    <p class="text-sm text-vfms-text-secondary">@UsageMessage</p>
+                }
+            </Authorized>
+            <NotAuthorized>
+                @if (context.User.Identity?.IsAuthenticated != true)
+                {
+                    <a href="@LoginUrl" class="inline-flex min-h-[44px] items-center text-sm font-bold text-vfms-primary hover:underline">Đăng nhập để viết đánh giá</a>
+                }
+            </NotAuthorized>
+        </AuthorizeView>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public int PackageId { get; set; }
+    [Parameter, EditorRequired] public string ServiceType { get; set; } = "";
+    [Parameter, EditorRequired] public string LoginUrl { get; set; } = "";
+
+    private static readonly CultureInfo Vietnamese = CultureInfo.GetCultureInfo("vi-VN");
+    private readonly CancellationTokenSource _lifetime = new();
+    private PackageReviewsResponse? _data;
+    private int? _ratingFilter;
+    private int _requestedPage = 1, _stars;
+    private string _comment = "";
+    private string? _submitError;
+    private bool _loading, _loadError, _submitting;
+    private bool Busy => _loading || _submitting;
+    private string UsageMessage => ServiceType switch
+    {
+        "YOGA" => "Bạn có thể đánh giá sau khi được điểm danh có mặt ở lớp Yoga đã đăng ký bằng gói này.",
+        "PT" => "Bạn có thể đánh giá sau khi có một buổi PT được xác nhận hoàn thành bằng gói này.",
+        _ => "Bạn có thể đánh giá sau lần check-in đầu tiên bằng gói này."
+    };
+
+    protected override Task OnInitializedAsync() => LoadAsync(1);
+
+    private async Task LoadAsync(int page)
+    {
+        _requestedPage = page;
+        _loading = true;
+        _loadError = false;
+        try { _data = await Plans.GetPackageReviewsAsync(PackageId, page, _ratingFilter, _lifetime.Token); }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        catch (AuthApiException) { _loadError = true; }
+        finally { _loading = false; }
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (Busy || _stars is < 1 or > 5 || _data?.CanReview != true) return;
+        _submitting = true;
+        _submitError = null;
+        try
+        {
+            var review = await Feedback.SubmitFeedbackAsync(new(null, _stars, _comment.Trim(), PackageId), _lifetime.Token);
+            _data = _data with { CanReview = false, MyReviewStatus = review.Status };
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        catch (AuthApiException ex) when (ex.ErrorCode is "PACKAGE_ALREADY_REVIEWED" or "PACKAGE_USE_REQUIRED")
+        {
+            await LoadAsync(_requestedPage);
+        }
+        catch (AuthApiException ex) { _submitError = ex.Message; }
+        finally { _submitting = false; }
+    }
+
+    private static string Stars(int rating) => new string('★', rating) + new string('☆', 5 - rating);
+    private static string StatusMessage(string status) => status switch
+    {
+        "Pending" => "Đánh giá của bạn đang chờ duyệt.",
+        "Approved" => "Đánh giá của bạn đã được duyệt.",
+        _ => "Đánh giá của bạn đã bị từ chối."
+    };
+
+    public void Dispose() { _lifetime.Cancel(); _lifetime.Dispose(); }
+}

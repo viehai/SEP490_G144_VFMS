@@ -33,6 +33,23 @@ public sealed partial class MembershipPlanApiClientTests
         Assert.Equal(summary, Assert.Single(result.Items));
     }
 
+    [Fact]
+    public async Task FreezeReviewQueue_SendsHistorySearchAndInclusiveDateFilters()
+    {
+        using var api = CreateClient(request =>
+        {
+            Assert.Equal("/api/manager/membership-freeze-requests?page=1&pageSize=20&status=History&search=Lan%20Anh&fromDate=2026-11-26&toDate=2026-12-05",
+                request.RequestUri!.PathAndQuery);
+            return Task.FromResult(Json(new PagedResponse<MembershipFreezeReviewSummaryResponse>(1, 20, 0, [])));
+        });
+
+        await api.ListFreezeReviewsAsync(new()
+        {
+            Status = "History", Search = " Lan Anh ",
+            FromDate = new(2026, 11, 26), ToDate = new(2026, 12, 5)
+        });
+    }
+
     [Theory]
     [InlineData(MembershipFreezeReviewTypes.Freeze)]
     [InlineData(MembershipFreezeReviewTypes.EarlyUnfreeze)]
@@ -52,6 +69,8 @@ public sealed partial class MembershipPlanApiClientTests
         Assert.Equal(expected.Request, result.Request);
         Assert.Equal(expected.Membership, result.Membership);
         Assert.Equal(expected.RemainingQuota, result.RemainingQuota);
+        Assert.Equal(expected.GrantedFreezeAllowanceDays, result.GrantedFreezeAllowanceDays);
+        Assert.Equal(expected.CommittedFreezeDays, result.CommittedFreezeDays);
         Assert.Equal(expected.AppliedPolicy!.Policy, result.AppliedPolicy!.Policy);
         Assert.Equal(expected.AppliedPolicy.Quotas, result.AppliedPolicy.Quotas);
         Assert.Equal(expected.ActualFrozenDays, result.ActualFrozenDays);
@@ -161,6 +180,6 @@ public sealed partial class MembershipPlanApiClientTests
             membership.PlanName, request.StartDate, request.EndDate, request.RequestedDays, request.SubmittedAt, "Pending");
         return new(summary, membership, request.Reason, null, null, null, null, 30,
             request.AppliedPolicy, early ? 7 : null, new DateOnly(2026, 12, 4), early ? 2 : null,
-            true, true, null);
+            true, true, null, GrantedFreezeAllowanceDays: 37, CommittedFreezeDays: 7);
     }
 }

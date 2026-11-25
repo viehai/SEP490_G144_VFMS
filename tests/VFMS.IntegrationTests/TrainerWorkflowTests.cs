@@ -978,6 +978,8 @@ public class TrainerWorkflowTests
         TrainerTestDatabase.Success(await service.Setup(new(await fixture.SetupToken(hired.Id), "TestPassword1!"), default));
         var coachA = await db.TrainerProfiles.SingleAsync();
         coachA.Gender = "Male";
+        coachA.Level = TrainerLevel.Senior;
+        coachA.AcceptingNewMembers = false;
         var userB = await AddUser(db, "coach-b", "coach-b@example.test", "0900000070", "PT");
         var coachB = new TrainerProfile
         {
@@ -1015,6 +1017,13 @@ public class TrainerWorkflowTests
         Assert.Empty(await Find(new(MinimumRating: 5)));
         Assert.Empty(await Find(new(Gender: "Female", MinimumRating: 4)));
         Assert.Equal([userB.UserId], await Find(new(Gender: "Female", MinimumRating: 3)));
+
+        var forPackage = TrainerTestDatabase.Success(await service.Search(
+            new(TrainerRole: "PT", Level: "Junior", AcceptingNewMembers: true, PageSize: 1), default));
+        Assert.Equal(1, forPackage.TotalCount);
+        Assert.Equal(userB.UserId, Assert.Single(forPackage.Items).UserId);
+        Assert.Equal([coachA.PTUserId], await Find(new(Level: "Senior")));
+        Assert.Equal([coachA.PTUserId], await Find(new(AcceptingNewMembers: false)));
     }
 
     // UC 3.4 step 7: a frozen contract still shows 'View My PT Schedule'.

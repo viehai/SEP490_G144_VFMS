@@ -14,6 +14,10 @@ public static class EquipmentModule
         services.AddScoped<IEquipmentIssueService, EquipmentIssueService>();
         services.AddScoped<IPurchaseProposalRepository, PurchaseProposalRepository>();
         services.AddScoped<IPurchaseProposalService, PurchaseProposalService>();
+        services.AddScoped<IGymDetailsRepository, GymDetailsRepository>();
+        services.AddScoped<IGymDetailsService, GymDetailsService>();
+        services.AddScoped<IUploadedImageRepository, UploadedImageRepository>();
+        services.AddScoped<IUploadedImageService, UploadedImageService>();
         return services;
     }
 }

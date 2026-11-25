@@ -16,7 +16,6 @@ public sealed class PackageCatalogQuery
 
 /// <summary>
 /// Response DTO dùng chung cho cả GYM / YOGA / PT trong public catalog.
-/// Chỉ chứa các field thực sự tồn tại trong PackageComponent.
 /// </summary>
 public sealed record PackageCatalogItemResponse(
     int Id,
@@ -34,8 +33,7 @@ public sealed record PackageCatalogItemResponse(
     int? SessionCount,
 
     // --- Yoga-specific ---
-    int? YogaClassTypeId,
-    string? YogaClassTypeName,
+    string? YogaDifficultyLevel,   // highest class level the plan books; lower levels included
 
     // --- PT-specific ---
     string? TrainerLevel,
@@ -50,7 +48,15 @@ public sealed record PackageCatalogItemResponse(
     // --- Access window (GYM) ---
     TimeOnly? AccessStartTime,
     TimeOnly? AccessEndTime
-);
+)
+{
+    public bool IsSingleService { get; init; } = true;
+    public string? TargetAudience { get; init; }
+}
+
+public sealed record PackageDetailResponse(
+    PackageCatalogItemResponse Package,
+    IReadOnlyList<PackageCatalogItemResponse> Recommendations);
 
 public sealed class PackageCatalogQueryValidator : AbstractValidator<PackageCatalogQuery>
 {

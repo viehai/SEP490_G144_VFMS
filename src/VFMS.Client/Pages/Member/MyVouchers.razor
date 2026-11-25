@@ -1,0 +1,130 @@
+@page "/my-vouchers"
+@layout PublicLayout
+@using Microsoft.AspNetCore.Authorization
+@using VFMS.Contracts.Promotions
+@attribute [Authorize(Roles = "Customer,Member")]
+@implements IDisposable
+@inject MembershipPlanApiClient Api
+@inject IJSRuntime JS
+
+<PageTitle>Voucher của tôi | Victor Fitness</PageTitle>
+<section class="wallet" aria-labelledby="wallet-heading">
+    <header><h1 id="wallet-heading">Voucher của tôi</h1>
+        <p>Ưu đãi dành cho tài khoản của bạn khi mua hoặc gia hạn gói tập.</p>
+    </header>
+    @if (_loading) { <p role="status">Đang tải voucher…</p> }
+    else if (_error is not null)
+    {
+        <p role="alert">@_error</p>
+        <button type="button" @onclick="LoadAsync">Thử lại</button>
+    }
+    else
+    {
+        <dl class="summary">
+            <div><dt>Khả dụng</dt><dd>@Count(MyVoucherStatus.Available)</dd></div>
+            <div><dt>Đã dùng hết lượt</dt><dd>@Count(MyVoucherStatus.Exhausted)</dd></div>
+            <div title="Các voucher khả dụng hết hạn trong 7 ngày tới theo giờ Việt Nam"><dt>Sắp hết hạn <small>(7 ngày)</small></dt><dd>@_rows.Count(v => v.ExpiringSoon)</dd></div>
+        </dl>
+        <div class="tools">
+            <div class="filters" role="group" aria-label="Lọc voucher">
+                @foreach (var filter in Filters)
+                {
+                    <button type="button" aria-pressed="@(_filter == filter ? "true" : "false")" @onclick="() => SetFilter(filter)">@filter</button>
+                }
+            </div>
+            <label class="search">Tìm voucher<input type="search" placeholder="Tên hoặc mã voucher" @bind="_search" @bind:event="oninput" @bind:after="ResetPage" /></label>
+        </div>
+        var filtered = Visible().ToArray();
+        @if (filtered.Length == 0)
+        {
+            <p role="status" class="empty">@(_filter == Available && _search.Length == 0 ? "Hiện bạn chưa có voucher khả dụng." : "Không tìm thấy voucher phù hợp.")</p>
+        }
+        @foreach (var v in filtered.Skip((_page - 1) * PageSize).Take(PageSize))
+        {
+            <article @key="v.Id" class="voucher @(v.Audience == PromotionAudience.AssignedUsers ? "award" : "")">
+                <div class="conditions">
+                    <span class="audience">@Audience(v.Audience)</span>
+                    <h2>@v.Name</h2>
+                    <strong class="discount">Giảm @(v.DiscountType == PromotionDiscountType.Percentage ? Vnd.FormatAmount(v.DiscountValue) + "%" : Vnd.Format(v.DiscountValue))</strong>
+                    @if (v.MaximumDiscount is { } cap && v.DiscountType == PromotionDiscountType.Percentage) { <span>Tối đa @Vnd.Format(cap)</span> }
+                    @if (v.MinimumSpend is > 0) { <span>Đơn từ @Vnd.Format(v.MinimumSpend.Value)</span> }
+                    <p>Áp dụng cho Gym, Yoga và PT.</p>
+                    @foreach (var award in v.Awards) { <p><b>Hạng @award.Rank</b> · @award.Competition</p> }
+                    @if (v.Audience == PromotionAudience.AssignedUsers) { <p>Chỉ tài khoản của bạn mới sử dụng được voucher này.</p> }
+                </div>
+                <div class="terms">
+                    <strong>@Label(v.Status)</strong>
+                    <code>@v.Code</code>
+                    @if (v.AccountLimit is null && v.Audience != PromotionAudience.AssignedUsers) { <span>Không giới hạn mỗi tài khoản</span> }
+                    @if (v.RemainingUses is { } remaining) { <span>Còn @remaining lượt</span> }
+                    @if (v.ReservedByMe > 0) { <span>@v.ReservedByMe lượt đang giữ cho đơn chờ thanh toán</span> }
+                    @if (v.Status == MyVoucherStatus.Scheduled) { <span>Bắt đầu @Time(v.StartsAt)</span> }
+                    <span>@(v.Audience == PromotionAudience.NewCustomers ? "Ưu đãi tài khoản mới đến" : "Hiệu lực đến") @Time(v.ExpiresAt)</span>
+                </div>
+                @if (v.Status == MyVoucherStatus.Available)
+                {
+                    <div class="actions">
+                        <button type="button" @onclick="() => CopyAsync(v.Code)">Sao chép mã</button>
+                        <a class="primary" href="/membership-plans" aria-label="@($"Dùng ngay voucher {v.Code} khi chọn gói tập")">Dùng ngay</a>
+                    </div>
+                }
+                @if (v.Uses.Count > 0)
+                {
+                    <details><summary>Lịch sử sử dụng (@v.Uses.Count)</summary>
+                        @foreach (var use in v.Uses) { <p>Đơn @use.OrderNumber · @Time(use.UsedAt) · @use.Code · Giảm @Vnd.Format(use.Discount)</p> }
+                    </details>
+                }
+            </article>
+        }
+        @if (filtered.Length > PageSize)
+        {
+            <nav class="filters" aria-label="Phân trang voucher">
+                <button disabled="@(_page == 1)" @onclick="() => _page--">Trước</button>
+                <span>Trang @_page / @((filtered.Length + PageSize - 1) / PageSize)</span>
+                <button disabled="@(_page * PageSize >= filtered.Length)" @onclick="() => _page++">Sau</button>
+            </nav>
+        }
+    }
+    <p role="status" aria-live="polite">@_notice</p>
+</section>
+
+@code {
+    private const string Available = "Khả dụng", Personal = "Được cấp riêng", Used = "Đã dùng hết lượt", Expired = "Hết hạn";
+    private static readonly string[] Filters = [Available, Personal, Used, Expired, "Tất cả"];
+    private const int PageSize = 10;
+    private readonly CancellationTokenSource _lifetime = new();
+    private MyVoucherResponse[] _rows = [];
+    private string _filter = Available, _search = "";
+    private string? _error, _notice;
+    private bool _loading;
+    private int _page = 1;
+    protected override Task OnInitializedAsync() => LoadAsync();
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try { _rows = await Api.MyVouchersAsync(ct: _lifetime.Token); }
+        catch (AuthApiException ex) { _error = ex.Message; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        finally { _loading = false; }
+    }
+    private IEnumerable<MyVoucherResponse> Visible() => _rows.Where(v =>
+        (_filter switch { Available => v.Status == MyVoucherStatus.Available, Personal => v.Audience == PromotionAudience.AssignedUsers,
+            Used => v.Status == MyVoucherStatus.Exhausted, Expired => v.Status == MyVoucherStatus.Expired, _ => true }) &&
+        (v.Name.Contains(_search.Trim(), StringComparison.OrdinalIgnoreCase) || v.Code.Contains(_search.Trim(), StringComparison.OrdinalIgnoreCase)));
+    private int Count(MyVoucherStatus status) => _rows.Count(v => v.Status == status);
+    private void SetFilter(string value) { _filter = value; ResetPage(); }
+    private void ResetPage() => _page = 1;
+    private static string Label(MyVoucherStatus status) => status switch {
+        MyVoucherStatus.Available => Available, MyVoucherStatus.Reserved => "Đang giữ cho đơn chờ thanh toán",
+        MyVoucherStatus.Exhausted => Used, MyVoucherStatus.Expired => Expired, MyVoucherStatus.Scheduled => "Chưa đến thời gian sử dụng", _ => "Tạm ngừng sử dụng" };
+    private static string Audience(PromotionAudience value) => value switch {
+        PromotionAudience.AssignedUsers => "Voucher được cấp riêng", PromotionAudience.NewCustomers => "Khách hàng mới", _ => "Tất cả khách hàng" };
+    private static string Time(DateTime utc) => DateTime.SpecifyKind(utc, DateTimeKind.Utc).AddHours(7).ToString("dd/MM/yyyy HH:mm");
+    private async Task CopyAsync(string code)
+    {
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", code); _notice = $"Đã sao chép mã {code}."; }
+        catch (JSException) { _notice = $"Trình duyệt chưa cho phép sao chép. Bạn có thể chọn và sao chép mã {code}."; }
+    }
+    public void Dispose() { _lifetime.Cancel(); _lifetime.Dispose(); }
+}

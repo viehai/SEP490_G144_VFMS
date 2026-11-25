@@ -24,21 +24,23 @@ else if (_error is not null)
 else if (_page is { Items.Count: > 0 } catalog)
 {
     <div class="grid grid-cols-1 gap-6 md:grid-cols-3">
-        @foreach (var plan in catalog.Items.OrderBy(p => p.DurationInDays ?? int.MaxValue).ThenBy(p => p.Price))
+        @foreach (var plan in catalog.Items)
         {
             var text = PlanDescription.Parse(plan.Description);
-            var months = PlanDescription.Months(plan.DurationInDays);
             var saving = Saving(catalog.Items, plan);
             <article @key="plan.Id" class="flex flex-col justify-between bg-[#F8F5F2] border border-[#D8D1CD] p-8 rounded-xl hover:border-[#B83A3A] transition-colors">
                 <div>
                     <header class="pb-6 border-b border-[#D8D1CD]">
                         <span class="font-heading text-xs font-bold uppercase tracking-widest text-[#6F6966] block mb-1">
-                            @(IsYoga(plan.ServiceType) ? "GÓI YOGA" : "GÓI TẬP GYM")@if (saving > 0)
+                            @(IsYoga(plan.ServiceType) ? "GÓI YOGA" : "GÓI TẬP GYM")@if (IsYoga(plan.ServiceType) && plan.YogaDifficultyLevel is { } level)
+                            {
+                                <span> · @VFMS.Contracts.Yoga.Validators.YogaRules.LevelLabel(level).ToUpperInvariant()</span>
+                            }@if (saving > 0)
                             {
                                 <span class="text-[#B83A3A]"> · TIẾT KIỆM @saving%</span>
                             }
                         </span>
-                        <h3 class="font-heading text-2xl font-black uppercase text-[#242424]">@plan.Name</h3>
+                        <h3 class="font-heading text-2xl font-black uppercase text-[#242424]"><a href="@PackageCatalogLinks.Detail(plan.ServiceType, plan.Id)" class="hover:text-[#B83A3A] hover:underline">@plan.Name</a></h3>
                         @if (text.Tagline is not null)
                         {
                             <p class="font-body text-xs text-[#6F6966] mt-1">@text.Tagline</p>
@@ -48,9 +50,11 @@ else if (_page is { Items.Count: > 0 } catalog)
                         <p class="font-heading text-3xl sm:text-4xl font-black text-[#242424]">
                             @Vnd.FormatAmount(plan.Price) <span class="text-lg font-bold text-[#B83A3A]">₫</span>
                         </p>
-                        <span class="font-body text-xs text-[#6F6966]">
-                            @(months > 1 ? $"Tương đương {Vnd.Format(Math.Round(plan.Price / months, 0))} / tháng" : Duration(plan))
-                        </span>
+                        <span class="font-body text-xs text-[#6F6966]">@Duration(plan)</span>
+                        @if (plan is { DurationUnit: MembershipDurationUnit.Month, DurationValue: > 1 })
+                        {
+                            <p class="mt-1 font-body text-xs text-[#6F6966]">Tương đương @Vnd.Format(Math.Round(plan.Price / plan.DurationValue.Value, 0)) / tháng</p>
+                        }
                     </div>
                     @if (text.Features.Count > 0)
                     {
@@ -66,8 +70,19 @@ else if (_page is { Items.Count: > 0 } catalog)
                             }
                         </ul>
                     }
+                    @if (!string.IsNullOrWhiteSpace(plan.TargetAudience))
+                    {
+                        <p class="mt-4 break-words font-body text-sm text-vfms-text-secondary"><strong>Phù hợp với ai</strong><br />@plan.TargetAudience</p>
+                    }
                 </div>
-                <div class="mt-6">
+                <div class="mt-6 space-y-3">
+                    @if (plan.IsSingleService)
+                    {
+                        <a href="@PackageCatalogLinks.Detail(plan.ServiceType, plan.Id)" aria-label="Xem chi tiết gói @plan.Name"
+                           class="flex min-h-[44px] items-center justify-center rounded-lg border border-vfms-border-strong px-4 py-2 text-center text-sm font-bold text-vfms-text hover:bg-vfms-surface-alt focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary">
+                            Xem chi tiết
+                        </a>
+                    }
                     <AuthorizeView Roles="Customer,Member" Context="buyer">
                         <Authorized>
                             <button type="button" disabled="@(Cart.Count >= MembershipCart.MaximumItems)" aria-label="Thêm @plan.Name vào giỏ"
@@ -114,12 +129,14 @@ else
     // Back to the price list after signing in.
     private string LoginUrl => $"/auth/login?returnUrl={Uri.EscapeDataString("/" + Navigation.ToBaseRelativePath(Navigation.Uri).Split('#')[0])}";
 
-    // Percent saved per month against the dearest per-month plan on this page; 0 for that plan itself.
     private static int Saving(IEnumerable<MembershipPlanCatalogItemResponse> plans, MembershipPlanCatalogItemResponse plan)
     {
-        decimal PerMonth(MembershipPlanCatalogItemResponse p) => p.Price / PlanDescription.Months(p.DurationInDays);
-        var dearest = plans.Max(PerMonth);
-        return dearest <= 0 ? 0 : (int)Math.Floor((dearest - PerMonth(plan)) / dearest * 100);
+        if (plan.DurationValue is not > 0)
+            return 0;
+
+        var comparison = plans.Where(p => p.DurationValue is > 0 && p.DurationUnit == plan.DurationUnit && p.ServiceType == plan.ServiceType);
+        var dearest = comparison.Max(p => p.Price / p.DurationValue!.Value);
+        return dearest <= 0 ? 0 : (int)Math.Floor((dearest - plan.Price / plan.DurationValue.Value) / dearest * 100);
     }
 
     private static bool IsYoga(string? type) => string.Equals(type, MembershipPlanServiceTypes.Yoga, StringComparison.OrdinalIgnoreCase);
@@ -162,8 +179,7 @@ else
     }
 
     private static string Duration(MembershipPlanCatalogItemResponse plan) =>
-        plan.DurationInMonths is > 0 ? $"{plan.DurationInMonths} tháng"
-            : plan.DurationInDays is > 0 ? $"{plan.DurationInDays} ngày"
+        plan.DurationValue is > 0 ? $"{plan.DurationValue} {(plan.DurationUnit == MembershipDurationUnit.Month ? "tháng" : "ngày")}"
             : "Chưa có thời hạn";
 
     public void Dispose()

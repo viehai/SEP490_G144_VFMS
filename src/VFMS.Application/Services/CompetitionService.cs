@@ -16,23 +16,25 @@ namespace VFMS.Application.Services;
 /// UC-61 Manage Competition Results (Staff) – records the preliminary score.
 /// UC-62 Review and Confirm Competition Results (Manager) – confirms the final result and grants the prize voucher.
 /// </summary>
-public sealed class CompetitionService : ICompetitionService
+public sealed partial class CompetitionService : ICompetitionService
 {
     private const string Entity = nameof(Competition);
     private const string JoinEntity = nameof(CompetitionJoin);
     private static readonly TimeSpan GymOffset = TimeSpan.FromHours(7);
 
     private readonly ICompetitionRepository _repository;
+    private readonly TimeProvider _clock;
 
-    public CompetitionService(ICompetitionRepository repository)
+    public CompetitionService(ICompetitionRepository repository, TimeProvider? clock = null)
     {
         _repository = repository;
+        _clock = clock ?? TimeProvider.System;
     }
 
     // ── Read (UC-56) ─────────────────────────────────────────────
 
     public async Task<Result<PagedResponse<CompetitionResponse>>> GetCompetitionsAsync(
-        CompetitionListRequest request, CancellationToken cancellationToken = default)
+        CompetitionListRequest request, CancellationToken cancellationToken = default, bool includeDrafts = false)
     {
         CompetitionStatus? status = null;
         if (!string.IsNullOrWhiteSpace(request.Status))
@@ -43,7 +45,7 @@ public sealed class CompetitionService : ICompetitionService
         }
 
         var (items, total) = await _repository.SearchCompetitionsAsync(
-            status, EquipmentService.Clean(request.Search), request.Page, request.PageSize, cancellationToken);
+            status, EquipmentService.Clean(request.Search), request.Page, request.PageSize, includeDrafts, cancellationToken);
 
         // Project each competition with its real participant count.
         // NOTE: a method group must not be passed directly to Select, otherwise it binds to
@@ -60,20 +62,20 @@ public sealed class CompetitionService : ICompetitionService
             request.Page, request.PageSize, total, responses));
     }
 
-    public async Task<Result<CompetitionResponse>> GetCompetitionAsync(int id, CancellationToken cancellationToken = default)
+    public async Task<Result<CompetitionResponse>> GetCompetitionAsync(int id, CancellationToken cancellationToken = default, bool includeDrafts = false)
     {
         var competition = await _repository.GetCompetitionWithDetailsAsync(id, cancellationToken);
-        if (competition is null)
+        if (competition is null || (!includeDrafts && competition.Status == CompetitionStatus.Draft))
             return NotFound<CompetitionResponse>();
         var participants = await _repository.CountActiveParticipantsAsync(id, cancellationToken);
         return Result<CompetitionResponse>.Success(ToResponse(competition, participants));
     }
 
     public async Task<Result<IReadOnlyList<CompetitionLeaderboardEntry>>> GetLeaderboardAsync(
-        int id, CancellationToken cancellationToken = default)
+        int id, CancellationToken cancellationToken = default, bool includeDrafts = false)
     {
         var competition = await _repository.GetCompetitionWithDetailsAsync(id, cancellationToken);
-        if (competition is null)
+        if (competition is null || (!includeDrafts && competition.Status == CompetitionStatus.Draft))
             return Result<IReadOnlyList<CompetitionLeaderboardEntry>>.Failure(
                 "Competition was not found.", "COMPETITION_NOT_FOUND", 404);
 
@@ -93,7 +95,7 @@ public sealed class CompetitionService : ICompetitionService
                 return new CompetitionLeaderboardEntry(
                     join.Id, join.Rank, join.MemberUserId,
                     join.Member?.FullName ?? string.Empty, join.Score, join.Status.ToString(),
-                    prize?.PrizeName, prize?.Voucher?.Code, join.Note);
+                    prize?.PrizeName, null, join.Note);
             })
             .ToArray();
         return Result<IReadOnlyList<CompetitionLeaderboardEntry>>.Success(entries);
@@ -114,7 +116,7 @@ public sealed class CompetitionService : ICompetitionService
                 $"This competition is {competition.Status} and does not accept registrations.",
                 "COMPETITION_NOT_OPEN", 409);
 
-        var now = DateTime.UtcNow;
+        var now = _clock.GetUtcNow().UtcDateTime;
         if (now < competition.RegistrationStart)
             return Result<CompetitionParticipantResponse>.Failure(
                 $"Registration opens at {competition.RegistrationStart:yyyy-MM-dd HH:mm} UTC.",
@@ -160,18 +162,21 @@ public sealed class CompetitionService : ICompetitionService
 
     // ── Manager actions (UC-59) ──────────────────────────────────
 
-    public async Task<Result<CompetitionResponse>> CreateAsync(
-        CompetitionRequest request, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default)
+    public Task<Result<CompetitionResponse>> CreateAsync(
+        CompetitionRequest request, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default) =>
+        _repository.WithResultsLockAsync(() => CreateLockedAsync(request, managerUserId, ipAddress, cancellationToken), cancellationToken);
+
+    private async Task<Result<CompetitionResponse>> CreateLockedAsync(
+        CompetitionRequest request, string managerUserId, string? ipAddress, CancellationToken cancellationToken)
     {
         var name = request.Name.Trim();
         if (await _repository.CompetitionNameExistsAsync(name, null, cancellationToken))
             return Result<CompetitionResponse>.Failure(
                 "A competition with this name already exists.", "COMPETITION_NAME_EXISTS", 409);
 
-        if (!await ValidatePrizesAsync(request.Prizes, cancellationToken))
-            return Result<CompetitionResponse>.Failure(
-                "One of the prize vouchers is not available. Choose an Active voucher or remove the prize reward.",
-                "COMPETITION_PRIZE_VOUCHER_INVALID");
+        var rewardError = await ValidateRewardsAsync(request.Prizes ?? [], request.EndDate, null, cancellationToken);
+        if (rewardError != null)
+            return RewardError<CompetitionResponse>(rewardError);
 
         var competition = new Competition
         {
@@ -205,15 +210,19 @@ public sealed class CompetitionService : ICompetitionService
         return Result<CompetitionResponse>.Success(ToResponse(saved, 0), 201);
     }
 
-    public async Task<Result<CompetitionResponse>> UpdateAsync(
-        int id, CompetitionRequest request, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default)
+    public Task<Result<CompetitionResponse>> UpdateAsync(
+        int id, CompetitionRequest request, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default) =>
+        _repository.WithResultsLockAsync(() => UpdateLockedAsync(id, request, managerUserId, ipAddress, cancellationToken), cancellationToken);
+
+    private async Task<Result<CompetitionResponse>> UpdateLockedAsync(
+        int id, CompetitionRequest request, string managerUserId, string? ipAddress, CancellationToken cancellationToken)
     {
-        var competition = await _repository.GetCompetitionAsync(id, cancellationToken);
+        var competition = await _repository.GetCompetitionWithDetailsAsync(id, cancellationToken);
         if (competition is null)
             return NotFound<CompetitionResponse>();
 
         if (competition.Status is CompetitionStatus.Ongoing or CompetitionStatus.Completed ||
-            competition.StartDate <= DateTime.UtcNow)
+            competition.StartDate <= _clock.GetUtcNow().UtcDateTime)
             return Result<CompetitionResponse>.Failure(
                 "A started or finished competition cannot be edited.", "COMPETITION_NOT_EDITABLE", 409);
 
@@ -222,10 +231,12 @@ public sealed class CompetitionService : ICompetitionService
             return Result<CompetitionResponse>.Failure(
                 "A competition with this name already exists.", "COMPETITION_NAME_EXISTS", 409);
 
-        if (!await ValidatePrizesAsync(request.Prizes, cancellationToken))
-            return Result<CompetitionResponse>.Failure(
-                "One of the prize vouchers is not available. Choose an Active voucher or remove the prize reward.",
-                "COMPETITION_PRIZE_VOUCHER_INVALID");
+        if (competition.Status == CompetitionStatus.Published &&
+            !PrizeRequests(competition).OrderBy(p => p.Rank).SequenceEqual((request.Prizes ?? []).OrderBy(p => p.Rank)))
+            return RewardError<CompetitionResponse>("Phần thưởng đã được công bố. Không thể sửa thứ hạng hoặc voucher trong biểu mẫu này.");
+        var rewardError = await ValidateRewardsAsync(request.Prizes ?? [], request.EndDate, id, cancellationToken);
+        if (rewardError != null)
+            return RewardError<CompetitionResponse>(rewardError);
 
         var before = $"Name={competition.CompetitionName}; Start={competition.StartDate:yyyy-MM-dd}; End={competition.EndDate:yyyy-MM-dd}";
         competition.CompetitionName = name;
@@ -238,18 +249,8 @@ public sealed class CompetitionService : ICompetitionService
         competition.MaxParticipants = request.MaxParticipants;
         competition.ImageUrl = EquipmentService.Clean(request.ImageUrl);
 
-        // Replace the prize list with the submitted one.
-        competition.Prizes.Clear();
-        foreach (var prize in request.Prizes ?? [])
-            competition.Prizes.Add(new CompetitionPrize
-            {
-                CompetitionId = competition.Id,
-                PrizeName = prize.PrizeName.Trim(),
-                Rank = prize.Rank,
-                Description = EquipmentService.Clean(prize.Description),
-                VoucherId = prize.VoucherId
-            });
-
+        ApplyPrizeChanges(competition, request.Prizes ?? []);
+        
         var audit = AuditedWriter.Audit(managerUserId, AuditActionType.Update, Entity, ipAddress, before,
             $"Name={name}; Start={competition.StartDate:yyyy-MM-dd}; End={competition.EndDate:yyyy-MM-dd}");
         await AuditedWriter.SaveChangedAsync(_repository, competition, audit, null, cancellationToken);
@@ -259,21 +260,28 @@ public sealed class CompetitionService : ICompetitionService
         return Result<CompetitionResponse>.Success(ToResponse(saved, participants));
     }
 
-    public async Task<Result<CompetitionResponse>> PublishAsync(
-        int id, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default)
+    public Task<Result<CompetitionResponse>> PublishAsync(
+        int id, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default) =>
+        _repository.WithResultsLockAsync(() => PublishLockedAsync(id, managerUserId, ipAddress, cancellationToken), cancellationToken);
+
+    private async Task<Result<CompetitionResponse>> PublishLockedAsync(
+        int id, string managerUserId, string? ipAddress, CancellationToken cancellationToken)
     {
-        var competition = await _repository.GetCompetitionAsync(id, cancellationToken);
+        var competition = await _repository.GetCompetitionWithDetailsAsync(id, cancellationToken);
         if (competition is null)
             return NotFound<CompetitionResponse>();
         if (competition.Status != CompetitionStatus.Draft)
             return Result<CompetitionResponse>.Failure(
                 $"Only a Draft competition can be published. Current status: {competition.Status}.",
                 "COMPETITION_INVALID_STATE", 409);
-        if (competition.RegistrationEnd < DateTime.UtcNow)
+        if (competition.RegistrationEnd < _clock.GetUtcNow().UtcDateTime)
             return Result<CompetitionResponse>.Failure(
                 "The registration period already ended. Adjust the dates before publishing.",
                 "COMPETITION_REGISTRATION_ENDED", 409);
 
+        var rewardError = await ValidateRewardsAsync(PrizeRequests(competition), competition.EndDate, id, cancellationToken);
+        if (rewardError != null)
+            return RewardError<CompetitionResponse>(rewardError);
         competition.Status = CompetitionStatus.Published;
         var audit = AuditedWriter.Audit(managerUserId, AuditActionType.Update, Entity, ipAddress,
             $"Status={CompetitionStatus.Draft}", $"Status={CompetitionStatus.Published}");
@@ -284,8 +292,12 @@ public sealed class CompetitionService : ICompetitionService
         return Result<CompetitionResponse>.Success(ToResponse(saved, participants));
     }
 
-    public async Task<Result<CompetitionResponse>> CancelAsync(
-        int id, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default)
+    public Task<Result<CompetitionResponse>> CancelAsync(
+        int id, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default) =>
+        _repository.WithResultsLockAsync(() => CancelLockedAsync(id, managerUserId, ipAddress, cancellationToken), cancellationToken);
+
+    private async Task<Result<CompetitionResponse>> CancelLockedAsync(
+        int id, string managerUserId, string? ipAddress, CancellationToken cancellationToken)
     {
         var competition = await _repository.GetCompetitionAsync(id, cancellationToken);
         if (competition is null)
@@ -304,8 +316,12 @@ public sealed class CompetitionService : ICompetitionService
         return Result<CompetitionResponse>.Success(ToResponse(saved, participants));
     }
 
-    public async Task<Result<CompetitionResponse>> CompleteAsync(
-        int id, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default)
+    public Task<Result<CompetitionResponse>> CompleteAsync(
+        int id, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default) =>
+        _repository.WithResultsLockAsync(() => CompleteLockedAsync(id, managerUserId, ipAddress, cancellationToken), cancellationToken);
+
+    private async Task<Result<CompetitionResponse>> CompleteLockedAsync(
+        int id, string managerUserId, string? ipAddress, CancellationToken cancellationToken)
     {
         var competition = await _repository.GetCompetitionAsync(id, cancellationToken);
         if (competition is null)
@@ -314,7 +330,7 @@ public sealed class CompetitionService : ICompetitionService
             return Result<CompetitionResponse>.Failure(
                 $"A {competition.Status} competition cannot be completed manually.", "COMPETITION_INVALID_STATE", 409);
 
-        var now = DateTime.UtcNow;
+        var now = _clock.GetUtcNow().UtcDateTime;
         if (competition.StartDate > now)
             return Result<CompetitionResponse>.Failure(
                 "A competition can only be completed manually after it has started.",
@@ -337,8 +353,12 @@ public sealed class CompetitionService : ICompetitionService
         CompetitionParticipantListRequest request, CancellationToken cancellationToken = default) =>
         SearchParticipantsAsync(request, null, null, cancellationToken);
 
-    public async Task<Result<CompetitionParticipantResponse>> DisqualifyAsync(
-        int joinId, string staffUserId, string? ipAddress, CancellationToken cancellationToken = default)
+    public Task<Result<CompetitionParticipantResponse>> DisqualifyAsync(
+        int joinId, string staffUserId, string? ipAddress, CancellationToken cancellationToken = default) =>
+        _repository.WithResultsLockAsync(() => DisqualifyLockedAsync(joinId, staffUserId, ipAddress, cancellationToken), cancellationToken);
+
+    private async Task<Result<CompetitionParticipantResponse>> DisqualifyLockedAsync(
+        int joinId, string staffUserId, string? ipAddress, CancellationToken cancellationToken)
     {
         var join = await _repository.GetParticipantAsync(joinId, cancellationToken);
         if (join is null)
@@ -357,8 +377,12 @@ public sealed class CompetitionService : ICompetitionService
         return await ReloadParticipant(joinId, cancellationToken);
     }
 
-    public async Task<Result<CompetitionParticipantResponse>> ReinstateAsync(
-        int joinId, string staffUserId, string? ipAddress, CancellationToken cancellationToken = default)
+    public Task<Result<CompetitionParticipantResponse>> ReinstateAsync(
+        int joinId, string staffUserId, string? ipAddress, CancellationToken cancellationToken = default) =>
+        _repository.WithResultsLockAsync(() => ReinstateLockedAsync(joinId, staffUserId, ipAddress, cancellationToken), cancellationToken);
+
+    private async Task<Result<CompetitionParticipantResponse>> ReinstateLockedAsync(
+        int joinId, string staffUserId, string? ipAddress, CancellationToken cancellationToken)
     {
         var join = await _repository.GetParticipantAsync(joinId, cancellationToken);
         if (join is null)
@@ -376,8 +400,12 @@ public sealed class CompetitionService : ICompetitionService
 
     // ── Results (UC-61, UC-62) ───────────────────────────────────
 
-    public async Task<Result<CompetitionParticipantResponse>> RecordResultAsync(
-        int joinId, RecordCompetitionResultRequest request, string staffUserId, string? ipAddress, CancellationToken cancellationToken = default)
+    public Task<Result<CompetitionParticipantResponse>> RecordResultAsync(
+        int joinId, RecordCompetitionResultRequest request, string staffUserId, string? ipAddress, CancellationToken cancellationToken = default) =>
+        _repository.WithResultsLockAsync(() => RecordResultLockedAsync(joinId, request, staffUserId, ipAddress, cancellationToken), cancellationToken);
+
+    private async Task<Result<CompetitionParticipantResponse>> RecordResultLockedAsync(
+        int joinId, RecordCompetitionResultRequest request, string staffUserId, string? ipAddress, CancellationToken cancellationToken)
     {
         var join = await _repository.GetParticipantAsync(joinId, cancellationToken);
         if (join is null)
@@ -401,100 +429,6 @@ public sealed class CompetitionService : ICompetitionService
         return await ReloadParticipant(joinId, cancellationToken);
     }
 
-    public async Task<Result<CompetitionParticipantResponse>> ConfirmResultAsync(
-        ConfirmCompetitionResultRequest request, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default)
-    {
-        var join = await _repository.GetParticipantAsync(request.JoinId, cancellationToken);
-        if (join is null)
-            return NotFound<CompetitionParticipantResponse>();
-        if (join.Status == CompetitionJoinStatus.Disqualified)
-            return Result<CompetitionParticipantResponse>.Failure(
-                "A disqualified participant cannot have a confirmed result.", "COMPETITION_PARTICIPANT_INVALID_STATE", 409);
-
-        var competition = await _repository.GetCompetitionAsync(join.CompetitionId, cancellationToken);
-        if (competition is null)
-            return NotFound<CompetitionParticipantResponse>();
-
-        // A result can only be confirmed once the competition has finished.
-        if (competition.Status != CompetitionStatus.Completed)
-            return Result<CompetitionParticipantResponse>.Failure(
-                $"Results can only be confirmed after the competition is completed. Current status: {competition.Status}.",
-                "COMPETITION_NOT_COMPLETED", 409);
-
-        var rank = request.Rank ?? join.Rank;
-        if (rank is null)
-            return Result<CompetitionParticipantResponse>.Failure(
-                "A rank is required to confirm the result.", "COMPETITION_RESULT_RANK_REQUIRED");
-
-        var prize = await _repository.GetPrizeForRankAsync(competition.Id, rank.Value, cancellationToken);
-        if (request.GrantPrizeVoucher && prize?.VoucherId is null)
-            return Result<CompetitionParticipantResponse>.Failure(
-                $"Rank {rank} has no prize voucher to grant.", "COMPETITION_PRIZE_NOT_FOUND", 409);
-
-        var before = $"Status={join.Status}; Score={join.Score}; Rank={join.Rank}";
-        join.Score = request.Score ?? join.Score;
-        join.Rank = rank;
-        join.Note = EquipmentService.Clean(request.Note) ?? join.Note;
-        join.Status = CompetitionJoinStatus.Completed;
-        join.ConfirmedAt = DateTime.UtcNow;
-        join.ConfirmedByUserId = managerUserId;
-
-        var notifications = new List<Notification>();
-        if (request.GrantPrizeVoucher && prize?.VoucherId is { } voucherId)
-        {
-            var voucher = await _repository.GetVoucherAsync(voucherId, cancellationToken);
-            if (voucher is not null)
-            {
-                var code = voucher.Code;
-                notifications.Add(AuditedWriter.Notify(join.MemberUserId, managerUserId, "Competition prize awarded",
-                    $"Congratulations! You won \"{prize.PrizeName}\" in {competition.CompetitionName}. " +
-                    $"Use voucher code {code} at checkout.", JoinEntity, NotificationType.CompetitionResult));
-            }
-        }
-
-        var audit = AuditedWriter.Audit(managerUserId, AuditActionType.Update, JoinEntity, ipAddress, before,
-            $"Status={join.Status}; Score={join.Score}; Rank={join.Rank}");
-        await AuditedWriter.SaveChangedAsync(_repository, join, audit, notifications, cancellationToken);
-        return await ReloadParticipant(request.JoinId, cancellationToken);
-    }
-
-    public async Task<Result<int>> ConfirmAllResultsAsync(
-        int competitionId, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default)
-    {
-        var competition = await _repository.GetCompetitionAsync(competitionId, cancellationToken);
-        if (competition is null)
-            return NotFound<int>();
-        if (competition.Status != CompetitionStatus.Completed)
-            return Result<int>.Failure(
-                $"Results can only be confirmed after the competition is completed. Current status: {competition.Status}.",
-                "COMPETITION_NOT_COMPLETED", 409);
-
-        var (_, total) = await _repository.SearchParticipantsAsync(competitionId, null, null, 1, 500, cancellationToken);
-        var participants = await _repository.SearchParticipantsAsync(competitionId, null, null, 1, Math.Max(total, 1), cancellationToken);
-
-        var confirmed = 0;
-        foreach (var join in participants.Items)
-        {
-            if (join.Status == CompetitionJoinStatus.Completed || join.Status == CompetitionJoinStatus.Disqualified)
-                continue;
-            if (join.Rank is null)
-                continue;
-            join.Status = CompetitionJoinStatus.Completed;
-            join.ConfirmedAt = DateTime.UtcNow;
-            join.ConfirmedByUserId = managerUserId;
-            confirmed++;
-        }
-
-        if (confirmed == 0)
-            return Result<int>.Failure(
-                "There is no result with a rank to confirm.", "COMPETITION_NO_RESULT_TO_CONFIRM", 409);
-
-        var audit = AuditedWriter.Audit(managerUserId, AuditActionType.Update, Entity, ipAddress,
-            newValue: $"Confirmed={confirmed} results");
-        await AuditedWriter.SaveChangedAsync(_repository, competition, audit, null, cancellationToken);
-        return Result<int>.Success(confirmed);
-    }
-
     // ── Helpers ──────────────────────────────────────────────────
 
     private async Task<Result<PagedResponse<CompetitionParticipantResponse>>> SearchParticipantsAsync(
@@ -516,27 +450,15 @@ public sealed class CompetitionService : ICompetitionService
             // A member sees only their own history (UC-58), so the search text does not apply there.
             var (ownItems, ownTotal) = await _repository.SearchMemberRegistrationsAsync(
                 memberUserId, request.CompetitionId, status, request.Page, request.PageSize, cancellationToken);
+            var awards = await _repository.GetMemberAwardsAsync(memberUserId, ownItems.Select(j => j.CompetitionId).ToArray(), cancellationToken);
             return Result<PagedResponse<CompetitionParticipantResponse>>.Success(new PagedResponse<CompetitionParticipantResponse>(
-                request.Page, request.PageSize, ownTotal, ownItems.Select(ToParticipant).ToArray()));
+                request.Page, request.PageSize, ownTotal, ownItems.Select(j => ToParticipant(j) with { AwardedVoucherName = awards.GetValueOrDefault(j.CompetitionId) }).ToArray()));
         }
 
         var (items, total) = await _repository.SearchParticipantsAsync(
             request.CompetitionId, status, search, request.Page, request.PageSize, cancellationToken);
         return Result<PagedResponse<CompetitionParticipantResponse>>.Success(new PagedResponse<CompetitionParticipantResponse>(
             request.Page, request.PageSize, total, items.Select(ToParticipant).ToArray()));
-    }
-
-    private async Task<bool> ValidatePrizesAsync(IReadOnlyCollection<CompetitionPrizeRequest>? prizes, CancellationToken cancellationToken)
-    {
-        if (prizes is null || prizes.Count == 0)
-            return true;
-        foreach (var prize in prizes.Where(p => p.VoucherId.HasValue))
-        {
-            var voucher = await _repository.GetVoucherAsync(prize.VoucherId!.Value, cancellationToken);
-            if (voucher is null || voucher.VoucherStatus != VoucherStatus.Active)
-                return false;
-        }
-        return true;
     }
 
     private async Task<Result<CompetitionParticipantResponse>> ReloadParticipant(int joinId, CancellationToken cancellationToken)
@@ -550,11 +472,11 @@ public sealed class CompetitionService : ICompetitionService
     private static CompetitionResponse ToResponse(Competition c, int participantCount) =>
         new(c.Id, c.CompetitionName, c.Description, c.Rules, c.RegistrationStart, c.RegistrationEnd,
             c.StartDate, c.EndDate, c.MaxParticipants, c.Status.ToString(), c.ImageUrl,
-            c.CreatedByUserId, c.CreatedByUser?.FullName, participantCount,
-            c.Prizes.OrderBy(p => p.Rank).Select(ToPrize).ToArray(), c.CreatedAt, c.UpdatedAt);
+            c.CreatedByUserId ?? string.Empty, c.CreatedByUser?.FullName, participantCount,
+            c.Prizes.Where(p => !p.IsDeleted).OrderBy(p => p.Rank).Select(ToPrize).ToArray(), c.CreatedAt, c.UpdatedAt);
 
     private static CompetitionPrizeResponse ToPrize(CompetitionPrize p) =>
-        new(p.Id, p.CompetitionId, p.PrizeName, p.Rank, p.Description, p.VoucherId, p.Voucher?.Code);
+        new(p.Id, p.CompetitionId, p.PrizeName, p.Rank, p.Description, p.VoucherId, null, p.Voucher == null ? null : RewardDetails(p.Voucher));
 
     private static CompetitionParticipantResponse ToParticipant(CompetitionJoin j) =>
         new(j.Id, j.CompetitionId, j.Competition?.CompetitionName ?? string.Empty, j.MemberUserId,

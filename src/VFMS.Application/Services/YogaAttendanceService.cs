@@ -60,10 +60,10 @@ public sealed class YogaAttendanceService : IYogaAttendanceService
         {
             var roster = Roster(session);
             if (request.Marks.Any(m => roster.All(b => b.Id != m.BookingId)))
-                return Result<YogaAttendanceRosterResponse>.Failure("A marked booking is not on this session's roster.", "NOT_ON_ROSTER", 400);
+                return Result<YogaAttendanceRosterResponse>.Failure("Có lượt đặt chỗ được điểm danh nhưng không thuộc danh sách buổi học này.", "NOT_ON_ROSTER", 400);
             if (roster.Any(b => request.Marks.All(m => m.BookingId != b.Id) && RowOf(session, b) is null))   // GBR-87
                 return Result<YogaAttendanceRosterResponse>.Failure(
-                    "Mark every booked member as Attended or No-show.", "ROSTER_INCOMPLETE", 400);
+                    "Hãy điểm danh mọi hội viên đã đặt chỗ: Có mặt hoặc Vắng mặt.", "ROSTER_INCOMPLETE", 400);
 
             foreach (var mark in request.Marks)
                 Mark(session, roster.First(b => b.Id == mark.BookingId),
@@ -72,7 +72,7 @@ public sealed class YogaAttendanceService : IYogaAttendanceService
             _repository.Add(AuditedWriter.Audit(userId, AuditActionType.Update, nameof(YogaAttendance), null,
                 newValue: $"Session={session.Id}; Marked={request.Marks.Count}; Late={SubmittedLate(session)}"));
             await _repository.SaveChangesAsync(cancellationToken);
-            return Result<YogaAttendanceRosterResponse>.Success(ToResponse(session, "Attendance updated successfully."));   // MSG-03
+            return Result<YogaAttendanceRosterResponse>.Success(ToResponse(session, "Cập nhật điểm danh thành công."));   // MSG-03
         }, cancellationToken);
 
     /// <summary>Runs a roster change under the session lock, after the access, closed and timing checks.</summary>
@@ -88,9 +88,9 @@ public sealed class YogaAttendanceService : IYogaAttendanceService
             var now = _clock.GetUtcNow().UtcDateTime;
             result = !CanOpen(session, userId, isStaff) ? NotFound()
                 : session!.AttendanceSubmittedAt is not null
-                    ? Result<YogaAttendanceRosterResponse>.Failure("Attendance for this session is already submitted.", "ATTENDANCE_CLOSED", 409)
+                    ? Result<YogaAttendanceRosterResponse>.Failure("Điểm danh buổi học này đã được nộp.", "ATTENDANCE_CLOSED", 409)
                 : now < Start(session) - OpensBefore
-                    ? Result<YogaAttendanceRosterResponse>.Failure("Attendance opens 30 minutes before the session starts.", "SESSION_NOT_STARTED", 409)
+                    ? Result<YogaAttendanceRosterResponse>.Failure("Điểm danh mở 30 phút trước khi buổi học bắt đầu.", "SESSION_NOT_STARTED", 409)
                 : await work(session, now);
         }, cancellationToken);
         return result;
@@ -143,5 +143,5 @@ public sealed class YogaAttendanceService : IYogaAttendanceService
     private static DateTime Start(YogaClassSchedule s) => YogaTime.ToUtc(s.ScheduledDate, s.StartTime);
 
     private static Result<YogaAttendanceRosterResponse> NotFound() =>
-        Result<YogaAttendanceRosterResponse>.Failure("Yoga session not found.", "YOGA_SESSION_NOT_FOUND", 404);
+        Result<YogaAttendanceRosterResponse>.Failure("Không tìm thấy buổi học yoga.", "YOGA_SESSION_NOT_FOUND", 404);
 }

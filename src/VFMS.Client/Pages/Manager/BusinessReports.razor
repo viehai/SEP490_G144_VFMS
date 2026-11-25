@@ -1,6 +1,7 @@
 @page "/manager/business-reports"
 @page "/admin/business-reports"
 @layout ManagerAdminLayout
+@using VFMS.Client.Components.Operations
 @using System.Globalization
 @using System.Net
 @using Microsoft.AspNetCore.Authorization
@@ -33,7 +34,7 @@
     <section class="rounded-[12px] border border-vfms-border bg-vfms-surface p-5 sm:p-6 shadow-sm" aria-labelledby="generate-title">
         <h2 id="generate-title" class="text-base font-bold text-vfms-text">Tạo báo cáo</h2>
         <EditForm Model="_generate" OnValidSubmit="() => GenerateAsync(false)" class="mt-4" novalidate>
-            <ContractValidation TRequest="GenerateBusinessReportRequest" Validator="_generateValidator" CreateRequest="CreateGenerateRequest" @ref="_generateValidation" />
+            <OperationsValidation TRequest="GenerateBusinessReportRequest" Validator="_generateValidator" CreateRequest="CreateGenerateRequest" @ref="_generateValidation" />
             <ValidationSummary />
             <fieldset disabled="@_working" class="mt-4 flex flex-wrap items-end gap-3">
                 <label class="text-xs font-semibold text-vfms-text" for="report-period">
@@ -46,7 +47,7 @@
                 </label>
                 <label class="text-xs font-semibold text-vfms-text" for="report-date">
                     Một ngày trong kỳ
-                    <InputDate id="report-date" class="@Field" @bind-Value="_generate.Date" />
+                    <InputDate id="report-date" ParsingErrorMessage="Nhập ngày hợp lệ." class="@Field" @bind-Value="_generate.Date" />
                 </label>
                 <button type="submit" class="@PrimaryButton">@(_working ? "Đang tạo..." : "Tạo báo cáo")</button>
             </fieldset>
@@ -68,7 +69,7 @@
         <section class="rounded-[12px] border border-vfms-border bg-vfms-surface p-5 sm:p-6 shadow-sm" aria-labelledby="report-title">
             <div class="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                    <h2 id="report-title" class="text-base font-bold text-vfms-text">@report.ReportName</h2>
+                    <h2 id="report-title" class="text-base font-bold text-vfms-text">@BusinessReportNames.For(report.PeriodType, report.PeriodStart, report.PeriodEnd)</h2>
                     <p class="mt-1 text-xs text-vfms-text-secondary">@PeriodLabel(report.PeriodType) · @report.PeriodStart.ToString("dd/MM/yyyy") – @report.PeriodEnd.ToString("dd/MM/yyyy") · Tạo bởi @(report.GeneratedByName ?? "—") lúc @report.GeneratedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</p>
                 </div>
                 <div class="flex flex-wrap gap-2">
@@ -157,16 +158,16 @@
         <div class="border-b border-vfms-border p-5 bg-vfms-surface-alt/40">
             <h2 id="history-title" class="mb-3 text-sm font-bold text-vfms-text">Lịch sử báo cáo</h2>
             <EditForm Model="_filter" OnValidSubmit="() => LoadAsync(1)" novalidate>
-                <ContractValidation TRequest="BusinessReportListRequest" Validator="_listValidator" CreateRequest="() => CreateListRequest(1)" />
+                <OperationsValidation TRequest="BusinessReportListRequest" Validator="_listValidator" CreateRequest="() => CreateListRequest(1)" />
                 <ValidationSummary />
                 <fieldset disabled="@_loading" class="flex flex-wrap items-end gap-3">
                     <label class="text-xs font-semibold text-vfms-text" for="filter-from">
                         Từ ngày
-                        <InputDate id="filter-from" class="@Field" @bind-Value="_filter.From" />
+                        <InputDate id="filter-from" ParsingErrorMessage="Nhập ngày hợp lệ." class="@Field" @bind-Value="_filter.From" />
                     </label>
                     <label class="text-xs font-semibold text-vfms-text" for="filter-to">
                         Đến ngày
-                        <InputDate id="filter-to" class="@Field" @bind-Value="_filter.To" />
+                        <InputDate id="filter-to" ParsingErrorMessage="Nhập ngày hợp lệ." class="@Field" @bind-Value="_filter.To" />
                     </label>
                     <button type="submit" class="@Button">Áp dụng</button>
                 </fieldset>
@@ -187,12 +188,12 @@
                         @foreach (var row in list.Items)
                         {
                             <tr @key="row.Id">
-                                <th scope="row">@row.ReportName</th>
+                                <th scope="row">@BusinessReportNames.For(row.PeriodType, row.PeriodStart, row.PeriodEnd)</th>
                                 <td>@PeriodLabel(row.PeriodType)</td>
                                 <td class="whitespace-nowrap">@row.PeriodStart.ToString("dd/MM/yyyy") – @row.PeriodEnd.ToString("dd/MM/yyyy")</td>
                                 <td>@(row.GeneratedByName ?? "—")</td>
                                 <td class="whitespace-nowrap">@row.GeneratedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
-                                <td><button type="button" class="@Button" aria-label="Xem @row.ReportName" @onclick="() => OpenAsync(row.Id)">Xem</button></td>
+                                <td><button type="button" class="@Button" aria-label="Xem @BusinessReportNames.For(row.PeriodType, row.PeriodStart, row.PeriodEnd)" @onclick="() => OpenAsync(row.Id)">Xem</button></td>
                             </tr>
                         }
                     </tbody>
@@ -224,7 +225,7 @@
     private readonly FilterModel _filter = new();
     private readonly GenerateBusinessReportRequestValidator _generateValidator = new();
     private readonly BusinessReportListRequestValidator _listValidator = new();
-    private ContractValidation<GenerateBusinessReportRequest>? _generateValidation;
+    private OperationsValidation<GenerateBusinessReportRequest>? _generateValidation;
     private PagedResponse<BusinessReportSummaryResponse>? _page;
     private BusinessReportResponse? _selected;
     private BusinessReportTrendResponse? _trend;
@@ -251,7 +252,7 @@
             _selected = await Api.GenerateReportAsync(CreateGenerateRequest() with { ConfirmNew = confirmNew }, _lifetime.Token);
             _confirmNew = false;
             _ = LoadTrendAsync(_selected);
-            _notice = $"Đã tạo báo cáo {_selected.ReportName}.";
+            _notice = $"Đã tạo {BusinessReportNames.For(_selected.PeriodType, _selected.PeriodStart, _selected.PeriodEnd).ToLowerInvariant()}.";
             await LoadAsync(1);
         }
         catch (AuthApiException error) when (error.StatusCode == HttpStatusCode.Conflict) { _confirmNew = true; }

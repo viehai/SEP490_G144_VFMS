@@ -715,6 +715,10 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<int>("GymId")
                         .HasColumnType("int");
 
+                    b.Property<string>("ImageUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
@@ -952,6 +956,12 @@ namespace VFMS.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(128)");
 
+                    b.Property<int?>("DefaultFreezeAllowanceDays")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DefaultFreezeAllowanceUnit")
+                        .HasColumnType("int");
+
                     b.Property<int>("DefaultMaxFreezeCount")
                         .HasColumnType("int");
 
@@ -961,16 +971,28 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<int>("EligibilityPaidDays")
                         .HasColumnType("int");
 
+                    b.Property<int>("EligibilityPaidDaysUnit")
+                        .HasColumnType("int");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
                     b.Property<bool>("IsGlobal")
                         .HasColumnType("bit");
 
+                    b.Property<int>("MaximumFreezeDaysUnit")
+                        .HasColumnType("int");
+
                     b.Property<int?>("MinFreezeDaysPerRequest")
                         .HasColumnType("int");
 
+                    b.Property<int>("MinimumFreezeDaysUnit")
+                        .HasColumnType("int");
+
                     b.Property<int>("MinimumRequestDays")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MinimumRequestDaysUnit")
                         .HasColumnType("int");
 
                     b.Property<string>("PolicyName")
@@ -994,7 +1016,10 @@ namespace VFMS.Infrastructure.Migrations
                         .IsUnique()
                         .HasFilter("[IsGlobal] = 1 AND [IsDeleted] = 0 AND [PolicyStatus] = 'Active'");
 
-                    b.ToTable("FreezePolicies");
+                    b.ToTable("FreezePolicies", t =>
+                        {
+                            t.HasCheckConstraint("CK_FreezePolicies_DurationUnits", "([EligibilityPaidDaysUnit] = 0 OR ([EligibilityPaidDaysUnit] = 1 AND [EligibilityPaidDays] % 30 = 0)) AND ([MinimumRequestDaysUnit] = 0 OR ([MinimumRequestDaysUnit] = 1 AND [MinimumRequestDays] % 30 = 0)) AND ([MinimumFreezeDaysUnit] = 0 OR ([MinimumFreezeDaysUnit] = 1 AND [MinFreezeDaysPerRequest] IS NOT NULL AND [MinFreezeDaysPerRequest] % 30 = 0)) AND ([MaximumFreezeDaysUnit] = 0 OR ([MaximumFreezeDaysUnit] = 1 AND [DefaultMaxFreezeDays] % 30 = 0)) AND ([DefaultFreezeAllowanceUnit] = 0 OR ([DefaultFreezeAllowanceUnit] = 1 AND [DefaultFreezeAllowanceDays] IS NOT NULL AND [DefaultFreezeAllowanceDays] % 30 = 0)) AND ([DefaultFreezeAllowanceDays] IS NULL OR [DefaultFreezeAllowanceDays] >= 0)");
+                        });
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.Gym", b =>
@@ -1511,6 +1536,18 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<int>("FreezeCount")
                         .HasColumnType("int");
 
+                    b.Property<int?>("GrantedFreezeAllowanceDays")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("GrantedFreezeCount")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("GrantedMaxFreezeDays")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("GrantedMinFreezeDays")
+                        .HasColumnType("int");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
@@ -1549,7 +1586,10 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.HasIndex("PackageComponentId");
 
-                    b.ToTable("MemberMemberships");
+                    b.ToTable("MemberMemberships", t =>
+                        {
+                            t.HasCheckConstraint("CK_MemberMemberships_GrantedFreezeAllowanceDays", "[GrantedFreezeAllowanceDays] >= 0");
+                        });
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.MembershipFreeze", b =>
@@ -2229,6 +2269,12 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<string>("Description")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<int?>("FreezeAllowanceOverrideDays")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("FreezeAllowanceOverrideUnit")
+                        .HasColumnType("int");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
@@ -2245,12 +2291,19 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<decimal>("Price")
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<string>("TargetAudience")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
 
-                    b.ToTable("Packages");
+                    b.ToTable("Packages", t =>
+                        {
+                            t.HasCheckConstraint("CK_Packages_FreezeAllowanceOverride", "([FreezeAllowanceOverrideDays] IS NULL AND [FreezeAllowanceOverrideUnit] IS NULL) OR ([FreezeAllowanceOverrideDays] IS NOT NULL AND [FreezeAllowanceOverrideUnit] IS NOT NULL AND [FreezeAllowanceOverrideDays] >= 0 AND ([FreezeAllowanceOverrideUnit] = 0 OR ([FreezeAllowanceOverrideUnit] = 1 AND [FreezeAllowanceOverrideDays] % 30 = 0)))");
+                        });
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.PackageComponent", b =>
@@ -2296,6 +2349,9 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<int?>("MaxFreezeDaysPerRequest")
                         .HasColumnType("int");
 
+                    b.Property<int?>("MinFreezeDaysPerRequest")
+                        .HasColumnType("int");
+
                     b.Property<int?>("PTFreezeMaxTotalDays")
                         .HasColumnType("int");
 
@@ -2311,14 +2367,13 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<int?>("YogaClassTypeId")
-                        .HasColumnType("int");
+                    b.Property<string>("YogaDifficultyLevel")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
                     b.HasKey("Id");
 
                     b.HasIndex("PackageId");
-
-                    b.HasIndex("YogaClassTypeId");
 
                     b.ToTable("PackageComponents");
                 });
@@ -2637,9 +2692,6 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<int?>("EquipmentId")
                         .HasColumnType("int");
 
-                    b.Property<decimal>("EstimatedUnitPrice")
-                        .HasColumnType("decimal(18,2)");
-
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
@@ -2655,6 +2707,9 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.Property<string>("Reason")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal?>("UnitPrice")
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
@@ -3324,6 +3379,9 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<int?>("PTPurchaseId")
                         .HasColumnType("int");
 
+                    b.Property<int?>("PackageId")
+                        .HasColumnType("int");
+
                     b.Property<int>("Rating")
                         .HasColumnType("int");
 
@@ -3361,6 +3419,10 @@ namespace VFMS.Infrastructure.Migrations
                     b.HasIndex("TrainerProfileId");
 
                     b.HasIndex("TrainerUserId");
+
+                    b.HasIndex("PackageId", "MemberUserId")
+                        .IsUnique()
+                        .HasFilter("[PackageId] IS NOT NULL AND [IsDeleted] = 0");
 
                     b.ToTable("TrainerReviews");
                 });
@@ -3403,6 +3465,53 @@ namespace VFMS.Infrastructure.Migrations
                     b.ToTable("TrainerRoles");
                 });
 
+            modelBuilder.Entity("VFMS.Domain.Entities.UploadedImage", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<byte[]>("Content")
+                        .IsRequired()
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<Guid>("ImageKey")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UploadedByUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ImageKey")
+                        .IsUnique();
+
+                    b.ToTable("UploadedImages");
+                });
+
             modelBuilder.Entity("VFMS.Domain.Entities.Voucher", b =>
                 {
                     b.Property<int>("Id")
@@ -3410,6 +3519,13 @@ namespace VFMS.Infrastructure.Migrations
                         .HasColumnType("int");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Audience")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("AllCustomers");
 
                     b.Property<string>("Code")
                         .IsRequired()
@@ -3458,6 +3574,13 @@ namespace VFMS.Infrastructure.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
 
+                    b.Property<int?>("NewCustomerDuration")
+                        .HasColumnType("int");
+
+                    b.Property<string>("NewCustomerUnit")
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
                     b.Property<DateTime>("StartAt")
                         .HasColumnType("datetime2");
 
@@ -3477,6 +3600,45 @@ namespace VFMS.Infrastructure.Migrations
                     b.HasIndex("CreatedByUserId");
 
                     b.ToTable("Vouchers");
+                });
+
+            modelBuilder.Entity("VFMS.Domain.Entities.VoucherGrant", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CompetitionPrizeId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<int>("VoucherId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("VoucherId");
+
+                    b.HasIndex("CompetitionPrizeId", "UserId")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "VoucherId");
+
+                    b.ToTable("VoucherGrants");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.VoucherRedemption", b =>
@@ -3514,6 +3676,9 @@ namespace VFMS.Infrastructure.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
+                    b.Property<int?>("VoucherGrantId")
+                        .HasColumnType("int");
+
                     b.Property<int>("VoucherId")
                         .HasColumnType("int");
 
@@ -3525,6 +3690,10 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.HasIndex("OrderId")
                         .IsUnique();
+
+                    b.HasIndex("VoucherGrantId")
+                        .IsUnique()
+                        .HasFilter("[VoucherGrantId] IS NOT NULL AND [RedemptionStatus] <> 'Released'");
 
                     b.HasIndex("VoucherId", "RedemptionStatus");
 
@@ -4004,14 +4173,9 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<int>("YogaClassScheduleId")
                         .HasColumnType("int");
 
-                    b.Property<int?>("YogaClassTypeId")
-                        .HasColumnType("int");
-
                     b.HasKey("Id");
 
                     b.HasIndex("MemberUserId");
-
-                    b.HasIndex("YogaClassTypeId");
 
                     b.HasIndex("YogaClassScheduleId", "MemberUserId")
                         .IsUnique();
@@ -4697,14 +4861,7 @@ namespace VFMS.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("VFMS.Domain.Entities.YogaClassType", "YogaClassType")
-                        .WithMany("PackageComponents")
-                        .HasForeignKey("YogaClassTypeId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.Navigation("Package");
-
-                    b.Navigation("YogaClassType");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.PaymentTransaction", b =>
@@ -4959,6 +5116,11 @@ namespace VFMS.Infrastructure.Migrations
                         .HasForeignKey("PTPurchaseId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("VFMS.Domain.Entities.Package", "Package")
+                        .WithMany()
+                        .HasForeignKey("PackageId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("VFMS.Domain.Entities.ApplicationUser", "ReviewedByUser")
                         .WithMany()
                         .HasForeignKey("ReviewedByUserId")
@@ -4977,6 +5139,8 @@ namespace VFMS.Infrastructure.Migrations
                     b.Navigation("MemberUser");
 
                     b.Navigation("PTPurchase");
+
+                    b.Navigation("Package");
 
                     b.Navigation("ReviewedByUser");
 
@@ -5005,6 +5169,33 @@ namespace VFMS.Infrastructure.Migrations
                     b.Navigation("CreatedByUser");
                 });
 
+            modelBuilder.Entity("VFMS.Domain.Entities.VoucherGrant", b =>
+                {
+                    b.HasOne("VFMS.Domain.Entities.CompetitionPrize", "CompetitionPrize")
+                        .WithMany()
+                        .HasForeignKey("CompetitionPrizeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("VFMS.Domain.Entities.ApplicationUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("VFMS.Domain.Entities.Voucher", "Voucher")
+                        .WithMany("Grants")
+                        .HasForeignKey("VoucherId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("CompetitionPrize");
+
+                    b.Navigation("User");
+
+                    b.Navigation("Voucher");
+                });
+
             modelBuilder.Entity("VFMS.Domain.Entities.VoucherRedemption", b =>
                 {
                     b.HasOne("VFMS.Domain.Entities.Order", "Order")
@@ -5012,6 +5203,11 @@ namespace VFMS.Infrastructure.Migrations
                         .HasForeignKey("VFMS.Domain.Entities.VoucherRedemption", "OrderId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("VFMS.Domain.Entities.VoucherGrant", "VoucherGrant")
+                        .WithMany()
+                        .HasForeignKey("VoucherGrantId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("VFMS.Domain.Entities.Voucher", "Voucher")
                         .WithMany("Redemptions")
@@ -5022,6 +5218,8 @@ namespace VFMS.Infrastructure.Migrations
                     b.Navigation("Order");
 
                     b.Navigation("Voucher");
+
+                    b.Navigation("VoucherGrant");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.WorkoutLog", b =>
@@ -5189,16 +5387,9 @@ namespace VFMS.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("VFMS.Domain.Entities.YogaClassType", "YogaClassType")
-                        .WithMany("YogaWaitlists")
-                        .HasForeignKey("YogaClassTypeId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.Navigation("Member");
 
                     b.Navigation("YogaClassSchedule");
-
-                    b.Navigation("YogaClassType");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.ApplicationRole", b =>
@@ -5448,6 +5639,8 @@ namespace VFMS.Infrastructure.Migrations
 
             modelBuilder.Entity("VFMS.Domain.Entities.Voucher", b =>
                 {
+                    b.Navigation("Grants");
+
                     b.Navigation("Redemptions");
                 });
 
@@ -5479,11 +5672,7 @@ namespace VFMS.Infrastructure.Migrations
 
             modelBuilder.Entity("VFMS.Domain.Entities.YogaClassType", b =>
                 {
-                    b.Navigation("PackageComponents");
-
                     b.Navigation("YogaClasses");
-
-                    b.Navigation("YogaWaitlists");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.YogaStudio", b =>

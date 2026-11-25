@@ -215,7 +215,7 @@
             await SearchMembers();
             await Load();
         }
-        catch (ApiException ex) { _error = ex.ErrorCode == "ANTI_PASSBACK" ? $"Chưa thể check-in lại: {ex.Message}" : ex.Message; }
+        catch (ApiException ex) { _error = ex.Message; }
         finally { _working = false; }
     }
 

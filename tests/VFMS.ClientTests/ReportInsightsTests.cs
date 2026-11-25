@@ -107,7 +107,7 @@ public sealed class ReportInsightsTests
         var lines = Encoding.UTF8.GetString(bytes[3..]).Split("\r\n");
 
         Assert.Equal(Encoding.UTF8.GetPreamble(), bytes[..3]);
-        Assert.Equal("Báo cáo,Monthly report 2026-10", lines[0]);
+        Assert.Equal("Báo cáo,Báo cáo tháng 10/2026", lines[0]); // the Vietnamese name, even though the stored name is English
         Assert.Equal("Kỳ trước,01/09/2026 - 30/09/2026,Từ báo cáo đã lưu", lines[2]);
         Assert.Contains("Chỉ số,Đơn vị,Giá trị,Kỳ trước,Chênh lệch,Thay đổi (%)", lines);
         Assert.Contains("\"Tổng doanh thu, VND\",VND,5600000,5000000,600000,12", lines);
@@ -118,12 +118,16 @@ public sealed class ReportInsightsTests
     [Fact]
     public void CsvStopsFormulasInText()
     {
+        // The stored name is never written (the Vietnamese name is built from the period), and text such as a
+        // metric label that starts with "=" is written as plain text so Excel does not run it.
         var report = new BusinessReportResponse(1, "=HYPERLINK(\"x\")", "Day", new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 1),
-            "m", null, DateTime.UtcNow, false, []);
+            "m", null, DateTime.UtcNow, false, [new ReportMetricResponse("Revenue", "=HYPERLINK(\"y\")", 1, "Currency")]);
 
-        var first = Encoding.UTF8.GetString(ReportInsights.ToCsv(report, m => m.MetricName)[3..]).Split("\r\n")[0];
+        var lines = Encoding.UTF8.GetString(ReportInsights.ToCsv(report, m => m.MetricName)[3..]).Split("\r\n");
 
-        Assert.Equal("Báo cáo,\"'=HYPERLINK(\"\"x\"\")\"", first);
+        Assert.Equal("Báo cáo,Báo cáo ngày 01/01/2026", lines[0]);
+        Assert.DoesNotContain(lines, line => line.Contains("HYPERLINK(\"\"x"));
+        Assert.Contains(lines, line => line.StartsWith("\"'=HYPERLINK(\"\"y\"\")\""));
     }
 
     [Fact]
@@ -157,4 +161,13 @@ public sealed class ReportInsightsTests
         public ValueTask<T> InvokeAsync<T>(string identifier, CancellationToken cancellationToken, object?[]? args) =>
             identifier == "vfmsAuthStorage.read" ? ValueTask.FromResult((T)(object)value) : throw new InvalidOperationException(identifier);
     }
+
+    [Theory]
+    [InlineData("Day", "2026-11-04", "2026-11-04", "Báo cáo ngày 04/11/2026")]
+    [InlineData("Week", "2026-10-26", "2026-11-01", "Báo cáo tuần 26/10 – 01/11/2026")]
+    [InlineData("Week", "2025-12-29", "2026-01-04", "Báo cáo tuần 29/12/2025 – 04/01/2026")]
+    [InlineData("Month", "2026-02-01", "2026-02-28", "Báo cáo tháng 02/2026")]
+    [InlineData("Custom", "2026-11-01", "2026-11-15", "Báo cáo 01/11/2026 – 15/11/2026")]
+    public void ReportNamesAreVietnamese(string type, string start, string end, string expected) =>
+        Assert.Equal(expected, BusinessReportNames.For(type, DateOnly.Parse(start), DateOnly.Parse(end)));
 }

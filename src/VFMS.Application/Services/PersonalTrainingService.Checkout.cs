@@ -248,8 +248,11 @@ public sealed partial class PersonalTrainingService
     public Task<Result<PTCheckoutResponse>> StartPayment(string actor, string orderNumber, PTPaymentRequest request, CancellationToken ct) =>
         Write(async () =>
         {
-            if (await Purchaser(actor, ct) is null)
+            var member = await Purchaser(actor, ct);
+            if (member is null)
                 return Forbidden<PTCheckoutResponse>();
+            var code = string.IsNullOrWhiteSpace(request.VoucherCode) ? null : VoucherRules.NormalizeCode(request.VoucherCode);
+            var campaign = code is null ? null : await payments.FindVoucherForUpdateAsync(code, ct);
             var order = await payments.FindOrderAsync(orderNumber, actor, forUpdate: true, ct);
             if (order is null)
                 return Missing<PTCheckoutResponse>();
@@ -257,10 +260,19 @@ public sealed partial class PersonalTrainingService
             if (purchase is null || purchase.MemberUserId != actor)
                 return Missing<PTCheckoutResponse>();
             var now = Now;
+            if (order.OrderStatus == OrderStatus.Paid && order.PaymentTransaction?.PaymentMethod == PaymentMethod.NoCharge)
+                return Result<PTCheckoutResponse>.Success(CheckoutResponse(purchase, order, null, now));
             if (purchase.Status != PTPurchaseStatus.PendingPayment || PaymentDeadline(order) <= now ||
                 order.OrderStatus != OrderStatus.Pending)
                 return Conflict<PTCheckoutResponse>("Đơn PT đã hết hạn hoặc đã được xử lý.");
 
+            if (code is not null && (order.Channel == OrderChannel.Counter || order.PaymentTransaction is not null))
+            {
+                var applied = order.VoucherRedemption;
+                if (applied is null || !(string.Equals(applied.VoucherCodeSnapshot, code, StringComparison.OrdinalIgnoreCase) ||
+                    campaign?.Id == applied.VoucherId))
+                    return Conflict<PTCheckoutResponse>("Đơn PT đã chốt số tiền thanh toán và không thể đổi voucher.");
+            }
             if (order.Channel == OrderChannel.Counter)
                 return Result<PTCheckoutResponse>.Success(CheckoutResponse(purchase, order, null, now));
             if (order.PaymentTransaction is null && order.CreatedAt.Add(ProceedWindow) <= now)
@@ -276,13 +288,42 @@ public sealed partial class PersonalTrainingService
             }
 
             VoucherRedemption? voucher = null;
-            if (!string.IsNullOrWhiteSpace(request.VoucherCode))
+            if (code is not null)
             {
-                voucher = await ReserveVoucher(actor, request.VoucherCode, purchase.PurchasePrice, now, ct);
-                if (voucher is null)
-                    return Result<PTCheckoutResponse>.Failure("Voucher không hợp lệ hoặc đã hết lượt.", "PT_VOUCHER_INVALID");
+                if (campaign is null)
+                    return Result<PTCheckoutResponse>.Failure("Không tìm thấy mã voucher.", "VOUCHER_NOT_FOUND");
+                var capacity = await payments.ReadVoucherCapacityAsync(campaign.Id, member, ct);
+                var check = VoucherCheckoutRules.Check(campaign, member.CreatedAt, now, capacity, purchase.PurchasePrice);
+                if (!check.IsSuccess)
+                    return Result<PTCheckoutResponse>.Failure(check.ErrorMessage!, check.ErrorCode!, check.StatusCode);
+                voucher = new VoucherRedemption
+                {
+                    VoucherId = campaign.Id,
+                    VoucherGrantId = campaign.Audience == VoucherAudience.AssignedUsers ? capacity.AvailableGrantId : null,
+                    VoucherCodeSnapshot = campaign.Code,
+                    VoucherNameSnapshot = campaign.Name,
+                    DiscountAmount = check.Data,
+                    RedeemedAt = now
+                };
             }
             var due = purchase.PurchasePrice - (voucher?.DiscountAmount ?? 0);
+            if (due == 0 && voucher is not null)
+            {
+                if (!await HeldSlotsStillValid(purchase, now, ct))
+                    return Conflict<PTCheckoutResponse>("Lịch PT không còn hợp lệ.");
+                order.VoucherRedemption = voucher;
+                order.PaymentTransaction = new PaymentTransaction
+                {
+                    UserId = actor, GatewayName = "NoCharge", PaymentMethod = PaymentMethod.NoCharge, AmountDue = 0
+                };
+                purchase.PurchasePrice = 0;
+                MembershipPurchaseService.RecordPaidOrder(order, 0, now, null, now);
+                ActivatePTContract(purchase);
+                Notify(actor, "Đã thanh toán gói PT", $"Hóa đơn {order.PaymentTransaction.Invoice!.InvoiceNumber}. Lịch tập đã được xác nhận.",
+                    nameof(PTPurchase), purchase.Id);
+                await repo.SaveChangesAsync(ct);
+                return Result<PTCheckoutResponse>.Success(CheckoutResponse(purchase, order, null, now));
+            }
             if (request.PaymentMethod == MembershipPaymentMethods.Cash)
             {
                 // The payment row is created when Staff confirms the cash, so SePay and membership cash confirmation never match it.
@@ -403,32 +444,19 @@ public sealed partial class PersonalTrainingService
             ProceedBefore: DateTime.SpecifyKind(order.CreatedAt.Add(ProceedWindow), DateTimeKind.Utc),
             PayAtCounter: order.Channel == OrderChannel.Counter);
 
-    private async Task<VoucherRedemption?> ReserveVoucher(string actor, string code, decimal price, DateTime now, CancellationToken ct)
+    private async Task<bool> RestoreReleasedVoucher(Order order, VoucherRedemption redemption, DateTime now, CancellationToken ct)
     {
-        var normalized = code.Trim().ToUpperInvariant();
-        var voucher = await repo.GetActiveVoucherAsync(normalized, now, ct);
-        if (voucher is null || price < voucher.MinimumSpend)
-            return null;
-        if (!await VoucherHasCapacity(voucher, actor, ct))
-            return null;
-        var discount = voucher.DiscountType == DiscountType.PERCENT ? price * voucher.DiscountValue / 100 : voucher.DiscountValue;
-        if (voucher.MaxDiscountAmount is { } cap)
-            discount = Math.Min(discount, cap);
-        discount = decimal.Floor(discount);
-        return discount > 0 && discount < price ? new VoucherRedemption
-        {
-            VoucherId = voucher.Id,
-            DiscountAmount = discount,
-            RedeemedAt = now
-        } : null;
-    }
-
-    private async Task<bool> VoucherHasCapacity(Voucher voucher, string actor, CancellationToken ct, int? excludingOrder = null)
-    {
-        if (voucher.MaxRedemptions is { } max && await repo.CountActiveRedemptionsAsync(voucher.Id, excludingOrder, null, ct) >= max)
-            return false;
-        return voucher.MaxRedemptionsPerUser is not { } perUser ||
-            await repo.CountActiveRedemptionsAsync(voucher.Id, excludingOrder, actor, ct) < perUser;
+        // The callback holds a serializable transaction. A released hold must qualify again
+        // before accepting a timely transfer that reached the system after JOB-01.
+        var voucher = redemption.Voucher;
+        if (voucher is null) return false;
+        var capacity = await payments.ReadVoucherCapacityAsync(voucher.Id, order.Purchaser, ct);
+        var check = VoucherCheckoutRules.Check(voucher, order.Purchaser.CreatedAt, now, capacity,
+            order.Items.Sum(i => i.UnitPriceSnapshot));
+        if (!check.IsSuccess || check.Data != redemption.DiscountAmount) return false;
+        redemption.VoucherGrantId = voucher.Audience == VoucherAudience.AssignedUsers ? capacity.AvailableGrantId : null;
+        redemption.RedemptionStatus = VoucherRedemptionStatus.Reserved;
+        return true;
     }
 
     public async Task<Result<SepayWebhookResponse>?> TryFulfillAsync(Order order, SepayTransfer transfer, CancellationToken ct)
@@ -462,10 +490,10 @@ public sealed partial class PersonalTrainingService
             trainer is null || slots.Any(s => Utc(s.Date, s.StartTime) <= now.UtcDateTime ||
                 !InHours(trainer.Gym, s.StartTime, s.EndTime)) ||
             (contract.HoldExpiresAt <= now.UtcDateTime && !await OriginalTemplatesAvailable(contract.PTUserId, slots, ct)) ||
-            (redemption?.RedemptionStatus == VoucherRedemptionStatus.Released &&
-                !await VoucherHasCapacity(redemption.Voucher, contract.MemberUserId, ct, order.Id)) ||
             await TeachesYoga(contract.PTUserId, ct) ||
-            await HasConflict(contract.PTUserId, contract.MemberUserId, slots, now.UtcDateTime, ct, ignorePurchase: contract.Id))
+            await HasConflict(contract.PTUserId, contract.MemberUserId, slots, now.UtcDateTime, ct, ignorePurchase: contract.Id) ||
+            (redemption?.RedemptionStatus == VoucherRedemptionStatus.Released &&
+                !await RestoreReleasedVoucher(order, redemption, now.UtcDateTime, ct)))
         {
             repo.RecordUnappliedTransfer(payment, transfer, now.UtcDateTime);
             contract.Status = PTPurchaseStatus.Expired;
@@ -483,8 +511,6 @@ public sealed partial class PersonalTrainingService
 
         MembershipPurchaseService.RecordPaidOrder(order, transfer.Amount, transfer.TransferredAt, transfer.TransactionId, now);
         ActivatePTContract(contract);
-        if (redemption is not null)
-            redemption.RedemptionStatus = VoucherRedemptionStatus.Confirmed;
         Notify(contract.MemberUserId, "Đã thanh toán gói PT", $"Hóa đơn {payment.Invoice!.InvoiceNumber}. Lịch tập đã được xác nhận.",
             nameof(PTPurchase), contract.Id);
         Audit(null, nameof(PTPurchase), contract.Id, nameof(PTPurchaseStatus.Active));

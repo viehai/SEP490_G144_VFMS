@@ -8,10 +8,10 @@ namespace VFMS.IntegrationTests;
 internal static class TestSeed
 {
     /// <summary>A paid one-component package and a membership for the member: Active from 5 days ago for 25 more days.</summary>
-    public static MemberMembership Membership(string memberUserId, ComponentType type = ComponentType.GYM, int? yogaClassTypeId = null)
+    public static MemberMembership Membership(string memberUserId, ComponentType type = ComponentType.GYM, string? yogaLevel = null)
     {
         var package = new Package { Name = $"{type} plan", Price = 100 };
-        var component = new PackageComponent { Package = package, ComponentType = type, DurationMonths = 1, YogaClassTypeId = yogaClassTypeId };
+        var component = new PackageComponent { Package = package, ComponentType = type, DurationMonths = 1, YogaDifficultyLevel = yogaLevel };
         var order = new Order { OrderNumber = $"ORD-{Guid.NewGuid():N}", PurchaserUserId = memberUserId, OrderStatus = OrderStatus.Paid };
         var item = new OrderItem
         {

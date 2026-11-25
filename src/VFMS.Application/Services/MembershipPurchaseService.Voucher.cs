@@ -1,7 +1,6 @@
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Memberships;
 using VFMS.Contracts.Memberships.Validators;
-using VFMS.Contracts.Promotions;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
 
@@ -22,7 +21,7 @@ public sealed partial class MembershipPurchaseService
         return await repository.ExecuteInSerializableTransactionAsync(async () =>
         {
             var voucher = await repository.FindVoucherForUpdateAsync(code, ct);
-            var order = await repository.FindOrderAsync(orderNumber, purchaserId, forUpdate: true, ct);
+            var order = await repository.FindOrderAsync(orderNumber, purchaserId, forUpdate: true, ct, membershipOnly: true);
             if (order?.PaymentTransaction is not { } payment)
                 return OrderNotFound<MembershipPurchaseResponse>();
             if (!CanAlterOrder(order))
@@ -42,33 +41,11 @@ public sealed partial class MembershipPurchaseService
             if (voucher is null)
                 return VoucherError("Không tìm thấy mã voucher.", "VOUCHER_NOT_FOUND");
 
-            var capacity = await repository.CountVoucherCapacityAsync(voucher.Id, ct);
-            var status = VoucherRules.EffectiveStatus(voucher.VoucherStatus, voucher.StartAt, voucher.EndAt,
-                voucher.MaxRedemptions, capacity.Confirmed, clock.GetUtcNow().UtcDateTime);
-            if (status == PromotionStatus.Disabled)
-                return VoucherError("Voucher đã bị tắt.", "VOUCHER_DISABLED");
-            if (clock.GetUtcNow().UtcDateTime >= voucher.EndAt)
-                return VoucherError("Voucher đã hết hạn.", "VOUCHER_EXPIRED");
-            if (voucher.MaxRedemptions is { } maximum && capacity.Confirmed >= maximum)
-                return VoucherError("Voucher đã hết lượt sử dụng.", "VOUCHER_QUOTA_EXHAUSTED", 409);
-            if (status == PromotionStatus.Scheduled)
-                return VoucherError("Voucher chưa đến thời gian sử dụng.", "VOUCHER_SCHEDULED");
-            if (voucher.MaxRedemptions is { } limit && (long)capacity.Confirmed + capacity.Reserved >= limit)
-                return VoucherError("Các lượt voucher còn lại đang được giữ cho giao dịch khác. Vui lòng thử lại sau.", "VOUCHER_CAPACITY_UNAVAILABLE", 409);
-
             var subtotal = order.Items.Sum(item => item.UnitPriceSnapshot);
-            if (subtotal <= 0 || subtotal > 9_999_999_999_999_999m || decimal.Truncate(subtotal) != subtotal)
-                return VoucherError("Giá trị đơn hàng không hợp lệ.", "ORDER_AMOUNT_INVALID");
-            if (subtotal < (voucher.MinimumSpend ?? 0))
-                return VoucherError("Giá trị đơn hàng chưa đạt mức tối thiểu để sử dụng voucher.", "MSG-22");
-            if (!HasValidDiscountConfiguration(voucher))
-                return VoucherError("Voucher chưa có cấu hình giảm giá hợp lệ.", "VOUCHER_CONFIGURATION_INVALID");
-
-            // UC-12 prices and VietQR payable amounts are whole VND. Truncate the capped
-            // decimal discount so denomination conversion never exceeds a configured cap.
-            var rawDiscount = voucher.DiscountType == DiscountType.FIXED ? voucher.DiscountValue
-                : Math.Min(subtotal / 100m * voucher.DiscountValue, voucher.MaxDiscountAmount!.Value);
-            var discount = decimal.Truncate(Math.Min(rawDiscount, subtotal));
+            var capacity = await repository.ReadVoucherCapacityAsync(voucher.Id, order.Purchaser, ct);
+            var check = VoucherCheckoutRules.Check(voucher, order.Purchaser.CreatedAt, clock.GetUtcNow().UtcDateTime, capacity, subtotal);
+            if (!check.IsSuccess) return VoucherError(check.ErrorMessage!, check.ErrorCode!, check.StatusCode);
+            var discount = check.Data;
             var due = subtotal - discount;
             var qr = payment.PaymentMethod == PaymentMethod.VietQR && due > 0
                 ? gateway.CreateVietQr(order.OrderNumber, due) : null;
@@ -77,6 +54,7 @@ public sealed partial class MembershipPurchaseService
 
             var redemption = order.VoucherRedemption ??= new VoucherRedemption { Order = order };
             redemption.VoucherId = voucher.Id;
+            redemption.VoucherGrantId = voucher.Audience == VoucherAudience.AssignedUsers ? capacity.AvailableGrantId : null;
             redemption.VoucherCodeSnapshot = voucher.Code;
             redemption.VoucherNameSnapshot = voucher.Name;
             redemption.DiscountAmount = discount;
@@ -96,7 +74,7 @@ public sealed partial class MembershipPurchaseService
             return PurchaserForbidden();
         return await repository.ExecuteInSerializableTransactionAsync(async () =>
         {
-            var order = await repository.FindOrderAsync(orderNumber, purchaserId, forUpdate: true, ct);
+            var order = await repository.FindOrderAsync(orderNumber, purchaserId, forUpdate: true, ct, membershipOnly: true);
             if (order?.PaymentTransaction is not { } payment)
                 return OrderNotFound<MembershipPurchaseResponse>();
             if (!CanAlterOrder(order))
@@ -125,7 +103,7 @@ public sealed partial class MembershipPurchaseService
         {
             if (renewalPurchaser is not null)
                 await repository.LockUsersAsync([renewalPurchaser], ct);
-            var order = await repository.FindOrderAsync(orderNumber, purchaserId, forUpdate: true, ct);
+            var order = await repository.FindOrderAsync(orderNumber, purchaserId, forUpdate: true, ct, membershipOnly: true);
             if (order?.PaymentTransaction is not { } payment)
                 return OrderNotFound<MembershipPurchaseResponse>();
             if (order.OrderStatus == OrderStatus.Paid && payment.PaymentMethod == PaymentMethod.NoCharge)
@@ -161,11 +139,6 @@ public sealed partial class MembershipPurchaseService
         return Result<MembershipPurchaseResponse>.Success(ToResponse(order, order.OrderStatus, qr) with
             { MessageCode = "MSG-04", Message = "Áp dụng voucher thành công." });
     }
-
-    private static bool HasValidDiscountConfiguration(Voucher voucher) => voucher.DiscountValue > 0 &&
-        (voucher.MinimumSpend is null or >= 0) && (voucher.MaxRedemptions is null or > 0) &&
-        (voucher.DiscountType == DiscountType.FIXED || voucher.DiscountType == DiscountType.PERCENT &&
-            voucher.DiscountValue <= 100 && voucher.MaxDiscountAmount is > 0);
 
     private static bool HasSafeVoucherSettlement(Order order) => order.VoucherRedemption switch
     {

@@ -1,4 +1,5 @@
 using System.Net;
+using System.Reflection;
 using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Components;
@@ -6,6 +7,7 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using VFMS.Client.Pages.Manager;
+using VFMS.Client.Components.Promotions;
 using VFMS.Client.Services;
 using VFMS.Contracts.Promotions;
 using Xunit;
@@ -33,7 +35,9 @@ public sealed class PromotionPageTests
         }).ToArray();
         var html = await RenderAsync(_ => Task.FromResult(PromotionApiClientTests.Json(rows)));
 
-        foreach (var status in Enum.GetValues<PromotionStatus>()) Assert.Contains(status.ToString(), html);
+        var visible = WebUtility.HtmlDecode(html);
+        foreach (var label in new[] { "Sắp diễn ra", "Đang áp dụng", "Hết hạn", "Ngừng sử dụng" }) Assert.Contains(label, visible);
+        Assert.True(html.IndexOf("promotion-title-2", StringComparison.Ordinal) < html.IndexOf("promotion-title-1", StringComparison.Ordinal));
         Assert.Contains("3 / 100", html);
         Assert.Contains("13/11/2026 08:30", html);
         Assert.Contains("UTC+7", html);
@@ -43,6 +47,67 @@ public sealed class PromotionPageTests
         // Opt-in standalone artifact for manual responsive visual review; ordinary test runs write no files.
         if (Environment.GetEnvironmentVariable("VFMS_PROMOTION_PREVIEW") is { Length: > 0 } output)
             await WritePreviewAsync(html, output);
+    }
+
+    [Fact]
+    public async Task ManagerFormShowsOnlyTheSelectedAudienceFields()
+    {
+        using var api = PromotionApiClientTests.CreateClient(_ => Task.FromResult(PromotionApiClientTests.Json(Array.Empty<PromotionResponse>())));
+        var capture = new PromotionActivator();
+        await using var services = new ServiceCollection().AddLogging().AddSingleton(api)
+            .AddSingleton<IComponentActivator>(capture).AddSingleton<NavigationManager>(new PreviewNavigation()).BuildServiceProvider();
+        await using var renderer = new HtmlRenderer(services, services.GetRequiredService<ILoggerFactory>());
+        await renderer.Dispatcher.InvokeAsync(async () =>
+        {
+            var view = await renderer.RenderComponentAsync<Promotions>();
+            var page = capture.Page!;
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            var start = typeof(Promotions).GetMethod("StartCreate", flags)!.CreateDelegate<Action>(page);
+            await ((IHandleEvent)page).HandleEventAsync(new EventCallbackWorkItem(start), null);
+            var form = (PromotionFormModel)typeof(Promotions).GetField("_form", flags)!.GetValue(page)!;
+            var create = WebUtility.HtmlDecode(view.ToHtmlString());
+            Assert.Contains("Tất cả khách hàng", create);
+            Assert.Contains("Số lượt tối đa mỗi tài khoản", create);
+            Assert.DoesNotContain("id=\"promotion-NewCustomerDuration\"", create);
+            Assert.DoesNotContain("phần thưởng cuộc thi", create);
+
+            foreach (var audience in new[] { PromotionAudience.NewCustomers, PromotionAudience.AssignedUsers })
+            {
+                await ((IHandleEvent)page).HandleEventAsync(new EventCallbackWorkItem((Action)(() => form.ChangeAudience(audience))), null);
+                var rendered = view.ToHtmlString();
+                var text = WebUtility.HtmlDecode(rendered);
+                if (audience == PromotionAudience.NewCustomers)
+                {
+                    Assert.Contains("id=\"promotion-NewCustomerDuration\"", text);
+                    Assert.Contains("chưa đủ 1 tháng", text);
+                    Assert.DoesNotContain("phần thưởng cuộc thi", text);
+                }
+                else
+                {
+                    Assert.DoesNotContain("id=\"promotion-NewCustomerDuration\"", text);
+                    Assert.Contains("phần thưởng cuộc thi", text);
+                    Assert.Contains("kể cả khi người khác biết mã giảm giá", text);
+                }
+                if (Environment.GetEnvironmentVariable("VFMS_PROMOTION_PREVIEW") is { Length: > 0 } output)
+                    await WritePreviewAsync(rendered, Path.ChangeExtension(output, audience + ".html"));
+            }
+        });
+    }
+
+    private sealed class PromotionActivator : IComponentActivator
+    {
+        public Promotions? Page { get; private set; }
+        public IComponent CreateInstance(Type type)
+        {
+            var component = (IComponent)Activator.CreateInstance(type)!;
+            if (component is Promotions page) Page = page;
+            return component;
+        }
+    }
+
+    private sealed class PreviewNavigation : NavigationManager
+    {
+        public PreviewNavigation() => Initialize("https://client.example.test/", "https://client.example.test/manager/promotions");
     }
 
     [Fact]

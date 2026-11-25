@@ -338,18 +338,6 @@ public sealed class PersonalTrainingRepository(VfmsDbContext db) : AuditedReposi
                 payment.GatewayTransactionReference != null)
             .OrderByDescending(payment => payment.Id).ToListAsync(cancellationToken);
 
-    public Task<Voucher?> GetActiveVoucherAsync(string normalizedCode, DateTime now, CancellationToken cancellationToken = default) =>
-        Context.Vouchers.SingleOrDefaultAsync(v => v.Code.ToUpper() == normalizedCode &&
-            v.VoucherStatus == VoucherStatus.Active && v.StartAt <= now && v.EndAt > now, cancellationToken);
-
-    public Task<int> CountActiveRedemptionsAsync(int voucherId, int? excludingOrderId, string? purchaserId,
-        CancellationToken cancellationToken = default) =>
-        Context.VoucherRedemptions.CountAsync(r => r.VoucherId == voucherId &&
-            (excludingOrderId == null || r.OrderId != excludingOrderId) &&
-            (r.RedemptionStatus == VoucherRedemptionStatus.Confirmed ||
-             r.RedemptionStatus == VoucherRedemptionStatus.Reserved && r.Order.OrderStatus == OrderStatus.Pending) &&
-            (purchaserId == null || r.Order.PurchaserUserId == purchaserId), cancellationToken);
-
     public Task<VoucherRedemption?> GetRedemptionForOrderAsync(int orderId, CancellationToken cancellationToken = default) =>
         Context.VoucherRedemptions.Include(r => r.Voucher).SingleOrDefaultAsync(r => r.OrderId == orderId, cancellationToken);
 

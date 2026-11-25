@@ -128,6 +128,7 @@ public sealed class TrainerSearchValidator : AbstractValidator<TrainerSearch>
         RuleFor(x => x.PageSize).InclusiveBetween(1, 100).WithMessage("Số mục mỗi trang phải từ {From} đến {To}.");
         RuleFor(x => x.Search).MaximumLength(200).WithMessage("Từ khóa tìm kiếm không được vượt quá {MaxLength} ký tự.");
         RuleFor(x => x.TrainerRole).Must(x => string.IsNullOrEmpty(x) || TrainerRoleNames.IsValid(x)).WithMessage("Vị trí huấn luyện viên không hợp lệ. Vui lòng kiểm tra lại.");
+        RuleFor(x => x.Level).Must(x => x == null || x is "Junior" or "Senior" or "Expert" or "Master").WithMessage("Cấp huấn luyện viên không hợp lệ. Vui lòng kiểm tra lại.");
         RuleFor(x => x.Gender).Must(x => x == null || x is "Male" or "Female" or "Other").WithMessage("Giới tính không hợp lệ. Vui lòng kiểm tra lại.");
         RuleFor(x => x.MinimumRating).InclusiveBetween(0, 5).WithMessage("Điểm đánh giá tối thiểu phải từ {From} đến {To}.");
     }

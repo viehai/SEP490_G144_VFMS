@@ -28,7 +28,7 @@ public sealed record UpdateTrainerProfileRequest(string? Bio = null, TrainerFile
 public sealed record TrainerSetupRequest(string Token, string Password);
 /// <summary>Search matches the trainer name or specialization; TrainerRole filters PT or Yoga (UC 3.4).</summary>
 public sealed record TrainerSearch(string? Search = null, string? TrainerRole = null, string? Gender = null,
-    decimal? MinimumRating = null, int Page = 1, int PageSize = 10);
+    decimal? MinimumRating = null, int Page = 1, int PageSize = 10, string? Level = null, bool? AcceptingNewMembers = null);
 /// <summary>Replaces: the published certificate (link or file name) a pending ProfileUpdate certificate would replace (UC 3.3).</summary>
 public sealed record TrainerDocumentResponse(string Id, string FileName, string ContentType, string DownloadUrl, bool IsExternalLink = false,
     string? Replaces = null);

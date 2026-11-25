@@ -12,6 +12,8 @@ public static class PromotionModule
         services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<IPromotionRepository, PromotionRepository>();
         services.AddScoped<IPromotionService, PromotionService>();
+        services.AddScoped<IMyVoucherRepository, MyVoucherRepository>();
+        services.AddScoped<IMyVoucherService, MyVoucherService>();
         return services;
     }
 }

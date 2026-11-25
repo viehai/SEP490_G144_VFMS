@@ -1,0 +1,3 @@
+.membership-plan-editor ::deep .valid.modified:not(:focus-visible) {
+    outline: none;
+}

@@ -142,7 +142,7 @@ public sealed partial class PromotionApiTests
         var stored = await db.Vouchers.SingleAsync();
         Assert.Equal(ManagerId, stored.CreatedByUserId);
         Assert.NotEqual(new DateTime(2000, 1, 1), stored.CreatedAt);
-        Assert.Null(stored.MaxRedemptionsPerUser);
+        Assert.Equal(1, stored.MaxRedemptionsPerUser);
         Assert.All(await db.AuditLogs.ToListAsync(), audit => Assert.Equal(ManagerId, audit.ActorUserId));
     }
 

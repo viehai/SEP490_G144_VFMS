@@ -43,7 +43,7 @@ public interface IAuditLogRepository
 {
     Task<(IReadOnlyList<AuditLog> Logs, int TotalCount)> SearchAsync(
         DateTime? fromUtc, DateTime? toUtcExclusive, string? actorUserId, AuditActionType? actionType,
-        string? entity, int page, int pageSize, CancellationToken cancellationToken = default);
+        string? entity, int page, int pageSize, CancellationToken cancellationToken = default, string? actorSearch = null);
     Task<AuditLog?> GetByIdAsync(int id, CancellationToken cancellationToken = default);
 }
 

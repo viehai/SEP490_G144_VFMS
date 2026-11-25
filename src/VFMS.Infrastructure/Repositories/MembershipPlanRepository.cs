@@ -2,9 +2,11 @@ using System.Data;
 using Microsoft.EntityFrameworkCore;
 using VFMS.Application.Interfaces;
 using VFMS.Application.Services;
+using VFMS.Contracts.Memberships;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
 using VFMS.Infrastructure.Data;
+using MembershipDurationUnit = VFMS.Contracts.Memberships.MembershipDurationUnit;
 
 namespace VFMS.Infrastructure.Repositories;
 
@@ -13,7 +15,8 @@ public sealed class MembershipPlanRepository(VfmsDbContext context)
 {
     public async Task<(IReadOnlyList<MembershipPlanReadModel> Items, int TotalCount)> SearchAsync(
         string? search, PackageStatus? status, int page, int pageSize, CancellationToken cancellationToken = default,
-        ComponentType? serviceType = null, DateTime? sellableAtUtc = null)
+        ComponentType? serviceType = null, DateTime? sellableAtUtc = null,
+        MembershipDurationUnit? durationUnit = null, MembershipFreezeAllowanceFilter? freezeAllowanceFilter = null)
     {
         var query = Plans(status, sellableAtUtc);
         if (serviceType == ComponentType.GYM)
@@ -22,9 +25,28 @@ public sealed class MembershipPlanRepository(VfmsDbContext context)
             query = query.Where(package => !package.Components.Any(component => component.ComponentType == ComponentType.GYM));
         if (search is not null)
             query = query.Where(package => package.Name.Contains(search));
+        if (durationUnit is { } unit)
+            query = query.Where(package => package.Components.Where(component =>
+                    component.ComponentType == ComponentType.GYM || component.ComponentType == ComponentType.YOGA)
+                .OrderByDescending(component => component.ComponentType == ComponentType.GYM).ThenBy(component => component.Id)
+                .Select(component => unit == MembershipDurationUnit.Day
+                    ? component.DurationDays > 0 : (component.DurationDays == null || component.DurationDays <= 0) && component.DurationMonths > 0)
+                .FirstOrDefault());
+        query = freezeAllowanceFilter switch
+        {
+            MembershipFreezeAllowanceFilter.Default => query.Where(p => p.Components.Any(c => c.ComponentType == ComponentType.GYM) &&
+                !p.Components.Any(c => c.ComponentType == ComponentType.GYM && (c.MaxFreezeCount != null || c.MinFreezeDaysPerRequest != null || c.MaxFreezeDaysPerRequest != null))),
+            MembershipFreezeAllowanceFilter.Disabled => query.Where(p => !p.Components.Any(c => c.ComponentType == ComponentType.GYM) ||
+                p.Components.Any(c => c.ComponentType == ComponentType.GYM && c.MaxFreezeCount == 0)),
+            MembershipFreezeAllowanceFilter.Custom => query.Where(p => p.Components.Any(c => c.ComponentType == ComponentType.GYM &&
+                (c.MaxFreezeCount == null || c.MaxFreezeCount > 0) &&
+                (c.MaxFreezeCount > 0 || c.MinFreezeDaysPerRequest != null || c.MaxFreezeDaysPerRequest != null))),
+            _ => query
+        };
 
         var total = await query.CountAsync(cancellationToken);
-        var items = await Project(query.OrderBy(package => package.Name).ThenBy(package => package.Id)
+        var items = await Project(query.OrderByDescending(package => package.PackageStatus == PackageStatus.Active)
+            .ThenBy(package => package.Name).ThenBy(package => package.Id)
             .Skip((page - 1) * pageSize).Take(pageSize)).ToListAsync(cancellationToken);
         return (items, total);
     }
@@ -79,53 +101,62 @@ public sealed class MembershipPlanRepository(VfmsDbContext context)
     public async Task<(IReadOnlyList<PackageCatalogReadModel> Items, int TotalCount)> SearchByComponentTypeAsync(
         ComponentType componentType, int page, int pageSize, CancellationToken cancellationToken = default)
     {
-        // Load packages + tất cả components (không có global filter IsDeleted cho component
-        // vì cần lọc theo soft-delete thủ công trong projection).
-        var packages = await Context.Packages
-            .AsNoTracking()
+        var query = Context.Packages.AsNoTracking()
             .Where(p => p.PackageStatus == PackageStatus.Active
-                     && p.Components.Any(c => c.ComponentType == componentType))
-            .Include(p => p.Components.Where(c => c.ComponentType == componentType))
-                .ThenInclude(c => c.YogaClassType)
+                     && p.Components.Any(c => c.ComponentType == componentType
+                                           && (c.ComponentType != ComponentType.YOGA || c.YogaDifficultyLevel != null)));   // yoga plans without a level are not sold
+        var total = await query.CountAsync(cancellationToken);
+        var packages = await query.Include(p => p.Components)
             .OrderBy(p => p.Name).ThenBy(p => p.Id)
+            .Skip((page - 1) * pageSize).Take(pageSize)
             .ToListAsync(cancellationToken);
 
-        var total = packages.Count;
-        var page_items = packages
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .Select(p =>
-            {
-                // Lấy component đầu tiên (theo Id) khớp type — hỗ trợ combo package
-                var comp = p.Components
-                    .OrderBy(c => c.Id)
-                    .First();
-
-                return new PackageCatalogReadModel(
-                    p.Id,
-                    p.Name,
-                    p.Description,
-                    p.Price,
-                    p.PackageStatus,
-                    comp.ComponentType,
-                    comp.DurationDays,
-                    comp.DurationMonths,
-                    comp.SessionCount,
-                    comp.YogaClassTypeId,
-                    comp.YogaClassType?.TypeName,
-                    comp.ApplicableTrainerLevel?.ToString(),
-                    comp.PTFreezeMinimumDays,
-                    comp.PTFreezeMaxTotalDays,
-                    comp.AllowFreeze,
-                    comp.MaxFreezeDaysPerRequest,
-                    comp.MaxFreezeCount,
-                    comp.AccessStartTime,
-                    comp.AccessEndTime);
-            })
-            .ToList();
-
-        return (page_items, total);
+        var items = packages.Select(package => ToCatalogItem(package, package.Components
+            .OrderBy(component => component.Id).First(component => component.ComponentType == componentType))).ToArray();
+        return (items, total);
     }
+
+    public async Task<IReadOnlyList<PackageCatalogReadModel>> ListActiveSingleServicePackagesAsync(CancellationToken cancellationToken)
+    {
+        var packages = await Context.Packages.AsNoTracking()
+            .Where(package => package.PackageStatus == PackageStatus.Active && package.Components.Count == 1)
+            .Include(package => package.Components)
+            .ToListAsync(cancellationToken);
+
+        return packages.Select(package => ToCatalogItem(package, package.Components.Single())).ToArray();
+    }
+
+    public Task<CatalogMembershipFreezeRules?> GetCatalogFreezeRulesAsync(CancellationToken cancellationToken) =>
+        Context.FreezePolicies.AsNoTracking().Where(policy => policy.IsGlobal && policy.PolicyStatus == PolicyStatus.Active)
+            .Select(policy => new CatalogMembershipFreezeRules(policy.MinFreezeDaysPerRequest,
+                policy.DefaultMaxFreezeDays, policy.DefaultMaxFreezeCount))
+            .SingleOrDefaultAsync(cancellationToken);
+
+    private static PackageCatalogReadModel ToCatalogItem(Package package, PackageComponent component) =>
+        new(
+            package.Id,
+            package.Name,
+            package.Description,
+            package.Price,
+            package.PackageStatus,
+            component.ComponentType,
+            component.DurationDays,
+            component.DurationMonths,
+            component.SessionCount,
+            component.YogaDifficultyLevel,
+            component.ApplicableTrainerLevel?.ToString(),
+            component.PTFreezeMinimumDays,
+            component.PTFreezeMaxTotalDays,
+            component.AllowFreeze,
+            component.MaxFreezeDaysPerRequest,
+            component.MaxFreezeCount,
+            component.AccessStartTime,
+            component.AccessEndTime)
+        {
+            MinFreezeDaysPerRequest = component.MinFreezeDaysPerRequest,
+            IsSingleService = package.Components.Count == 1,
+            TargetAudience = package.TargetAudience
+        };
 
     private IQueryable<Package> Plans(PackageStatus? status, DateTime? sellableAtUtc = null)
     {
@@ -135,9 +166,15 @@ public sealed class MembershipPlanRepository(VfmsDbContext context)
                 component.ComponentType == ComponentType.GYM || component.ComponentType == ComponentType.YOGA));
         if (sellableAtUtc is { } now)
         {
+            // A yoga plan sells only with a level and a bookable class it covers (higher levels include lower ones).
             var bookable = Context.YogaClasses.Where(YogaClassRules.Bookable(now));
-            plans = plans.Where(package => bookable.Any() ||
-                package.Components.Any(component => component.ComponentType == ComponentType.GYM));
+            plans = plans.Where(package =>
+                package.Components.Any(component => component.ComponentType == ComponentType.GYM) ||
+                package.Components.Any(component => component.ComponentType == ComponentType.YOGA && (
+                    (component.YogaDifficultyLevel == "Advanced" && bookable.Any()) ||
+                    (component.YogaDifficultyLevel == "Intermediate" &&
+                        bookable.Any(c => c.DifficultyLevel == "Beginner" || c.DifficultyLevel == "Intermediate")) ||
+                    (component.YogaDifficultyLevel == "Beginner" && bookable.Any(c => c.DifficultyLevel == "Beginner")))));
         }
         return status.HasValue ? plans.Where(package => package.PackageStatus == status.Value) : plans;
     }
@@ -163,5 +200,14 @@ public sealed class MembershipPlanRepository(VfmsDbContext context)
                 Context.MemberMemberships.Count(membership => membership.MembershipStatus == MembershipStatus.Active &&
                     membership.PackageComponent.PackageId == plan.package.Id &&
                     membership.PackageComponent.ComponentType == plan.Type),
-                plan.Type));
+                plan.Type,
+                plan.package.Components.Where(component => component.ComponentType == plan.Type)
+                    .OrderBy(component => component.Id).Select(component => component.YogaDifficultyLevel).FirstOrDefault())
+            {
+                IsSingleService = plan.package.Components.Count == 1,
+                MaxFreezeCount = plan.package.Components.Where(c => c.ComponentType == plan.Type).OrderBy(c => c.Id).Select(c => c.MaxFreezeCount).FirstOrDefault(),
+                MinFreezeDaysPerRequest = plan.package.Components.Where(c => c.ComponentType == plan.Type).OrderBy(c => c.Id).Select(c => c.MinFreezeDaysPerRequest).FirstOrDefault(),
+                MaxFreezeDaysPerRequest = plan.package.Components.Where(c => c.ComponentType == plan.Type).OrderBy(c => c.Id).Select(c => c.MaxFreezeDaysPerRequest).FirstOrDefault(),
+                TargetAudience = plan.package.TargetAudience
+            });
 }

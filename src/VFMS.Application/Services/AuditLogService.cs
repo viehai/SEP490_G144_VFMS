@@ -9,6 +9,7 @@ namespace VFMS.Application.Services;
 /// <summary>UC-87 View System Audit Logs. Logs are read-only (GBR-65).</summary>
 public sealed class AuditLogService : IAuditLogService
 {
+    private static readonly TimeSpan GymOffset = TimeSpan.FromHours(7);
     private readonly IAuditLogRepository _repository;
     private readonly IMapper _mapper;
 
@@ -35,20 +36,21 @@ public sealed class AuditLogService : IAuditLogService
             actionType = parsed;
         }
 
-        // A date-only "To" means "through the end of that day".
+        // Dates are gym time (UTC+7); a date-only "To" means "through the end of that day".
         DateTime? toExclusive = request.To is not { } to
             ? null
             : to.TimeOfDay == TimeSpan.Zero ? to.AddDays(1) : to.AddTicks(1);
 
         var (logs, total) = await _repository.SearchAsync(
-            request.From,
-            toExclusive,
+            request.From - GymOffset,
+            toExclusive - GymOffset,
             string.IsNullOrWhiteSpace(request.ActorUserId) ? null : request.ActorUserId.Trim(),
             actionType,
             string.IsNullOrWhiteSpace(request.Entity) ? null : request.Entity.Trim(),
             request.Page,
             request.PageSize,
-            cancellationToken);
+            cancellationToken,
+            string.IsNullOrWhiteSpace(request.Actor) ? null : request.Actor.Trim());
 
         var items = logs.Select(_mapper.Map<AuditLogResponse>).ToArray();
         return Result<PagedResponse<AuditLogResponse>>.Success(

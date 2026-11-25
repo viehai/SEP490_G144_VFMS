@@ -18,7 +18,8 @@ public sealed class TrainerApiClient(HttpClient http, AuthSession session) : IDi
         Send<PagedResponse<TrainerProfileResponse>>(HttpMethod.Get, Root + Query(
             ("Search", filter.Search), ("TrainerRole", filter.TrainerRole), ("Gender", filter.Gender),
             ("MinimumRating", filter.MinimumRating?.ToString(CultureInfo.InvariantCulture)),
-            ("Page", filter.Page.ToString(CultureInfo.InvariantCulture))));
+            ("Page", filter.Page.ToString(CultureInfo.InvariantCulture)), ("Level", filter.Level),
+            ("AcceptingNewMembers", filter.AcceptingNewMembers?.ToString())));
 
     public Task<TrainerPublicDetail> DetailAsync(int id, int reviewPage = 1) =>
         Send<TrainerPublicDetail>(HttpMethod.Get, $"{Root}/{id}?reviewPage={reviewPage}", optionalAuth: true);

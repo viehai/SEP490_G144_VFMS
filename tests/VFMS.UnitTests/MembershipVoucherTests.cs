@@ -11,6 +11,25 @@ public sealed class MembershipVoucherTests
 {
     private static readonly DateTimeOffset Now = new(2026, 11, 13, 9, 0, 0, TimeSpan.Zero);
 
+    [Fact]
+    public void NewCustomerCalendarMonthUsesVietnamDateAndExclusiveAnniversary()
+    {
+        // January 1 at 01:00 in Vietnam, still December 31 in UTC.
+        var created = new DateTime(2025, 12, 31, 18, 0, 0, DateTimeKind.Utc);
+        var deadline = new DateTime(2026, 1, 31, 18, 0, 0, DateTimeKind.Utc);
+        var voucher = new Voucher
+        {
+            Audience = VoucherAudience.NewCustomers, NewCustomerDuration = 1, NewCustomerUnit = FreezeTierUnit.Months,
+            StartAt = created, EndAt = deadline.AddDays(2), DiscountType = DiscountType.FIXED, DiscountValue = 100
+        };
+        Assert.Equal(deadline, VoucherCheckoutRules.NewCustomerDeadlineUtc(created, 1, FreezeTierUnit.Months));
+        Assert.True(VoucherCheckoutRules.Check(voucher, created, deadline.AddTicks(-1), new()).IsSuccess);
+        Assert.Equal("VOUCHER_ACCOUNT_AGE", VoucherCheckoutRules.Check(voucher, created, deadline, new()).ErrorCode);
+        var endJanuary = new DateTime(2024, 1, 30, 18, 0, 0, DateTimeKind.Utc);
+        Assert.Equal(new DateTime(2024, 2, 28, 18, 0, 0, DateTimeKind.Utc),
+            VoucherCheckoutRules.NewCustomerDeadlineUtc(endJanuary, 1, FreezeTierUnit.Months));
+    }
+
     [Theory]
     [InlineData(DiscountType.FIXED, "100000", null, "100000", "400000")]
     [InlineData(DiscountType.FIXED, "600000", null, "500000", "0")]
@@ -182,7 +201,7 @@ public sealed class MembershipVoucherTests
         Assert.Equal(100000, fixture.Order.VoucherRedemption.DiscountAmount);
         Assert.Equal(400000, fixture.Order.PaymentTransaction!.AmountDue);
         Assert.Equal(400000, fixture.Order.PaymentTransaction.AmountReceived);
-        Assert.Single(fixture.Order.Items.Single().MemberMemberships);
+        Assert.Equal(1, Assert.Single(fixture.Order.Items.Single().MemberMemberships).GrantedFreezeCount);
         Assert.NotNull(fixture.Order.PaymentTransaction.Invoice);
         Assert.Equal(2, fixture.Repository.SaveCount);
     }
@@ -266,6 +285,7 @@ public sealed class MembershipVoucherTests
         var fixture = new Fixture();
         fixture.Voucher.DiscountType = DiscountType.FIXED;
         fixture.Voucher.DiscountValue = 600000;
+        fixture.Order.Items.Single().Package.Components.Single().MaxFreezeCount = 0;
         var applied = await fixture.Apply();
         Assert.Equal(0, applied.Data!.AmountDue);
         Assert.Equal("Pending", applied.Data.OrderStatus);
@@ -283,7 +303,7 @@ public sealed class MembershipVoucherTests
         Assert.Equal(0, fixture.Order.PaymentTransaction!.AmountReceived);
         Assert.Equal("NoCharge", fixture.Order.PaymentTransaction.GatewayName);
         Assert.Null(fixture.Order.PaymentTransaction.GatewayTransactionReference);
-        Assert.Single(fixture.Order.Items.Single().MemberMemberships);
+        Assert.Equal(0, Assert.Single(fixture.Order.Items.Single().MemberMemberships).GrantedFreezeCount);
         Assert.NotNull(fixture.Order.PaymentTransaction.Invoice);
     }
 
@@ -377,8 +397,8 @@ public sealed class MembershipVoucherTests
             Task.FromResult(new[] { Buyer, Staff }.Where(user => user.UserId == purchaserId).ToList());
         public Task<Voucher?> FindVoucherForUpdateAsync(string normalizedCode, CancellationToken ct) =>
             Task.FromResult(Vouchers.SingleOrDefault(voucher => voucher.Code.Equals(normalizedCode, StringComparison.OrdinalIgnoreCase)));
-        public Task<(int Confirmed, int Reserved)> CountVoucherCapacityAsync(int voucherId, CancellationToken ct) => Task.FromResult((Confirmed, Reserved));
-        public Task<Order?> FindOrderAsync(string orderNumber, string? purchaserId, bool forUpdate, CancellationToken ct) =>
+        public Task<VoucherCapacity> ReadVoucherCapacityAsync(int voucherId, ApplicationUser purchaser, CancellationToken ct) => Task.FromResult(new VoucherCapacity(Confirmed, Reserved));
+        public Task<Order?> FindOrderAsync(string orderNumber, string? purchaserId, bool forUpdate, CancellationToken ct, bool membershipOnly = false) =>
             Task.FromResult(orderNumber == Order.OrderNumber && (purchaserId is null || purchaserId == Order.PurchaserUserId) ? Order : null);
         public Task<PagedResponse<StaffPackageOrderResponse>> ListStaffOrdersAsync(int gymId, StaffPackageOrderFilter filter,
             DateTime nowUtc, CancellationToken ct) => throw new NotSupportedException();
@@ -394,6 +414,7 @@ public sealed class MembershipVoucherTests
         public void Add(AuditLog audit) => Audits.Add(audit);
         public void Add(Order order) => throw new NotSupportedException();
         public Task<List<Package>> LoadPlansAsync(int[] ids, CancellationToken ct) => throw new NotSupportedException();
+        public Task<FreezePolicy?> GetPurchaseFreezePolicyAsync(CancellationToken ct) => Task.FromResult<FreezePolicy?>(new() { DefaultFreezeAllowanceDays = 20, DefaultMaxFreezeCount = 1, MinFreezeDaysPerRequest = 1, DefaultMaxFreezeDays = 90 });
         public Task<bool> AnyBookableYogaClassAsync(DateTime nowUtc, CancellationToken ct) => throw new NotSupportedException();
         public Task<List<OwnedMembership>> ListOwnedMembershipsAsync(string memberId, CancellationToken ct) => throw new NotSupportedException();
         public Task<OwnedMembershipDetail?> FindOwnedMembershipAsync(string memberId, int membershipId, CancellationToken ct) => throw new NotSupportedException();

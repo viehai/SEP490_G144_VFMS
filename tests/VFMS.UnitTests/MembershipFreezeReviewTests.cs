@@ -70,7 +70,7 @@ public sealed class MembershipFreezeReviewTests
         Assert.True(result.IsSuccess);
         Assert.Equal(7, fixture.Membership.TotalFrozenDays);
         Assert.Equal(7, result.Data!.AppliedPolicy!.Policy!.MaximumFreezeDays);
-        Assert.Equal(7, Assert.Single(result.Data.AppliedPolicy.Quotas).MaximumCumulativeFreezeDays);
+        Assert.Equal(7, Assert.Single(result.Data.AppliedPolicy.Quotas!).MaximumCumulativeFreezeDays);
     }
 
     [Fact]
@@ -580,6 +580,7 @@ public sealed class MembershipFreezeReviewTests
             StartDate = Today.AddDays(-30),
             EndDate = OriginalExpiry,
             TotalFrozenDays = 4,
+            GrantedFreezeAllowanceDays = 30,
             FreezeCount = 1,
             PackageComponentId = 17,
             PackageComponent = new() { Id = 17, ComponentType = ComponentType.GYM, DurationDays = 180 },
@@ -652,13 +653,15 @@ public sealed class MembershipFreezeReviewTests
         public CancellationToken LastSaveToken { get; private set; }
 
         public Task<(IReadOnlyList<MembershipFreezeReviewReadModel> Items, int TotalCount)> SearchAsync(
-            string? type, int page, int pageSize, CancellationToken ct)
+            MembershipFreezeReviewListRequest filter, CancellationToken ct)
         {
-            var matches = membership.MembershipFreezes.Where(request => type == MembershipFreezeReviewTypes.EarlyUnfreeze
+            var early = filter.Type == MembershipFreezeReviewTypes.EarlyUnfreeze;
+            var matches = membership.MembershipFreezes.Where(request => early
                 ? request.EarlyUnfreezeRequestStatus == FreezeRequestStatus.Pending
-                : request.RequestStatus == FreezeRequestStatus.Pending).Select(ToReadModel).ToArray();
+                : request.RequestStatus == FreezeRequestStatus.Pending)
+                .Select(request => ToReadModel(request) with { EarlyUnfreeze = early }).ToArray();
             return Task.FromResult(((IReadOnlyList<MembershipFreezeReviewReadModel>)matches
-                .Skip((page - 1) * pageSize).Take(pageSize).ToArray(), matches.Length));
+                .Skip((filter.Page - 1) * filter.PageSize).Take(filter.PageSize).ToArray(), matches.Length));
         }
 
         public Task<MembershipFreezeReviewReadModel?> FindAsync(int requestId, bool early, CancellationToken ct)

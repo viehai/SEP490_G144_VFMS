@@ -364,6 +364,10 @@ public sealed class TrainerRepository(VfmsDbContext db, IDataProtectionProvider 
             query = query.Where(x => x.Gender == search.Gender);
         if (search.MinimumRating != null)
             query = query.Where(x => x.AverageRating >= search.MinimumRating);
+        if (!string.IsNullOrEmpty(search.Level))
+            query = query.Where(x => x.Level == search.Level);
+        if (search.AcceptingNewMembers != null)
+            query = query.Where(x => x.IsAcceptingNewMembers == search.AcceptingNewMembers);
         var total = await query.CountAsync(cancellationToken);
         var items = await query.OrderBy(x => x.FullName).ThenBy(x => x.Id)
             .Skip((search.Page - 1) * search.PageSize).Take(search.PageSize).ToListAsync(cancellationToken);

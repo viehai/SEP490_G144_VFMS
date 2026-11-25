@@ -5,7 +5,7 @@ namespace VFMS.Domain.Entities;
 
 /// <summary>
 /// Gym check-in/check-out record.
-/// Enforces 15-minute anti-passback cooldown (GBR-90).
+/// One open visit per member; a member may check in again right after checking out (no cooldown).
 /// Auto-closed by JOB-04 at gym closing time + 30 min or after 6 hours.
 /// </summary>
 public class CheckIn : BaseEntity

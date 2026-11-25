@@ -49,6 +49,7 @@ public interface IPurchaseProposalService
         int id, string? note, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default);
     Task<Result<PurchaseProposalResponse>> RequestRevisionAsync(
         int id, string? note, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default);
+    /// <summary>Marks an approved proposal as purchased and records the real price of every item.</summary>
     Task<Result<PurchaseProposalResponse>> CompleteAsync(
-        int id, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default);
+        int id, PurchaseProposalCompleteRequest request, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default);
 }

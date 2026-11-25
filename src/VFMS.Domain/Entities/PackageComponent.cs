@@ -14,13 +14,15 @@ public class PackageComponent : BaseEntity
     public int? DurationDays { get; set; }
     public int? DurationMonths { get; set; }
     public int? SessionCount { get; set; }
-    public int? YogaClassTypeId { get; set; }
+    /// <summary>YOGA plans: the highest class level it books (Beginner / Intermediate / Advanced); lower levels are included. Null only on old plans = all levels.</summary>
+    public string? YogaDifficultyLevel { get; set; }
     public TrainerLevel? ApplicableTrainerLevel { get; set; }
     public int? PTFreezeMinimumDays { get; set; }
     public int? PTFreezeMaxTotalDays { get; set; }
 
     // ── Freeze configuration (component-level overrides for GBR-40/41/42) ──
     public bool AllowFreeze { get; set; } = false;
+    public int? MinFreezeDaysPerRequest { get; set; }
     public int? MaxFreezeDaysPerRequest { get; set; }
     public int? MaxFreezeCount { get; set; }
 
@@ -30,7 +32,6 @@ public class PackageComponent : BaseEntity
 
     // ── Navigation Properties ──────────────────────────────────
     public Package Package { get; set; } = null!;
-    public YogaClassType? YogaClassType { get; set; }
     public ICollection<MemberMembership> MemberMemberships { get; set; } = [];
 }
 

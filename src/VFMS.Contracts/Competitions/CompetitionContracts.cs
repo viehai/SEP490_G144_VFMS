@@ -64,7 +64,14 @@ public sealed record CompetitionPrizeResponse(
     int Rank,
     string? Description,
     int? VoucherId,
-    string? VoucherCode
+    string? VoucherCode,
+    CompetitionRewardVoucher? Reward = null
+);
+
+/// <summary>Public terms of a reward. Redemption codes and ownership are private.</summary>
+public sealed record CompetitionRewardVoucher(
+    int Id, string Name, string DiscountType, decimal DiscountValue, decimal? MaximumDiscount,
+    decimal? MinimumSpend, DateTime StartAt, DateTime EndAt, int? AvailableAwards = null
 );
 
 // ── Registration & Participants (UC-57, UC-60, UC-61) ─────────
@@ -94,7 +101,8 @@ public sealed record CompetitionParticipantResponse(
     string? Note,
     DateTime? ConfirmedAt,
     string? ConfirmedByUserId,
-    string? ConfirmedByName
+    string? ConfirmedByName,
+    string? AwardedVoucherName = null
 );
 
 // ── Results (UC-61 Manage Competition Results, UC-62 Review and Confirm) ──

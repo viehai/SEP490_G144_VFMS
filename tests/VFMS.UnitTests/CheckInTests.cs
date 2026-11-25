@@ -139,7 +139,7 @@ public sealed class CheckInTests
 
         Assert.Equal(201, ok.StatusCode);
         Assert.Equal("m1", ok.Data!.MemberUserId);
-        Assert.StartsWith("Welcome back, Member m1!", ok.Data.Message);
+        Assert.StartsWith("Chào mừng trở lại, Member m1!", ok.Data.Message);
         Assert.Equal(Today.AddDays(20), ok.Data.ValidThrough);
         var visit = repo.Active.Single(c => c.MemberUserId == "m1");
         Assert.Equal(CheckInMethod.FaceRecognition, visit.CheckinMethod);
@@ -150,9 +150,9 @@ public sealed class CheckInTests
     }
 
     [Theory]
-    [InlineData(MembershipStatus.Frozen, "Frozen")]
-    [InlineData(MembershipStatus.Suspended, "Suspended")]
-    [InlineData(MembershipStatus.Active, "Expired")]
+    [InlineData(MembershipStatus.Frozen, "Đang bảo lưu")]
+    [InlineData(MembershipStatus.Suspended, "Tạm ngưng")]
+    [InlineData(MembershipStatus.Active, "Hết hạn")]
     public async Task RefusedCheckInNamesTheMembershipStatus(MembershipStatus status, string shown)   // MSG-36 "with the status"
     {
         var (repo, service, qr) = Kiosk();
@@ -161,7 +161,7 @@ public sealed class CheckInTests
         var result = await service.KioskCheckInAsync(await QrScan(qr, "m1"));
 
         Assert.Equal(403, result.StatusCode);
-        Assert.EndsWith($"Please contact the front desk. Membership status: {shown}.", result.ErrorMessage);
+        Assert.EndsWith($"Vui lòng liên hệ quầy lễ tân. Trạng thái gói: {shown}.", result.ErrorMessage);
     }
 
     [Fact]
@@ -179,7 +179,7 @@ public sealed class CheckInTests
         var both = await service.KioskCheckInAsync(await QrScan(qr, "both"));
 
         Assert.Equal(403, refused.StatusCode);
-        Assert.EndsWith("Membership status: No gym plan.", refused.ErrorMessage);
+        Assert.EndsWith("Trạng thái gói: Chưa có gói Gym.", refused.ErrorMessage);
         Assert.Equal(403, manual.StatusCode);
         Assert.Equal("No gym plan", desk.MembershipStatus);
         Assert.Null(desk.ValidThrough);
@@ -216,7 +216,7 @@ public sealed class CheckInTests
         Assert.NotNull(first.Data.CheckIn);
         Assert.Equal("CheckOut", second.Data!.Action);
         Assert.NotNull(second.Data.CheckOut);
-        Assert.Equal(403, stranger.StatusCode);
+        Assert.Equal((403, "SCAN_NOT_RECOGNISED"), (stranger.StatusCode, stranger.ErrorCode));
     }
 
     [Theory]
@@ -236,15 +236,13 @@ public sealed class CheckInTests
     }
 
     [Fact]
-    public async Task AntiPassbackBlocksReEntryAndStaleVisitIsClosed()   // GBR-90, JOB-04
+    public async Task ReEntryRightAfterCheckOutIsAllowedOpenVisitBlocksAndStaleVisitIsClosed()   // no cooldown, JOB-04
     {
         var (repo, service, qr) = Kiosk();
         repo.Memberships.Add(Membership("m1"));
-        repo.Active.Add(new CheckIn { MemberUserId = "m1", CheckinTime = Now.AddMinutes(-5), Status = CheckInStatus.CheckedOut });
+        repo.Active.Add(new CheckIn { MemberUserId = "m1", CheckinTime = Now.AddMinutes(-1), Status = CheckInStatus.CheckedOut });
 
-        var blocked = await service.KioskCheckInAsync(await QrScan(qr, "m1"));
-        Assert.Equal("ANTI_PASSBACK", blocked.ErrorCode);
-        Assert.Contains("10 minutes", blocked.ErrorMessage);
+        Assert.Equal(201, (await service.KioskCheckInAsync(await QrScan(qr, "m1"))).StatusCode);
 
         repo.Active.Clear();
         var open = new CheckIn { MemberUserId = "m1", CheckinTime = Now.AddHours(-2), Status = CheckInStatus.Active };
@@ -452,8 +450,6 @@ public sealed class CheckInTests
             Task.FromResult(Active.FirstOrDefault(c => c.Id == id));
         public Task<CheckIn?> GetOpenCheckInAsync(string userId, CancellationToken cancellationToken = default) =>
             Task.FromResult(Active.FirstOrDefault(c => c.MemberUserId == userId && c.Status == CheckInStatus.Active));
-        public Task<DateTime?> GetLastCheckInTimeAsync(string userId, CancellationToken cancellationToken = default) =>
-            Task.FromResult(Active.Where(c => c.MemberUserId == userId).Select(c => (DateTime?)c.CheckinTime).Max());
         public Task<IReadOnlyList<PTSession>> GetScheduledPtSessionsAsync(string userId, DateOnly date, DateTime now, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<PTSession>>(PtSessions.Where(p => p.MemberUserId == userId && p.SessionDate == date)
                 .Where(PersonalTrainingRules.CheckInCanComplete(now).Compile()).ToList());

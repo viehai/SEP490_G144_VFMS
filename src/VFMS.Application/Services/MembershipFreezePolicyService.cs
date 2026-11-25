@@ -5,6 +5,8 @@ using VFMS.Contracts.Common;
 using VFMS.Contracts.Memberships;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
+using ContractUnit = VFMS.Contracts.Memberships.MembershipDurationUnit;
+using DomainUnit = VFMS.Domain.Enums.MembershipDurationUnit;
 
 namespace VFMS.Application.Services;
 
@@ -23,9 +25,6 @@ public sealed class MembershipFreezePolicyService(
             return Result<MembershipFreezePolicyResponse>.Failure(
                 string.Join(" ", validation.Errors.Select(error => error.ErrorMessage).Distinct()));
 
-        var requested = request.Quotas!.ToDictionary(
-            quota => (Duration: quota.Duration!.Value, Unit: Enum.Parse<FreezeTierUnit>(quota.Unit!)),
-            quota => quota.MaximumCumulativeFreezeDays!.Value);
         FreezePolicy? policy = null;
         await repository.ExecuteInSerializableTransactionAsync(async () =>
         {
@@ -33,11 +32,15 @@ public sealed class MembershipFreezePolicyService(
             var creating = policy is null;
             var before = policy is null ? null : Snapshot(policy);
             policy ??= new FreezePolicy { PolicyName = "Membership Freeze Policy", CreatedByUserId = managerUserId };
-            policy.MinFreezeDaysPerRequest = request.MinimumFreezeDays!.Value;
-            policy.DefaultMaxFreezeDays = request.MaximumFreezeDays!.Value;
-            policy.MinimumRequestDays = request.MinimumRequestDays!.Value;
-            policy.EligibilityPaidDays = request.EligibilityPaidDays!.Value;
-            ApplyQuotas(policy, requested);
+            policy.MinFreezeDaysPerRequest = ToDays(request.MinimumFreezeDays, request.MinimumFreezeDaysUnit);
+            policy.DefaultMaxFreezeDays = ToDays(request.MaximumFreezeDays, request.MaximumFreezeDaysUnit);
+            policy.MinimumRequestDays = ToDays(request.MinimumRequestDays, request.MinimumRequestDaysUnit);
+            policy.EligibilityPaidDays = ToDays(request.EligibilityPaidDays, request.EligibilityPaidDaysUnit);
+            policy.DefaultMaxFreezeCount = request.DefaultMaxFreezeCount ?? policy.DefaultMaxFreezeCount;
+            policy.MinimumFreezeDaysUnit = (DomainUnit)request.MinimumFreezeDaysUnit;
+            policy.MaximumFreezeDaysUnit = (DomainUnit)request.MaximumFreezeDaysUnit;
+            policy.MinimumRequestDaysUnit = (DomainUnit)request.MinimumRequestDaysUnit;
+            policy.EligibilityPaidDaysUnit = (DomainUnit)request.EligibilityPaidDaysUnit;
             var after = Snapshot(policy);
             if (before == after)
                 return;
@@ -48,7 +51,6 @@ public sealed class MembershipFreezePolicyService(
                 await AuditedWriter.SaveNewAsync(repository, policy, audit, notifications: null, ct);
             else
             {
-                // A change limited to the owned quota rows also updates the policy timestamp.
                 policy.UpdatedAt = audit.OccurredAt;
                 await AuditedWriter.SaveChangedAsync(repository, policy, audit, notifications: null, ct);
             }
@@ -57,37 +59,24 @@ public sealed class MembershipFreezePolicyService(
         return Result<MembershipFreezePolicyResponse>.Success(ToResponse(policy));
     }
 
-    private static void ApplyQuotas(FreezePolicy policy, Dictionary<(int Duration, FreezeTierUnit Unit), int> requested)
+    private static int ToDays(int? value, ContractUnit unit)
     {
-        foreach (var quota in policy.TierQuotas.ToArray())
-        {
-            if (requested.Remove((quota.Duration, quota.Unit), out var maximum))
-                quota.MaximumCumulativeFreezeDays = maximum;
-            else
-                policy.TierQuotas.Remove(quota);
-        }
-
-        foreach (var (tier, maximum) in requested)
-            policy.TierQuotas.Add(new FreezePolicyTierQuota
-            {
-                Duration = tier.Duration,
-                Unit = tier.Unit,
-                MaximumCumulativeFreezeDays = maximum
-            });
+        if (value.HasValue && MembershipFreezeDuration.TryToDays(value.Value, unit, out var days))
+            return days;
+        throw new InvalidOperationException("Freeze duration was not validated.");
     }
 
     private static MembershipFreezePolicyResponse ToResponse(FreezePolicy? policy) =>
-        policy is { MinFreezeDaysPerRequest: { } minimum }
-            ? new(new(policy.Id, minimum, policy.DefaultMaxFreezeDays, policy.MinimumRequestDays,
-                    policy.EligibilityPaidDays,
-                    DateTime.SpecifyKind(policy.UpdatedAt, DateTimeKind.Utc)),
-                ToQuotaResponses(policy))
-            : new(null, []);
+        new(Configuration(policy), []);
 
-    private static MembershipFreezeTierQuotaResponse[] ToQuotaResponses(FreezePolicy policy) =>
-        policy.TierQuotas.OrderBy(quota => quota.Unit).ThenBy(quota => quota.Duration)
-            .Select(quota => new MembershipFreezeTierQuotaResponse(
-                quota.Duration, quota.Unit.ToString(), quota.MaximumCumulativeFreezeDays)).ToArray();
+    internal static MembershipFreezePolicyConfiguration? Configuration(FreezePolicy? policy) =>
+        policy is { MinFreezeDaysPerRequest: { } minimum }
+            ? new(policy.Id, minimum, policy.DefaultMaxFreezeDays, policy.MinimumRequestDays, policy.EligibilityPaidDays,
+                DateTime.SpecifyKind(policy.UpdatedAt, DateTimeKind.Utc),
+                (ContractUnit)policy.MinimumFreezeDaysUnit, (ContractUnit)policy.MaximumFreezeDaysUnit,
+                (ContractUnit)policy.MinimumRequestDaysUnit, (ContractUnit)policy.EligibilityPaidDaysUnit,
+                policy.DefaultMaxFreezeCount)
+            : null;
 
     private static string Snapshot(FreezePolicy policy) => JsonSerializer.Serialize(new
     {
@@ -95,6 +84,10 @@ public sealed class MembershipFreezePolicyService(
         MaximumFreezeDays = policy.DefaultMaxFreezeDays,
         policy.MinimumRequestDays,
         policy.EligibilityPaidDays,
-        Quotas = ToQuotaResponses(policy)
+        policy.DefaultMaxFreezeCount,
+        policy.MinimumFreezeDaysUnit,
+        policy.MaximumFreezeDaysUnit,
+        policy.MinimumRequestDaysUnit,
+        policy.EligibilityPaidDaysUnit
     });
 }

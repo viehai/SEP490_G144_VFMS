@@ -22,7 +22,6 @@ public interface ICheckInRepository : IAuditedRepository
     /// <summary>The member's open check-in (tracked), if any.</summary>
     Task<CheckIn?> GetOpenCheckInAsync(string userId, CancellationToken cancellationToken = default);
     Task<CheckIn?> GetCheckInAsync(int id, CancellationToken cancellationToken = default);
-    Task<DateTime?> GetLastCheckInTimeAsync(string userId, CancellationToken cancellationToken = default);
     /// <summary>The member's PT sessions on a gym-local date that a check-in may complete (GBR-92), with their purchase (tracked).</summary>
     Task<IReadOnlyList<PTSession>> GetScheduledPtSessionsAsync(string userId, DateOnly date, DateTime now, CancellationToken cancellationToken = default);
     /// <summary>Marks the session 'Present' by check-in only if it still qualifies, so a 'PT Absent' report saved at the

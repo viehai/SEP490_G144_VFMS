@@ -3,8 +3,10 @@ using VFMS.Application.Interfaces;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Memberships;
 using VFMS.Contracts.Packages;
+using VFMS.Contracts.Yoga.Validators;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
+using MembershipDurationUnit = VFMS.Contracts.Memberships.MembershipDurationUnit;
 
 namespace VFMS.Application.Services;
 
@@ -15,7 +17,8 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
     {
         PackageStatus? status = string.IsNullOrWhiteSpace(request.Status) ? null : ParseStatus(request.Status);
         var (items, total) = await repository.SearchAsync(
-            Clean(request.Search), status, request.Page, request.PageSize, cancellationToken, ParseServiceType(request.ServiceType));
+            Clean(request.Search), status, request.Page, request.PageSize, cancellationToken, ParseServiceType(request.ServiceType),
+            durationUnit: request.DurationUnit, freezeAllowanceFilter: request.FreezeAllowanceFilter);
         return Result<PagedResponse<MembershipPlanResponse>>.Success(
             new(request.Page, request.PageSize, total, items.Select(ToResponse).ToArray()));
     }
@@ -35,7 +38,7 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
 
         var (items, total) = await repository.SearchAsync(
             Clean(request.Search), PackageStatus.Active, request.Page, request.PageSize, cancellationToken,
-            ParseServiceType(request.ServiceType), clock.GetUtcNow().UtcDateTime);
+            ParseServiceType(request.ServiceType), clock.GetUtcNow().UtcDateTime, request.DurationUnit);
         return Result<PagedResponse<MembershipPlanCatalogItemResponse>>.Success(
             new(request.Page, request.PageSize, total, items.Select(ToCatalogResponse).ToArray()));
     }
@@ -54,6 +57,10 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
     {
         // A plan sells one service, GYM or YOGA (legacy combos keep GYM as their main part).
         var service = new PackageComponent { ComponentType = ParseServiceType(request.ServiceType) ?? ComponentType.GYM };
+        if (await InvalidFreezeRangeAsync(service.ComponentType, request, cancellationToken))
+            return InvalidFreezeRange();
+        if (service.ComponentType == ComponentType.YOGA && !YogaRules.IsDifficulty(request.YogaDifficultyLevel))
+            return YogaLevelRequired();
         var plan = new Package { Components = [service] };
         Apply(plan, service, request);
 
@@ -68,6 +75,18 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
         MutateAsync(id, async plan =>
         {
             var gym = PrimaryComponent(plan);   // the type never changes on update
+            if (await InvalidFreezeRangeAsync(gym.ComponentType, request, cancellationToken))
+                return InvalidFreezeRange();
+            if (gym.ComponentType == ComponentType.YOGA)
+            {
+                // Buyers keep the level they bought until their membership ends, so a bought plan's level is fixed.
+                var used = await repository.HasUsageAsync(id, cancellationToken);
+                if (used && CanonicalLevel(request.YogaDifficultyLevel) != gym.YogaDifficultyLevel)
+                    return Result<MembershipPlanResponse>.Failure(
+                        "Gói đã có người mua nên không đổi được cấp độ. Hãy tạo gói mới với cấp độ khác.", "YOGA_LEVEL_LOCKED", 409);
+                if (!used && !YogaRules.IsDifficulty(request.YogaDifficultyLevel))
+                    return YogaLevelRequired();
+            }
             var oldStatus = plan.PackageStatus;
             var before = Snapshot(plan, gym);
             Apply(plan, gym, request);
@@ -93,7 +112,7 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
             var status = ParseStatus(request.Status);
             if (plan.PackageStatus == status)
                 return Result<MembershipPlanResponse>.Failure(
-                    "The membership plan already has this status.", "MEMBERSHIP_PLAN_STATUS_UNCHANGED", 409);
+                    "Gói hội viên đã ở trạng thái này.", "MEMBERSHIP_PLAN_STATUS_UNCHANGED", 409);
 
             await SetStatusAsync(plan, status, actorUserId, ipAddress, cancellationToken);
             return await GetAsync(id, cancellationToken);
@@ -110,14 +129,14 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
                     await SetStatusAsync(plan, PackageStatus.Inactive, actorUserId, ipAddress, cancellationToken);
 
                 return Result<MembershipPlanDeleteResponse>.Success(new(true,
-                    "This membership plan has order or subscription records and cannot be permanently deleted. It is inactive."));
+                    "Gói đã có đơn hàng hoặc người đăng ký nên không thể xóa vĩnh viễn. Gói đã chuyển sang ngừng bán."));
             }
 
             var audit = AuditedWriter.Audit(actorUserId, AuditActionType.DeleteMembershipPlan, nameof(Package),
                 ipAddress, oldValue: Snapshot(plan, PrimaryComponent(plan)));
             repository.Remove(plan);
             await AuditedWriter.SaveChangedAsync(repository, plan, audit, notifications: null, cancellationToken);
-            return Result<MembershipPlanDeleteResponse>.Success(new(false, "The membership plan was permanently deleted."));
+            return Result<MembershipPlanDeleteResponse>.Success(new(false, "Đã xóa vĩnh viễn gói hội viên."));
         }, cancellationToken);
 
     private async Task<Result<T>> MutateAsync<T>(
@@ -143,20 +162,54 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
         await AuditedWriter.SaveChangedAsync(repository, plan, audit, notifications: null, cancellationToken);
     }
 
+    private async Task<bool> InvalidFreezeRangeAsync(ComponentType type, MembershipPlanRequest request, CancellationToken ct)
+    {
+        if (type != ComponentType.GYM || request.MaxFreezeCount == 0 ||
+            request.MinFreezeDaysPerRequest.HasValue == request.MaxFreezeDaysPerRequest.HasValue)
+            return false;
+        var policy = await repository.GetCatalogFreezeRulesAsync(ct);
+        return (request.MinFreezeDaysPerRequest ?? policy?.MinimumDays) > (request.MaxFreezeDaysPerRequest ?? policy?.MaximumDays);
+    }
+
+    private static Result<MembershipPlanResponse> InvalidFreezeRange() => Result<MembershipPlanResponse>.Failure(
+        "Sau khi áp dụng chính sách chung, số ngày tối thiểu mỗi lượt vượt quá số ngày tối đa.", "FREEZE_DAYS_RANGE");
+
     private static void Apply(Package plan, PackageComponent gym, MembershipPlanRequest request)
     {
+        if (gym.ComponentType == ComponentType.GYM)
+        {
+            gym.MaxFreezeCount = request.MaxFreezeCount;
+            gym.MinFreezeDaysPerRequest = request.MinFreezeDaysPerRequest;
+            gym.MaxFreezeDaysPerRequest = request.MaxFreezeDaysPerRequest;
+        }
         plan.Name = request.Name.Trim();
         plan.Description = Clean(request.Description);
         plan.Price = request.Price!.Value;
         plan.PackageStatus = ParseStatus(request.Status);
 
-        // Keep calendar-month terms on legacy packages unless the manager explicitly changes the duration.
-        if (request.DurationInDays != DisplayDays(gym.DurationDays, gym.DurationMonths))
+        if (request.DurationValue is { } duration)
         {
+            gym.DurationDays = request.DurationUnit == MembershipDurationUnit.Day ? duration : null;
+            gym.DurationMonths = request.DurationUnit == MembershipDurationUnit.Month ? duration : null;
+        }
+        else if (request.DurationInDays != DisplayDays(gym.DurationDays, gym.DurationMonths))
+        {
+            // Preserve a calendar-month term when a day-only client round-trips its old day projection.
             gym.DurationDays = request.DurationInDays;
             gym.DurationMonths = null;
         }
+        if (request.DurationValue.HasValue || request.TargetAudience is not null)
+            plan.TargetAudience = Clean(request.TargetAudience);
+
+        if (gym.ComponentType == ComponentType.YOGA)
+            gym.YogaDifficultyLevel = CanonicalLevel(request.YogaDifficultyLevel);
     }
+
+    private static string? CanonicalLevel(string? level) =>
+        YogaRules.DifficultyLevels.FirstOrDefault(code => code.Equals(level?.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    private static Result<MembershipPlanResponse> YogaLevelRequired() => Result<MembershipPlanResponse>.Failure(
+        "Hãy chọn cấp độ yoga: Cơ bản, Trung bình hoặc Nâng cao.", "YOGA_LEVEL_REQUIRED", 400);
 
     /// <summary>The plan's main part: its GYM component, or for a yoga plan its YOGA component.</summary>
     private static PackageComponent PrimaryComponent(Package plan)
@@ -168,20 +221,36 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
 
     private static MembershipPlanReadModel ReadCreatedPlan(Package plan, PackageComponent service) =>
         new(plan.Id, plan.Name, plan.Description, service.DurationDays, service.DurationMonths, plan.Price,
-            plan.PackageStatus, SubscriberCount: 0, service.ComponentType);
+            plan.PackageStatus, SubscriberCount: 0, service.ComponentType, service.YogaDifficultyLevel)
+        {
+            MaxFreezeCount = service.MaxFreezeCount,
+            MinFreezeDaysPerRequest = service.MinFreezeDaysPerRequest,
+            MaxFreezeDaysPerRequest = service.MaxFreezeDaysPerRequest,
+            TargetAudience = plan.TargetAudience
+        };
 
     private static MembershipPlanResponse ToResponse(MembershipPlanReadModel plan) =>
         new(plan.Id, plan.Name, plan.Description, DisplayDays(plan.DurationDays, plan.DurationMonths), plan.Price,
-            FormatStatus(plan.Status), plan.SubscriberCount, LegacyMonths(plan), plan.ServiceType.ToString());
+            FormatStatus(plan.Status), plan.SubscriberCount, CalendarMonths(plan), plan.ServiceType.ToString(), plan.YogaDifficultyLevel)
+        {
+            MaxFreezeCount = plan.ServiceType == ComponentType.GYM ? plan.MaxFreezeCount : null,
+            MinFreezeDaysPerRequest = plan.ServiceType == ComponentType.GYM ? plan.MinFreezeDaysPerRequest : null,
+            MaxFreezeDaysPerRequest = plan.ServiceType == ComponentType.GYM ? plan.MaxFreezeDaysPerRequest : null,
+            TargetAudience = plan.TargetAudience
+        };
 
     private static MembershipPlanCatalogItemResponse ToCatalogResponse(MembershipPlanReadModel plan) =>
         new(plan.Id, plan.Name, plan.Description, DisplayDays(plan.DurationDays, plan.DurationMonths), plan.Price,
-            FormatStatus(plan.Status), LegacyMonths(plan), plan.ServiceType.ToString());
+            FormatStatus(plan.Status), CalendarMonths(plan), plan.ServiceType.ToString(), plan.YogaDifficultyLevel)
+        {
+            IsSingleService = plan.IsSingleService,
+            TargetAudience = plan.TargetAudience
+        };
 
     private static ComponentType? ParseServiceType(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : Enum.Parse<ComponentType>(value.Trim(), ignoreCase: true);
 
-    private static int? LegacyMonths(MembershipPlanReadModel plan) =>
+    private static int? CalendarMonths(MembershipPlanReadModel plan) =>
         plan.DurationDays is not > 0 && plan.DurationMonths is > 0 ? plan.DurationMonths : null;
 
     private static int? DisplayDays(int? days, int? months) =>
@@ -192,8 +261,13 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
         ServiceType = gym.ComponentType.ToString(),
         plan.Name,
         plan.Description,
+        plan.TargetAudience,
         DurationInDays = gym.DurationDays,
         DurationInMonths = gym.DurationMonths,
+        gym.YogaDifficultyLevel,
+        gym.MaxFreezeCount,
+        gym.MinFreezeDaysPerRequest,
+        gym.MaxFreezeDaysPerRequest,
         plan.Price,
         Status = FormatStatus(plan.PackageStatus)
     });
@@ -209,7 +283,7 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static Result<T> NotFound<T>() =>
-        Result<T>.Failure("Membership plan was not found.", "MEMBERSHIP_PLAN_NOT_FOUND", 404);
+        Result<T>.Failure("Không tìm thấy gói hội viên.", "MEMBERSHIP_PLAN_NOT_FOUND", 404);
 
     // ══════════════════════════════════════════════════════════
     // Public catalog: GET /api/packages?type=gym|yoga|pt
@@ -220,24 +294,78 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
     {
         if (!TryParseComponentType(request.Type, out var componentType))
             return Result<PagedResponse<PackageCatalogItemResponse>>.Failure(
-                "Type must be one of: gym, yoga, pt.", "INVALID_COMPONENT_TYPE", 400);
+                "Chọn loại gói Gym, Yoga hoặc PT.", "INVALID_COMPONENT_TYPE", 400);
 
         var (items, total) = await repository.SearchByComponentTypeAsync(
             componentType, request.Page, request.PageSize, cancellationToken);
+        var freeze = items.Count > 0 && componentType == ComponentType.GYM
+            ? await repository.GetCatalogFreezeRulesAsync(cancellationToken) : null;
 
         return Result<PagedResponse<PackageCatalogItemResponse>>.Success(
             new(request.Page, request.PageSize, total,
-                items.Select(ToCatalogItemResponse).ToArray()));
+                items.Select(item => ToCatalogItemResponse(item, freeze)).ToArray()));
     }
+
+    public async Task<Result<PackageDetailResponse>> GetPackageDetailAsync(
+        string type, int id, CancellationToken cancellationToken)
+    {
+        if (!TryParseComponentType(type, out var componentType))
+            return Result<PackageDetailResponse>.Failure("Loại gói tập không hợp lệ.", "INVALID_COMPONENT_TYPE", 400);
+
+        var packages = await repository.ListActiveSingleServicePackagesAsync(cancellationToken);
+        var package = packages.SingleOrDefault(item => item.Id == id && item.ComponentType == componentType);
+        if (package is null)
+            return Result<PackageDetailResponse>.Failure("Không tìm thấy gói tập đang mở bán.", "PACKAGE_NOT_FOUND", 404);
+        var freeze = packages.Any(item => item.ComponentType == ComponentType.GYM)
+            ? await repository.GetCatalogFreezeRulesAsync(cancellationToken) : null;
+
+        var recommendations = packages.Where(item => item.Id != id)
+            .GroupBy(item => item.ComponentType)
+            .OrderBy(group => group.Key == componentType ? -1 : (int)group.Key)
+            .Select(group => group.Key == componentType
+                ? group.OrderBy(item => RecommendationDistance(package, item))
+                    .ThenBy(item => decimal.Abs(item.Price - package.Price))
+                    .ThenBy(item => item.Id).First()
+                : group.OrderBy(item => item.Price).ThenBy(item => item.Id).First())
+            .Select(item => ToCatalogItemResponse(item, freeze))
+            .ToArray();
+
+        return Result<PackageDetailResponse>.Success(new(ToCatalogItemResponse(package, freeze), recommendations));
+    }
+
+    private static long RecommendationDistance(PackageCatalogReadModel reference, PackageCatalogReadModel candidate)
+    {
+        if (reference.ComponentType == ComponentType.PT)
+            return Distance(reference.SessionCount, candidate.SessionCount);
+
+        return Distance(ComparableDuration(reference), ComparableDuration(candidate));
+    }
+
+    private static long Distance(long? reference, long? candidate) =>
+        reference is { } left && candidate is { } right ? Math.Abs(left - right) : long.MaxValue;
+
+    // Convert months to comparable days only for ranking catalog cards.
+    private static long? ComparableDuration(PackageCatalogReadModel package) =>
+        package.DurationDays is > 0 ? package.DurationDays.Value :
+        package.DurationMonths is > 0 ? 30L * package.DurationMonths.Value : null;
 
     private static bool TryParseComponentType(string? type, out ComponentType result)
     {
         result = default;
-        return type is not null && Enum.TryParse(type.Trim(), ignoreCase: true, out result);
+        var name = type?.Trim();
+        return Enum.TryParse(name, ignoreCase: true, out result) && Enum.IsDefined(result) &&
+            string.Equals(name, result.ToString(), StringComparison.OrdinalIgnoreCase);
     }
 
-    private static PackageCatalogItemResponse ToCatalogItemResponse(PackageCatalogReadModel m) =>
-        new(
+    private static PackageCatalogItemResponse ToCatalogItemResponse(PackageCatalogReadModel m, CatalogMembershipFreezeRules? freeze)
+    {
+        var isGym = m.ComponentType == ComponentType.GYM;
+        var count = m.MaxFreezeCount ?? freeze?.DefaultMaxFreezeCount;
+        var maxDays = m.MaxFreezeDaysPerRequest ?? freeze?.MaximumDays;
+        var minDays = m.MinFreezeDaysPerRequest ?? freeze?.MinimumDays;
+        var allowed = isGym && freeze is not null && count > 0 && minDays > 0 && maxDays >= minDays;
+        var isPt = m.ComponentType == ComponentType.PT;
+        return new(
             m.Id,
             m.Name,
             m.Description,
@@ -247,14 +375,18 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
             m.DurationDays,
             m.DurationMonths,
             m.SessionCount,
-            m.YogaClassTypeId,
-            m.YogaClassTypeName,
+            m.YogaDifficultyLevel,
             m.ApplicableTrainerLevel,
             m.PTFreezeMinimumDays,
             m.PTFreezeMaxTotalDays,
-            m.AllowFreeze,
-            m.MaxFreezeDaysPerRequest,
-            m.MaxFreezeCount,
+            isPt ? m.AllowFreeze : allowed,
+            isGym ? maxDays : isPt ? m.MaxFreezeDaysPerRequest : null,
+            isGym ? count : isPt ? m.MaxFreezeCount : null,
             m.AccessStartTime,
-            m.AccessEndTime);
+            m.AccessEndTime)
+        {
+            IsSingleService = m.IsSingleService,
+            TargetAudience = m.TargetAudience
+        };
+    }
 }

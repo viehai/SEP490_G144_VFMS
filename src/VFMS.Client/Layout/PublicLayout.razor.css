@@ -90,6 +90,23 @@
     }
 }
 
+@media (max-width: 1023px) {
+    .public-navbar:has(a[href="/my-transactions"]) {
+        grid-template-columns: auto minmax(0, 1fr);
+        height: auto;
+        min-height: 64px;
+        padding-top: 6px;
+        padding-bottom: 6px;
+    }
+
+    .public-navbar:has(a[href="/my-transactions"]) .public-navbar__actions {
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        max-width: 100%;
+        row-gap: 6px;
+    }
+}
+
 @media (max-width: 639px) {
     .public-navbar {
         padding: 0 14px;
@@ -108,21 +125,6 @@
 
     .public-navbar__actions {
         gap: 6px;
-    }
-
-    .public-navbar:has(a[href="/my-transactions"]) {
-        grid-template-columns: auto minmax(0, 1fr);
-        height: auto;
-        min-height: 64px;
-        padding-top: 6px;
-        padding-bottom: 6px;
-    }
-
-    .public-navbar:has(a[href="/my-transactions"]) .public-navbar__actions {
-        flex-wrap: wrap;
-        justify-content: flex-end;
-        max-width: 100%;
-        row-gap: 6px;
     }
 }
 

@@ -18,18 +18,21 @@ namespace VFMS.ClientTests;
 
 public sealed class TrainerApiClientTests
 {
-    [Fact]
-    public async Task DirectoryUsesPublicEndpointAndEncodesFilters()
+    [Theory]
+    [InlineData(null, null, "")]
+    [InlineData("Senior", true, "&Level=Senior&AcceptingNewMembers=True")]
+    public async Task DirectoryUsesPublicEndpointAndEncodesFilters(string? level, bool? accepting, string extraQuery)
     {
         using var api = CreateClient(request =>
         {
             Assert.Null(request.Headers.Authorization);
             Assert.Equal("/api/trainers", request.RequestUri!.AbsolutePath);
-            Assert.Equal("?Search=PT%20%26%20Gym&MinimumRating=4.5&Page=2", request.RequestUri.Query);
+            Assert.Equal("?Search=PT%20%26%20Gym&MinimumRating=4.5&Page=2" + extraQuery, request.RequestUri.Query);
             return Task.FromResult(Json(new PagedResponse<TrainerProfileResponse>(2, 20, 0, [])));
         });
 
-        Assert.Empty((await api.SearchAsync(new(Search: "PT & Gym", MinimumRating: 4.5m, Page: 2))).Items);
+        Assert.Empty((await api.SearchAsync(new(Search: "PT & Gym", MinimumRating: 4.5m, Page: 2,
+            Level: level, AcceptingNewMembers: accepting))).Items);
     }
 
     [Theory]
