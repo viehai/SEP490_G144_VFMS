@@ -40,12 +40,11 @@ public class TrainerValidationTests
         Assert.Equal(valid, TrainerFileRules.IsCertificateUrl(url));
 
     [Fact]
-    public void Hire_requires_verified_identity_and_valid_level()
+    public void Hire_requires_valid_level()
     {
         var validator = new ReviewTrainerApplicationValidator();
-        Assert.False(validator.Validate(new ReviewTrainerApplicationRequest("Hire", "Interview completed", "Master", null, false)).IsValid);
-        Assert.False(validator.Validate(new ReviewTrainerApplicationRequest("Hire", "Interview completed", "Unknown", null, true)).IsValid);
-        Assert.True(validator.Validate(new ReviewTrainerApplicationRequest("Hire", "Interview completed", "Master", IdentityVerified: true)).IsValid);
+        Assert.False(validator.Validate(new ReviewTrainerApplicationRequest("Hire", "Interview completed", "Unknown")).IsValid);
+        Assert.True(validator.Validate(new ReviewTrainerApplicationRequest("Hire", "Interview completed", "Master")).IsValid);
     }
     [Fact]
     public void Application_requires_consent_and_certificate()
@@ -288,7 +287,7 @@ public class TrainerValidationTests
         var validator = new ReviewTrainerApplicationValidator();
         Assert.True(validator.Validate(new ReviewTrainerApplicationRequest("Approve", "Verified certificates")).IsValid);
         Assert.True(validator.Validate(new ReviewTrainerApplicationRequest("Approve", "")).IsValid);
-        Assert.True(validator.Validate(new ReviewTrainerApplicationRequest("Hire", null, "Junior", IdentityVerified: true)).IsValid);
+        Assert.True(validator.Validate(new ReviewTrainerApplicationRequest("Hire", null, "Junior")).IsValid);
         Assert.False(validator.Validate(new ReviewTrainerApplicationRequest("Reject", " ")).IsValid);
         Assert.False(validator.Validate(new ReviewTrainerApplicationRequest("Interview", "")).IsValid);
     }

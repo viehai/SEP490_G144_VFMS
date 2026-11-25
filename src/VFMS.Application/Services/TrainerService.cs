@@ -451,7 +451,7 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
     public Task<Result<TrainerApplicationResponse>> Review(int id, ReviewTrainerApplicationRequest r, string actor, CancellationToken ct) => repo.RunExclusiveAsync(async () =>
     {
         if (!await HasRole(actor, "Manager", ct)) return Error<TrainerApplicationResponse>("TRAINER_FORBIDDEN", "Cần quyền quản lý để thực hiện thao tác này.", 403);
-        if (!(await new ReviewTrainerApplicationValidator().ValidateAsync(r, ct)).IsValid) return Error<TrainerApplicationResponse>("TRAINER_VALIDATION", "Quyết định không hợp lệ hoặc chưa xác minh danh tính.", 400);
+        if (!(await new ReviewTrainerApplicationValidator().ValidateAsync(r, ct)).IsValid) return Error<TrainerApplicationResponse>("TRAINER_VALIDATION", "Quyết định không hợp lệ. Vui lòng kiểm tra lại.", 400);
         var a = await repo.GetApplicationAsync(id, ct);
         if (a == null) return Error<TrainerApplicationResponse>("TRAINER_NOT_FOUND", "Không tìm thấy hồ sơ ứng tuyển.", 404);
         var before = a.ApplicationStatus.ToString();
@@ -600,7 +600,7 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
             if (isNew)
                 QueueSetup(user, a);
             else
-                Mail(a, user.Email, "Đã kích hoạt quyền huấn luyện viên", $"Tài khoản hiện tại của bạn đã có quyền huấn luyện viên {(trainerRole!.RoleName == TrainerRoleNames.Yoga ? "Yoga" : "cá nhân")}. Vui lòng đăng nhập lại để cập nhật quyền truy cập.");
+                Mail(a, user.Email, "Đã kích hoạt quyền huấn luyện viên", $"Tài khoản {user.Email} của bạn đã có quyền huấn luyện viên {(trainerRole!.RoleName == TrainerRoleNames.Yoga ? "Yoga" : "cá nhân")}. Hãy đăng nhập bằng email {user.Email} và mật khẩu hiện tại; vui lòng đăng nhập lại để cập nhật quyền truy cập.");
         }
         else
         {

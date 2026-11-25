@@ -23,7 +23,7 @@ public sealed record TrainerApplicationTracking(string TrackingCode, string Appl
 /// <summary>UC 3.1: account details the signed-in applicant cannot change on the form. Date of birth and gender come from the member's physical profile when it has them.</summary>
 public sealed record TrainerApplicantPrefill(string FullName, string Email, string PhoneNumber, DateOnly? DateOfBirth, string? Gender);
 public sealed record ReviewTrainerApplicationRequest(string Action, string? Note, string? Level = null,
-    string? ExistingUserId = null, bool IdentityVerified = false);
+    string? ExistingUserId = null);
 public sealed record UpdateTrainerProfileRequest(string? Bio = null, TrainerFileInput? Avatar = null);
 public sealed record TrainerSetupRequest(string Token, string Password);
 /// <summary>Search matches the trainer name or specialization; TrainerRole filters PT or Yoga (UC 3.4).</summary>

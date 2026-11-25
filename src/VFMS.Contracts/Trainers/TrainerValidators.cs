@@ -99,7 +99,6 @@ public sealed class ReviewTrainerApplicationValidator : AbstractValidator<Review
         When(x => x.Action == "Hire", () =>
         {
             RuleFor(x => x.Level).Must(x => x is "Junior" or "Senior" or "Master").WithMessage("Cấp huấn luyện viên không hợp lệ. Vui lòng kiểm tra lại.");
-            RuleFor(x => x.IdentityVerified).Equal(true).WithMessage("Vui lòng xác nhận trước khi tiếp tục.");
         });
         RuleFor(x => x.ExistingUserId).MaximumLength(450).WithMessage("Mã tài khoản không được vượt quá {MaxLength} ký tự.");
     }

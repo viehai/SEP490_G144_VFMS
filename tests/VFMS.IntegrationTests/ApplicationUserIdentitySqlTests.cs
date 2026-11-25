@@ -103,7 +103,7 @@ public sealed class ApplicationUserIdentitySqlTests
         var gate = new ConcurrentSaveGate();
         await using var trainerDb = ContextWithGate(fixture, gate);
         await using var walkInDb = ContextWithGate(fixture, gate);
-        var hire = fixture.CreateService(trainerDb).Review(application.Id, new("Hire", "Verified", "Junior", null, true), Actor, default);
+        var hire = fixture.CreateService(trainerDb).Review(application.Id, new("Hire", "Verified", "Junior", null), Actor, default);
         var walkIn = WalkIn(Administration(walkInDb), "trainer-race@example.test", "(0912) 000 030");
         await Task.WhenAll(hire, walkIn);
         Assert.NotEqual(hire.Result.IsSuccess, walkIn.Result.IsSuccess);
@@ -111,7 +111,7 @@ public sealed class ApplicationUserIdentitySqlTests
         Assert.Equal(1, await fixture.Db.ApplicationUsers.CountAsync(user => user.PhoneNumber == "0912000030"));
 
         await using var checkDb = fixture.CreateContext();
-        var repeat = await fixture.CreateService(checkDb).Review(application.Id, new("Hire", "Verified", "Junior", null, true), Actor, default);
+        var repeat = await fixture.CreateService(checkDb).Review(application.Id, new("Hire", "Verified", "Junior", null), Actor, default);
         if (walkIn.Result.IsSuccess)
             Assert.Equal("TRAINER_IDENTITY_CONFLICT", repeat.ErrorCode);
         else
@@ -137,7 +137,7 @@ public sealed class ApplicationUserIdentitySqlTests
             Assert.True(submitted.IsSuccess);
             var application = await fixture.Db.TrainerApplications.AsNoTracking().SingleAsync(row => row.TrackingCode == submitted.Data!.TrackingCode);
             Assert.True((await fixture.Service.Review(application.Id, new("Interview", "Interview completed"), Actor, default)).IsSuccess);
-            var hiring = await fixture.Service.Review(application.Id, new("Hire", "Verified", "Junior", null, true), Actor, default);
+            var hiring = await fixture.Service.Review(application.Id, new("Hire", "Verified", "Junior", null), Actor, default);
             Assert.Equal("TRAINER_IDENTITY_CONFLICT", hiring.ErrorCode);
         }
 

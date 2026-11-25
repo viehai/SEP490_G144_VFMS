@@ -189,8 +189,8 @@ public class TrainerContactIdentityTests : IAsyncLifetime
         Assert.Equal(expectedCandidates, detail.Data.AccountMatch.Matches!.Count);
         Success(await service.Review(application.Id, new("Interview", "Interview done"), "manager", default));
         Assert.Equal("TRAINER_IDENTITY_CONFLICT", (await service.Review(application.Id,
-            new("Hire", null, "Junior", IdentityVerified: true), "manager", default)).ErrorCode);
-        Success(await service.Review(application.Id, new("Hire", null, "Junior", "second", true), "manager", default));
+            new("Hire", null, "Junior"), "manager", default)).ErrorCode);
+        Success(await service.Review(application.Id, new("Hire", null, "Junior", "second"), "manager", default));
         Assert.Equal("second", (await db.TrainerProfiles.SingleAsync()).PTUserId);
         Assert.Equal(3, await db.ApplicationUsers.CountAsync());
     }
@@ -218,8 +218,8 @@ public class TrainerContactIdentityTests : IAsyncLifetime
         Assert.Equal(("Matched", "owner"), (detail.Data!.AccountMatch!.Status, detail.Data.AccountMatch.UserId));
         Success(await service.Review(application.Id, new("Interview", "Interview done"), "manager", default));
         Assert.Equal("TRAINER_IDENTITY_CONFLICT", (await service.Review(application.Id,
-            new("Hire", null, "Junior", "other", true), "manager", default)).ErrorCode);
-        Success(await service.Review(application.Id, new("Hire", null, "Junior", "owner", true), "manager", default));
+            new("Hire", null, "Junior", "other"), "manager", default)).ErrorCode);
+        Success(await service.Review(application.Id, new("Hire", null, "Junior", "owner"), "manager", default));
         Assert.Equal("owner", (await db.TrainerProfiles.SingleAsync()).PTUserId);
     }
 
@@ -236,7 +236,7 @@ public class TrainerContactIdentityTests : IAsyncLifetime
         Assert.Equal("Ineligible", detail.Data!.AccountMatch!.Status);
         Success(await service.Review(application.Id, new("Interview", "Interview done"), "manager", default));
         Assert.Equal("TRAINER_IDENTITY_CONFLICT", (await service.Review(application.Id,
-            new("Hire", null, "Junior", IdentityVerified: true), "manager", default)).ErrorCode);
+            new("Hire", null, "Junior"), "manager", default)).ErrorCode);
         Assert.Empty(await db.TrainerProfiles.ToListAsync());
     }
 
@@ -252,7 +252,7 @@ public class TrainerContactIdentityTests : IAsyncLifetime
         Success(await service.Submit(Request("first@example.test", "0900000011"), "owner", default));
         var ownApplication = await db.TrainerApplications.SingleAsync(a => a.ApplicantUserId == "owner");
         Success(await service.Review(ownApplication.Id, new("Interview", "Interview done"), "manager", default));
-        Success(await service.Review(ownApplication.Id, new("Hire", null, "Junior", "owner", true), "manager", default));
+        Success(await service.Review(ownApplication.Id, new("Hire", null, "Junior", "owner"), "manager", default));
         Assert.Equal(TrainerApplicationStatus.Pending, (await db.TrainerApplications.AsNoTracking()
             .SingleAsync(a => a.Id == otherApplication.Id)).ApplicationStatus);
     }
@@ -283,7 +283,7 @@ public class TrainerContactIdentityTests : IAsyncLifetime
         user.PhoneNumber = "0900000011";
         await db.SaveChangesAsync();
         Success(await service.Review(application.Id, new("Interview", "Interview done"), "manager", default));
-        Success(await service.Review(application.Id, new("Hire", null, "Junior", user.UserId, true), "manager", default));
+        Success(await service.Review(application.Id, new("Hire", null, "Junior", user.UserId), "manager", default));
         var reactivated = await db.TrainerProfiles.SingleAsync();
         Assert.Equal((profileId, user.UserId, true), (reactivated.Id, reactivated.PTUserId, reactivated.IsActive));
         Assert.Equal(2, await db.ApplicationUsers.CountAsync());
@@ -300,7 +300,7 @@ public class TrainerContactIdentityTests : IAsyncLifetime
         var second = await db.TrainerApplications.OrderBy(a => a.Id).LastAsync();
         Assert.Equal(2, second.SubmissionAttempt);
         Success(await service.Review(second.Id, new("Interview", "Interview done"), "manager", default));
-        Success(await service.Review(second.Id, new("Hire", null, "Junior", IdentityVerified: true), "manager", default));
+        Success(await service.Review(second.Id, new("Hire", null, "Junior"), "manager", default));
         Assert.Equal(TrainerApplicationStatus.Rejected, (await db.TrainerApplications.AsNoTracking().SingleAsync(a => a.Id == first.Id)).ApplicationStatus);
     }
 

@@ -93,7 +93,7 @@ internal sealed class TrainerTestDatabase : IAsyncDisposable
         Success(await Service.Submit(Request, null, default));
         var app = await Db.TrainerApplications.SingleAsync();
         Success(await Service.Review(app.Id, new("Interview", "Interview completed"), "manager", default));
-        Success(await Service.Review(app.Id, new("Hire", "Verified", "Junior", null, true), "manager", default));
+        Success(await Service.Review(app.Id, new("Hire", "Verified", "Junior", null), "manager", default));
         Db.ChangeTracker.Clear();
         return await Db.TrainerApplications.SingleAsync();
     }
@@ -334,9 +334,9 @@ public class TrainerWorkflowTests
         Assert.Equal("Ambiguous", detail.AccountMatch!.Status);
         var candidate = Assert.Single(detail.AccountMatch.Matches!);
         Assert.Equal((customer.UserId, false, true, true), (candidate.UserId, candidate.EmailMatches, candidate.PhoneMatches, candidate.Eligible));
-        Assert.Equal("TRAINER_IDENTITY_CONFLICT", (await service.Review(original.Id, new("Hire", "Not picked", "Senior", null, true), "manager", default)).ErrorCode);
+        Assert.Equal("TRAINER_IDENTITY_CONFLICT", (await service.Review(original.Id, new("Hire", "Not picked", "Senior", null), "manager", default)).ErrorCode);
         TrainerTestDatabase.Success(await service.Review(original.Id,
-            new("Hire", "Verified matching phone", "Senior", candidate.UserId, true), "manager", default));
+            new("Hire", "Verified matching phone", "Senior", candidate.UserId), "manager", default));
         Assert.Equal(2, await db.ApplicationUsers.CountAsync());
         // UC 3.2 step 7: the linked account keeps only the PT role.
         Assert.Equal(["PT"], await db.ApplicationUserRoles.Where(x => x.UserId == customer.UserId)
@@ -392,7 +392,7 @@ public class TrainerWorkflowTests
         var match = TrainerTestDatabase.Success(await fixture.Service.Application(again.Id, "manager", default)).AccountMatch;
         Assert.Equal(("Matched", profile.PTUserId), (match!.Status, match.UserId));
         TrainerTestDatabase.Success(await fixture.Service.Review(again.Id,
-            new("Hire", "Rehired", "Master", profile.PTUserId, true), "manager", default));
+            new("Hire", "Rehired", "Master", profile.PTUserId), "manager", default));
         var rehired = await db.TrainerProfiles.AsNoTracking().SingleAsync();
         Assert.Equal((profile.Id, true, true, TrainerLevel.Master), (rehired.Id, rehired.IsActive, rehired.AcceptingNewMembers, rehired.Level));
         Assert.Null(rehired.NotAcceptingSince);
@@ -495,7 +495,7 @@ public class TrainerWorkflowTests
         Assert.Empty(TrainerTestDatabase.Success(await service.Applications(new(TrainerRole: "PT"), "manager", default)).Items);
 
         TrainerTestDatabase.Success(await service.Review(application.Id, new("Interview", "Interview completed"), "manager", default));
-        TrainerTestDatabase.Success(await service.Review(application.Id, new("Hire", "Verified", "Junior", null, true), "manager", default));
+        TrainerTestDatabase.Success(await service.Review(application.Id, new("Hire", "Verified", "Junior", null), "manager", default));
         db.ChangeTracker.Clear();
         var profile = await db.TrainerProfiles.Include(p => p.TrainerRole).SingleAsync();
         Assert.Equal("Yoga", profile.TrainerRole!.RoleName);
@@ -629,14 +629,14 @@ public class TrainerWorkflowTests
             });
         // UC 3.2 step 7: each eligible candidate carries the PT contract and Gym/locker checks.
         Assert.All(ambiguous.Matches!, match => Assert.False(match.HasUnfinishedPTContract));
-        var blocked = await service.Review(application.Id, new("Hire", "Verified", "Senior", IdentityVerified: true), "manager", default);
+        var blocked = await service.Review(application.Id, new("Hire", "Verified", "Senior"), "manager", default);
         Assert.Equal("TRAINER_IDENTITY_CONFLICT", blocked.ErrorCode);
 
         db.Remove(await db.ApplicationUsers.SingleAsync(u => u.UserId == "phone-match"));
         await db.SaveChangesAsync();
         var match = TrainerTestDatabase.Success(await service.Application(application.Id, "manager", default)).AccountMatch!;
         TrainerTestDatabase.Success(await service.Review(application.Id,
-            new("Hire", "Verified", "Senior", match.UserId, true), "manager", default));
+            new("Hire", "Verified", "Senior", match.UserId), "manager", default));
         var profile = await db.TrainerProfiles.SingleAsync();
         Assert.Null(profile.CommissionTier);
         var published = TrainerTestDatabase.Success(await service.Public(profile.Id, default));
@@ -701,7 +701,7 @@ public class TrainerWorkflowTests
         Assert.Equal("gmail-existing", detail.AccountMatch!.UserId);
 
         TrainerTestDatabase.Success(await service.Review(latest.Id, new("Interview", "Verified"), "manager", default));
-        TrainerTestDatabase.Success(await service.Review(latest.Id, new("Hire", "Verified", "Junior", detail.AccountMatch.UserId, true), "manager", default));
+        TrainerTestDatabase.Success(await service.Review(latest.Id, new("Hire", "Verified", "Junior", detail.AccountMatch.UserId), "manager", default));
         Assert.Equal(2, await db.ApplicationUsers.CountAsync());
         Assert.Equal("gmail-existing", (await db.TrainerProfiles.SingleAsync()).PTUserId);
     }
@@ -722,10 +722,10 @@ public class TrainerWorkflowTests
         var file = JsonSerializer.Deserialize<List<TrainerStoredFile>>(app.CertificatesJson)!.Single();
         Assert.Equal(404, (await service.ApplicationDocument(app.Id, file.Id, null, default)).StatusCode);
         Assert.Equal(TrainerTestDatabase.Request.Certificates[0].Content, TrainerTestDatabase.Success(await service.ApplicationDocument(app.Id, file.Id, "manager", default)).Content);
-        Assert.Equal("TRAINER_INTERVIEW_REQUIRED", (await service.Review(app.Id, new("Hire", "Verified", "Junior", null, true), "manager", default)).ErrorCode);
+        Assert.Equal("TRAINER_INTERVIEW_REQUIRED", (await service.Review(app.Id, new("Hire", "Verified", "Junior", null), "manager", default)).ErrorCode);
         TrainerTestDatabase.Success(await service.Review(app.Id, new("Interview", "Interview completed"), "manager", default));
-        TrainerTestDatabase.Success(await service.Review(app.Id, new("Hire", "Verified", "Junior", null, true), "manager", default));
-        TrainerTestDatabase.Success(await service.Review(app.Id, new("Hire", "Retry", "Junior", null, true), "manager", default));
+        TrainerTestDatabase.Success(await service.Review(app.Id, new("Hire", "Verified", "Junior", null), "manager", default));
+        TrainerTestDatabase.Success(await service.Review(app.Id, new("Hire", "Retry", "Junior", null), "manager", default));
         Assert.Equal(2, await db.ApplicationUsers.CountAsync()); Assert.Equal(1, await db.TrainerProfiles.CountAsync());
         Assert.Empty(TrainerTestDatabase.Success(await service.Search(new(), default)).Items);
         var initialUser = await db.ApplicationUsers.SingleAsync(x => x.Email == TrainerTestDatabase.Request.Email);
@@ -875,7 +875,7 @@ public class TrainerWorkflowTests
         TrainerTestDatabase.Success(await service.Submit(request with { Email = "second@example.test" }, null, default));
         var second = await db.TrainerApplications.SingleAsync(x => x.Id != first.Id);
         TrainerTestDatabase.Success(await service.Review(second.Id, new("Interview", "Interview completed"), "manager", default));
-        TrainerTestDatabase.Success(await service.Review(second.Id, new("Hire", "Verified", "Junior", null, true), "manager", default));
+        TrainerTestDatabase.Success(await service.Review(second.Id, new("Hire", "Verified", "Junior", null), "manager", default));
 
         db.ChangeTracker.Clear();
         var closed = await db.TrainerApplications.SingleAsync(x => x.Id == first.Id);
@@ -909,9 +909,9 @@ public class TrainerWorkflowTests
         Assert.False(match.Matches!.Single(m => m.UserId == "phone-staff").Eligible);
 
         Assert.Equal("TRAINER_IDENTITY_CONFLICT", (await service.Review(application.Id,
-            new("Hire", "Verified", "Senior", "phone-staff", true), "manager", default)).ErrorCode);
+            new("Hire", "Verified", "Senior", "phone-staff"), "manager", default)).ErrorCode);
         TrainerTestDatabase.Success(await service.Review(application.Id,
-            new("Hire", "Verified in person", "Senior", "email-match", true), "manager", default));
+            new("Hire", "Verified in person", "Senior", "email-match"), "manager", default));
         Assert.Equal("email-match", (await db.TrainerProfiles.SingleAsync()).PTUserId);
         Assert.Equal(3, await db.ApplicationUsers.CountAsync());
     }
@@ -936,7 +936,7 @@ public class TrainerWorkflowTests
         await db.SaveChangesAsync();
         var users = await db.ApplicationUsers.CountAsync();
 
-        var blocked = await service.Review(application.Id, new("Hire", "Verified", "Senior", member.UserId, true), "manager", default);
+        var blocked = await service.Review(application.Id, new("Hire", "Verified", "Senior", member.UserId), "manager", default);
         Assert.Equal("TRAINER_MEMBER_PT_CONTRACT", blocked.ErrorCode);
         db.ChangeTracker.Clear();
         Assert.Equal(users, await db.ApplicationUsers.CountAsync());
