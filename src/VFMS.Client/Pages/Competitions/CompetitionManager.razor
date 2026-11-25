@@ -11,7 +11,7 @@
 <PageTitle>Quản lý cuộc thi | Victor Fitness</PageTitle>
 
 <div class="workspace-page space-y-8 font-['Inter',sans-serif] text-[#252525]">
-    <header class="flex flex-col justify-between gap-5 border-b-2 border-black pb-7 md:flex-row md:items-end">
+    <header class="flex flex-col justify-between gap-5 border-b border-[#D8D1CD] pb-7 md:flex-row md:items-end">
         <div>
             <p class="workspace-heading mb-3 text-[10px] font-bold tracking-[.18em] text-[#71717A]">VFMS / CUỘC THI</p>
             <h1 class="workspace-heading text-3xl font-extrabold uppercase tracking-tight sm:text-4xl">Quản lý cuộc thi<span class="text-[#6366F1]">.</span></h1>
@@ -134,7 +134,7 @@
                         {
                             <tr class="hover:bg-[#FAFAF7]">
                                 <th scope="row" class="break-words px-4 py-4 font-semibold">@item.Name</th>
-                                <td class="whitespace-nowrap px-4 py-4 text-xs text-[#69706A]">@item.StartDate.ToLocalTime().ToString("dd/MM/yyyy") - @item.EndDate.ToLocalTime().ToString("dd/MM/yyyy")</td>
+                                <td class="whitespace-nowrap px-4 py-4 text-xs text-[#69706A]">@FormatVietnamDate(item.StartDate) - @FormatVietnamDate(item.EndDate)</td>
                                 <td class="workspace-heading whitespace-nowrap px-4 py-4 text-xs font-bold">@item.ParticipantCount@(item.MaxParticipants is { } max ? $" / {max}" : "")</td>
                                 <td class="px-4 py-4"><span class="@StatusClass(item.Status)">@CompetitionStatusLabel(item.Status)</span></td>
                                 <td class="px-4 py-4">
@@ -201,7 +201,7 @@
                                         <span class="block font-medium">@row.MemberName</span>
                                         <span class="mt-1 block text-xs text-[#71717A]">@row.MemberEmail</span>
                                     </th>
-                                    <td class="px-6 py-5 text-xs text-[#545454]">@row.RegisteredAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                                    <td class="px-6 py-5 text-xs text-[#545454]">@FormatVietnamDateTime(row.RegisteredAt)</td>
                                     <td class="workspace-heading px-6 py-5 text-xs font-bold">@(row.Score?.ToString("0.##") ?? "-")</td>
                                     <td class="workspace-heading px-6 py-5 text-xs font-bold">@(row.Rank?.ToString() ?? "-")</td>
                                     <td class="px-6 py-5"><span class="@StatusClass(row.Status)">@ParticipantStatusLabel(row.Status)</span></td>
@@ -209,15 +209,15 @@
                                         <div class="flex flex-wrap gap-2">
                                             @if (row.Status == "Disqualified")
                                             {
-                                                <button type="button" @onclick='() => ReinstateAsync(row.Id)' class="workspace-heading border border-[#10B981] bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase text-[#047857] rounded-none">Khôi phục</button>
+                                                <button type="button" @onclick='() => ReinstateAsync(row.Id)' class="workspace-heading rounded-lg border border-[#A7C7B0] bg-emerald-50 px-2.5 py-1.5 text-[10px] font-bold uppercase text-[#047857]">Khôi phục</button>
                                             }
                                             else if (row.Status != "Completed")
                                             {
-                                                <button type="button" @onclick='() => DisqualifyAsync(row.Id)' class="workspace-heading border border-[#EF4444] bg-red-50 px-2 py-1 text-[10px] font-bold uppercase text-[#B91C1C] rounded-none">Loại</button>
+                                                <button type="button" @onclick='() => DisqualifyAsync(row.Id)' class="workspace-heading rounded-lg border border-[#D7A7A7] bg-[#F7EAEA] px-2.5 py-1.5 text-[10px] font-bold uppercase text-[#9F3030]">Loại</button>
                                             }
                                             @if (row.Status != "Completed" && row.Status != "Disqualified")
                                             {
-                                                <button type="button" @onclick='() => OpenRecordResult(row)' class="workspace-heading border border-black px-2 py-1 text-[10px] font-bold uppercase rounded-none">Ghi điểm</button>
+                                                <button type="button" @onclick='() => OpenRecordResult(row)' class="workspace-heading rounded-lg border border-[#D8D1CD] bg-white px-2.5 py-1.5 text-[10px] font-bold uppercase text-[#383E43] hover:border-[#B83A3A] hover:text-[#B83A3A]">Ghi điểm</button>
                                             }
                                             @if (_isManager && CanConfirmResult(row))
                                             {
@@ -256,8 +256,8 @@
                 </div>
             </div>
             <div class="flex flex-wrap gap-3 border-t border-[#CFCFCF] px-6 py-4">
-                <button type="button" @onclick="SaveResultAsync" disabled="@_busy" class="workspace-heading border-2 border-black bg-black px-5 py-3 text-xs font-bold uppercase tracking-wider text-white disabled:opacity-50">Lưu điểm ↗</button>
-                <button type="button" @onclick="CloseDetailsAsync" class="workspace-heading border border-black bg-white px-5 py-3 text-xs font-bold uppercase tracking-wider">Hủy</button>
+                <button type="button" @onclick="SaveResultAsync" disabled="@_busy" class="workspace-heading rounded-lg bg-[#B83A3A] px-5 py-3 text-xs font-bold uppercase tracking-wider text-white hover:bg-[#9F3030] disabled:opacity-50">Lưu điểm ↗</button>
+                <button type="button" @onclick="CloseDetailsAsync" class="workspace-heading rounded-lg border border-[#D8D1CD] bg-white px-5 py-3 text-xs font-bold uppercase tracking-wider text-[#383E43] hover:border-[#B83A3A] hover:text-[#B83A3A]">Hủy</button>
             </div>
         </WorkspaceModal>
     }
@@ -331,7 +331,6 @@
                                         @if (!string.IsNullOrWhiteSpace(row.PrizeName))
                                         {
                                             <span class="block font-semibold">@row.PrizeName</span>
-
                                         }
                                         else
                                         {
@@ -376,10 +375,10 @@
     private readonly List<CompetitionRewardEditor.RewardRow> _rewardRows = [];
     private string _formName = string.Empty;
     private string _formDescription = string.Empty;
-    private DateTime _formRegistrationStart = DateTime.UtcNow;
-    private DateTime _formRegistrationEnd = DateTime.UtcNow.AddDays(7);
-    private DateTime _formStart = DateTime.UtcNow.AddDays(8);
-    private DateTime _formEnd = DateTime.UtcNow.AddDays(9);
+    private DateTime _formRegistrationStart = DateTime.UtcNow.AddHours(7);
+    private DateTime _formRegistrationEnd = DateTime.UtcNow.AddHours(7).AddDays(7);
+    private DateTime _formStart = DateTime.UtcNow.AddHours(7).AddDays(8);
+    private DateTime _formEnd = DateTime.UtcNow.AddHours(7).AddDays(9);
     private int? _formMaxParticipants;
     private int? _resultParticipantId;
     private string _resultMemberName = string.Empty;
@@ -650,7 +649,7 @@
                 string.IsNullOrWhiteSpace(_resultNote) ? null : _resultNote.Trim()));
             _panel = Panel.Participants;
             await RefreshSelectedAsync();
-            _notice = "Đã lưu điểm và hạng. Kết quả đang chờ quản lý duyệt.";
+            _notice = "Đã lưu điểm và hạng.";
         }
         catch (Exception error) { _error = error.Message; }
         finally { _busy = false; }
@@ -698,12 +697,12 @@
 
     private static string StatusClass(string status) => status switch
     {
-        "Published" => "inline-block border border-[#10B981] bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase text-[#047857] rounded-none",
-        "Ongoing" => "inline-block border border-[#6366F1] bg-indigo-50 px-2 py-1 text-[10px] font-bold uppercase text-[#4338CA] rounded-none",
-        "Completed" => "inline-block border border-[#CFCFCF] bg-[#F7F7F7] px-2 py-1 text-[10px] font-bold uppercase text-[#545454] rounded-none",
-        "Cancelled" => "inline-block border border-[#EF4444] bg-red-50 px-2 py-1 text-[10px] font-bold uppercase text-[#B91C1C] rounded-none",
-        "Disqualified" => "inline-block border border-[#EF4444] bg-red-50 px-2 py-1 text-[10px] font-bold uppercase text-[#B91C1C] rounded-none",
-        _ => "inline-block border border-[#F59E0B] bg-amber-50 px-2 py-1 text-[10px] font-bold uppercase text-[#92400E] rounded-none"
+        "Published" => "inline-block rounded-lg border border-[#A7C7B0] bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase text-[#047857]",
+        "Ongoing" => "inline-block rounded-lg border border-[#D7A7A7] bg-[#F7EAEA] px-2 py-1 text-[10px] font-bold uppercase text-[#9F3030]",
+        "Completed" => "inline-block rounded-lg border border-[#D8D1CD] bg-[#F7F4F1] px-2 py-1 text-[10px] font-bold uppercase text-[#545454]",
+        "Cancelled" => "inline-block rounded-lg border border-[#D7A7A7] bg-[#F7EAEA] px-2 py-1 text-[10px] font-bold uppercase text-[#9F3030]",
+        "Disqualified" => "inline-block rounded-lg border border-[#D7A7A7] bg-[#F7EAEA] px-2 py-1 text-[10px] font-bold uppercase text-[#9F3030]",
+        _ => "inline-block rounded-lg border border-[#E2C89A] bg-amber-50 px-2 py-1 text-[10px] font-bold uppercase text-[#92400E]"
     };
 
     private bool CanConfirmResult(CompetitionParticipantResponse participant) =>
@@ -736,6 +735,18 @@
     private static bool CanCompleteManually(CompetitionResponse competition) =>
         competition.Status is "Published" or "Ongoing" &&
         DateTime.UtcNow >= DateTime.SpecifyKind(competition.StartDate, DateTimeKind.Utc);
+
+    private static DateTime ToVietnamUtc(DateTime vietnamTime) =>
+        DateTime.SpecifyKind(vietnamTime, DateTimeKind.Unspecified).AddHours(-7).ToUniversalTime();
+
+    private static DateTime ToVietnamTime(DateTime utcTime) =>
+        DateTime.SpecifyKind(utcTime, DateTimeKind.Utc).AddHours(7);
+
+    private static string FormatVietnamDate(DateTime utcTime) =>
+        ToVietnamTime(utcTime).ToString("dd/MM/yyyy");
+
+    private static string FormatVietnamDateTime(DateTime utcTime) =>
+        ToVietnamTime(utcTime).ToString("dd/MM/yyyy HH:mm");
 
     private static string? Blank(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();

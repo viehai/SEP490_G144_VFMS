@@ -13,14 +13,14 @@ public sealed partial class FeedbackRepository : IFeedbackRepository
 
     public FeedbackRepository(VfmsDbContext context) => _context = context;
 
-    // Gym and package feedback share moderation. Trainer contract reviews (GBR-108) are final.
-    private IQueryable<TrainerReview> ModeratedFeedback => _context.TrainerReviews.Where(review => review.PTPurchaseId == null);
+    // Gym and package feedback use this repository; trainer contract reviews remain separate.
+    private IQueryable<TrainerReview> GymAndPackageFeedback => _context.TrainerReviews.Where(review => review.PTPurchaseId == null);
 
     public async Task<(IReadOnlyList<TrainerReview> Items, int Total)> SearchAsync(
         string? search, string? status, int? rating, string? memberUserId, int page, int pageSize,
         CancellationToken cancellationToken = default)
     {
-        var query = ModeratedFeedback
+        var query = GymAndPackageFeedback
             .AsNoTracking()
             .Include(review => review.Package)
             .Include(review => review.TrainerUser)
@@ -33,7 +33,7 @@ public sealed partial class FeedbackRepository : IFeedbackRepository
                 (review.Comment != null && review.Comment.Contains(search)) ||
                 (review.Package != null && review.Package.Name.Contains(search)) ||
                 review.MemberUser.FullName.Contains(search) ||
-                review.TrainerUser.FullName.Contains(search));
+                (review.TrainerUser != null && review.TrainerUser.FullName.Contains(search)));
         if (!string.IsNullOrWhiteSpace(status)
             && Enum.TryParse<TrainerReviewStatus>(status, true, out var parsed))
             query = query.Where(review => review.ReviewStatus == parsed);
@@ -41,6 +41,33 @@ public sealed partial class FeedbackRepository : IFeedbackRepository
             query = query.Where(review => review.Rating == rating.Value);
         if (!string.IsNullOrWhiteSpace(memberUserId))
             query = query.Where(review => review.MemberUserId == memberUserId);
+
+        var total = await query.CountAsync(cancellationToken);
+        var items = await query
+            .OrderByDescending(review => review.CreatedAt)
+            .ThenByDescending(review => review.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+        return (items, total);
+    }
+
+    public async Task<(IReadOnlyList<TrainerReview> Items, int Total)> SearchPublicAsync(
+        string? search, int? rating, int page, int pageSize, CancellationToken cancellationToken = default)
+    {
+        var query = GymAndPackageFeedback.AsNoTracking()
+            .Where(review => !review.MemberUser.IsDeleted)
+            .Include(review => review.Package)
+            .Include(review => review.MemberUser)
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(search))
+            query = query.Where(review =>
+                (review.Comment != null && review.Comment.Contains(search)) ||
+                (review.Package != null && review.Package.Name.Contains(search)) ||
+                review.MemberUser.FullName.Contains(search));
+        if (rating is >= 1 and <= 5)
+            query = query.Where(review => review.Rating == rating.Value);
 
         var total = await query.CountAsync(cancellationToken);
         var items = await query
@@ -68,7 +95,7 @@ public sealed partial class FeedbackRepository : IFeedbackRepository
             .ToListAsync(cancellationToken);
 
     public Task<TrainerReview?> GetAsync(int id, CancellationToken cancellationToken = default) =>
-        ModeratedFeedback
+        GymAndPackageFeedback
             .Include(review => review.Package)
             .Include(review => review.TrainerUser)
             .Include(review => review.MemberUser)
@@ -80,13 +107,12 @@ public sealed partial class FeedbackRepository : IFeedbackRepository
 
     public Task<TrainerReview?> FindExistingAsync(
         string trainerUserId, string memberUserId, CancellationToken cancellationToken = default) =>
-        ModeratedFeedback.FirstOrDefaultAsync(
+        GymAndPackageFeedback.FirstOrDefaultAsync(
             review => review.PackageId == null && review.TrainerUserId == trainerUserId && review.MemberUserId == memberUserId,
             cancellationToken);
 
     public async Task SaveAsync(
-        TrainerReview review, AuditLog? audit = null,
-        CancellationToken cancellationToken = default)
+        TrainerReview review, AuditLog? audit = null, CancellationToken cancellationToken = default)
     {
         await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
         if (review.Id == 0)
@@ -98,5 +124,12 @@ public sealed partial class FeedbackRepository : IFeedbackRepository
         }
         await _context.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task DeleteAsync(TrainerReview review, CancellationToken cancellationToken = default)
+    {
+        review.IsDeleted = true;
+        review.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync(cancellationToken);
     }
 }

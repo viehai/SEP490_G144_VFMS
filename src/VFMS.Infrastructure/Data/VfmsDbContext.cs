@@ -1317,6 +1317,7 @@ public class VfmsDbContext : DbContext
             entity.HasOne(e => e.TrainerUser)
                 .WithMany()
                 .HasForeignKey(e => e.TrainerUserId)
+                .IsRequired(false)
                 .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasOne(e => e.MemberUser)

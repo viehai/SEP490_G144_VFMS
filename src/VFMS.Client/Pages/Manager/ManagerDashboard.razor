@@ -2,7 +2,6 @@
 @layout ManagerAdminLayout
 @using Microsoft.AspNetCore.Authorization
 @using System.Globalization
-@using VFMS.Contracts.Feedback
 @using VFMS.Contracts.Memberships
 @using VFMS.Contracts.Procurement
 @using VFMS.Contracts.SystemAdministration
@@ -49,35 +48,6 @@
         </div>
     </section>
 
-    <section class="overflow-hidden border border-[#D8D1CD] bg-[#F8F5F2] rounded-xl shadow-sm" aria-labelledby="manager-feedback-title">
-        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[#D8D1CD] px-6 py-4">
-            <h2 id="manager-feedback-title" class="workspace-heading text-sm font-extrabold uppercase tracking-wider text-[#242424]">Phản hồi chờ duyệt</h2>
-            <a href="/manager/feedback" class="text-xs font-bold text-[#B83A3A] underline">Xem tất cả</a>
-        </div>
-        @if (_feedback is null)
-        {
-            <p role="status" class="px-6 py-8 text-sm text-[#6F6966]">@(_loading ? "Đang tải..." : "Không có dữ liệu phản hồi.")</p>
-        }
-        else if (_feedback.Count == 0)
-        {
-            <p role="status" class="px-6 py-8 text-sm text-[#6F6966]">Không có phản hồi nào chờ duyệt.</p>
-        }
-        else
-        {
-            <div class="divide-y divide-[#ECE8E4]">
-                @foreach (var feedback in _feedback)
-                {
-                    <article @key="feedback.Id" class="flex flex-col justify-between gap-4 px-6 py-4 sm:flex-row hover:bg-[#F3EDEA]">
-                        <div>
-                            <p class="text-sm font-semibold text-[#242424]">@feedback.MemberName <span class="ml-2 text-xs font-normal text-[#8C8581]">HLV @feedback.TrainerName · @feedback.Rating/5</span></p>
-                            <p class="mt-1.5 max-w-2xl text-sm leading-6 text-[#6F6966]">@(string.IsNullOrWhiteSpace(feedback.Comment) ? "(Không có nhận xét)" : feedback.Comment)</p>
-                        </div>
-                        <span class="h-fit whitespace-nowrap text-xs text-[#6F6966]">@DateTime.SpecifyKind(feedback.CreatedAt, DateTimeKind.Utc).AddHours(7).ToString("dd/MM/yyyy")</span>
-                    </article>
-                }
-            </div>
-        }
-    </section>
 </div>
 
 @code {
@@ -91,7 +61,7 @@
         new("/manager/purchase-proposals", "Đề xuất mua sắm", "Duyệt đề xuất của nhân viên"),
         new("/manager/lockers", "Danh mục tủ & bảng giá", "Khu, tủ, giá, cọc chìa, nội quy"),
         new("/manager/locker-clearances", "Xác nhận dọn tủ", "Duyệt biên bản dọn tủ quá hạn"),
-        new("/manager/feedback", "Feedback Management", "Lắng nghe phản hồi hội viên")
+        new("/manager/feedback", "Phản hồi khách hàng", "Xem và trả lời đánh giá")
     ];
 
     private readonly CancellationTokenSource _lifetime = new();
@@ -100,8 +70,6 @@
     private bool _noReport;
     private int? _freezeRequests;
     private int? _proposals;
-    private IReadOnlyCollection<FeedbackResponse>? _feedback;
-    private bool _loading = true;
 
     // Business figures come from the latest generated report (UC-86); the dashboard does not compute its own.
     private string ReportNote => _report is not null
@@ -125,10 +93,7 @@
             Load("bảo lưu", async ct => _freezeRequests = (await Api.GetAsync<PagedResponse<MembershipFreezeReviewSummaryResponse>>(
                 "api/manager/membership-freeze-requests?page=1&pageSize=1", ct)).TotalCount),
             Load("đề xuất mua sắm", async ct => _proposals = (await Api.GetAsync<PagedResponse<PurchaseProposalResponse>>(
-                "api/purchase-proposals?status=Submitted&page=1&pageSize=1", ct)).TotalCount),
-            Load("phản hồi", async ct => _feedback = (await Api.GetAsync<PagedResponse<FeedbackResponse>>(
-                "api/feedback/manager?status=Pending&page=1&pageSize=5", ct)).Items));
-        _loading = false;
+                "api/purchase-proposals?status=Submitted&page=1&pageSize=1", ct)).TotalCount));
     }
 
     private async Task Load(string what, Func<CancellationToken, Task> load)
