@@ -7,8 +7,8 @@
 
 <PageTitle>Tranh chấp điểm danh PT | Victor Fitness</PageTitle>
 <section class="workspace-page trainer-page trainer-stack">
-    <PageHeader Overline="VFMS / PERSONAL TRAINING" Title="Tranh chấp điểm danh"
-                Description="PT ghi có mặt nhưng hội viên báo PT vắng mặt. Xem hai bên rồi chọn kết quả cuối cùng." />
+    <PageHeader Overline="VFMS / HUẤN LUYỆN CÁ NHÂN" Title="Tranh chấp điểm danh"
+                Description="Hội viên báo PT vắng mặt nhưng PT đã điểm danh. Xem hai bên và lượt ra vào gym của hội viên rồi chọn kết quả cuối cùng." />
     <div class="trainer-row">
         <button class="trainer-button" aria-pressed="@(!_processed)" disabled="@_busy" @onclick="() => SwitchAsync(false)">Đang chờ</button>
         <button class="trainer-button" aria-pressed="@_processed" disabled="@_busy" @onclick="() => SwitchAsync(true)">Đã xử lý</button>
@@ -25,9 +25,40 @@
             </div>
             <p>Hợp đồng #@item.ContractId · @item.Date.ToString("dd/MM/yyyy") · @item.StartTime.ToString("HH:mm")–@item.EndTime.ToString("HH:mm")</p>
             <dl class="pt-facts">
-                <dt>PT ghi nhận</dt><dd>Có mặt</dd>
-                <dt>Hội viên báo</dt><dd>PT vắng mặt @(item.MemberNote is { } note ? $"· {note}" : "")</dd>
+                <dt>PT ghi nhận</dt>
+                <dd>Hội viên @(item.TrainerRecordedPresent == false ? "vắng mặt" : "có mặt")@(item.TrainerRecordedAt is { } recordedAt ? $" · lúc {LocalTime(recordedAt)}" : "")</dd>
+                <dt>Hội viên báo</dt>
+                <dd>PT vắng mặt · lúc @LocalTime(item.ReportedAt)@(item.MemberNote is { } note ? $" · {note}" : "")</dd>
             </dl>
+            <button class="trainer-button" aria-expanded="@(_visits.ContainsKey(item.SessionId))" disabled="@_busy"
+                    @onclick="() => ToggleVisitsAsync(item.SessionId)">
+                @(_visits.ContainsKey(item.SessionId) ? "Ẩn lượt ra vào gym" : "Xem lượt ra vào gym của hội viên")
+            </button>
+            @if (_visits.TryGetValue(item.SessionId, out var visits))
+            {
+                <h3>Lượt ra vào gym ngày @item.Date.ToString("dd/MM/yyyy")</h3>
+                @if (visits.Count == 0) { <p class="trainer-muted">Hội viên không ghi nhận vào phòng tập trong ngày này.</p> }
+                else
+                {
+                    <div class="trainer-scroll">
+                        <table class="trainer-table">
+                            <thead><tr><th>Giờ vào</th><th>Cách vào</th><th>Giờ ra</th><th>Cách ra</th><th>Đối chiếu buổi tập</th></tr></thead>
+                            <tbody>
+                                @foreach (var visit in visits)
+                                {
+                                    <tr>
+                                        <td>@Clock(visit.CheckinTime)</td>
+                                        <td>@Method(visit.CheckinMethod, visit.CheckedInBy)</td>
+                                        <td>@(visit.CheckoutTime is { } outAt ? Clock(outAt) : visit.Status == "Active" ? "Đang trong gym" : "—")@(visit.Status == "AutoClosed" ? " (tự đóng)" : "")</td>
+                                        <td>@(visit.CheckoutMethod is { } outMethod ? Method(outMethod, visit.CheckedOutBy) : "—")</td>
+                                        <td>@(visit.InCheckInWindow ? "Trong khung ghi nhận vào phòng tập của buổi" : visit.OverlapsSession ? "Có mặt trong giờ tập" : "Ngoài giờ tập")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            }
             @if (item.Decision is null)
             {
                 <label>Ghi chú quyết định<textarea class="trainer-input" rows="3" maxlength="1000" @bind="_notes[item.SessionId]" disabled="@_busy"></textarea></label>
@@ -40,7 +71,7 @@
             else
             {
                 <p>Kết quả: <strong>@DecisionName(item.Decision)</strong>@(item.ReviewNote is { } review ? $" · {review}" : "")</p>
-                @if (item.ReviewerName is { } reviewer) { <p class="trainer-muted">Manager quyết định: @reviewer</p> }
+                @if (item.ReviewerName is { } reviewer) { <p class="trainer-muted">Quản lý quyết định: @reviewer</p> }
             }
         </article>
     }
@@ -51,6 +82,26 @@
 @code {
     private PagedResponse<PTAttendanceDispute>? _page;
     private readonly Dictionary<int, string> _notes = [];
+    private readonly Dictionary<int, IReadOnlyList<PTDisputeCheckIn>> _visits = [];
+
+    // UC 4.11 step 3: the Member's gym visits on the session day, loaded when the Manager opens them.
+    private async Task ToggleVisitsAsync(int id)
+    {
+        if (_visits.Remove(id)) return;
+        _busy = true;
+        _error = null;
+        try { _visits[id] = await Api.DisputeCheckInsAsync(id); }
+        catch (AuthApiException ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private static string Clock(DateTime utc) => DateTime.SpecifyKind(utc, DateTimeKind.Utc).AddHours(7).ToString("HH:mm");
+    private static string Method(string method, string? staff) => method switch
+    {
+        "FaceRecognition" => "FaceID",
+        "QRCode" => "QR",
+        _ => staff is null ? "Lễ tân" : $"Lễ tân ({staff})"
+    };
     private bool _loading, _busy, _processed;
     private string? _error, _message;
     private IEnumerable<PTAttendanceDispute> Visible => _page?.Items ?? [];

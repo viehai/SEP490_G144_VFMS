@@ -29,6 +29,7 @@ public sealed partial class RouterAuthenticationTests
                 "Huấn luyện viên & PT", "/manager/trainer-applications", "/manager/pt-packages",
                 "/manager/pt-freeze-requests", "/manager/pt-attendance-disputes",
                 "Thiết bị & mua sắm", "/manager/equipment", "/manager/equipment-issues", "/manager/purchase-proposals",
+                "Tủ đồ", "/manager/lockers", "/manager/locker-clearances",
                 "Bán hàng & Marketing", "/manager/supplement-products", "/manager/supplement-orders", "/manager/promotions",
                 "Khách hàng", "/manager/customers/create", "/manager/feedback", "/manager/consultations", "/manager/promotions"
             ]
@@ -48,6 +49,7 @@ public sealed partial class RouterAuthenticationTests
                 "Lễ tân & điểm danh", "/staff/check-ins", "/kiosk", "/staff/yoga",
                 "Khách hàng", "/staff/customers/create", "/staff/consultations", "/staff/feedback",
                 "Đơn hàng", "/staff/membership-cash-receipt", "/staff/supplement-orders",
+                "Tủ đồ", "/staff/lockers", "/staff/locker-contracts",
                 "Thiết bị & mua sắm", "/staff/equipment-issues", "/staff/purchase-proposals",
                 "Hoạt động", "/staff/competitions"
             ]
@@ -98,7 +100,7 @@ public sealed partial class RouterAuthenticationTests
     [InlineData(typeof(StaffPTLayout), "/pt/yoga", "PT,YogaInstructor", "/pt/availability /pt/teaching-schedule /pt/yoga /pt/assigned-members /pt/trainer-profile")]
     [InlineData(typeof(StaffPTLayout), "/pt/yoga", "YogaInstructor", "/profile /competitions / /pt/trainer-profile /pt/yoga")]
     [InlineData(typeof(AccountLayout), "/my-pt-packages", "Member", "/profile /competitions / /my-vouchers /my-memberships /my-pt-packages")]
-    [InlineData(typeof(AccountLayout), "/my-pt-packages", "Customer", "/profile /competitions / /my-vouchers")]
+    [InlineData(typeof(AccountLayout), "/my-pt-packages", "Customer", "/profile /competitions / /my-vouchers /my-memberships /my-pt-packages")]
     public async Task SharedLayoutsOnlyShowTheLinksForTheAuthenticatedRoles(Type layout, string path, string roles, string expected)
     {
         var nav = await RenderWorkspaceMenu(layout, path, roles.Split(','));

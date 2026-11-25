@@ -18,8 +18,6 @@ public class TrainerProfile : BaseEntity
     public string PTUserId { get; set; } = string.Empty;
     /// <summary>PT or Yoga; null only for rows created before trainer roles existed.</summary>
     public int? TrainerRoleId { get; set; }
-    /// <summary>Citizen ID (CCCD) copied from the hired application; verified on ProfileUpdate (UC-3.2, UC-3.3).</summary>
-    public string? CitizenId { get; set; }
     public string? Bio { get; set; }
     public string? AvatarUrl { get; set; }
     public string? CertificateUrl { get; set; }
@@ -28,10 +26,14 @@ public class TrainerProfile : BaseEntity
     public string? CommissionTier { get; set; }
     public bool IsActive { get; set; } = true;
     public bool AcceptingNewMembers { get; set; }
-    /// <summary>First day of the current 'Not Accepting' period; null while accepting (GBR-98).</summary>
+    /// <summary>First day of the current 'Not Accepting' period; null while accepting (GBR-104).</summary>
     public DateOnly? NotAcceptingSince { get; set; }
-    /// <summary>GBR-98: start of the 60-day count; moved forward each day the trainer still has a running contract.</summary>
+    /// <summary>GBR-104: first day not yet included in the accumulated inactivity count.</summary>
     public DateOnly? NotAcceptingCountFrom { get; set; }
+    /// <summary>Inactive days already counted, excluding time accepting members or serving a running contract.</summary>
+    public int NotAcceptingAccumulatedDays { get; set; }
+    /// <summary>First day of the current accepting period; ten consecutive days clear accumulated inactivity.</summary>
+    public DateOnly? AcceptingSince { get; set; }
 
     // ── Navigation Properties ──────────────────────────────────
     public ApplicationUser PTUser { get; set; } = null!;

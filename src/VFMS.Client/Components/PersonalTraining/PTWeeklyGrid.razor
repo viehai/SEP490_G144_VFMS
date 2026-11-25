@@ -1,3 +1,11 @@
+@if (SlotSelected.HasDelegate)
+{
+    <p class="pt-legend" aria-label="Chú thích">
+        <span><i class="pt-legend-swatch"></i>Còn trống</span>
+        <span><i class="pt-legend-swatch pt-legend-swatch--chosen"></i>Đã chọn</span>
+        <span><i class="pt-legend-swatch pt-legend-swatch--blocked"></i>Không chọn được</span>
+    </p>
+}
 <div class="trainer-scroll" tabindex="0" role="region" aria-label="Bảng lịch tuần của PT">
     <table class="trainer-table pt-week pt-public-calendar">
         <thead>
@@ -5,7 +13,7 @@
                 <th scope="col">Giờ</th>
                 @foreach (var day in Days)
                 {
-                    <th scope="col">
+                    <th scope="col" class="@(IsToday(day) ? "pt-calendar-today" : null)">
                         @Day(day)
                         @if (WeekMonday is { } monday && monday.DayNumber + DayIndex(day) <= DateOnly.MaxValue.DayNumber)
                         {
@@ -23,7 +31,7 @@
                     @foreach (var day in Days)
                     {
                         var cellSlots = Slots.Where(item => item.DayOfWeek == day && item.StartTime == start).ToArray();
-                        <td>
+                        <td class="@(IsToday(day) ? "pt-calendar-today-cell" : null)">
                             @if (cellSlots.Length == 0)
                             {
                                 <span class="trainer-muted" aria-label="Không có ca">—</span>
@@ -73,6 +81,8 @@
 
 @code {
     private static readonly DayOfWeek[] Days = Enum.GetValues<DayOfWeek>().OrderBy(DayIndex).ToArray();
+
+    private bool IsToday(DayOfWeek day) => WeekMonday is { } monday && monday.DayNumber + DayIndex(day) == Today.DayNumber;
 
     [Parameter, EditorRequired] public IReadOnlyList<PTWeeklySlot> Slots { get; set; } = [];
     [Parameter] public DateOnly? WeekMonday { get; set; }

@@ -7,7 +7,7 @@ public sealed record TrainerCertificateLinkInput(string Url, string? ReplacesCer
 /// Specialty is free text; a ProfileUpdate may leave it empty to keep the published one.
 /// </summary>
 public sealed record SubmitTrainerApplicationRequest(
-    string FullName, string Email, string PhoneNumber, string CitizenId, DateOnly DateOfBirth,
+    string FullName, string Email, string PhoneNumber, DateOnly DateOfBirth,
     string Gender, string Specialty, int ExperienceYears, string Bio, bool Consent,
     List<TrainerFileInput> Certificates, string ApplicationType = "Recruitment", List<string>? CertificateUrls = null,
     List<TrainerCertificateLinkInput>? CertificateLinks = null, string? TrainerRole = null);
@@ -15,14 +15,20 @@ public sealed record TrainerApplicationReceipt(string TrackingCode, string Statu
 public sealed record TrainerRecruitmentStatus(bool IsAcceptingApplications);
 public sealed record SetTrainerRecruitmentStatusRequest(bool IsAcceptingApplications);
 public sealed record TrainerApplicationFilter(string? Status = null, string? TrainerRole = null,
-    DateTime? From = null, DateTime? To = null, int Page = 1, int PageSize = 20, string? ApplicationType = null);
+    DateTime? From = null, DateTime? To = null, int Page = 1, int PageSize = 10, string? ApplicationType = null,
+    string? TrackingCode = null);
+/// <summary>UC 3.1: what the public status page shows for a tracking code. The reason appears only for a rejected application.</summary>
+public sealed record TrainerApplicationTracking(string TrackingCode, string ApplicationType, string Status,
+    DateTime SubmittedAt, string? TrainerRole, string? RejectionReason);
+/// <summary>UC 3.1: account details the signed-in applicant cannot change on the form. Date of birth and gender come from the member's physical profile when it has them.</summary>
+public sealed record TrainerApplicantPrefill(string FullName, string Email, string PhoneNumber, DateOnly? DateOfBirth, string? Gender);
 public sealed record ReviewTrainerApplicationRequest(string Action, string? Note, string? Level = null,
-    string? ExistingUserId = null, bool IdentityVerified = false);
+    string? ExistingUserId = null);
 public sealed record UpdateTrainerProfileRequest(string? Bio = null, TrainerFileInput? Avatar = null);
 public sealed record TrainerSetupRequest(string Token, string Password);
 /// <summary>Search matches the trainer name or specialization; TrainerRole filters PT or Yoga (UC 3.4).</summary>
 public sealed record TrainerSearch(string? Search = null, string? TrainerRole = null, string? Gender = null,
-    decimal? MinimumRating = null, int Page = 1, int PageSize = 20, string? Level = null, bool? AcceptingNewMembers = null);
+    decimal? MinimumRating = null, int Page = 1, int PageSize = 10, string? Level = null, bool? AcceptingNewMembers = null);
 /// <summary>Replaces: the published certificate (link or file name) a pending ProfileUpdate certificate would replace (UC 3.3).</summary>
 public sealed record TrainerDocumentResponse(string Id, string FileName, string ContentType, string DownloadUrl, bool IsExternalLink = false,
     string? Replaces = null);
@@ -37,7 +43,7 @@ public sealed record TrainerAccountCandidate(string UserId, string FullName, str
     bool EmailMatches, bool PhoneMatches, bool Eligible = true, bool HasUnfinishedPTContract = false,
     DateOnly? MemberServicesUntil = null);
 public sealed record TrainerApplicationResponse(int Id, string TrackingCode, string Status, string FullName,
-    string Email, string PhoneNumber, string CitizenId, DateOnly? DateOfBirth, string Gender, string Specialty,
+    string Email, string PhoneNumber, DateOnly? DateOfBirth, string Gender, string Specialty,
     int ExperienceYears, string Bio, DateTime SubmittedAt, int SubmissionAttempt, string? ReviewNote,
     string? HiredUserId, IReadOnlyList<TrainerDocumentResponse> Certificates, string ApplicationType = "Recruitment",
     IReadOnlyList<TrainerSubmissionAttempt>? SubmissionHistory = null, string? InterviewNote = null, TrainerAccountMatch? AccountMatch = null,
@@ -49,12 +55,14 @@ public sealed record TrainerProfileResponse(int Id, string UserId, string FullNa
     public TrainerProfileResponse() : this(0, "", "", "", "", "", 0, null, null, 0) { }
     public bool IsAcceptingNewMembers { get; init; }
     public DateOnly? NotAcceptingSince { get; init; }
-    /// <summary>GBR-98: first day of the 60-day count (later than NotAcceptingSince while contracts were still running).</summary>
+    /// <summary>GBR-104: first day not yet included in the accumulated inactivity count.</summary>
     public DateOnly? NotAcceptingCountFrom { get; init; }
+    public int NotAcceptingAccumulatedDays { get; init; }
+    public DateOnly? AcceptingSince { get; init; }
     /// <summary>PT or Yoga. Only a PT sells packages and publishes a weekly timetable (UC 3.4).</summary>
     public string TrainerRole { get; init; } = "";
 }
-/// <summary>ContractsNotified: members told they may change trainer within one week (GBR-98).</summary>
+/// <summary>ContractsNotified: members told they may change trainer within one week (GBR-104).</summary>
 public sealed record TrainerReadinessStatus(bool IsAcceptingNewMembers, int ContractsNotified);
 public sealed record SetTrainerReadinessRequest(bool IsAcceptingNewMembers);
 public sealed record TrainerReviewResponse(int Rating, string? Comment, string MemberName = "");

@@ -26,6 +26,15 @@ public sealed class FeedbackController : ControllerBase
         return this.ToActionResult(await _service.GetPackageReviewsAsync(packageId, memberId, page, rating, cancellationToken));
     }
 
+    [AllowAnonymous]
+    [HttpGet("public")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> Public([FromQuery] FeedbackListRequest request, CancellationToken cancellationToken)
+    {
+        var memberId = User.IsInRole("Member") || User.IsInRole("Customer") ? User.GetUserId() : null;
+        return this.ToActionResult(await _service.ListPublicAsync(request, memberId, cancellationToken));
+    }
+
     [HttpPost]
     [Authorize(Roles = "Customer,Member")]
     public async Task<IActionResult> Submit([FromBody] FeedbackSubmitRequest request, CancellationToken cancellationToken)
@@ -44,39 +53,39 @@ public sealed class FeedbackController : ControllerBase
     public async Task<IActionResult> Mine([FromQuery] FeedbackListRequest request, CancellationToken cancellationToken)
     {
         if (User.GetUserId() is not { } userId) return Unauthorized();
-        return this.ToActionResult(await _service.ListAsync(request, userId, cancellationToken));
+        return this.ToActionResult(await _service.ListMineAsync(request, userId, cancellationToken));
     }
 
     [HttpGet("manager")]
     [Authorize(Roles = "Manager,Staff")]
-    public async Task<IActionResult> List([FromQuery] FeedbackListRequest request, CancellationToken cancellationToken) =>
-        this.ToActionResult(await _service.ListAsync(request, memberUserId: null, cancellationToken));
-
-    [HttpPost("manager/{id:int}/approve")]
-    [Authorize(Roles = "Manager,Staff")]
-    public async Task<IActionResult> Approve(int id, CancellationToken cancellationToken) =>
-        await ManagerAction(id, (userId, ip) => _service.ApproveAsync(id, userId, ip, cancellationToken));
-
-    [HttpPost("manager/{id:int}/reject")]
-    [Authorize(Roles = "Manager,Staff")]
-    public async Task<IActionResult> Reject(int id, [FromBody] FeedbackReplyRequest request, CancellationToken cancellationToken) =>
-        await ManagerAction(id, (userId, ip) => _service.RejectAsync(id, request, userId, ip, cancellationToken));
+    public async Task<IActionResult> ManagementList(
+        [FromQuery] FeedbackListRequest request, CancellationToken cancellationToken) =>
+        this.ToActionResult(await _service.ListForManagementAsync(request, cancellationToken));
 
     [HttpPost("manager/{id:int}/reply")]
     [Authorize(Roles = "Manager,Staff")]
-    public async Task<IActionResult> Reply(int id, [FromBody] FeedbackReplyRequest request, CancellationToken cancellationToken) =>
-        await ManagerAction(id, (userId, ip) => _service.ReplyAsync(id, request, userId, ip, cancellationToken));
-
-    [HttpPatch("manager/{id:int}/visibility")]
-    [Authorize(Roles = "Manager,Staff")]
-    public async Task<IActionResult> Visibility(int id, [FromQuery] bool visible, CancellationToken cancellationToken) =>
-        await ManagerAction(id, (userId, ip) => _service.SetVisibilityAsync(id, visible, userId, ip, cancellationToken));
-
-    private async Task<IActionResult> ManagerAction(
-        int id,
-        Func<string, string?, Task<VFMS.Contracts.Common.Result<VFMS.Contracts.Feedback.FeedbackResponse>>> action)
+    public async Task<IActionResult> Reply(
+        int id, [FromBody] FeedbackReplyRequest request, CancellationToken cancellationToken)
     {
         if (User.GetUserId() is not { } userId) return Unauthorized();
-        return this.ToActionResult(await action(userId, HttpContext.Connection.RemoteIpAddress?.ToString()));
+        return this.ToActionResult(await _service.ReplyAsync(
+            id, request, userId, HttpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken));
+    }
+
+    [HttpPut("{id:int}")]
+    [Authorize(Roles = "Customer,Member")]
+    public async Task<IActionResult> Update(int id, [FromBody] FeedbackUpdateRequest request, CancellationToken cancellationToken)
+    {
+        if (User.GetUserId() is not { } userId) return Unauthorized();
+        return this.ToActionResult(await _service.UpdateAsync(id, request, userId, cancellationToken));
+    }
+
+    [HttpDelete("{id:int}")]
+    [Authorize(Roles = "Customer,Member")]
+    public async Task<IActionResult> Delete(int id, CancellationToken cancellationToken)
+    {
+        if (User.GetUserId() is not { } userId) return Unauthorized();
+        var result = await _service.DeleteAsync(id, userId, cancellationToken);
+        return result.IsSuccess ? NoContent() : this.ToActionResult(result);
     }
 }

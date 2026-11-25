@@ -14,8 +14,7 @@ public sealed partial class FeedbackRepository
 
     public async Task<PackageReviewsResponse> ListPackageReviewsAsync(int packageId, int page, int? rating, CancellationToken ct)
     {
-        var published = ModeratedFeedback.AsNoTracking().Where(r => r.PackageId == packageId && !r.MemberUser.IsDeleted &&
-            r.ReviewStatus == TrainerReviewStatus.Approved && r.IsVisible);
+        var published = GymAndPackageFeedback.AsNoTracking().Where(r => r.PackageId == packageId && !r.MemberUser.IsDeleted);
         var summary = await published.GroupBy(r => r.PackageId)
             .Select(g => new { Count = g.Count(), Average = g.Average(r => (double)r.Rating) })
             .SingleOrDefaultAsync(ct);
@@ -32,7 +31,7 @@ public sealed partial class FeedbackRepository
     }
 
     public Task<TrainerReviewStatus?> GetPackageReviewStatusAsync(int packageId, string memberId, CancellationToken ct) =>
-        ModeratedFeedback.Where(r => r.PackageId == packageId && r.MemberUserId == memberId)
+        GymAndPackageFeedback.Where(r => r.PackageId == packageId && r.MemberUserId == memberId)
             .Select(r => (TrainerReviewStatus?)r.ReviewStatus).SingleOrDefaultAsync(ct);
 
     public Task<bool> HasUsedPackageAsync(int packageId, ComponentType type, string memberId, CancellationToken ct) =>

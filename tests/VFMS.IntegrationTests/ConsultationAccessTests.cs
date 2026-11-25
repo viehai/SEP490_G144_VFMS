@@ -6,7 +6,6 @@ using VFMS.API.Controllers;
 using VFMS.Application.Interfaces;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Consultations;
-using VFMS.Contracts.Feedback;
 
 namespace VFMS.IntegrationTests;
 
@@ -41,13 +40,13 @@ public sealed class ConsultationAccessTests
     }
 
     [Fact]
-    public void StaffCanUseFeedbackManagementAndCloseConsultations()
+    public void FeedbackHasNoApprovalActionsButStaffCanReplyAndCloseConsultations()
     {
-        AssertStaffAllowed(typeof(FeedbackController), nameof(FeedbackController.List));
-        AssertStaffAllowed(typeof(FeedbackController), nameof(FeedbackController.Approve));
-        AssertStaffAllowed(typeof(FeedbackController), nameof(FeedbackController.Reject));
+        AssertStaffAllowed(typeof(FeedbackController), nameof(FeedbackController.ManagementList));
         AssertStaffAllowed(typeof(FeedbackController), nameof(FeedbackController.Reply));
-        AssertStaffAllowed(typeof(FeedbackController), nameof(FeedbackController.Visibility));
+        Assert.Null(typeof(FeedbackController).GetMethod("Approve"));
+        Assert.Null(typeof(FeedbackController).GetMethod("Reject"));
+        Assert.Null(typeof(FeedbackController).GetMethod("Visibility"));
         AssertStaffAllowed(typeof(ConsultationsController), nameof(ConsultationsController.Close));
     }
 

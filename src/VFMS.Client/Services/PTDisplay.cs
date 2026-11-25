@@ -16,6 +16,24 @@ internal static class PTDisplay
     internal static string Day(DayOfWeek day) => day == DayOfWeek.Sunday ? "Chủ nhật" : $"Thứ {(int)day + 1}";
     internal static int DayIndex(DayOfWeek day) => ((int)day + 6) % 7;
 
+    internal static string Level(string value) => value switch
+    {
+        "Junior" => "Sơ cấp",
+        "Senior" => "Cao cấp",
+        "Master" => "Chuyên gia",
+        _ => value
+    };
+
+    internal static string StatusTone(string value) => value switch
+    {
+        "Scheduled" => "blue",
+        "Completed" or "AutoCompleted" => "green",
+        "ReschedulePending" or "RescheduleRequested" or "PendingFreeze" or "MakeUpPending" or "MakeUpRequested" => "amber",
+        "Cancelled" or "NoShow" => "red",
+        "Disputed" or "TrainerAbsentReported" => "purple",
+        _ => "gray"
+    };
+
     internal static string Status(string value) => value switch
     {
         "Active" => "Đang hoạt động",
@@ -35,12 +53,13 @@ internal static class PTDisplay
         "PendingFreeze" => "Chờ duyệt bảo lưu",
         "Approved" => "Đã duyệt",
         "Rejected" => "Đã từ chối",
+        "Blacklisted" => "Không đủ điều kiện",
         "ReschedulePending" => "Chờ hội viên phản hồi",
         "RescheduleRequested" => "Chờ PT phản hồi",
         "MakeUpPending" => "Chờ hội viên duyệt buổi bù",
         "MakeUpRequested" => "Chờ PT duyệt buổi bù",
         "CheckoutHold" => "Đang giữ chỗ",
-        "FreezeHold" => "Giữ chỗ sau bảo lưu",
+        "FreezeHold" or "Held" => "Giữ chỗ sau bảo lưu",
         "AutoCompleted" => "Hoàn thành (tự động)",
         "Disputed" => "Đang tranh chấp",
         "Withdrawn" => "Đã rút",

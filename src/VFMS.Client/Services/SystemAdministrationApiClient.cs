@@ -64,6 +64,19 @@ public sealed class SystemAdministrationApiClient(HttpClient http, AuthSession s
     public Task<AuditLogResponse> GetAuditLogAsync(int id, CancellationToken cancellationToken = default) =>
         SendAsync<AuditLogResponse>(HttpMethod.Get, $"{AuditLogsPath}/{id}", cancellationToken);
 
+    public async Task<PagedResponse<PublicFeedbackResponse>> GetPublicFeedbackAsync(
+        FeedbackListRequest request, CancellationToken cancellationToken = default)
+    {
+        using var message = new HttpRequestMessage(HttpMethod.Get,
+            WithQuery($"{FeedbackPath}/public",
+                ("search", request.Search),
+                ("rating", request.Rating?.ToString(CultureInfo.InvariantCulture)),
+                ("page", Number(request.Page)), ("pageSize", Number(request.PageSize))));
+        if (await session.GetAccessTokenAsync() is { } token)
+            message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        return await AuthApiClient.SendAsync<PagedResponse<PublicFeedbackResponse>>(http, message, cancellationToken);
+    }
+
     public Task<PagedResponse<FeedbackResponse>> GetFeedbackAsync(
         FeedbackListRequest request, CancellationToken cancellationToken = default) =>
         SendAsync<PagedResponse<FeedbackResponse>>(HttpMethod.Get,
@@ -91,12 +104,9 @@ public sealed class SystemAdministrationApiClient(HttpClient http, AuthSession s
                 ("page", Number(request.Page)), ("pageSize", Number(request.PageSize))),
             cancellationToken);
 
-    public Task<FeedbackResponse> ApproveFeedbackAsync(int id, CancellationToken cancellationToken = default) =>
-        SendAsync<FeedbackResponse>(HttpMethod.Post, $"{FeedbackPath}/manager/{id}/approve", cancellationToken);
-
-    public Task<FeedbackResponse> RejectFeedbackAsync(
-        int id, FeedbackReplyRequest request, CancellationToken cancellationToken = default) =>
-        SendAsync<FeedbackResponse>(HttpMethod.Post, $"{FeedbackPath}/manager/{id}/reject", cancellationToken,
+    public Task<FeedbackResponse> UpdateFeedbackAsync(
+        int id, FeedbackUpdateRequest request, CancellationToken cancellationToken = default) =>
+        SendAsync<FeedbackResponse>(HttpMethod.Put, $"{FeedbackPath}/{id}", cancellationToken,
             JsonContent.Create(request));
 
     public Task<FeedbackResponse> ReplyFeedbackAsync(
@@ -104,11 +114,15 @@ public sealed class SystemAdministrationApiClient(HttpClient http, AuthSession s
         SendAsync<FeedbackResponse>(HttpMethod.Post, $"{FeedbackPath}/manager/{id}/reply", cancellationToken,
             JsonContent.Create(request));
 
-    public Task<FeedbackResponse> SetFeedbackVisibilityAsync(
-        int id, bool isVisible, CancellationToken cancellationToken = default) =>
-        SendAsync<FeedbackResponse>(HttpMethod.Patch,
-            $"{FeedbackPath}/manager/{id}/visibility?visible={isVisible.ToString().ToLowerInvariant()}",
-            cancellationToken);
+    public async Task DeleteFeedbackAsync(int id, CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Delete, $"{FeedbackPath}/{id}");
+        var token = await session.GetAccessTokenAsync()
+            ?? throw new AuthApiException("Vui lòng đăng nhập để tiếp tục.", HttpStatusCode.Unauthorized);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        await AuthApiClient.SendAsync(http, request,
+            static (_, _) => Task.FromResult(true), cancellationToken);
+    }
 
     public Task<PagedResponse<ConsultationConversationResponse>> GetConsultationsAsync(
         ConsultationListRequest request, CancellationToken cancellationToken = default) =>

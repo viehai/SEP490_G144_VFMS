@@ -21,7 +21,7 @@ public sealed partial class MembershipPlanApiClientTests
     [InlineData("GYM", false, false, null, "Đăng nhập để viết đánh giá")]
     [InlineData("YOGA", true, false, null, "được điểm danh có mặt")]
     [InlineData("PT", true, true, null, "Gửi đánh giá")]
-    [InlineData("GYM", true, false, "Pending", "Đánh giá của bạn đang chờ duyệt.")]
+    [InlineData("GYM", true, false, "Approved", "Bạn đã gửi đánh giá. Đánh giá được hiển thị công khai.")]
     public async Task PackageDetailShowsReviewsBeforeSuggestionsAndTheAppropriateWritingState(
         string type, bool signedIn, bool eligible, string? myStatus, string expected)
     {

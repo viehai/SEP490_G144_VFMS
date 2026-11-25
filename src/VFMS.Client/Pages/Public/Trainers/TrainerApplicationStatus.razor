@@ -1,0 +1,64 @@
+@page "/careers/trainer/status"
+@layout PublicLayout
+@inject TrainerApiClient Api
+<PageTitle>Tra cứu hồ sơ ứng tuyển | Victor Fitness</PageTitle>
+<section class="trainer-page trainer-public trainer-narrow trainer-stack">
+    <a href="/careers/trainer" class="trainer-back">← Ứng tuyển huấn luyện viên</a>
+    <header>
+        <h1>Tra cứu hồ sơ ứng tuyển</h1>
+        <p class="trainer-muted mt-2">Nhập mã theo dõi trong email xác nhận để xem trạng thái hồ sơ.</p>
+    </header>
+    <form class="trainer-panel trainer-stack" @onsubmit="SearchAsync" @onsubmit:preventDefault>
+        <fieldset class="trainer-stack" disabled="@_loading">
+            <label>Mã theo dõi<input class="trainer-input" maxlength="64" required autocomplete="off" placeholder="TR-…" @bind="_code" /></label>
+            <button type="submit" class="trainer-button trainer-primary">@(_loading ? "Đang tra cứu…" : "Tra cứu")</button>
+        </fieldset>
+    </form>
+    <TrainerFeedback Error="@_error" />
+    @if (_result is { } result)
+    {
+        <div class="trainer-panel trainer-stack" role="status">
+            <div class="trainer-row trainer-between"><h2>Hồ sơ @result.TrackingCode</h2><TrainerStatus Status="@result.Status" /></div>
+            <dl class="trainer-grid">
+                <div><dt>Loại hồ sơ</dt><dd>@(result.ApplicationType == "ProfileUpdate" ? "Cập nhật chứng chỉ" : "Ứng tuyển")</dd></div>
+                @if (result.TrainerRole is { } role) { <div><dt>Vị trí</dt><dd>@role</dd></div> }
+                <div><dt>Ngày nộp</dt><dd>@PTDisplay.LocalTime(result.SubmittedAt)</dd></div>
+            </dl>
+            @if (!string.IsNullOrWhiteSpace(result.RejectionReason))
+            {
+                <div><h3>Lý do từ chối</h3><p class="trainer-copy">@result.RejectionReason</p></div>
+            }
+        </div>
+    }
+</section>
+@code {
+    [SupplyParameterFromQuery(Name = "code")] public string? Code { get; set; }
+
+    private string _code = "";
+    private bool _loading;
+    private string? _error;
+    private TrainerApplicationTracking? _result;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (string.IsNullOrWhiteSpace(Code)) return;
+        _code = Code.Trim();
+        await SearchAsync();
+    }
+
+    private async Task SearchAsync()
+    {
+        if (_loading) return;
+        _error = null;
+        _result = null;
+        if (string.IsNullOrWhiteSpace(_code))
+        {
+            _error = "Nhập mã theo dõi hồ sơ.";
+            return;
+        }
+        _loading = true;
+        try { _result = await Api.TrackAsync(_code); }
+        catch (AuthApiException ex) { _error = ex.ErrorCode == "TRAINER_APPLICATION_NOT_FOUND" ? "Không tìm thấy hồ sơ ứng với mã này." : ex.Message; }
+        finally { _loading = false; }
+    }
+}

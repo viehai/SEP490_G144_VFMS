@@ -26,9 +26,11 @@ public static class PersonalTrainingRules
 
     public const int MakeUpGraceDays = 14;
 
-    /// <summary>GBR-12: the start week begins on a Monday and the hold must be made no later than the Friday before it.</summary>
-    public static bool CanStartOn(DateOnly monday, DateOnly today) =>
-        monday.DayOfWeek == DayOfWeek.Monday && today <= monday.AddDays(-3);
+    /// <summary>Any future start date is allowed; generated sessions also require 24 hours' notice.</summary>
+    public static bool CanStartOn(DateOnly start, DateOnly today) => start > today;
+
+    public static bool HasBookingNotice(DateOnly date, TimeOnly startTime, DateTime nowUtc) =>
+        date.ToDateTime(startTime, DateTimeKind.Utc).AddHours(-7) >= nowUtc.AddHours(24);
 
     /// <summary>GBR-14: make-up units can be used until 14 days after the contract end date.</summary>
     public static DateOnly MakeUpDeadline(DateOnly endDate) => endDate.AddDays(MakeUpGraceDays);
@@ -79,6 +81,30 @@ public static class PersonalTrainingRules
         (session.SessionStatus == PTSessionStatus.CheckoutHold &&
             session.PTPurchase.Status == PTPurchaseStatus.PendingPayment &&
             session.PTPurchase.HoldExpiresAt > now);
+
+    /// <summary>Recounts the remaining sessions and completes the contract once nothing is left; needs p.Sessions loaded.
+    /// Shared by PT attendance and the check-in kiosk (GBR-92).</summary>
+    public static void Settle(PTPurchase p)
+    {
+        var (used, reserved) = Credits(p.Sessions);
+        p.RemainingSessions = Math.Max(0, p.TotalSessions - used);
+        if (p.RemainingSessions == 0 && reserved == 0)
+        {
+            p.Status = PTPurchaseStatus.Completed;
+            p.IsCompleted = true;
+        }
+    }
+
+    /// <summary>GBR-92 / UC 4.6 step 7: a confirmed session a self check-in may mark 'Present'. A change request past its
+    /// answer deadline is no longer pending even though its status is cleared only later; 'Pending Freeze' never qualifies.</summary>
+    public static Expression<Func<PTSession, bool>> CheckInCanComplete(DateTime now) => s =>
+        s.SessionStatus == PTSessionStatus.Scheduled ||
+        (s.SessionStatus == PTSessionStatus.ReschedulePending || s.SessionStatus == PTSessionStatus.RescheduleRequested) &&
+        s.ProposalExpiresAt <= now;
+
+    /// <summary>GBR-103: after a 'PT Absent' report the PT can still record attendance until the end of the next day;
+    /// the make-up unit becomes usable after that day.</summary>
+    public static DateOnly TrainerResponseLastDay(DateOnly sessionDate) => sessionDate.AddDays(1);
 
     public static (int Used, int Reserved) Credits(IEnumerable<PTSession> sessions)
     {

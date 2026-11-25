@@ -51,10 +51,31 @@ public sealed class TrainerApiClientTests
     }
 
     [Fact]
+    public async Task RecruitmentSendsContactDetailsWithoutCitizenId()
+    {
+        var application = new SubmitTrainerApplicationRequest("Trainer", "trainer@example.test", "0912345678",
+            new(1990, 1, 1), "Other", "Strength", 3, "Trainer biography", true, []);
+        using var api = CreateClient(async request =>
+        {
+            Assert.Equal(HttpMethod.Post, request.Method);
+            Assert.Equal("/api/trainers/applications", request.RequestUri!.AbsolutePath);
+            Assert.Null(request.Headers.Authorization);
+            using var payload = JsonDocument.Parse(await request.Content!.ReadAsStringAsync());
+            Assert.Equal("trainer@example.test", payload.RootElement.GetProperty("email").GetString());
+            Assert.Equal("0912345678", payload.RootElement.GetProperty("phoneNumber").GetString());
+            Assert.DoesNotContain(payload.RootElement.EnumerateObject(),
+                property => property.Name.Equals("citizenId", StringComparison.OrdinalIgnoreCase));
+            return Json(new TrainerApplicationReceipt("TR-1", "Pending", 1), HttpStatusCode.Created);
+        });
+
+        Assert.Equal(1, (await api.SubmitAsync(application)).SubmissionAttempt);
+    }
+
+    [Fact]
     public async Task ProfileUpdateRequiresSessionAndSendsCertificateReplacementId()
     {
         var application = new SubmitTrainerApplicationRequest("Trainer", "trainer@example.test", "0912345678",
-            "012345678901", new(1990, 1, 1), "Other", "Strength", 3, "Trainer biography", true,
+            new(1990, 1, 1), "Other", "Strength", 3, "Trainer biography", true,
             [new("certificate.pdf", [1, 2], "previous")], "ProfileUpdate");
         using var api = CreateClient(async request =>
         {
@@ -74,14 +95,56 @@ public sealed class TrainerApiClientTests
     }
 
     [Fact]
-    public async Task SubmissionCooldownDisplaysVietnameseTimeForUtcDatabaseValue()
+    public async Task ApplicantPrefillNeedsASignedInAccount()
+    {
+        using var api = CreateClient(request =>
+        {
+            Assert.Equal("/api/trainers/applicant-prefill", request.RequestUri!.AbsolutePath);
+            Assert.Equal("Bearer access", request.Headers.Authorization?.ToString());
+            return Task.FromResult(Json(new TrainerApplicantPrefill("Nguyễn Văn An", "an@example.vn", "0912345678", new DateOnly(1995, 5, 6), "Male")));
+        }, authenticated: true);
+        Assert.Equal("0912345678", (await api.ApplicantPrefillAsync()).PhoneNumber);
+
+        using var guest = CreateClient(_ => throw new InvalidOperationException("Unexpected API request."));
+        var error = await Assert.ThrowsAsync<AuthApiException>(guest.ApplicantPrefillAsync);
+        Assert.Equal(HttpStatusCode.Unauthorized, error.StatusCode);
+    }
+
+    [Fact]
+    public async Task TrackingLookupIsPublicAndEncodesTheCode()
+    {
+        using var api = CreateClient(request =>
+        {
+            Assert.Null(request.Headers.Authorization);
+            Assert.EndsWith("/api/trainers/applications/track/TR-a%2Fb", request.RequestUri!.AbsoluteUri);
+            return Task.FromResult(Json(new TrainerApplicationTracking("TR-a/b", "Recruitment", "Rejected", DateTime.UtcNow, "PT", "Thiếu chứng chỉ")));
+        });
+        var tracking = await api.TrackAsync(" TR-a/b ");
+        Assert.Equal(("Rejected", "Thiếu chứng chỉ"), (tracking.Status, tracking.RejectionReason));
+    }
+
+    [Fact]
+    public async Task ManagerListFiltersByTrackingCode()
+    {
+        using var api = CreateClient(request =>
+        {
+            Assert.Equal("?TrackingCode=TR-abc&Page=1", request.RequestUri!.Query);
+            return Task.FromResult(Json(new PagedResponse<TrainerApplicationResponse>(1, 10, 0, [])));
+        }, authenticated: true);
+        Assert.Empty((await api.ApplicationsAsync(new(TrackingCode: "TR-abc"))).Items);
+    }
+
+    [Theory]
+    [InlineData("You can submit again after 2026-11-13T18:09:23.2543535.")]
+    [InlineData("Bạn có thể nộp lại hồ sơ sau 2026-11-13T18:09:23.2543535.")]
+    public async Task SubmissionCooldownDisplaysVietnameseTimeForUtcDatabaseValue(string message)
     {
         var application = new SubmitTrainerApplicationRequest("Trainer", "trainer@example.test", "0912345678",
-            "012345678901", new(1990, 1, 1), "Other", "Strength", 3, "Trainer biography", true, []);
+            new(1990, 1, 1), "Other", "Strength", 3, "Trainer biography", true, []);
         using var api = CreateClient(_ => Task.FromResult(Json(new
         {
             errorCode = "RECRUITMENT_COOLDOWN",
-            errorMessage = "You can submit again after 2026-11-13T18:09:23.2543535."
+            errorMessage = message
         }, HttpStatusCode.Conflict)));
 
         var error = await Assert.ThrowsAsync<AuthApiException>(() => api.SubmitAsync(application));
@@ -104,7 +167,7 @@ public sealed class TrainerApiClientTests
         Assert.True(await api.SetupAsync(new("setup-token", "Example01!")));
     }
 
-    // UC 3.4 step 7 / GBR-98: 'Explore Packages' only for a PT accepting new members; schedule link for the member's package.
+    // UC 3.4 step 7 / GBR-104: 'Explore Packages' only for a PT accepting new members; schedule link for the member's package.
     [Theory]
     [InlineData("PT", true, false, true, false)]
     [InlineData("PT", false, false, false, false)]

@@ -14,7 +14,7 @@
     else if (_trainer is { } trainer)
     {
         <section class="trainer-panel trainer-stack">
-            <h2>@trainer.Profile.FullName · @trainer.Profile.Level</h2>
+            <h2>@trainer.Profile.FullName · @PTDisplay.Level(trainer.Profile.Level)</h2>
             @if (_packages.Length == 0) { <p>Chưa có gói đang mở bán cho cấp PT này.</p> }
             else
             {
@@ -27,16 +27,16 @@
                             }
                         </select>
                     </label>
-                    <label>Ngày bắt đầu (thứ Hai)
-                        <input class="trainer-input" type="date" min="@FirstMonday.ToString("yyyy-MM-dd")"
-                               step="7" @bind="_start" @bind:after="ChangeScheduleAsync" aria-invalid="@(!ValidStart)" />
+                    <label>Ngày bắt đầu
+                        <input class="trainer-input" type="date" min="@EarliestDate.ToString("yyyy-MM-dd")"
+                               @bind="_start" @bind:after="ChangeScheduleAsync" aria-invalid="@(!ValidStart)" />
                         @if (!ValidStart)
                         {
-                            <span role="alert">Chọn thứ Hai từ @Date(FirstMonday) trở đi.</span>
+                            <span role="alert">Chọn ngày bắt đầu từ @Date(EarliestDate) trở đi.</span>
                         }
                     </label>
                 </fieldset>
-                <p class="trainer-muted">Tuần bắt đầu là thứ Hai từ tuần sau; cần giữ lịch muộn nhất vào thứ Sáu trước đó. Ca bận trong tuần bắt đầu không chọn được; ngày bận ở các tuần sau được dời ra sau buổi cuối.</p>
+                <p class="trainer-muted">Chọn ngày bắt đầu bất kỳ. Cần đăng ký trước buổi tập đầu tiên tối thiểu 24 giờ; ca nào trong 24 giờ tới sẽ được xếp sang tuần sau. Ca bận trong 7 ngày đầu không chọn được; ngày bận ở các tuần sau được dời ra sau buổi cuối. Mua và tập PT không yêu cầu gói Gym.</p>
                 <PTWeeklyGrid Slots="_slots" SelectedIds="_selected.Values" SlotSelected="SelectSlot" Disabled="@(_busy || !ValidStart)" />
                 <div class="trainer-row">
                     <span>@_selected.Count ngày lặp đã chọn</span>
@@ -50,6 +50,10 @@
                 <h2>Lịch dự kiến</h2>
                 <strong>@trainer.Profile.FullName</strong>
                 <p>@preview.Sessions.Count buổi · Buổi cuối @Date(preview.ExpiresOn) · @Money(preview.Price)</p>
+                @if (preview.Deferred.Count > 0)
+                {
+                    <p class="trainer-feedback" role="status">Ca @string.Join(", ", preview.Deferred.Select(s => $"{Day(s.Date.DayOfWeek)} {Date(s.Date)} {s.StartTime:HH:mm}")) cách thời điểm hiện tại chưa đến 24 giờ. Buổi tập đầu tiên phải được đăng ký trước tối thiểu 24 giờ nên ca này được xếp sang tuần sau.</p>
+                }
                 @if (preview.Skipped.Count > 0)
                 {
                     <p class="trainer-feedback" role="status">Huấn luyện viên hoặc bạn đã có lịch vào @string.Join(", ", preview.Skipped.Select(s => $"{Date(s.Date)} {s.StartTime:HH:mm}")); các buổi này được dời ra sau buổi cuối.</p>
@@ -62,10 +66,6 @@
                 @if (_holdError is not null)
                 {
                     <TrainerFeedback Error="@_holdError" />
-                    @if (_needsGym)
-                    {
-                        <a class="trainer-link" href="/#pricing-memberships">Xem gói Gym</a>
-                    }
                 }
             </section>
         }
@@ -81,20 +81,12 @@
     private readonly Dictionary<DayOfWeek, int> _selected = [];
     private PTBookingPreview? _preview;
     private PTBookingRequest? _booking;
-    // GBR-12: the first Monday that can still be held today (the hold is due by the Friday before it).
-    private static DateOnly FirstMonday
-    {
-        get
-        {
-            var earliest = Today.AddDays(3);
-            return earliest.AddDays((7 - DayIndex(earliest.DayOfWeek)) % 7);
-        }
-    }
-    private DateOnly _start = FirstMonday;
+    private static DateOnly EarliestDate => Today.AddDays(1);
+    private DateOnly _start = EarliestDate;
     private int _packageId;
-    private bool _loading, _busy, _needsGym;
+    private bool _loading, _busy;
     private string? _error, _holdError;
-    private bool ValidStart => _start >= FirstMonday && _start.DayOfWeek == DayOfWeek.Monday;
+    private bool ValidStart => _start >= EarliestDate;
     private string DirectoryUrl => PackageId is { } packageId ? PackageCatalogLinks.Trainers(packageId) : "/trainers";
 
     private bool CanPreview => ValidStart && _selected.Count > 0 && _selected.Values.All(id =>
@@ -191,7 +183,6 @@
         if (_busy) return;
         _busy = true;
         _holdError = null;
-        _needsGym = false;
         try
         {
             var order = await Api.HoldAsync(request);
@@ -200,9 +191,7 @@
         catch (AuthApiException ex)
         {
             _holdError = ex.Message;
-            _needsGym = ex.ErrorCode == "PT_GYM_COVERAGE";
-            if (!_needsGym)
-                await RefreshSlotsAsync();
+            await RefreshSlotsAsync();
         }
         finally { _busy = false; }
     }

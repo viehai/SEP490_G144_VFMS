@@ -7,7 +7,8 @@ public sealed record PTSlotInput(DayOfWeek DayOfWeek, TimeOnly StartTime);
 public sealed record PTWeeklySlot(int TemplateId, DayOfWeek DayOfWeek, TimeOnly StartTime, TimeOnly EndTime,
     string? BlockedReason = null);
 public sealed record PTTeachingSlot(int Id, DateOnly Date, TimeOnly StartTime, TimeOnly EndTime,
-    string MemberName, string Status, int ContractId = 0);
+    string MemberName, string Status, int ContractId = 0,
+    DateOnly? ProposedDate = null, TimeOnly? ProposedStartTime = null, TimeOnly? ProposedEndTime = null);
 public sealed record PTPublishRequest(PTSlotInput[] Slots);
 public sealed record PTOperatingHours(TimeOnly? OpenTime, TimeOnly? CloseTime);
 public sealed record PTCalendarSlot(int TemplateId, DateOnly Date, TimeOnly StartTime, TimeOnly EndTime, string Status);
@@ -30,6 +31,8 @@ public sealed record PTBookingPreview(int PackageId, string TrainerId, DateOnly 
 {
     /// <summary>GBR-12: busy dates that were skipped; their sessions moved to the end of the schedule.</summary>
     public IReadOnlyList<PTCalendarSlot> Skipped { get; init; } = [];
+    /// <summary>Dates in the first week that are less than 24 hours away; that weekday starts one week later.</summary>
+    public IReadOnlyList<PTCalendarSlot> Deferred { get; init; } = [];
 }
 public sealed record PTCheckoutResponse(int ContractId, string OrderNumber, string Status, decimal AmountDue,
     DateTime ExpiresAt, VietQrPaymentResponse? VietQr, string? InvoiceNumber, DateTime HoldExpiresAt = default,
@@ -41,10 +44,10 @@ public sealed record PTProposalResponse(DateOnly Date, TimeOnly StartTime, TimeO
 public sealed record PTProposalDecision(bool Accept, DateTime ProposalExpiresAt);
 public sealed record PTRescheduleRequest(DateOnly Date, TimeOnly StartTime);
 public sealed record PTRescheduleDecision(bool Accept, DateOnly Date, TimeOnly StartTime, DateTime ProposalExpiresAt);
-public sealed record PTRescheduleSlot(DateOnly Date, TimeOnly StartTime, TimeOnly EndTime, string Status);
+public sealed record PTRescheduleSlot(DateOnly Date, TimeOnly StartTime, TimeOnly EndTime, string Status, string? Reason = null);
 public sealed record PTMakeUpRequest(DateOnly Date, TimeOnly StartTime);
 public sealed record PTNoteRequest(string Note);
-/// <summary>Member 'PT Absent' report on the session day (GBR-97); the note is optional.</summary>
+/// <summary>Member 'PT Absent' report on the session day (GBR-103); the note is optional.</summary>
 public sealed record PTTrainerAbsenceReportRequest(string? Reason = null);
 public static class PTDisputeDecisions
 {
@@ -57,7 +60,12 @@ public static class PTDisputeDecisions
 public sealed record PTAttendanceDisputeDecision(string Decision, string Note);
 public sealed record PTAttendanceDispute(int SessionId, int ContractId, string MemberName, string TrainerName,
     DateOnly Date, TimeOnly StartTime, TimeOnly EndTime, string? MemberNote, DateTime ReportedAt, string Status,
-    string? Decision, string? ReviewNote, string? ReviewerName = null);
+    string? Decision, string? ReviewNote, string? ReviewerName = null,
+    bool? TrainerRecordedPresent = null, DateTime? TrainerRecordedAt = null);
+/// <summary>UC 4.11 step 3: one gym visit of the Member on the disputed session's day (times in UTC).</summary>
+public sealed record PTDisputeCheckIn(DateTime CheckinTime, string CheckinMethod, string? CheckedInBy,
+    DateTime? CheckoutTime, string? CheckoutMethod, string? CheckedOutBy, string Status,
+    bool InCheckInWindow, bool OverlapsSession);
 public sealed record PTSessionResponse(int Id, DateOnly Date, TimeOnly StartTime, TimeOnly EndTime,
     string Status, int CreditUnits, string? Note, DateTime? NoteUpdatedAt, PTProposalResponse? Proposal,
     DateTime? TrainerAbsenceReportedAt = null, bool? TrainerAbsenceApproved = null,
@@ -65,6 +73,10 @@ public sealed record PTSessionResponse(int Id, DateOnly Date, TimeOnly StartTime
 {
     /// <summary>Cancelled without penalty and not rebooked yet: a make-up can be proposed from it (GBR-14).</summary>
     public bool IsMakeUpUnit { get; init; }
+    /// <summary>'Present' set by the Member's self check-in; the PT has not recorded attendance (UC 4.6 step 7).</summary>
+    public bool CompletedByCheckIn { get; init; }
+    /// <summary>A make-up unit from a 'PT Absent' report that waits for the PT: usable from this time (UTC, GBR-103).</summary>
+    public DateTime? MakeUpAvailableAt { get; init; }
 }
 public sealed record PTContractResponse(int Id, string TrainerId, string MemberId, string? PackageName,
     string Status, DateOnly StartDate, DateOnly EndDate, int TotalCredits, int UsedCredits,
@@ -78,7 +90,7 @@ public sealed record PTContractResponse(int Id, string TrainerId, string MemberI
     /// <summary>Contract end date + 14 days; shown only when make-up units exist.</summary>
     public DateOnly? MakeUpDeadline { get; init; }
     public bool FreezeUsed { get; init; }
-    /// <summary>Open one-week window to choose another trainer (GBR-98).</summary>
+    /// <summary>Open one-week window to choose another trainer (GBR-104).</summary>
     public DateTime? TrainerChangeDeadline { get; init; }
     /// <summary>UC 4.10: the Member already reviewed this contract.</summary>
     public bool HasReview { get; init; }
@@ -94,13 +106,13 @@ public sealed record PTAssignedMember(int ContractId, string MemberId, string Fu
     string Email, string Phone, int TotalCredits, int RemainingCredits, DateOnly ExpiresOn, DateOnly? LastTrainedOn);
 /// <summary>
 /// UC 4.8: Moves override the suggested post-freeze slot of a frozen session (same trainer). With a replacement
-/// trainer, ReplacementTemplateIds is that trainer's weekly pattern for all remaining sessions (GBR-99).
+/// trainer, ReplacementTemplateIds is that trainer's weekly pattern for all remaining sessions (GBR-105).
 /// </summary>
 public sealed record PTFreezeRequest(DateOnly StartDate, DateOnly ResumeDate, string Reason,
     PTEarlyResumeMove[]? Moves = null, string? ReplacementTrainerId = null, int[]? ReplacementTemplateIds = null);
 /// <summary>Proposed sessions after the freeze; SessionsNeedingSlot lists frozen sessions with no free slot yet.</summary>
 public sealed record PTFreezeProposal(DateOnly ExpiresOn, IReadOnlyList<PTPlannedSession> Sessions,
-    IReadOnlyList<int> SessionsNeedingSlot, bool GymCoverageWarning);
+    IReadOnlyList<int> SessionsNeedingSlot);
 public sealed record PTPlannedSession(int OriginalSessionId, DateOnly Date, TimeOnly StartTime, TimeOnly EndTime, string TrainerId);
 /// <summary>UC 4.13: move the remaining sessions to another trainer with a new weekly pattern from StartDate.</summary>
 public sealed record PTTrainerChangeRequest(string TrainerId, DateOnly StartDate, int[] TemplateIds);
@@ -118,14 +130,39 @@ public sealed record PTFreezeResponse(int Id, int ContractId, string MemberId, s
     /// <summary>Manager list (UC 4.9 step 2): held post-freeze slots and the replacement trainer, if any.</summary>
     public string? ReplacementTrainerName { get; init; }
     public IReadOnlyList<PTCalendarSlot> ProposedSlots { get; init; } = [];
+    /// <summary>A withdraw or early-resume request waiting for (or answered by) the Manager.</summary>
+    public string? ChangeRequestType { get; init; }
+    public string? ChangeRequestStatus { get; init; }
+    public DateTime? ChangeRequestedAt { get; init; }
+    public DateOnly? ChangeResumeDate { get; init; }
+    public string? ChangeReviewNote { get; init; }
+    /// <summary>What the approved request did: restored sessions and sessions that could not be restored.</summary>
+    public string? ChangeOutcome { get; init; }
 }
 /// <summary>UC 4.8 step 8.4: new slots for held sessions of a pending freeze, keyed by the frozen session id.</summary>
 public sealed record PTFreezeSlotChange(PTEarlyResumeMove[] Moves);
-/// <summary>GymCoverageWarning: the Gym Membership ends before the last proposed session; approval is still allowed (UC 4.9).</summary>
+/// <summary>The proposed post-freeze schedule for Manager review.</summary>
 public sealed record PTFreezePreview(DateOnly ExpiresOn, IReadOnlyList<PTCalendarSlot> Replacements,
-    bool GymCoverageWarning = false, string? ReplacementTrainerName = null);
+    string? ReplacementTrainerName = null)
+{
+    /// <summary>UC 4.9: the original sessions inside the freeze window, which this request moves.</summary>
+    public IReadOnlyList<PTCalendarSlot> Original { get; init; } = [];
+    /// <summary>UC 4.9: sessions outside the freeze window that stay as scheduled.</summary>
+    public IReadOnlyList<PTCalendarSlot> Kept { get; init; } = [];
+}
+/// <summary>Free and busy slots of the trainer (or a replacement trainer) from a date, to pick a session's new slot.</summary>
+public sealed record PTFreezeSlotOptionsRequest(DateOnly From, string? TrainerId = null);
+/// <summary>One frozen session when a freeze is withdrawn: its original slot, where it is now, and whether it goes back.</summary>
+public sealed record PTWithdrawItem(DateOnly OriginalDate, TimeOnly OriginalStart, DateOnly CurrentDate,
+    TimeOnly CurrentStart, bool Restored, string? Reason);
+/// <summary>Schedule slots carry Status Restored, Kept (could not go back) or Scheduled (unchanged).</summary>
+public sealed record PTWithdrawPreview(DateOnly ExpiresOn, IReadOnlyList<PTWithdrawItem> Items,
+    IReadOnlyList<PTCalendarSlot> Schedule);
+/// <summary>What a pending withdraw or early-resume request would do, for the Manager.</summary>
+public sealed record PTFreezeChangePreview(string Type, DateOnly ExpiresOn, PTWithdrawPreview? Withdraw,
+    PTEarlyResumePreview? EarlyResume);
 public sealed record PTEarlyResumeMove(int SessionId, DateOnly Date, TimeOnly StartTime);
-public sealed record PTEarlyResumeRequest(DateOnly ResumeDate, PTEarlyResumeMove[]? Moves = null);
+public sealed record PTEarlyResumeRequest(DateOnly ResumeDate, PTEarlyResumeMove[]? Moves = null, int[]? TemplateIds = null);
 public sealed record PTEarlyResumeConfirmation(DateOnly ResumeDate, DateOnly CurrentResumeDate,
     PTEarlyResumeMove[] Moves);
 public sealed record PTEarlyResumePreview(DateOnly CurrentResumeDate, DateOnly ResumeDate, DateOnly ExpiresOn,

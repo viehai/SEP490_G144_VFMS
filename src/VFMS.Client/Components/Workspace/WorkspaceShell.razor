@@ -21,8 +21,6 @@
                 <a href="/" class="workspace-nav-link"><span aria-hidden="true">05</span> Trang chủ <span aria-hidden="true">↗</span></a>
                 <AuthorizeView Roles="Customer,Member">
                     <NavLink href="/my-vouchers" class="workspace-nav-link" ActiveClass="workspace-nav-link--active">Voucher của tôi</NavLink>
-                </AuthorizeView>
-                <AuthorizeView Roles="Member">
                     <NavLink href="/my-memberships" Match="NavLinkMatch.Prefix" class="workspace-nav-link" ActiveClass="workspace-nav-link--active">Gói của tôi</NavLink>
                     <NavLink href="/my-pt-packages" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active">Gói PT</NavLink>
                 </AuthorizeView>

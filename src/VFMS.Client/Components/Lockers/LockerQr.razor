@@ -1,0 +1,25 @@
+@using VFMS.Contracts.Lockers
+@using VFMS.Client.Components.Operations
+@* VietQR transfer details for a locker order, with the time left to pay (GBR-48, GBR-102). *@
+@if (Checkout.VietQr is { } qr)
+{
+    <div class="space-y-3">
+        <p class="text-sm">Còn <strong>@LockerText.Remaining(Checkout.ExpiresAt, Now)</strong> để chuyển khoản đúng số tiền và nội dung (trước @LockerText.Local(Checkout.ExpiresAt)).</p>
+        @if (Uri.TryCreate(qr.ImageUrl, UriKind.Absolute, out var image) && image.Scheme == "https")
+        {
+            <img class="h-56 w-56 rounded-lg border border-vfms-border bg-white p-2" src="@image.AbsoluteUri" alt="Mã VietQR thanh toán tủ" />
+        }
+        <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+            <dt class="text-vfms-text-secondary">Ngân hàng</dt><dd>@qr.BankId</dd>
+            <dt class="text-vfms-text-secondary">Số tài khoản</dt><dd>@qr.AccountNumber</dd>
+            <dt class="text-vfms-text-secondary">Chủ tài khoản</dt><dd>@qr.AccountName</dd>
+            <dt class="text-vfms-text-secondary">Số tiền</dt><dd><strong>@OperationsText.Money(Checkout.AmountDue)</strong></dd>
+            <dt class="text-vfms-text-secondary">Nội dung</dt><dd><strong>@qr.TransferContent</strong></dd>
+        </dl>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public LockerCheckout Checkout { get; set; } = null!;
+    [Parameter] public DateTime Now { get; set; } = DateTime.UtcNow;
+}
