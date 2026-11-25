@@ -248,7 +248,7 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
                 "Type must be one of: gym, yoga, pt.", "INVALID_COMPONENT_TYPE", 400);
 
         var (items, total) = await repository.SearchByComponentTypeAsync(
-            componentType, request.Page, request.PageSize, cancellationToken);
+            componentType, request.Page, request.PageSize, clock.GetUtcNow().UtcDateTime, cancellationToken);
 
         return Result<PagedResponse<PackageCatalogItemResponse>>.Success(
             new(request.Page, request.PageSize, total,
@@ -261,7 +261,7 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
         if (!TryParseComponentType(type, out var componentType))
             return Result<PackageDetailResponse>.Failure("Loại gói tập không hợp lệ.", "INVALID_COMPONENT_TYPE", 400);
 
-        var packages = await repository.ListActiveSingleServicePackagesAsync(cancellationToken);
+        var packages = await repository.ListActiveSingleServicePackagesAsync(clock.GetUtcNow().UtcDateTime, cancellationToken);
         var package = packages.SingleOrDefault(item => item.Id == id && item.ComponentType == componentType);
         if (package is null)
             return Result<PackageDetailResponse>.Failure("Không tìm thấy gói tập đang mở bán.", "PACKAGE_NOT_FOUND", 404);

@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 using VFMS.Application.Interfaces;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Memberships;
+using VFMS.Contracts.Yoga.Validators;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
 
@@ -363,6 +364,7 @@ public sealed partial class MembershipPurchaseService(
 
     private static bool IsValidComponent(PackageComponent component, DateOnly latestStart) =>
         TermFits(component.DurationDays, component.DurationMonths, latestStart) &&
+        (component.ComponentType != ComponentType.YOGA || YogaRules.IsDifficulty(component.YogaDifficultyLevel)) &&
         (component.ComponentType != ComponentType.PT || component.SessionCount is > 0);
 
     private static bool TermFits(int? days, int? months, DateOnly start) => days is > 0

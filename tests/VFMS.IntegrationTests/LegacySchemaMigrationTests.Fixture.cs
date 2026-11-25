@@ -114,6 +114,7 @@ public sealed partial class LegacySchemaMigrationTests
             base.OnModelCreating(modelBuilder);
             modelBuilder.Entity<ApplicationUser>().Ignore(row => row.AccountStatusBeforeLock);
             modelBuilder.Entity<Gym>().Ignore(row => row.IsAcceptingTrainerApplications);
+            modelBuilder.Entity<PackageComponent>().Ignore(row => row.YogaDifficultyLevel);
             // The deployed legacy layout has only the Guid FK; the three inline fields arrive during upgrade.
             modelBuilder.Entity<MembershipFreeze>().Ignore(row => row.SupportingDocumentFileName);
             modelBuilder.Entity<MembershipFreeze>().Ignore(row => row.SupportingDocumentContentType);

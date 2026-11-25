@@ -20,8 +20,11 @@ public sealed record PendingYogaClass(int ClassId, string Name, string Level, Da
     public string PlansHref =>
         $"/membership-plans?type=yoga&level={Uri.EscapeDataString(Level)}&classId={ClassId}&date={Date:yyyy-MM-dd}&className={Uri.EscapeDataString(Name)}";
 
-    public Task SaveAsync(IJSRuntime js) =>
-        js.InvokeVoidAsync("sessionStorage.setItem", Key, JsonSerializer.Serialize(this)).AsTask();
+    public async Task SaveAsync(IJSRuntime js)
+    {
+        try { await js.InvokeVoidAsync("sessionStorage.setItem", Key, JsonSerializer.Serialize(this)); }
+        catch (JSException) { /* The return link is optional when the browser blocks session storage. */ }
+    }
 
     public static async Task<PendingYogaClass?> LoadAsync(IJSRuntime js)
     {

@@ -182,15 +182,37 @@ public sealed partial class PackageCatalogApiTests : IAsyncLifetime
     [Fact]
     public async Task YogaFilterReturnsOnlyYogaPackages()
     {
-        await CreatePackage("YOGA Only", ComponentType.YOGA, sessionCount: 10);
+        var yoga = await CreatePackage("YOGA Only", ComponentType.YOGA, sessionCount: 10);
 
         using var client = CreateClient();
+        var closed = await ReadBodyAsync(await client.GetAsync($"{CatalogRoute}?type=yoga"), HttpStatusCode.OK);
+        Assert.Empty(closed.GetProperty("items").EnumerateArray());
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"{CatalogRoute}/yoga/{yoga.Id}")).StatusCode);
+        await OpenYogaClassAsync();
         var body = await ReadBodyAsync(await client.GetAsync($"{CatalogRoute}?type=yoga"), HttpStatusCode.OK);
 
         var items = body.GetProperty("items");
         Assert.True(items.GetArrayLength() >= 1);
         foreach (var item in items.EnumerateArray())
             Assert.Equal("YOGA", item.GetProperty("componentType").GetString());
+    }
+
+    private async Task OpenYogaClassAsync()
+    {
+        await using var scope = _app.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+        var instructor = new ApplicationUser
+        {
+            UserId = "catalog-instructor", FullName = "Catalog instructor", Email = "instructor@example.test",
+            PhoneNumber = "0901000019", AccountStatus = AccountStatus.Active, Gym = new Gym { GymName = "Catalog gym" }
+        };
+        instructor.UserRoles.Add(new ApplicationUserRole { Role = new ApplicationRole { RoleName = "YogaInstructor" } });
+        db.YogaClasses.Add(new YogaClass
+        {
+            Instructor = instructor, YogaClassType = new YogaClassType { TypeName = "Hatha" }, ClassName = "Open class",
+            ClassStatus = YogaClassStatus.Open, DifficultyLevel = "Intermediate", RegistrationDeadline = DateTime.UtcNow.AddDays(7)
+        });
+        await db.SaveChangesAsync();
     }
 
     [Fact]
@@ -278,6 +300,7 @@ public sealed partial class PackageCatalogApiTests : IAsyncLifetime
     [Fact]
     public async Task PackageDetailShowsMetadataAndRanksOneRecommendationPerService()
     {
+        await OpenYogaClassAsync();
         var current = await CreatePackage("PT 10 buổi", ComponentType.PT, trainerLevel: TrainerLevel.Senior,
             sessionCount: 10, price: 950_000m, description: "Huấn luyện sức bền và kỹ thuật.");
         await CreatePackage("PT 9 buổi", ComponentType.PT, sessionCount: 9, price: 700_000m);

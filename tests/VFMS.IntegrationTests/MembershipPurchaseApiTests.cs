@@ -115,7 +115,7 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
             User("manager", gym, roles["Manager"]));
         var basic = Plan("Basic", 500_000m, PackageStatus.Active);
         var combo = Plan("Combo", 800_000m, PackageStatus.Active);
-        combo.Components.Add(new PackageComponent { ComponentType = ComponentType.YOGA, DurationMonths = 1 });
+        combo.Components.Add(new PackageComponent { ComponentType = ComponentType.YOGA, DurationMonths = 1, YogaDifficultyLevel = "Advanced" });
         var inactive = Plan("Inactive", 200_000m, PackageStatus.Inactive);
         db.Packages.AddRange(basic, combo, inactive);
         // Trainer Roles as the AddTrainerRoles migration seeds them; EnsureCreated does not run migrations.
@@ -423,13 +423,20 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
     [Fact]
     public async Task YogaPlanSellsOnlyWithALevelThatCoversABookableClass()
     {
+        await using (var scope = _app.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+            var yoga = await db.PackageComponents.SingleAsync(c => c.PackageId == _combo && c.ComponentType == ComponentType.YOGA);
+            yoga.YogaDifficultyLevel = null;
+            await db.SaveChangesAsync();
+        }
         await SeedYogaClassAsync("staff", _clock.Now.UtcDateTime.AddDays(7), level: "Intermediate");
         var beginner = await SeedYogaPlanAsync("Beginner");     // covers no bookable class
         var noLevel = await SeedYogaPlanAsync(null);            // old plan: no longer sold
         var intermediate = await SeedYogaPlanAsync("Intermediate");
         using var buyer = Client("buyer", "Customer");
 
-        foreach (var refusedPlan in new[] { beginner, noLevel })
+        foreach (var refusedPlan in new[] { beginner, noLevel, _combo })
         {
             using var refused = await buyer.PostAsJsonAsync(Route, Purchase([new(refusedPlan)], MembershipPaymentMethods.Cash));
             Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);

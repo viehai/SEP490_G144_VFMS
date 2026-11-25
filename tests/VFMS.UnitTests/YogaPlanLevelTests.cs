@@ -80,8 +80,8 @@ public sealed class YogaPlanLevelTests
             throw new NotSupportedException();
         public void Remove(Package package) => throw new NotSupportedException();
         public Task<(IReadOnlyList<PackageCatalogReadModel> Items, int TotalCount)> SearchByComponentTypeAsync(ComponentType componentType,
-            int page, int pageSize, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public Task<IReadOnlyList<PackageCatalogReadModel>> ListActiveSingleServicePackagesAsync(CancellationToken cancellationToken) =>
+            int page, int pageSize, DateTime nowUtc, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<IReadOnlyList<PackageCatalogReadModel>> ListActiveSingleServicePackagesAsync(DateTime nowUtc, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
         public Task<IReadOnlyList<string>> GetActiveUserIdsInRoleAsync(string roleName, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();

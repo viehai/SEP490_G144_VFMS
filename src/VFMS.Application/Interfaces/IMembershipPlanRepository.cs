@@ -64,7 +64,7 @@ public interface IMembershipPlanRepository : IAuditedRepository
     /// thuộc <paramref name="componentType"/>.
     /// </summary>
     Task<(IReadOnlyList<PackageCatalogReadModel> Items, int TotalCount)> SearchByComponentTypeAsync(
-        ComponentType componentType, int page, int pageSize, CancellationToken cancellationToken = default);
+        ComponentType componentType, int page, int pageSize, DateTime nowUtc, CancellationToken cancellationToken = default);
 
-    Task<IReadOnlyList<PackageCatalogReadModel>> ListActiveSingleServicePackagesAsync(CancellationToken cancellationToken);
+    Task<IReadOnlyList<PackageCatalogReadModel>> ListActiveSingleServicePackagesAsync(DateTime nowUtc, CancellationToken cancellationToken);
 }
