@@ -63,7 +63,7 @@ Demo Yoga (`yoga1@example.com`, phone `0900000021`) has only a yoga plan. It was
 
 Demo Trung Bình (`yoga2@example.com`, phone `0900000022`) was added on 25/11/2026 to test yoga plan levels, through the app's own API (no SQL, no DbInitializer): registered, bought **Yoga Trung bình 1 Tháng** (plan 6, level Trung bình, 800.000 ₫, 30 days, created on `/manager/membership-plans`) with cash (order ORD-20261125-30BF9D34F6A1, confirmed by staff), activated 25/11, valid to 24/12/2026, and booked Vinyasa Dynamic on mat 1 from the timetable. On `/yoga/schedule` it sees **Đặt chỗ** on Cơ bản and Trung bình classes and the "Mua gói có độ khó cao hơn…" note with **Mua gói** on Ashtanga Flow (Nâng cao).
 
-**Demo accounts for cases you can't reach by waiting (25/11/2026).** Both were made through the app's own API: registered, bought a plan with cash, cash confirmed by staff, activated 25/11. Only the dates were then moved into the past with SQL on the local VfmsDb, because no screen or API can make a plan expire early. They exist only in this local database, not in DbInitializer.
+**Demo accounts for cases you can't reach by waiting (25/11/2026).** Both were made through the app's own API: registered, bought a plan with cash, cash confirmed by staff, activated 25/11. Only the dates were then moved into the past with SQL on the local VfmsDb, because no screen or API can make a plan expire early. They exist only in this local database, not in DbInitializer. Their orders are dated 25/11 although the plans run from earlier dates, so the transaction history shows a purchase after the plan started; that comes from the SQL, not from a bug. Both accounts keep the **Member** role (nothing in the app removes it when a plan expires).
 
 | Account | Data | What to try | What you should see |
 |---|---|---|---|
@@ -161,7 +161,7 @@ Then try the rest:
 How to tell which plan you got:
 - **AI plan:** its name follows your goal, and the header doesn't say "Giáo án tiêu chuẩn".
 - **Standard plan:** shows "Dịch vụ AI tạm thời không khả dụng…". It means there's no key, Gemini failed, or it took longer than 25 s. The API log line `Gemini returned HTTP …` now includes Google's own error message.
-- **Why AI plans kept failing (25/11/2026):** the key was fine. Google answered **HTTP 503 "This model is currently experiencing high demand"** for `gemini-3.5-flash-lite`, and the app gave up on the first error, so AI Studio counted the calls with 0 successes. Now a busy reply (429, 500, 502, 503 or 504) is retried up to 3 times, 1 s then 2 s apart; other errors (bad key, unknown model) and a timeout fall back at once. In a test right after the fix, one plan came from Gemini on a retry; the other still fell back after 3 busy replies, because Google stayed busy. One direct call took 22 s, close to the 25 s timeout.
+- **Why AI plans kept failing (25/11/2026):** the key was fine. Google answered **HTTP 503 "This model is currently experiencing high demand"** for `gemini-3.5-flash-lite`, and the app gave up on the first error, so AI Studio counted the calls with 0 successes. Now a busy reply (500, 502, 503 or 504) is retried up to 3 times, 1 s then 2 s apart; other errors (bad key, unknown model, 429 quota) and a timeout fall back at once. Right after the fix, the first plan still fell back after 3 busy replies, and the second came from Gemini on its first attempt. So retries help only while a busy spell is short; a retry rescuing a plan is covered by `GeminiWorkoutPlanGeneratorTests` but has not yet been seen against the real API. In direct calls `gemini-3.5-flash` answered in about 5 s, and one `gemini-3.5-flash-lite` call took 22 s, close to the 25 s timeout.
 
 ## 5. Yoga
 
@@ -317,7 +317,7 @@ Try it: book a mat someone else just took, cancel a yoga booking less than 2 hou
   Expected result now (25/11/2026, after merging main again):
   - Unit: 722 pass.
   - Client: 538 pass.
-  - Integration: 627 pass, 3 fail, 50 skipped.
+  - Integration: 629 pass, 3 fail, 50 skipped.
 - **PR #21 to main is open (25/11/2026):** https://github.com/viehai/SEP490_G144_VFMS/pull/21. Once it is merged, teammates who pull main get the migration `YogaPlanLevelReplacesClassType`. It drops `PackageComponents.YogaClassTypeId` and `YogaWaitlists.YogaClassTypeId`, so code or tests that still use `YogaClassType` on a plan no longer build, and yoga plans in test seeds need `YogaDifficultyLevel`.
 
 - **Yoga plans can't be renewed yet.** Renewal (`/my-memberships` → gia hạn) still only covers gym plans, so a yoga member buys a new yoga plan instead; it starts after the current one ends.

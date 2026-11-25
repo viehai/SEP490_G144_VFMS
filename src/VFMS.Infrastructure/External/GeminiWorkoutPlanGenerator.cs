@@ -105,7 +105,7 @@ public sealed class GeminiWorkoutPlanGenerator : IWorkoutPlanGenerator
     /// <summary>Wait before retry n is n times this. Public so tests can shorten it.</summary>
     public TimeSpan RetryDelay { get; init; } = TimeSpan.FromSeconds(1);
 
-    private static bool IsTransient(int status) => status is 429 or 500 or 502 or 503 or 504;
+    private static bool IsTransient(int status) => status is 500 or 502 or 503 or 504;   // not 429: a quota error lasts longer and retries use more quota
 
     private static string Shorten(string text) => text.Length <= 300 ? text : text[..300];
 
