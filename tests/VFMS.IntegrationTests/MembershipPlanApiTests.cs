@@ -22,9 +22,11 @@ using VFMS.API.Controllers;
 using VFMS.API.Extensions;
 using VFMS.Application.Mappings;
 using VFMS.Contracts.Auth.Validators;
+using VFMS.Contracts.Memberships;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
 using VFMS.Infrastructure.Data;
+using MembershipDurationUnit = VFMS.Contracts.Memberships.MembershipDurationUnit;
 
 namespace VFMS.IntegrationTests;
 
@@ -211,6 +213,75 @@ public sealed class MembershipPlanApiTests : IAsyncLifetime
             entry => AssertAudit(entry, AuditActionType.UpdateMembershipPlan, oldValue: "Monthly Basic", newValue: "Annual Premium"));
     }
 
+    [Fact]
+    public async Task ManagerRoundTripsCalendarMonthsAndEachAllowanceSource()
+    {
+        using var client = CreateClient();
+        var request = new MembershipPlanRequest
+        {
+            Name = "Gym tháng",
+            DurationValue = 3,
+            DurationUnit = MembershipDurationUnit.Month,
+            TargetAudience = "  Hội viên mới  ",
+            Description = "Tập luyện tại phòng gym.",
+            Price = 600_000,
+            Status = MembershipPlanStatuses.Active
+        };
+        var inherited = await ReadBodyAsync(await client.PostAsJsonAsync(ManagementRoute, request), HttpStatusCode.Created);
+        var planId = inherited.GetProperty("id").GetInt32();
+        Assert.Equal(JsonValueKind.Null, inherited.GetProperty("freezeAllowanceOverrideDays").ValueKind);
+
+        request.Name = "Gym tháng có bảo lưu riêng";
+        request.MaxFreezeCount = 2;
+        request.MaxFreezeDaysPerRequest = 120;
+        var overridden = await ReadBodyAsync(await client.PostAsJsonAsync(ManagementRoute, request), HttpStatusCode.Created);
+        Assert.Equal(120, overridden.GetProperty("maxFreezeDaysPerRequest").GetInt32());
+        Assert.Equal(2, overridden.GetProperty("maxFreezeCount").GetInt32());
+
+        request.Name = "Gym tháng";
+        request.MaxFreezeCount = 0;
+        request.MaxFreezeDaysPerRequest = null;
+        var disabled = await ReadBodyAsync(await client.PutAsJsonAsync($"{ManagementRoute}/{planId}", request), HttpStatusCode.OK);
+        Assert.Equal(0, disabled.GetProperty("maxFreezeCount").GetInt32());
+        Assert.Equal(3, disabled.GetProperty("durationValue").GetInt32());
+        Assert.Equal((int)MembershipDurationUnit.Month, disabled.GetProperty("durationUnit").GetInt32());
+
+        await using var scope = _app.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+        db.FreezePolicies.Add(new FreezePolicy
+        {
+            PolicyName = "Membership freeze", CreatedByUserId = ManagerUserId, MinFreezeDaysPerRequest = 1,
+            DefaultMaxFreezeDays = 45, DefaultFreezeAllowanceDays = 20
+        });
+        await db.SaveChangesAsync();
+
+        using var customer = CreateClient("Customer");
+        var packages = await ReadBodyAsync(await customer.GetAsync("/api/packages?type=gym"), HttpStatusCode.OK);
+        var items = packages.GetProperty("items").EnumerateArray().ToDictionary(item => item.GetProperty("id").GetInt32());
+        var customPackage = items[overridden.GetProperty("id").GetInt32()];
+        Assert.True(customPackage.GetProperty("allowFreeze").GetBoolean());
+        Assert.Equal(2, customPackage.GetProperty("maxFreezeCount").GetInt32());
+        Assert.Equal(120, customPackage.GetProperty("maxFreezeDaysPerRequest").GetInt32());
+        Assert.False(items[planId].GetProperty("allowFreeze").GetBoolean());
+
+        var filtered = await ReadBodyAsync(await client.GetAsync($"{ManagementRoute}?durationUnit=Month&freezeAllowanceFilter=Custom"), HttpStatusCode.OK);
+        Assert.Equal(overridden.GetProperty("id").GetInt32(),
+            Assert.Single(filtered.GetProperty("items").EnumerateArray()).GetProperty("id").GetInt32());
+        var dayPlans = await ReadBodyAsync(await client.GetAsync($"{ManagementRoute}?durationUnit=Day"), HttpStatusCode.OK);
+        Assert.Empty(dayPlans.GetProperty("items").EnumerateArray());
+
+        request.MaxFreezeCount = null;
+        var restored = await ReadBodyAsync(await client.PutAsJsonAsync($"{ManagementRoute}/{planId}", request), HttpStatusCode.OK);
+        Assert.Equal(JsonValueKind.Null, restored.GetProperty("maxFreezeCount").ValueKind);
+        var catalog = await ReadBodyAsync(await customer.GetAsync($"{CatalogRoute}/{planId}"), HttpStatusCode.OK);
+        Assert.Equal("Hội viên mới", catalog.GetProperty("targetAudience").GetString());
+        Assert.Equal(3, catalog.GetProperty("durationValue").GetInt32());
+
+        var component = await db.PackageComponents.SingleAsync(row => row.PackageId == planId);
+        Assert.Null(component.DurationDays);
+        Assert.Equal(3, component.DurationMonths);
+    }
+
     [Theory]
     [InlineData("name", null)]
     [InlineData("name", "   ")]
@@ -218,6 +289,10 @@ public sealed class MembershipPlanApiTests : IAsyncLifetime
     [InlineData("durationInDays", 0)]
     [InlineData("durationInDays", -5)]
     [InlineData("durationInDays", 3.5)]
+    [InlineData("durationValue", -1)]
+    [InlineData("durationUnit", 3)]
+    [InlineData("freezeAllowanceOverrideValue", -1)]
+    [InlineData("freezeAllowanceOverrideUnit", 3)]
     [InlineData("price", null)]
     [InlineData("price", -100)]
     [InlineData("status", "ARCHIVED")]
@@ -676,8 +751,8 @@ public sealed class MembershipPlanApiTests : IAsyncLifetime
         var deleted = await ReadBodyAsync(await client.DeleteAsync($"{ManagementRoute}/{planId}"), HttpStatusCode.OK);
         Assert.True(deleted.GetProperty("deactivated").GetBoolean());
         var message = deleted.GetProperty("message").GetString();
-        Assert.Contains("permanently deleted", message, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("inactive", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("không thể xóa vĩnh viễn", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ngừng bán", message, StringComparison.OrdinalIgnoreCase);
 
         await using var scope = _app.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();

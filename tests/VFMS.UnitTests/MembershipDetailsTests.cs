@@ -97,7 +97,7 @@ public sealed class MembershipDetailsTests
         var membership = Membership(1, MembershipStatus.Frozen);
         var repository = new RepositoryStub();
         repository.Add(MemberId, new OwnedMembershipDetail(
-            membership, DateTime.SpecifyKind(UtcNow.UtcDateTime, DateTimeKind.Unspecified), "INV-123", 4, 1, [current, completed]));
+            membership, DateTime.SpecifyKind(UtcNow.UtcDateTime, DateTimeKind.Unspecified), "INV-123", 4, 1, [current, completed], 20));
 
         var result = await CreateService(repository).GetOwnedMembershipAsync(MemberId, membership.MembershipId, default);
 
@@ -107,11 +107,14 @@ public sealed class MembershipDetailsTests
         Assert.Equal("INV-123", detail.InvoiceNumber);
         Assert.Equal(4, detail.Freeze.TotalFrozenDays);
         Assert.Equal(1, detail.Freeze.FreezeCount);
+        Assert.Equal(4, detail.Freeze.CompletedFreezeDays);
+        Assert.Equal(9, detail.Freeze.CommittedFreezeDays);
+        Assert.Equal(11, detail.Freeze.RemainingFreezeDays);
         Assert.Collection(detail.Freeze.History,
             freeze => Assert.Equal(new MembershipFreezePeriodResponse(current.RequestedStartDate,
-                current.RequestedEndDate, current.ActualStartDate, null, "Active"), freeze),
+                current.RequestedEndDate, current.ActualStartDate, null, "Active", 5), freeze),
             freeze => Assert.Equal(new MembershipFreezePeriodResponse(completed.RequestedStartDate,
-                completed.RequestedEndDate, completed.ActualStartDate, completed.ActualEndDate, "Completed"), freeze));
+                completed.RequestedEndDate, completed.ActualStartDate, completed.ActualEndDate, "Completed", 6), freeze));
     }
 
     private static MembershipPurchaseService CreateService(RepositoryStub repository) =>
@@ -153,6 +156,7 @@ public sealed class MembershipDetailsTests
         public Task<T> ExecuteInSerializableTransactionAsync<T>(Func<Task<T>> work, CancellationToken ct) =>
             throw new NotSupportedException();
         public Task<List<Package>> LoadPlansAsync(int[] ids, CancellationToken ct) => throw new NotSupportedException();
+        public Task<FreezePolicy?> GetPurchaseFreezePolicyAsync(CancellationToken ct) => throw new NotSupportedException();
         public Task<bool> AnyBookableYogaClassAsync(DateTime nowUtc, CancellationToken ct) => throw new NotSupportedException();
         public Task<List<ApplicationUser>> LoadCheckoutUsersAsync(string purchaserId, string[] emails, CancellationToken ct) =>
             throw new NotSupportedException();

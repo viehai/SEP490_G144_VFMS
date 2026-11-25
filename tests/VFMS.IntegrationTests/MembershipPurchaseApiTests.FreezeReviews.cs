@@ -44,7 +44,7 @@ public sealed partial class MembershipPurchaseApiTests
     public async Task ManagerQueueSeparatesNormalAndEarlyUnfreezeRequestsAndPaginates()
     {
         var membership = await PrepareFreezeReviewMembershipAsync();
-        var other = await SeedMembershipAsync(Today.AddDays(20), MembershipStatus.Active, "buyer", "Customer");
+        var other = await SeedLegacyFreezeMembershipAsync(Today.AddDays(20), MembershipStatus.Active, "buyer", "Customer");
         using var member = Client("member", "Member");
         using var otherMember = Client("buyer", "Member");
         using var manager = Client("manager", "Manager");
@@ -74,6 +74,13 @@ public sealed partial class MembershipPurchaseApiTests
         var first = Assert.Single(paged.Items);
         var second = Assert.Single((await ReadFreezeReviewQueueAsync(manager, "?page=2&pageSize=1")).Items);
         Assert.NotEqual(first.FreezeRequestId, second.FreezeRequestId);
+
+        var all = await ReadFreezeReviewQueueAsync(manager, "?status=All");
+        Assert.Equal(3, all.TotalCount);
+        Assert.All(all.Items.Take(2), row => Assert.Equal("Pending", row.Status));
+        var matched = await ReadFreezeReviewQueueAsync(manager, FormattableString.Invariant(
+            $"?status=All&type=Freeze&search=buyer&fromDate={Today:yyyy-MM-dd}&toDate={Today:yyyy-MM-dd}"));
+        Assert.Equal(effective.FreezeRequestId, Assert.Single(matched.Items).FreezeRequestId);
 
         var detail = (await manager.GetFromJsonAsync<MembershipFreezeReviewDetailResponse>(
             $"{FreezeReviewsRoute}/{pending.FreezeRequestId}?type=Freeze"))!;
@@ -137,14 +144,13 @@ public sealed partial class MembershipPurchaseApiTests
         using var member = Client("member", "Member");
         using var manager = Client("manager", "Manager");
         var request = await CreateFreezeRequestAsync(member, membership.Id, days: 4);
-        await ConfigureFreezeRequestsAsync(new(20, 30, 100, 100,
-            [new(30, MembershipFreezeTierUnits.Days, 0)]));
+        await ConfigureFreezeRequestsAsync(new(20, 30, 100, 100));
 
         var approved = await ApproveFreezeReviewAsync(manager, request.FreezeRequestId);
         Assert.Equal("Approved", approved.Request.Status);
         Assert.Equal(membership.EndDate.AddDays(4), approved.Membership.EndDate);
         Assert.Equal(2, approved.AppliedPolicy?.Policy?.MinimumFreezeDays);
-        Assert.Equal(10, Assert.Single(approved.AppliedPolicy!.Quotas).MaximumCumulativeFreezeDays);
+        Assert.Equal(10, approved.AppliedPolicy?.GrantedFreezeAllowanceDays);
     }
 
     [Fact]
@@ -205,6 +211,8 @@ public sealed partial class MembershipPurchaseApiTests
         var visibleToMember = await ReadOwnedFreezeRequestAsync(member, pending.FreezeRequestId);
         Assert.Equal("Insufficient evidence", visibleToMember.ReviewNote);
         Assert.Empty((await ReadFreezeReviewQueueAsync(manager)).Items);
+        var historical = Assert.Single((await ReadFreezeReviewQueueAsync(manager, "?status=History")).Items);
+        Assert.Equal(pending.FreezeRequestId, historical.FreezeRequestId);
 
         await using var scope = _app.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
@@ -466,6 +474,44 @@ public sealed partial class MembershipPurchaseApiTests
         }
     }
 
+    [SqlServerMigrationFact]
+    public async Task SqlServerSerializesOverlappingFreezeSubmissionsAndCompetingAllowanceApprovals()
+    {
+        await using var database = await LegacySchemaMigrationTests.DisposableMigrationDatabase.CreateAsync();
+        await _app.DisposeAsync();
+        await StartApplicationAsync(database.ConnectionString);
+        var membership = await PrepareFreezeReviewMembershipAsync();
+        using var member = Client("member", "Member");
+        using var secondMemberRequest = Client("member", "Member");
+        var input = FreezeInput(membership.Id, days: 7);
+
+        var submissions = await Task.WhenAll(PostFreezeWithDocumentAsync(member, input),
+            PostFreezeWithDocumentAsync(secondMemberRequest, input));
+        var first = await ReadFreezeRequestResponseAsync(
+            Assert.Single(submissions, response => response.StatusCode == HttpStatusCode.Created), HttpStatusCode.Created);
+        using var overlapping = Assert.Single(submissions, response => response.StatusCode == HttpStatusCode.Conflict);
+        var second = await CreateFreezeRequestAsync(member, membership.Id, start: Today.AddDays(10), days: 7);
+
+        using var manager = Client("manager", "Manager");
+        using var secondManagerRequest = Client("manager", "Manager");
+        var approvals = await Task.WhenAll(
+            manager.PostAsync($"{FreezeReviewsRoute}/{first.FreezeRequestId}/approve", null),
+            secondManagerRequest.PostAsync($"{FreezeReviewsRoute}/{second.FreezeRequestId}/approve", null));
+        using var accepted = Assert.Single(approvals, response => response.StatusCode == HttpStatusCode.OK);
+        using var overAllowance = Assert.Single(approvals, response => response.StatusCode == HttpStatusCode.Conflict);
+
+        await using var verification = database.Context();
+        var stored = await verification.MemberMemberships.SingleAsync();
+        Assert.Equal(10, stored.GrantedFreezeAllowanceDays);
+        Assert.Equal(7, stored.TotalFrozenDays);
+        Assert.Equal(1, stored.FreezeCount);
+        Assert.Equal(membership.EndDate.AddDays(7), stored.EndDate);
+        Assert.Equal(2, await verification.MembershipFreezes.CountAsync());
+        var approved = await verification.MembershipFreezes.SingleAsync(request => request.RequestStatus == FreezeRequestStatus.Approved);
+        Assert.Equal(7, approved.AppliedExpiryExtensionDays);
+        Assert.Single(await verification.Notifications.ToListAsync());
+    }
+
     private Task<Result<MembershipFreezeReviewDetailResponse>> RunConcurrentReviewAsync(
         string connectionString, int requestId, string actor, bool reject, Barrier start) => Task.Run(async () =>
     {
@@ -497,8 +543,12 @@ public sealed partial class MembershipPurchaseApiTests
     }
 
     private static async Task<PagedResponse<MembershipFreezeReviewSummaryResponse>> ReadFreezeReviewQueueAsync(
-        HttpClient manager, string query = "") =>
-        (await manager.GetFromJsonAsync<PagedResponse<MembershipFreezeReviewSummaryResponse>>($"{FreezeReviewsRoute}{query}"))!;
+        HttpClient manager, string query = "")
+    {
+        using var response = await manager.GetAsync($"{FreezeReviewsRoute}{query}");
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+        return (await response.Content.ReadFromJsonAsync<PagedResponse<MembershipFreezeReviewSummaryResponse>>())!;
+    }
 
     private static async Task<MembershipFreezeReviewDetailResponse> ApproveFreezeReviewAsync(HttpClient manager, int requestId, bool early = false)
     {

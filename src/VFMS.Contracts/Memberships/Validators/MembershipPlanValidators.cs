@@ -6,22 +6,43 @@ public sealed class MembershipPlanRequestValidator : AbstractValidator<Membershi
 {
     public MembershipPlanRequestValidator()
     {
+        RuleFor(x => x.MaxFreezeCount).GreaterThanOrEqualTo(0).WithMessage("Số lượt phải từ 0 trở lên.");
+        RuleFor(x => x.MinFreezeDaysPerRequest).GreaterThan(0).WithMessage("Thời gian tối thiểu phải từ 1 ngày.");
+        RuleFor(x => x.MaxFreezeDaysPerRequest).GreaterThan(0).WithMessage("Thời gian tối đa phải từ 1 ngày.");
+        RuleFor(x => x.MaxFreezeDaysPerRequest).GreaterThanOrEqualTo(x => x.MinFreezeDaysPerRequest)
+            .When(x => x.MinFreezeDaysPerRequest.HasValue && x.MaxFreezeDaysPerRequest.HasValue)
+            .WithMessage("Số ngày tối đa phải bằng hoặc lớn hơn số ngày tối thiểu.");
         RuleFor(x => x.Name)
-            .Must(name => !string.IsNullOrWhiteSpace(name)).WithMessage("The plan name is required.")
+            .Must(name => !string.IsNullOrWhiteSpace(name)).WithMessage("Nhập tên gói hội viên.")
             .Must(name => name is null || name.Trim().Length <= 256)
-            .WithMessage("The plan name must be at most 256 characters.");
-        RuleFor(x => x.Description).MaximumLength(4000);
-        RuleFor(x => x.DurationInDays)
-            .NotNull().GreaterThan(0).WithMessage("The duration in days must be a positive integer.");
+            .WithMessage("Tên gói hội viên không được vượt quá 256 ký tự.");
+        RuleFor(x => x.Description).MaximumLength(4000).WithMessage("Mô tả không được vượt quá 4000 ký tự.");
+        RuleFor(x => x.TargetAudience).MaximumLength(4000).WithMessage("Đối tượng phù hợp không được vượt quá 4000 ký tự.");
+        RuleFor(x => x.DurationValue)
+            .Must((request, value) => IsValidDuration(value ?? request.DurationInDays,
+                value.HasValue ? request.DurationUnit : MembershipDurationUnit.Day))
+            .WithMessage("Nhập thời hạn gói bằng số nguyên dương trong phạm vi ngày được hỗ trợ.");
+        RuleFor(x => x.DurationUnit).IsInEnum().WithMessage("Chọn đơn vị thời hạn là ngày hoặc tháng.");
+        RuleFor(x => x.FreezeAllowanceOverrideUnit).IsInEnum().WithMessage("Chọn đơn vị bảo lưu là ngày hoặc tháng.");
+        RuleFor(x => x.FreezeAllowanceOverrideValue)
+            .Must((request, value) => value is null || MembershipFreezeDuration.TryToDays(value.Value, request.FreezeAllowanceOverrideUnit, out _))
+            .WithMessage("Nhập tổng thời gian bảo lưu từ 0 trở lên trong phạm vi ngày được hỗ trợ.");
         RuleFor(x => x.Price)
-            .NotNull()
+            .NotNull().WithMessage("Nhập giá gói hội viên.")
             .Must(price => price is null ||
                 (price >= 0m && price <= 9_999_999_999_999_999.99m && decimal.Round(price.Value, 2) == price.Value))
-            .WithMessage("The price must be non-negative and fit in 18 digits with at most two decimal places.");
+            .WithMessage("Giá phải từ 0 đồng, có tối đa 18 chữ số, gồm tối đa hai chữ số thập phân.");
         RuleFor(x => x.Status)
             .Must(MembershipPlanRules.IsStatus).WithMessage(MembershipPlanRules.StatusMessage);
         RuleFor(x => x.ServiceType)
             .Must(MembershipPlanRules.IsServiceType).WithMessage(MembershipPlanRules.ServiceTypeMessage);
+    }
+
+    private static bool IsValidDuration(int? value, MembershipDurationUnit unit)
+    {
+        var maximum = unit == MembershipDurationUnit.Month
+            ? (DateOnly.MaxValue.Year - 1) * 12 + 11 : DateOnly.MaxValue.DayNumber + 1;
+        return value > 0 && value <= maximum;
     }
 }
 
@@ -45,6 +66,8 @@ public sealed class MembershipPlanListRequestValidator : AbstractValidator<Membe
         RuleFor(x => x.ServiceType)
             .Must(type => string.IsNullOrWhiteSpace(type) || MembershipPlanRules.IsServiceType(type))
             .WithMessage(MembershipPlanRules.ServiceTypeMessage);
+        RuleFor(x => x.DurationUnit).IsInEnum().WithMessage("Chọn đơn vị thời hạn là ngày hoặc tháng.");
+        RuleFor(x => x.FreezeAllowanceFilter).IsInEnum().WithMessage("Bộ lọc quyền lợi bảo lưu không hợp lệ.");
         RuleFor(x => x.Page).InclusiveBetween(1, 1_000_000);
         RuleFor(x => x.PageSize).InclusiveBetween(1, 100);
     }
@@ -52,8 +75,8 @@ public sealed class MembershipPlanListRequestValidator : AbstractValidator<Membe
 
 internal static class MembershipPlanRules
 {
-    public const string StatusMessage = "Status must be ACTIVE or INACTIVE.";
-    public const string ServiceTypeMessage = "Service type must be GYM or YOGA.";
+    public const string StatusMessage = "Chọn trạng thái đang bán hoặc ngừng bán.";
+    public const string ServiceTypeMessage = "Chọn loại dịch vụ Gym hoặc Yoga.";
 
     public static bool IsServiceType(string? type) =>
         string.Equals(type?.Trim(), MembershipPlanServiceTypes.Gym, StringComparison.OrdinalIgnoreCase) ||

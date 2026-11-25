@@ -45,6 +45,6 @@ public sealed class GymDetailsService : IGymDetailsService
         if (!result.IsSuccess || result.Data?.Policy is not { } policy)
             return null;
         return new GymFreezePolicySummary(policy.MinimumFreezeDays, policy.MaximumFreezeDays, policy.MinimumRequestDays,
-            policy.EligibilityPaidDays, result.Data.Quotas);
+            policy.EligibilityPaidDays, policy.DefaultMaxFreezeCount);
     }
 }

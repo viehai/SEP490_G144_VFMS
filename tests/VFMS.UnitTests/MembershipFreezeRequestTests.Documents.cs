@@ -38,7 +38,7 @@ public sealed partial class MembershipFreezeRequestTests
     }
 
     [Fact]
-    public async Task ReplacingAndRemovingDocumentsLeavesNoUnusedPayloads()
+    public async Task ReplacingDocumentsKeepsTheRequiredAttachment()
     {
         var fixture = new FreezeFixture();
         var request = fixture.AddRequest(FreezeRequestStatus.Pending, Today.AddDays(3), 3);
@@ -52,9 +52,8 @@ public sealed partial class MembershipFreezeRequestTests
         Assert.NotEqual(original.Data!.DocumentId, replaced.Data!.DocumentId);
         Assert.Equal(replaced.Data.DocumentId, Assert.Single(store.Documents).Key);
         Assert.Equal(replaced.Data.DocumentId, request.SupportingDocumentId);
-        Assert.True((await service.RemoveAsync(MemberId, request.Id, default)).Data);
-        Assert.Null(request.SupportingDocumentId);
-        Assert.Empty(store.Documents);
+        Assert.Equal(409, (await service.RemoveAsync(MemberId, request.Id, default)).StatusCode);
+        Assert.Equal(replaced.Data.DocumentId, Assert.Single(store.Documents).Key);
     }
 
     [Theory]
@@ -112,7 +111,7 @@ public sealed partial class MembershipFreezeRequestTests
         {
             var request = fixture.AddRequest(FreezeRequestStatus.Pending, Today.AddDays(offset), 3);
             request.SupportingDocumentId = Guid.NewGuid();
-            store.Set(request, request.SupportingDocumentId.Value, "certificate.pdf", "application/pdf", "%PDF-data"u8.ToArray());
+            store.Set(request, new(new(request.SupportingDocumentId.Value, "certificate.pdf", "application/pdf", 9), "%PDF-data"u8.ToArray()));
         }
         var service = new MembershipFreezeRequestService(fixture.Repository, fixture.Policies,
             new MembershipFreezeRequestValidator(), new TestClock(), store);
@@ -151,17 +150,12 @@ public sealed partial class MembershipFreezeRequestTests
             PayloadReads++;
             return Task.FromResult(Documents.GetValueOrDefault(id));
         }
-        public void Set(MembershipFreeze request, Guid id, string fileName, string contentType, byte[] content)
+        public void Set(MembershipFreeze request, MembershipFreezeDocumentContent content)
         {
-            Remove(request);
-            request.SupportingDocumentId = id;
-            Documents.Add(id, new(new(id, fileName, contentType, content.LongLength), content));
-        }
-        public void Remove(MembershipFreeze request)
-        {
-            if (request.SupportingDocumentId is { } id)
-                Documents.Remove(id);
-            request.SupportingDocumentId = null;
+            if (request.SupportingDocumentId is { } oldId)
+                Documents.Remove(oldId);
+            request.SupportingDocumentId = content.Document.DocumentId;
+            Documents.Add(content.Document.DocumentId, content);
         }
     }
 
@@ -174,7 +168,7 @@ public sealed partial class MembershipFreezeRequestTests
                 request, "Member", "member@example.test", membership.OrderItem.PackageNameSnapshot, membership));
         }
         public Task<(IReadOnlyList<MembershipFreezeReviewReadModel> Items, int TotalCount)> SearchAsync(
-            string? type, int page, int pageSize, CancellationToken ct) => throw new NotSupportedException();
+            MembershipFreezeReviewListRequest request, CancellationToken ct) => throw new NotSupportedException();
         public void Add<TEntity>(TEntity entity) where TEntity : BaseEntity => throw new NotSupportedException();
         public Task SaveChangesAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task ExecuteInTransactionAsync(Func<Task> work, CancellationToken cancellationToken = default) => throw new NotSupportedException();

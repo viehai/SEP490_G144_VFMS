@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -35,6 +36,10 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
             path += $"&status={Uri.EscapeDataString(request.Status)}";
         if (!string.IsNullOrWhiteSpace(request.ServiceType))
             path += $"&serviceType={Uri.EscapeDataString(request.ServiceType)}";
+        if (request.DurationUnit is { } durationUnit)
+            path += $"&durationUnit={durationUnit}";
+        if (request.FreezeAllowanceFilter is { } freezeFilter)
+            path += $"&freezeAllowanceFilter={freezeFilter}";
         return SendAsync<PagedResponse<MembershipPlanResponse>>(HttpMethod.Get, path, cancellationToken);
     }
 
@@ -175,8 +180,20 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
             FormattableString.Invariant($"{FreezeRequestsPath}/{requestId}"), cancellationToken);
 
     public Task<MembershipFreezeRequestResponse> CreateFreezeRequestAsync(
-        MembershipFreezeRequest request, CancellationToken cancellationToken = default) =>
-        SendAsync<MembershipFreezeRequestResponse>(HttpMethod.Post, FreezeRequestsPath, cancellationToken, JsonContent.Create(request));
+        MembershipFreezeRequest request, Stream content, string fileName, string contentType, CancellationToken cancellationToken = default)
+    {
+        var form = DocumentForm(content, fileName, contentType);
+        if (request.MembershipId is { } id)
+            form.Add(new StringContent(id.ToString(CultureInfo.InvariantCulture)), nameof(request.MembershipId));
+        if (request.StartDate is { } start)
+            form.Add(new StringContent(start.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)), nameof(request.StartDate));
+        if (request.EndDate is { } end)
+            form.Add(new StringContent(end.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)), nameof(request.EndDate));
+        if (request.RequestedDays is { } days)
+            form.Add(new StringContent(days.ToString(CultureInfo.InvariantCulture)), nameof(request.RequestedDays));
+        form.Add(new StringContent(request.Reason ?? ""), nameof(request.Reason));
+        return SendAsync<MembershipFreezeRequestResponse>(HttpMethod.Post, FreezeRequestsPath, cancellationToken, form);
+    }
 
     public Task<MembershipFreezeRequestResponse> UpdateFreezeRequestAsync(
         int requestId, MembershipFreezeRequest request, CancellationToken cancellationToken = default) =>
@@ -192,19 +209,19 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
             FormattableString.Invariant($"{FreezeRequestsPath}/{requestId}/early-unfreeze"), cancellationToken);
 
     public Task<MembershipFreezeDocumentResponse> UploadFreezeDocumentAsync(
-        int requestId, Stream content, string fileName, string contentType, CancellationToken cancellationToken = default)
+        int requestId, Stream content, string fileName, string contentType, CancellationToken cancellationToken = default) =>
+        SendAsync<MembershipFreezeDocumentResponse>(HttpMethod.Post,
+            FormattableString.Invariant($"{FreezeRequestsPath}/{requestId}/document"), cancellationToken,
+            DocumentForm(content, fileName, contentType));
+
+    private static MultipartFormDataContent DocumentForm(Stream content, string fileName, string contentType)
     {
-        var upload = new MultipartFormDataContent();
+        var form = new MultipartFormDataContent();
         var file = new StreamContent(content);
         file.Headers.ContentType = new MediaTypeHeaderValue(contentType);
-        upload.Add(file, "file", fileName);
-        return SendAsync<MembershipFreezeDocumentResponse>(HttpMethod.Post,
-            FormattableString.Invariant($"{FreezeRequestsPath}/{requestId}/document"), cancellationToken, upload);
+        form.Add(file, "file", fileName);
+        return form;
     }
-
-    public Task<bool> RemoveFreezeDocumentAsync(int requestId, CancellationToken cancellationToken = default) =>
-        SendAsync<bool>(HttpMethod.Delete,
-            FormattableString.Invariant($"{FreezeRequestsPath}/{requestId}/document"), cancellationToken);
 
     public Task<MembershipFreezeDocumentDownload> DownloadFreezeDocumentAsync(int requestId, CancellationToken cancellationToken = default) =>
         SendAsync<MembershipFreezeDocumentDownload>(HttpMethod.Get,
@@ -220,6 +237,14 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
         var path = FormattableString.Invariant($"{FreezeReviewsPath}?page={request.Page}&pageSize={request.PageSize}");
         if (!string.IsNullOrWhiteSpace(request.Type))
             path += $"&type={Uri.EscapeDataString(request.Type.Trim())}";
+        if (!string.IsNullOrWhiteSpace(request.Status))
+            path += $"&status={Uri.EscapeDataString(request.Status.Trim())}";
+        if (!string.IsNullOrWhiteSpace(request.Search))
+            path += $"&search={Uri.EscapeDataString(request.Search.Trim())}";
+        if (request.FromDate is { } from)
+            path += FormattableString.Invariant($"&fromDate={from:yyyy-MM-dd}");
+        if (request.ToDate is { } to)
+            path += FormattableString.Invariant($"&toDate={to:yyyy-MM-dd}");
         return SendAsync<PagedResponse<MembershipFreezeReviewSummaryResponse>>(HttpMethod.Get, path, cancellationToken);
     }
 

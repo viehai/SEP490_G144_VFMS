@@ -16,7 +16,6 @@ public sealed class PackageCatalogQuery
 
 /// <summary>
 /// Response DTO dùng chung cho cả GYM / YOGA / PT trong public catalog.
-/// Chỉ chứa các field thực sự tồn tại trong PackageComponent.
 /// </summary>
 public sealed record PackageCatalogItemResponse(
     int Id,
@@ -53,6 +52,8 @@ public sealed record PackageCatalogItemResponse(
 )
 {
     public bool IsSingleService { get; init; } = true;
+    public string? TargetAudience { get; init; }
+    public int? TotalFreezeAllowanceDays { get; init; }
 }
 
 public sealed record PackageDetailResponse(

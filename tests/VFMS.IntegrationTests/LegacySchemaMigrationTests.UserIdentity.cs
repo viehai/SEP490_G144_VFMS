@@ -82,14 +82,15 @@ public sealed partial class LegacySchemaMigrationTests
         await InsertUser("identity-a", " ALPHA@example.test ", "(0912) 345-678");
         await InsertUser("identity-b", "beta@example.test", "0912345678");
 
-        var conflict = await Assert.ThrowsAsync<SqlException>(() => migrator.MigrateAsync());
+        var conflict = await Assert.ThrowsAsync<SqlException>(() => migrator.MigrateAsync(UserIdentity));
         Assert.Equal(51023, conflict.Number);
         Assert.DoesNotContain(UserIdentity, await context.Database.GetAppliedMigrationsAsync());
         Assert.Equal(" ALPHA@example.test ", await database.ScalarAsync<string>(
             "SELECT Email FROM dbo.ApplicationUsers WHERE UserId = 'identity-a'"));
 
         await database.ExecuteAsync("UPDATE dbo.ApplicationUsers SET PhoneNumber = '0912345679' WHERE UserId = 'identity-b'");
-        await migrator.MigrateAsync();
+        // Stop at the migration under test so this exercises its own downgrade rules.
+        await migrator.MigrateAsync(UserIdentity);
         Assert.False(context.Database.HasPendingModelChanges());
         var canonical = await context.ApplicationUsers.AsNoTracking().SingleAsync(user => user.UserId == "identity-a");
         Assert.Equal("alpha@example.test", canonical.Email);
@@ -113,7 +114,7 @@ public sealed partial class LegacySchemaMigrationTests
         await database.ExecuteAsync("UPDATE dbo.ApplicationUsers SET Email = 'archived@example.test' WHERE UserId = 'identity-a'");
         await migrator.MigrateAsync(BeforeUserIdentity);
         Assert.DoesNotContain(UserIdentity, await context.Database.GetAppliedMigrationsAsync());
-        await migrator.MigrateAsync();
+        await migrator.MigrateAsync(UserIdentity);
         Assert.Contains(UserIdentity, await context.Database.GetAppliedMigrationsAsync());
 
         Task InsertUser(string id, string email, string phone) => database.ExecuteAsync("""

@@ -127,6 +127,7 @@ public sealed partial class MembershipPurchaseApiTests
     public async Task RenewalUsesServerSnapshotsAndFulfillsExactlyOnceAfterVerifiedPayment()
     {
         var expiry = Today.AddDays(6);
+        await SetGlobalFreezeCountAsync(20);
         var original = await SeedMembershipAsync(expiry, MembershipStatus.Active);
         await UpdateRenewalPlanAsync("Basic current", 625_000m, duration: 37);
 
@@ -177,6 +178,7 @@ public sealed partial class MembershipPurchaseApiTests
         }
 
         await UpdateRenewalPlanAsync("Basic after checkout", 700_000m, duration: 4);
+        await SetGlobalFreezeCountAsync(7);
         using var wrongAmount = await NotifyAsync(renewal, 102, amount: 1);
         Assert.Equal(HttpStatusCode.Conflict, wrongAmount.StatusCode);
         using var verified = await NotifyAsync(renewal, 102);
@@ -202,10 +204,12 @@ public sealed partial class MembershipPurchaseApiTests
             Assert.Equal(original.StartDate, memberships[0].StartDate);
             Assert.Equal(expiry, memberships[0].EndDate);
             Assert.Equal(MembershipStatus.Active, memberships[0].MembershipStatus);
+            Assert.Equal(20, memberships[0].GrantedFreezeCount);
             Assert.Equal("member", memberships[1].MemberUserId);
             Assert.Equal(expiry.AddDays(1), memberships[1].StartDate);
             Assert.Equal(expiry.AddDays(37), memberships[1].EndDate);
             Assert.Equal(MembershipStatus.Scheduled, memberships[1].MembershipStatus);
+            Assert.Equal(7, memberships[1].GrantedFreezeCount);
             var renewalItem = await db.OrderItems.SingleAsync(row => row.RenewedFromMembershipId == original.Id);
             Assert.Equal(renewalItem.Id, memberships[1].OrderItemId);
             Assert.Equal(2, await db.Orders.CountAsync());

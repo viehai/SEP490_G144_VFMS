@@ -1,0 +1,3 @@
+.membership-duration ::deep .valid.modified:not(:focus-visible) {
+    outline: none;
+}

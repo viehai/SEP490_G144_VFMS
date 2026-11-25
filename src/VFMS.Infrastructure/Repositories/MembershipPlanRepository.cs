@@ -2,9 +2,11 @@ using System.Data;
 using Microsoft.EntityFrameworkCore;
 using VFMS.Application.Interfaces;
 using VFMS.Application.Services;
+using VFMS.Contracts.Memberships;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
 using VFMS.Infrastructure.Data;
+using MembershipDurationUnit = VFMS.Contracts.Memberships.MembershipDurationUnit;
 
 namespace VFMS.Infrastructure.Repositories;
 
@@ -13,7 +15,8 @@ public sealed class MembershipPlanRepository(VfmsDbContext context)
 {
     public async Task<(IReadOnlyList<MembershipPlanReadModel> Items, int TotalCount)> SearchAsync(
         string? search, PackageStatus? status, int page, int pageSize, CancellationToken cancellationToken = default,
-        ComponentType? serviceType = null, DateTime? sellableAtUtc = null)
+        ComponentType? serviceType = null, DateTime? sellableAtUtc = null,
+        MembershipDurationUnit? durationUnit = null, MembershipFreezeAllowanceFilter? freezeAllowanceFilter = null)
     {
         var query = Plans(status, sellableAtUtc);
         if (serviceType == ComponentType.GYM)
@@ -22,9 +25,29 @@ public sealed class MembershipPlanRepository(VfmsDbContext context)
             query = query.Where(package => !package.Components.Any(component => component.ComponentType == ComponentType.GYM));
         if (search is not null)
             query = query.Where(package => package.Name.Contains(search));
+        if (durationUnit is { } unit)
+            query = query.Where(package => package.Components.Where(component =>
+                    component.ComponentType == ComponentType.GYM || component.ComponentType == ComponentType.YOGA)
+                .OrderByDescending(component => component.ComponentType == ComponentType.GYM).ThenBy(component => component.Id)
+                .Select(component => unit == MembershipDurationUnit.Day
+                    ? component.DurationDays > 0 : (component.DurationDays == null || component.DurationDays <= 0) && component.DurationMonths > 0)
+                .FirstOrDefault());
+        query = freezeAllowanceFilter switch
+        {
+            MembershipFreezeAllowanceFilter.Default => query.Where(p => p.Components.Any(c => c.ComponentType == ComponentType.GYM) &&
+                !p.Components.Any(c => c.ComponentType == ComponentType.GYM && (c.MaxFreezeCount != null || c.MinFreezeDaysPerRequest != null || c.MaxFreezeDaysPerRequest != null))),
+            MembershipFreezeAllowanceFilter.Disabled => query.Where(p => p.Components.Any(c => c.ComponentType == ComponentType.GYM)
+                ? p.Components.Any(c => c.ComponentType == ComponentType.GYM && c.MaxFreezeCount == 0) : p.FreezeAllowanceOverrideDays == null || p.FreezeAllowanceOverrideDays == 0 || p.Components.Any(c => c.ComponentType == ComponentType.YOGA && c.DurationDays == 7)),
+            MembershipFreezeAllowanceFilter.Custom => query.Where(p => p.Components.Any(c => c.ComponentType == ComponentType.GYM)
+                ? p.Components.Any(c => c.ComponentType == ComponentType.GYM && (c.MaxFreezeCount == null || c.MaxFreezeCount > 0) &&
+                    (c.MaxFreezeCount > 0 || c.MinFreezeDaysPerRequest != null || c.MaxFreezeDaysPerRequest != null))
+                : p.FreezeAllowanceOverrideDays > 0 && !p.Components.Any(c => c.ComponentType == ComponentType.YOGA && c.DurationDays == 7)),
+            _ => query
+        };
 
         var total = await query.CountAsync(cancellationToken);
-        var items = await Project(query.OrderBy(package => package.Name).ThenBy(package => package.Id)
+        var items = await Project(query.OrderByDescending(package => package.PackageStatus == PackageStatus.Active)
+            .ThenBy(package => package.Name).ThenBy(package => package.Id)
             .Skip((page - 1) * pageSize).Take(pageSize)).ToListAsync(cancellationToken);
         return (items, total);
     }
@@ -105,6 +128,12 @@ public sealed class MembershipPlanRepository(VfmsDbContext context)
         return packages.Select(package => ToCatalogItem(package, package.Components.Single())).ToArray();
     }
 
+    public Task<CatalogMembershipFreezeRules?> GetCatalogFreezeRulesAsync(CancellationToken cancellationToken) =>
+        Context.FreezePolicies.AsNoTracking().Where(policy => policy.IsGlobal && policy.PolicyStatus == PolicyStatus.Active)
+            .Select(policy => new CatalogMembershipFreezeRules(policy.MinFreezeDaysPerRequest,
+                policy.DefaultMaxFreezeDays, policy.DefaultMaxFreezeCount))
+            .SingleOrDefaultAsync(cancellationToken);
+
     private static PackageCatalogReadModel ToCatalogItem(Package package, PackageComponent component) =>
         new(
             package.Id,
@@ -127,7 +156,10 @@ public sealed class MembershipPlanRepository(VfmsDbContext context)
             component.AccessStartTime,
             component.AccessEndTime)
         {
-            IsSingleService = package.Components.Count == 1
+            MinFreezeDaysPerRequest = component.MinFreezeDaysPerRequest,
+            IsSingleService = package.Components.Count == 1,
+            TargetAudience = package.TargetAudience,
+            FreezeAllowanceOverrideDays = package.FreezeAllowanceOverrideDays
         };
 
     private IQueryable<Package> Plans(PackageStatus? status, DateTime? sellableAtUtc = null)
@@ -168,6 +200,12 @@ public sealed class MembershipPlanRepository(VfmsDbContext context)
                     membership.PackageComponent.ComponentType == plan.Type),
                 plan.Type)
             {
-                IsSingleService = plan.package.Components.Count == 1
+                IsSingleService = plan.package.Components.Count == 1,
+                MaxFreezeCount = plan.package.Components.Where(c => c.ComponentType == plan.Type).OrderBy(c => c.Id).Select(c => c.MaxFreezeCount).FirstOrDefault(),
+                MinFreezeDaysPerRequest = plan.package.Components.Where(c => c.ComponentType == plan.Type).OrderBy(c => c.Id).Select(c => c.MinFreezeDaysPerRequest).FirstOrDefault(),
+                MaxFreezeDaysPerRequest = plan.package.Components.Where(c => c.ComponentType == plan.Type).OrderBy(c => c.Id).Select(c => c.MaxFreezeDaysPerRequest).FirstOrDefault(),
+                TargetAudience = plan.package.TargetAudience,
+                FreezeAllowanceOverrideDays = plan.package.FreezeAllowanceOverrideDays,
+                FreezeAllowanceOverrideUnit = plan.package.FreezeAllowanceOverrideUnit
             });
 }

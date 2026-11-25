@@ -952,6 +952,12 @@ namespace VFMS.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(128)");
 
+                    b.Property<int?>("DefaultFreezeAllowanceDays")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DefaultFreezeAllowanceUnit")
+                        .HasColumnType("int");
+
                     b.Property<int>("DefaultMaxFreezeCount")
                         .HasColumnType("int");
 
@@ -961,16 +967,28 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<int>("EligibilityPaidDays")
                         .HasColumnType("int");
 
+                    b.Property<int>("EligibilityPaidDaysUnit")
+                        .HasColumnType("int");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
                     b.Property<bool>("IsGlobal")
                         .HasColumnType("bit");
 
+                    b.Property<int>("MaximumFreezeDaysUnit")
+                        .HasColumnType("int");
+
                     b.Property<int?>("MinFreezeDaysPerRequest")
                         .HasColumnType("int");
 
+                    b.Property<int>("MinimumFreezeDaysUnit")
+                        .HasColumnType("int");
+
                     b.Property<int>("MinimumRequestDays")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MinimumRequestDaysUnit")
                         .HasColumnType("int");
 
                     b.Property<string>("PolicyName")
@@ -994,7 +1012,10 @@ namespace VFMS.Infrastructure.Migrations
                         .IsUnique()
                         .HasFilter("[IsGlobal] = 1 AND [IsDeleted] = 0 AND [PolicyStatus] = 'Active'");
 
-                    b.ToTable("FreezePolicies");
+                    b.ToTable("FreezePolicies", t =>
+                        {
+                            t.HasCheckConstraint("CK_FreezePolicies_DurationUnits", "([EligibilityPaidDaysUnit] = 0 OR ([EligibilityPaidDaysUnit] = 1 AND [EligibilityPaidDays] % 30 = 0)) AND ([MinimumRequestDaysUnit] = 0 OR ([MinimumRequestDaysUnit] = 1 AND [MinimumRequestDays] % 30 = 0)) AND ([MinimumFreezeDaysUnit] = 0 OR ([MinimumFreezeDaysUnit] = 1 AND [MinFreezeDaysPerRequest] IS NOT NULL AND [MinFreezeDaysPerRequest] % 30 = 0)) AND ([MaximumFreezeDaysUnit] = 0 OR ([MaximumFreezeDaysUnit] = 1 AND [DefaultMaxFreezeDays] % 30 = 0)) AND ([DefaultFreezeAllowanceUnit] = 0 OR ([DefaultFreezeAllowanceUnit] = 1 AND [DefaultFreezeAllowanceDays] IS NOT NULL AND [DefaultFreezeAllowanceDays] % 30 = 0)) AND ([DefaultFreezeAllowanceDays] IS NULL OR [DefaultFreezeAllowanceDays] >= 0)");
+                        });
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.Gym", b =>
@@ -1502,6 +1523,18 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<int>("FreezeCount")
                         .HasColumnType("int");
 
+                    b.Property<int?>("GrantedFreezeAllowanceDays")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("GrantedFreezeCount")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("GrantedMaxFreezeDays")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("GrantedMinFreezeDays")
+                        .HasColumnType("int");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
@@ -1540,7 +1573,10 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.HasIndex("PackageComponentId");
 
-                    b.ToTable("MemberMemberships");
+                    b.ToTable("MemberMemberships", t =>
+                        {
+                            t.HasCheckConstraint("CK_MemberMemberships_GrantedFreezeAllowanceDays", "[GrantedFreezeAllowanceDays] >= 0");
+                        });
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.MembershipFreeze", b =>
@@ -2211,6 +2247,12 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<string>("Description")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<int?>("FreezeAllowanceOverrideDays")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("FreezeAllowanceOverrideUnit")
+                        .HasColumnType("int");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
@@ -2227,12 +2269,19 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<decimal>("Price")
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<string>("TargetAudience")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
 
-                    b.ToTable("Packages");
+                    b.ToTable("Packages", t =>
+                        {
+                            t.HasCheckConstraint("CK_Packages_FreezeAllowanceOverride", "([FreezeAllowanceOverrideDays] IS NULL AND [FreezeAllowanceOverrideUnit] IS NULL) OR ([FreezeAllowanceOverrideDays] IS NOT NULL AND [FreezeAllowanceOverrideUnit] IS NOT NULL AND [FreezeAllowanceOverrideDays] >= 0 AND ([FreezeAllowanceOverrideUnit] = 0 OR ([FreezeAllowanceOverrideUnit] = 1 AND [FreezeAllowanceOverrideDays] % 30 = 0)))");
+                        });
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.PackageComponent", b =>
@@ -2276,6 +2325,9 @@ namespace VFMS.Infrastructure.Migrations
                         .HasColumnType("int");
 
                     b.Property<int?>("MaxFreezeDaysPerRequest")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("MinFreezeDaysPerRequest")
                         .HasColumnType("int");
 
                     b.Property<int?>("PTFreezeMaxTotalDays")

@@ -1,5 +1,6 @@
 using System.Globalization;
 using VFMS.Contracts.Memberships;
+using VFMS.Contracts.Packages;
 
 namespace VFMS.Client.Components.Memberships;
 
@@ -8,6 +9,19 @@ internal static class MembershipDisplay
     public static DateOnly Today => DateOnly.FromDateTime(DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(7)).DateTime);
 
     public static string DateInput(DateOnly date) => date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    public static string CatalogFreeze(PackageCatalogItemResponse package)
+    {
+        if (!package.AllowFreeze)
+            return "Không áp dụng bảo lưu";
+
+        if (package.ComponentType == "GYM" && package.MaxFreezeCount is { } count)
+            return $"{count} lượt · Tối đa {package.MaxFreezeDaysPerRequest} ngày/lượt";
+
+        return package.TotalFreezeAllowanceDays is > 0
+            ? $"Tổng cộng {package.TotalFreezeAllowanceDays} ngày"
+            : "Có hỗ trợ";
+    }
 
     public static string Status(string status) => status switch
     {

@@ -18,16 +18,30 @@ public sealed class MembershipFreezeDocumentService(
         var row = await requests.FindOwnedRequestAsync(memberId, requestId, ct);
         if (row is null)
             return NotFound<MembershipFreezeDocumentResponse>();
-        if (length > MembershipFreezeDocumentLimits.MaximumBytes)
+        var result = await ReadUploadAsync(new(fileName, contentType, length, content), ct);
+        if (!result.IsSuccess)
+            return Result<MembershipFreezeDocumentResponse>.Failure(result.ErrorMessage!, result.ErrorCode!, result.StatusCode);
+        var attachment = result.Data!;
+        return await MutateAsync(memberId, requestId, row.Request.MemberMembershipId, request =>
+        {
+            documents.Set(request, attachment);
+            return attachment.Document;
+        }, ct);
+    }
+
+    internal static async Task<Result<MembershipFreezeDocumentContent>> ReadUploadAsync(
+        MembershipFreezeDocumentUpload file, CancellationToken ct)
+    {
+        if (file.Length > MembershipFreezeDocumentLimits.MaximumBytes)
             return TooLarge();
-        var mediaType = contentType.Split(';', 2)[0].Trim().ToLowerInvariant();
-        if (length <= 0 || mediaType is not ("application/pdf" or "image/png" or "image/jpeg"))
+        var mediaType = file.ContentType.Split(';', 2)[0].Trim().ToLowerInvariant();
+        if (file.Length <= 0 || mediaType is not ("application/pdf" or "image/png" or "image/jpeg"))
             return Invalid();
 
         using var output = new MemoryStream();
         var buffer = new byte[81_920];
         int read;
-        while ((read = await content.ReadAsync(buffer, ct)) != 0)
+        while ((read = await file.Content.ReadAsync(buffer, ct)) != 0)
         {
             if (output.Length + read > MembershipFreezeDocumentLimits.MaximumBytes)
                 return TooLarge();
@@ -37,13 +51,9 @@ public sealed class MembershipFreezeDocumentService(
         if (!MatchesSignature(mediaType, bytes))
             return Invalid();
 
-        return await MutateAsync(memberId, requestId, row.Request.MemberMembershipId, request =>
-        {
-            var id = Guid.NewGuid();
-            var safeName = SafeFileName(fileName, mediaType);
-            documents.Set(request, id, safeName, mediaType, bytes);
-            return new MembershipFreezeDocumentResponse(id, safeName, mediaType, bytes.LongLength);
-        }, ct);
+        var metadata = new MembershipFreezeDocumentResponse(Guid.NewGuid(), SafeFileName(file.FileName, mediaType),
+            mediaType, bytes.LongLength);
+        return Result<MembershipFreezeDocumentContent>.Success(new(metadata, bytes));
     }
 
     public async Task<Result<bool>> RemoveAsync(string memberId, int requestId, CancellationToken ct)
@@ -51,11 +61,8 @@ public sealed class MembershipFreezeDocumentService(
         var row = await requests.FindOwnedRequestAsync(memberId, requestId, ct);
         if (row is null)
             return NotFound<bool>();
-        return await MutateAsync(memberId, requestId, row.Request.MemberMembershipId, request =>
-        {
-            documents.Remove(request);
-            return true;
-        }, ct);
+        return Result<bool>.Failure("Tài liệu minh chứng là bắt buộc. Bạn có thể thay tài liệu khi yêu cầu đang chờ duyệt.",
+            "FREEZE_DOCUMENT_REQUIRED", 409);
     }
 
     public async Task<Result<MembershipFreezeDocumentContent>> DownloadAsync(
@@ -128,11 +135,11 @@ public sealed class MembershipFreezeDocumentService(
     private static Result<T> NotFound<T>() =>
         Result<T>.Failure("Không tìm thấy yêu cầu hoặc tài liệu bảo lưu.", "FREEZE_DOCUMENT_NOT_FOUND", 404);
 
-    private static Result<MembershipFreezeDocumentResponse> Invalid() =>
-        Result<MembershipFreezeDocumentResponse>.Failure(
+    private static Result<MembershipFreezeDocumentContent> Invalid() =>
+        Result<MembershipFreezeDocumentContent>.Failure(
             "Chọn tài liệu PDF, PNG hoặc JPEG có nội dung và định dạng hợp lệ.", "FREEZE_DOCUMENT_INVALID");
 
-    private static Result<MembershipFreezeDocumentResponse> TooLarge() =>
-        Result<MembershipFreezeDocumentResponse>.Failure(
+    private static Result<MembershipFreezeDocumentContent> TooLarge() =>
+        Result<MembershipFreezeDocumentContent>.Failure(
             "Tài liệu tối đa 5 MiB.", "FREEZE_DOCUMENT_TOO_LARGE", 413);
 }

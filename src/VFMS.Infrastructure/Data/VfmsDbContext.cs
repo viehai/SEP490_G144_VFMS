@@ -245,6 +245,12 @@ public class VfmsDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Name).HasMaxLength(256).IsRequired();
+            entity.Property(e => e.TargetAudience).HasMaxLength(4000);
+            entity.ToTable(table => table.HasCheckConstraint("CK_Packages_FreezeAllowanceOverride",
+                "([FreezeAllowanceOverrideDays] IS NULL AND [FreezeAllowanceOverrideUnit] IS NULL) OR " +
+                "([FreezeAllowanceOverrideDays] IS NOT NULL AND [FreezeAllowanceOverrideUnit] IS NOT NULL AND " +
+                "[FreezeAllowanceOverrideDays] >= 0 AND ([FreezeAllowanceOverrideUnit] = 0 OR " +
+                "([FreezeAllowanceOverrideUnit] = 1 AND [FreezeAllowanceOverrideDays] % 30 = 0)))"));
             entity.Property(e => e.Price).HasColumnType("decimal(18,2)");
             entity.Property(e => e.PackageStatus).HasConversion<string>().HasMaxLength(50);
         });
@@ -363,6 +369,8 @@ public class VfmsDbContext : DbContext
         modelBuilder.Entity<MemberMembership>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.ToTable(table => table.HasCheckConstraint("CK_MemberMemberships_GrantedFreezeAllowanceDays",
+                "[GrantedFreezeAllowanceDays] >= 0"));
             entity.Property(e => e.MembershipStatus).HasConversion<string>().HasMaxLength(50);
 
             entity.HasOne(e => e.OrderItem)
@@ -441,6 +449,14 @@ public class VfmsDbContext : DbContext
         modelBuilder.Entity<FreezePolicy>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.ToTable(table => table.HasCheckConstraint("CK_FreezePolicies_DurationUnits", """
+                ([EligibilityPaidDaysUnit] = 0 OR ([EligibilityPaidDaysUnit] = 1 AND [EligibilityPaidDays] % 30 = 0)) AND
+                ([MinimumRequestDaysUnit] = 0 OR ([MinimumRequestDaysUnit] = 1 AND [MinimumRequestDays] % 30 = 0)) AND
+                ([MinimumFreezeDaysUnit] = 0 OR ([MinimumFreezeDaysUnit] = 1 AND [MinFreezeDaysPerRequest] IS NOT NULL AND [MinFreezeDaysPerRequest] % 30 = 0)) AND
+                ([MaximumFreezeDaysUnit] = 0 OR ([MaximumFreezeDaysUnit] = 1 AND [DefaultMaxFreezeDays] % 30 = 0)) AND
+                ([DefaultFreezeAllowanceUnit] = 0 OR ([DefaultFreezeAllowanceUnit] = 1 AND [DefaultFreezeAllowanceDays] IS NOT NULL AND [DefaultFreezeAllowanceDays] % 30 = 0)) AND
+                ([DefaultFreezeAllowanceDays] IS NULL OR [DefaultFreezeAllowanceDays] >= 0)
+                """.ReplaceLineEndings(" ")));
             entity.Property(e => e.PolicyName).HasMaxLength(256).IsRequired();
             entity.Property(e => e.PolicyStatus).HasConversion<string>().HasMaxLength(20);
             entity.HasIndex(e => e.IsGlobal).IsUnique()

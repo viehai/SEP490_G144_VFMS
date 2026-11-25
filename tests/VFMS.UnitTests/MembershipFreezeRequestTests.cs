@@ -23,7 +23,7 @@ public sealed partial class MembershipFreezeRequestTests
         var before = MembershipState(fixture.Membership);
         using var cancellation = new CancellationTokenSource();
 
-        var result = await fixture.Service.CreateAsync(MemberId, Request() with { Reason = "  Medical leave  " }, cancellation.Token);
+        var result = await fixture.CreateWithDocumentAsync(MemberId, Request() with { Reason = "  Medical leave  " }, cancellation.Token);
 
         Assert.True(result.IsSuccess);
         var response = Assert.IsType<MembershipFreezeRequestResponse>(result.Data);
@@ -55,7 +55,7 @@ public sealed partial class MembershipFreezeRequestTests
     {
         var fixture = new FreezeFixture();
 
-        var result = await fixture.Service.CreateAsync(memberId, Request() with { MembershipId = membershipId }, default);
+        var result = await fixture.CreateWithDocumentAsync(memberId, Request() with { MembershipId = membershipId }, default);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(404, result.StatusCode);
@@ -74,7 +74,7 @@ public sealed partial class MembershipFreezeRequestTests
         var fixture = new FreezeFixture();
         fixture.Membership.MembershipStatus = status;
 
-        var result = await fixture.Service.CreateAsync(MemberId, Request(), default);
+        var result = await fixture.CreateWithDocumentAsync(MemberId, Request(), default);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(409, result.StatusCode);
@@ -87,7 +87,7 @@ public sealed partial class MembershipFreezeRequestTests
         var fixture = new FreezeFixture();
         fixture.Membership.EndDate = Today.AddDays(-1);
 
-        var result = await fixture.Service.CreateAsync(MemberId, Request(), default);
+        var result = await fixture.CreateWithDocumentAsync(MemberId, Request(), default);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(409, result.StatusCode);
@@ -105,7 +105,7 @@ public sealed partial class MembershipFreezeRequestTests
         else
             fixture.Policies.Policy = null;
 
-        var result = await fixture.Service.CreateAsync(MemberId, Request(), default);
+        var result = await fixture.CreateWithDocumentAsync(MemberId, Request(), default);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(503, result.StatusCode);
@@ -121,7 +121,7 @@ public sealed partial class MembershipFreezeRequestTests
         fixture.Membership.StartDate = Today.AddDays(-elapsedDays);
 
         var eligibility = await fixture.Service.GetEligibilityAsync(MemberId, 1, null, default);
-        var result = await fixture.Service.CreateAsync(MemberId, Request(), default);
+        var result = await fixture.CreateWithDocumentAsync(MemberId, Request(), default);
 
         Assert.True(eligibility.IsSuccess);
         Assert.Equal(elapsedDays, eligibility.Data!.PaidDays);
@@ -136,7 +136,7 @@ public sealed partial class MembershipFreezeRequestTests
         fixture.Membership.StartDate = Today;
         fixture.Policies.Policy!.EligibilityPaidDays = 1;
 
-        var result = await fixture.Service.CreateAsync(MemberId, Request() with { StartDate = Today.AddDays(10) }, default);
+        var result = await fixture.CreateWithDocumentAsync(MemberId, Request() with { StartDate = Today.AddDays(10) }, default);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(400, result.StatusCode);
@@ -152,7 +152,7 @@ public sealed partial class MembershipFreezeRequestTests
     {
         var fixture = new FreezeFixture();
 
-        var result = await fixture.Service.CreateAsync(MemberId, Request(days), default);
+        var result = await fixture.CreateWithDocumentAsync(MemberId, Request(days), default);
 
         Assert.Equal(expected, result.IsSuccess);
         if (expected)
@@ -170,7 +170,7 @@ public sealed partial class MembershipFreezeRequestTests
         var fixture = new FreezeFixture();
 
         var eligibility = await fixture.Service.GetEligibilityAsync(MemberId, 1, null, default);
-        var result = await fixture.Service.CreateAsync(MemberId, Request() with { StartDate = Today.AddDays(startOffset) }, default);
+        var result = await fixture.CreateWithDocumentAsync(MemberId, Request() with { StartDate = Today.AddDays(startOffset) }, default);
 
         Assert.Equal(Today, eligibility.Data!.Today);
         Assert.Equal(Today.AddDays(3), eligibility.Data.EarliestStartDate);
@@ -184,7 +184,7 @@ public sealed partial class MembershipFreezeRequestTests
         fixture.Membership.EndDate = Today.AddDays(4);
         var before = MembershipState(fixture.Membership);
 
-        var result = await fixture.Service.CreateAsync(MemberId, Request(), default);
+        var result = await fixture.CreateWithDocumentAsync(MemberId, Request(), default);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(Today.AddDays(5), result.Data!.EndDate);
@@ -196,7 +196,7 @@ public sealed partial class MembershipFreezeRequestTests
     [InlineData("DurationDays", FreezeTierUnit.Days, 180)]
     [InlineData("Months", FreezeTierUnit.Months, 6)]
     [InlineData("DurationMonths", FreezeTierUnit.Months, 6)]
-    public async Task TierUsesOriginalPurchaseTermsIncludingLegacySnapshotNames(
+    public async Task StableGrantDoesNotDependOnPurchaseDurationIncludingLegacySnapshotNames(
         string durationProperty, FreezeTierUnit unit, int duration)
     {
         var fixture = new FreezeFixture();
@@ -206,7 +206,7 @@ public sealed partial class MembershipFreezeRequestTests
         fixture.Policies.Policy!.TierQuotas =
             [new() { Duration = duration, Unit = unit, MaximumCumulativeFreezeDays = 30 }];
 
-        var result = await fixture.Service.CreateAsync(MemberId, Request(), default);
+        var result = await fixture.CreateWithDocumentAsync(MemberId, Request(), default);
 
         Assert.True(result.IsSuccess);
     }
@@ -217,21 +217,23 @@ public sealed partial class MembershipFreezeRequestTests
         var fixture = new FreezeFixture();
         fixture.Membership.OrderItem.ComponentTermsSnapshot = null;
 
-        var result = await fixture.Service.CreateAsync(MemberId, Request(), default);
+        var result = await fixture.CreateWithDocumentAsync(MemberId, Request(), default);
 
         Assert.True(result.IsSuccess);
     }
 
     [Fact]
-    public async Task AnUnmatchedTierCannotBorrowAnotherTiersQuota()
+    public async Task UnverifiedHistoricalAllowanceDoesNotInheritTheCurrentDefault()
     {
         var fixture = new FreezeFixture();
-        fixture.Policies.Policy!.TierQuotas.Single().Duration = 365;
+        fixture.Membership.GrantedFreezeAllowanceDays = null;
+        fixture.Policies.Policy!.DefaultFreezeAllowanceDays = 50;
 
-        var result = await fixture.Service.CreateAsync(MemberId, Request(), default);
+        var result = await fixture.CreateWithDocumentAsync(MemberId, Request(), default);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(400, result.StatusCode);
+        Assert.Equal("FREEZE_ALLOWANCE_UNVERIFIED", result.ErrorCode);
         Assert.Equal(0, fixture.Repository.SaveCount);
     }
 
@@ -246,7 +248,7 @@ public sealed partial class MembershipFreezeRequestTests
         fixture.Membership.OrderItem.ComponentTermsSnapshot = Snapshot("Days", duration, componentType);
         fixture.Policies.Policy!.TierQuotas.Single().Duration = duration;
 
-        var result = await fixture.Service.CreateAsync(MemberId, Request(), default);
+        var result = await fixture.CreateWithDocumentAsync(MemberId, Request(), default);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(409, result.StatusCode);
@@ -299,7 +301,7 @@ public sealed partial class MembershipFreezeRequestTests
         fixture.Policies.Policy!.MinFreezeDaysPerRequest = 1;
         fixture.Membership.TotalFrozenDays = 28;
 
-        var result = await fixture.Service.CreateAsync(MemberId, Request(requestedDays), default);
+        var result = await fixture.CreateWithDocumentAsync(MemberId, Request(requestedDays), default);
 
         Assert.Equal(expected, result.IsSuccess);
         Assert.Equal(28, fixture.Membership.TotalFrozenDays);
@@ -314,7 +316,7 @@ public sealed partial class MembershipFreezeRequestTests
         var fixture = new FreezeFixture();
         fixture.AddRequest(status, Today.AddDays(5), 3);
 
-        var result = await fixture.Service.CreateAsync(MemberId, Request(), default);
+        var result = await fixture.CreateWithDocumentAsync(MemberId, Request(), default);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(409, result.StatusCode);
@@ -322,10 +324,10 @@ public sealed partial class MembershipFreezeRequestTests
     }
 
     [Fact]
-    public async Task MemberCanEditAnOwnedPendingRequestAndCaptureTheCurrentPolicy()
+    public async Task MemberCanEditAnOwnedPendingRequestAndKeepItsSubmittedPolicy()
     {
         var fixture = new FreezeFixture();
-        var created = await fixture.Service.CreateAsync(MemberId, Request(), default);
+        var created = await fixture.CreateWithDocumentAsync(MemberId, Request(), default);
         Assert.True(created.IsSuccess);
         var stored = Assert.Single(fixture.Membership.MembershipFreezes);
         var originalSnapshot = stored.AppliedPolicySnapshot;
@@ -340,14 +342,14 @@ public sealed partial class MembershipFreezeRequestTests
         Assert.Equal(Today.AddDays(8), stored.RequestedEndDate);
         Assert.Equal("Updated travel dates", stored.Reason);
         Assert.Equal(FreezeRequestStatus.Pending, stored.RequestStatus);
-        Assert.NotEqual(originalSnapshot, stored.AppliedPolicySnapshot);
-        Assert.Equal(9, result.Data!.AppliedPolicy!.Policy!.MaximumFreezeDays);
+        Assert.Equal(originalSnapshot, stored.AppliedPolicySnapshot);
+        Assert.Equal(10, result.Data!.AppliedPolicy!.Policy!.MaximumFreezeDays);
         Assert.Equal(before, MembershipState(fixture.Membership));
         Assert.Single(fixture.Membership.MembershipFreezes);
     }
 
     [Fact]
-    public async Task EditRevalidatesCurrentPolicyAndPreservesTheRequestOnFailure()
+    public async Task EditWithoutAVerifiableSubmissionPolicyPreservesTheRequestOnFailure()
     {
         var fixture = new FreezeFixture();
         var stored = fixture.AddRequest(FreezeRequestStatus.Pending, Today.AddDays(3), 3);
@@ -357,17 +359,68 @@ public sealed partial class MembershipFreezeRequestTests
         var result = await fixture.Service.UpdateAsync(MemberId, stored.Id, Request(), default);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(400, result.StatusCode);
+        Assert.Equal(503, result.StatusCode);
         Assert.Equal(Today.AddDays(3), stored.RequestedStartDate);
         Assert.Equal(Today.AddDays(5), stored.RequestedEndDate);
         Assert.Equal(0, fixture.Repository.SaveCount);
+    }
+
+    [Theory]
+    [InlineData(0, 1, true)]
+    [InlineData(1, 2, true)]
+    [InlineData(-1, 0, false)]
+    public async Task InclusiveDateRangesIncludeTheLastDayAndRejectReversedDates(int offset, int days, bool success)
+    {
+        var fixture = new FreezeFixture();
+        fixture.Policies.Policy!.MinFreezeDaysPerRequest = 1;
+        fixture.Policies.Policy.MinimumRequestDays = 0;
+        var request = new MembershipFreezeRequest(1, Today, null, "Medical leave", Today.AddDays(offset));
+
+        var result = await fixture.CreateWithDocumentAsync(MemberId, request, default);
+
+        Assert.Equal(success, result.IsSuccess);
+        if (success)
+            Assert.Equal(days, result.Data!.RequestedDays);
+    }
+
+    [Fact]
+    public async Task EligibilityUsesThePurchasedGrantAndReportsTheMaximumAfterCommitments()
+    {
+        var fixture = new FreezeFixture();
+        fixture.Membership.GrantedFreezeAllowanceDays = 20;
+        fixture.Policies.Policy!.DefaultFreezeAllowanceDays = 7;
+        fixture.Policies.Policy.DefaultMaxFreezeDays = 60;
+        fixture.AddRequest(FreezeRequestStatus.Approved, Today.AddDays(40), 4);
+        fixture.AddRequest(FreezeRequestStatus.Pending, Today.AddDays(50), 10);
+
+        var eligible = (await fixture.Service.GetEligibilityAsync(MemberId, 1, null, default)).Data!;
+
+        Assert.Equal(20, eligible.GrantedFreezeAllowanceDays);
+        Assert.Equal(16, eligible.MaximumAvailableDays);
+        Assert.Equal(4, eligible.CommittedFreezeDays);
+        Assert.Equal(0, eligible.CompletedFreezeDays);
+        Assert.Equal(16, eligible.RemainingQuota);
+    }
+
+    [Theory]
+    [InlineData(0, "FREEZE_ALLOWANCE_DISABLED")]
+    [InlineData(1, "MSG-27")]
+    public async Task CannotSubmitWithLessThanOneEligiblePeriod(int grantedDays, string code)
+    {
+        var fixture = new FreezeFixture();
+        fixture.Membership.GrantedFreezeAllowanceDays = grantedDays;
+
+        var result = await fixture.CreateWithDocumentAsync(MemberId, Request(), default);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(code, result.ErrorCode);
     }
 
     [Fact]
     public async Task TrackingAHistoricalRequestPreservesItsSubmittedPolicyAfterAConfigurationChange()
     {
         var fixture = new FreezeFixture();
-        var created = await fixture.Service.CreateAsync(MemberId, Request(), default);
+        var created = await fixture.CreateWithDocumentAsync(MemberId, Request(), default);
         Assert.True(created.IsSuccess);
         var stored = Assert.Single(fixture.Membership.MembershipFreezes);
         stored.RequestStatus = FreezeRequestStatus.Approved;
@@ -516,7 +569,7 @@ public sealed partial class MembershipFreezeRequestTests
     {
         var fixture = new FreezeFixture();
 
-        var result = await fixture.Service.CreateAsync(MemberId, Request() with { Reason = reason }, default);
+        var result = await fixture.CreateWithDocumentAsync(MemberId, Request() with { Reason = reason }, default);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(400, result.StatusCode);
@@ -544,6 +597,7 @@ public sealed partial class MembershipFreezeRequestTests
             MembershipStatus = MembershipStatus.Active,
             StartDate = Today.AddDays(-14),
             EndDate = Today.AddDays(90),
+            GrantedFreezeAllowanceDays = 30,
             PackageComponentId = 17,
             PackageComponent = new() { Id = 17, ComponentType = ComponentType.GYM, DurationDays = 180 },
             OrderItem = new() { PackageId = 4, PackageNameSnapshot = "Original purchased plan", ComponentTermsSnapshot = Snapshot("Days", 180) }
@@ -556,7 +610,14 @@ public sealed partial class MembershipFreezeRequestTests
         public FreezeFixture()
         {
             Repository = new(Membership);
-            Service = new(Repository, Policies, new MembershipFreezeRequestValidator(), new TestClock());
+            Service = new(Repository, Policies, new MembershipFreezeRequestValidator(), new TestClock(), new DocumentStoreStub());
+        }
+
+        public async Task<VFMS.Contracts.Common.Result<MembershipFreezeRequestResponse>> CreateWithDocumentAsync(
+            string memberId, MembershipFreezeRequest input, CancellationToken ct)
+        {
+            using var file = new MemoryStream("%PDF-fixture"u8.ToArray());
+            return await Service.CreateAsync(memberId, input, new("proof.pdf", "application/pdf", file.Length, file), ct);
         }
 
         public MembershipFreeze AddRequest(FreezeRequestStatus status, DateOnly startDate, int duration)

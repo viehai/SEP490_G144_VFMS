@@ -1,0 +1,74 @@
+@using VFMS.Contracts.Memberships
+
+<div class="min-w-0 space-y-2">
+    <label for="@InputId" class="block text-sm font-semibold text-vfms-text">Tài liệu minh chứng
+        @if (Required)
+        {
+            <span class="text-red-700" aria-hidden="true">*</span>
+        }
+    </label>
+    <div class="relative grid min-h-[72px] place-items-center rounded-lg border border-dashed border-vfms-border bg-vfms-muted p-3 text-center focus-within:outline focus-within:outline-2 focus-within:outline-vfms-primary">
+        <div class="min-w-0">
+            <span class="block break-all text-sm font-semibold text-vfms-text">@(_file?.Name ?? "Chọn tài liệu")</span>
+            <span id="@($"{InputId}-hint")" class="mt-1 block text-xs text-vfms-text-secondary">PDF, JPG hoặc PNG, tối đa 5 MiB.</span>
+        </div>
+        <InputFile @key="_inputVersion" id="@InputId" OnChange="SelectAsync" accept=".pdf,.png,.jpg,.jpeg"
+                   required="@Required" disabled="@Disabled" class="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
+                   aria-describedby="@($"{InputId}-hint {InputId}-error")" />
+    </div>
+    @if (_file is not null)
+    {
+        <button type="button" class="min-h-[44px] text-sm font-semibold text-vfms-primary hover:underline disabled:opacity-50"
+                disabled="@Disabled" @onclick="ClearAsync">Bỏ tệp đã chọn</button>
+    }
+    <div id="@($"{InputId}-error")">
+        @if (_error is not null)
+        {
+            <p role="alert" class="text-sm text-red-800">@_error</p>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string InputId { get; set; } = "";
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public EventCallback<IBrowserFile?> Selected { get; set; }
+
+    private IBrowserFile? _file;
+    private string? _error;
+    private int _inputVersion;
+
+    internal static string? ContentType(IBrowserFile file) => Path.GetExtension(file.Name).ToLowerInvariant() switch
+    {
+        ".pdf" => "application/pdf",
+        ".png" => "image/png",
+        ".jpg" or ".jpeg" => "image/jpeg",
+        _ => null
+    };
+
+    private async Task SelectAsync(InputFileChangeEventArgs args)
+    {
+        _file = args.FileCount == 1 ? args.File : null;
+        _error = _file switch
+        {
+            { Size: 0 or > MembershipFreezeDocumentLimits.MaximumBytes } => "Chọn tài liệu có nội dung, tối đa 5 MiB.",
+            { } file when ContentType(file) is null => "Chọn tài liệu PDF, JPG hoặc PNG.",
+            _ => null
+        };
+        if (_error is not null)
+        {
+            _file = null;
+            _inputVersion++;
+        }
+        await Selected.InvokeAsync(_file);
+    }
+
+    private async Task ClearAsync()
+    {
+        _file = null;
+        _error = null;
+        _inputVersion++;
+        await Selected.InvokeAsync(null);
+    }
+}

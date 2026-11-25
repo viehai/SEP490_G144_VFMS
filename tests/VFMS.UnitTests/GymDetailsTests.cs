@@ -11,8 +11,7 @@ namespace VFMS.UnitTests;
 public sealed class GymDetailsTests
 {
     private static readonly MembershipFreezePolicyResponse Policy = new(
-        new MembershipFreezePolicyConfiguration(1, 7, 30, 3, 90, DateTime.UtcNow),
-        [new MembershipFreezeTierQuotaResponse(12, MembershipFreezeTierUnits.Months, 60)]);
+        new MembershipFreezePolicyConfiguration(1, 7, 30, 3, 90, DateTime.UtcNow, DefaultMaxFreezeCount: 60));
 
     [Fact]
     public async Task ShowsContactsHoursFacilitiesAndFreezeRules()
@@ -32,7 +31,7 @@ public sealed class GymDetailsTests
         Assert.Equal("Female", Assert.Single(gym.LockerZones).GenderRestriction);
         Assert.Equal((7, 30, 3, 90), (gym.FreezePolicy!.MinimumFreezeDays, gym.FreezePolicy.MaximumFreezeDays,
             gym.FreezePolicy.MinimumRequestDays, gym.FreezePolicy.EligibilityPaidDays));
-        Assert.Equal(60, Assert.Single(gym.FreezePolicy.Quotas).MaximumCumulativeFreezeDays);
+        Assert.Equal(60, gym.FreezePolicy.DefaultMaxFreezeCount);
         Assert.Equal(1, repo.AskedGymId);
     }
 

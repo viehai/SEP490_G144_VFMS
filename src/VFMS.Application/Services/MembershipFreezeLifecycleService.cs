@@ -98,7 +98,8 @@ public sealed class MembershipFreezeLifecycleService(
         var days = freeze.RequestedEndDate.DayNumber - freeze.RequestedStartDate.DayNumber + 1;
         var snapshot = MembershipFreezeRequestService.ReadAppliedPolicy(freeze.AppliedPolicySnapshot);
         return days > 0 && freeze.AppliedExpiryExtensionDays == days && freeze.EarlyUnfreezeAt is null &&
-            snapshot?.Policy is { MinimumFreezeDays: > 0 } && snapshot.Quotas is { Count: > 0 } &&
+            snapshot?.Policy is { MinimumFreezeDays: > 0 } &&
+            (snapshot.GrantedFreezeCount > 0 && days >= snapshot.Policy.MinimumFreezeDays && days <= snapshot.Policy.MaximumFreezeDays || snapshot.GrantedFreezeAllowanceDays >= days || snapshot.Quotas is { Count: > 0 }) &&
             (freeze.ActualStartDate is null || freeze.ActualStartDate == freeze.RequestedStartDate) &&
             (freeze.ActualEndDate is null || freeze.ActualEndDate == freeze.RequestedEndDate);
     }

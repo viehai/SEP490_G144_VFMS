@@ -13,8 +13,7 @@ namespace VFMS.IntegrationTests;
 public sealed partial class MembershipPurchaseApiTests
 {
     private const string FreezeRequestsRoute = "/api/membership-freeze-requests";
-    private static readonly MembershipFreezePolicyRequest RequestPolicy = new(2, 7, 2, 5,
-        [new(30, MembershipFreezeTierUnits.Days, 10)]);
+    private static readonly MembershipFreezePolicyRequest RequestPolicy = new(2, 7, 2, 5);
 
     [Theory]
     [InlineData(null, null, HttpStatusCode.Unauthorized)]
@@ -30,7 +29,7 @@ public sealed partial class MembershipPurchaseApiTests
         using var eligibility = await client.GetAsync("/api/memberships/1/freeze-eligibility");
         using var list = await client.GetAsync(FreezeRequestsRoute);
         using var detail = await client.GetAsync($"{FreezeRequestsRoute}/1");
-        using var create = await client.PostAsJsonAsync(FreezeRequestsRoute, request);
+        using var create = await PostFreezeWithDocumentAsync(client, request);
         using var edit = await client.PutAsJsonAsync($"{FreezeRequestsRoute}/1", request);
         using var cancel = await client.PostAsync($"{FreezeRequestsRoute}/1/cancel", null);
         using var early = await client.PostAsync($"{FreezeRequestsRoute}/1/early-unfreeze", null);
@@ -54,11 +53,11 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Equal(7, eligibility.Policy?.MaximumFreezeDays);
         Assert.Equal(5, eligibility.Policy?.EligibilityPaidDays);
 
-        var submitted = await ReadFreezeRequestResponseAsync(await member.PostAsJsonAsync(FreezeRequestsRoute, new
+        var submitted = await ReadFreezeRequestResponseAsync(await PostFreezeWithDocumentAsync(member, new
         {
             membershipId = membership.Id,
             startDate = Today.AddDays(2),
-            requestedDays = 2,
+            endDate = Today.AddDays(3),
             reason = "  Travel  ",
             memberId = "buyer",
             requestedByUserId = "buyer",
@@ -103,7 +102,7 @@ public sealed partial class MembershipPurchaseApiTests
     public async Task FreezeListsAndEveryResourceEndpointEnforceBeneficiaryOwnership()
     {
         var owned = await PrepareFreezeMembershipAsync();
-        var foreign = await SeedMembershipAsync(Today.AddDays(20), MembershipStatus.Active, "buyer", "Customer");
+        var foreign = await SeedLegacyFreezeMembershipAsync(Today.AddDays(20), MembershipStatus.Active, "buyer", "Customer");
         using var member = Client("member", "Member");
         using var other = Client("buyer", "Member");
         var ownRequest = await CreateFreezeRequestAsync(member, owned.Id);
@@ -113,7 +112,7 @@ public sealed partial class MembershipPurchaseApiTests
             $"{FreezeRequestsRoute}?memberId=buyer"))!);
         Assert.Equal(ownRequest.FreezeRequestId, listed.FreezeRequestId);
         using var eligibility = await member.GetAsync($"/api/memberships/{foreign.Id}/freeze-eligibility");
-        using var create = await member.PostAsJsonAsync(FreezeRequestsRoute, FreezeInput(foreign.Id));
+        using var create = await PostFreezeWithDocumentAsync(member, FreezeInput(foreign.Id));
         using var detail = await member.GetAsync($"{FreezeRequestsRoute}/{otherRequest.FreezeRequestId}");
         using var missing = await member.GetAsync($"{FreezeRequestsRoute}/{int.MaxValue}");
         using var edit = await member.PutAsJsonAsync($"{FreezeRequestsRoute}/{otherRequest.FreezeRequestId}", FreezeInput(owned.Id));
@@ -139,7 +138,7 @@ public sealed partial class MembershipPurchaseApiTests
     {
         var membership = await PrepareFreezeMembershipAsync();
         using var member = Client("member", "Member");
-        using var response = await member.PostAsJsonAsync(FreezeRequestsRoute,
+        using var response = await PostFreezeWithDocumentAsync(member,
             new MembershipFreezeRequest(membership.Id, Today.AddDays(noticeDays), requestedDays, "Travel"));
         Assert.Equal(expected, response.StatusCode);
         if (expected == HttpStatusCode.Created)
@@ -147,6 +146,28 @@ public sealed partial class MembershipPurchaseApiTests
             var created = (await response.Content.ReadFromJsonAsync<MembershipFreezeRequestResponse>())!;
             Assert.Equal(Today.AddDays(noticeDays + requestedDays - 1), created.EndDate);
         }
+    }
+
+    [Fact]
+    public async Task InclusiveDateRangeSupportsOneDayAndCapsTheMaximumAtTheRemainingAllowance()
+    {
+        await ConfigureFreezeRequestsAsync(new(1, 60, 0, 0));
+        var membership = await SeedLegacyFreezeMembershipAsync(Today.AddDays(29), MembershipStatus.Active, allowance: 20);
+        using var member = Client("member", "Member");
+        var eligibility = await GetFreezeEligibilityAsync(member, membership.Id);
+        Assert.True(eligibility.Eligible);
+        Assert.Equal(Today, eligibility.EarliestStartDate);
+        Assert.Equal(20, eligibility.MaximumAvailableDays);
+        Assert.Equal(20, eligibility.GrantedFreezeAllowanceDays);
+
+        using var reversed = await PostFreezeWithDocumentAsync(member,
+            new MembershipFreezeRequest(membership.Id, Today, null, "Travel", Today.AddDays(-1)));
+        Assert.Equal(HttpStatusCode.BadRequest, reversed.StatusCode);
+
+        var oneDay = await CreateFreezeRequestAsync(member, membership.Id, start: Today, days: 1);
+        Assert.Equal(Today, oneDay.StartDate);
+        Assert.Equal(Today, oneDay.EndDate);
+        Assert.Equal(1, oneDay.RequestedDays);
     }
 
     [Theory]
@@ -159,7 +180,7 @@ public sealed partial class MembershipPurchaseApiTests
         var eligibility = await GetFreezeEligibilityAsync(member, membership.Id);
         Assert.Equal(elapsedDays, eligibility.PaidDays);
         Assert.Equal(expected == HttpStatusCode.Created, eligibility.Eligible);
-        using var response = await member.PostAsJsonAsync(FreezeRequestsRoute, FreezeInput(membership.Id));
+        using var response = await PostFreezeWithDocumentAsync(member, FreezeInput(membership.Id));
         Assert.Equal(expected, response.StatusCode);
     }
 
@@ -178,10 +199,10 @@ public sealed partial class MembershipPurchaseApiTests
             "Expired" => Today.AddDays(-1),
             _ => Today.AddDays(20)
         };
-        var membership = await SeedMembershipAsync(expiry, Enum.Parse<MembershipStatus>(status));
+        var membership = await SeedLegacyFreezeMembershipAsync(expiry, Enum.Parse<MembershipStatus>(status));
         using var member = Client("member", "Member");
         Assert.False((await GetFreezeEligibilityAsync(member, membership.Id)).Eligible);
-        using var response = await member.PostAsJsonAsync(FreezeRequestsRoute, FreezeInput(membership.Id));
+        using var response = await PostFreezeWithDocumentAsync(member, FreezeInput(membership.Id));
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     }
 
@@ -189,27 +210,29 @@ public sealed partial class MembershipPurchaseApiTests
     public async Task ActiveMembershipPastItsExpiryCannotSubmitFreezeBeforeTheLifecycleJobRuns()
     {
         await ConfigureFreezeRequestsAsync();
-        var membership = await SeedMembershipAsync(Today.AddDays(-1), MembershipStatus.Active);
+        var membership = await SeedLegacyFreezeMembershipAsync(Today.AddDays(-1), MembershipStatus.Active);
         using var member = Client("member", "Member");
         var eligibility = await GetFreezeEligibilityAsync(member, membership.Id);
         Assert.Equal("Expired", eligibility.Membership.Status);
         Assert.False(eligibility.Eligible);
-        using var response = await member.PostAsJsonAsync(FreezeRequestsRoute, FreezeInput(membership.Id));
+        using var response = await PostFreezeWithDocumentAsync(member, FreezeInput(membership.Id));
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     }
 
     [Fact]
-    public async Task FreezeSubmissionRequiresAnActivePolicyAndAnApplicableTier()
+    public async Task FreezeSubmissionRequiresAnActivePolicyAndAPurchasedAllowance()
     {
-        var membership = await SeedMembershipAsync(Today.AddDays(20), MembershipStatus.Active);
+        var membership = await SeedLegacyFreezeMembershipAsync(Today.AddDays(20), MembershipStatus.Active, allowance: 0);
         using var member = Client("member", "Member");
-        using var noPolicy = await member.PostAsJsonAsync(FreezeRequestsRoute, FreezeInput(membership.Id));
+        using var noPolicy = await PostFreezeWithDocumentAsync(member, FreezeInput(membership.Id));
         Assert.Equal(HttpStatusCode.ServiceUnavailable, noPolicy.StatusCode);
 
-        await ConfigureFreezeRequestsAsync(RequestPolicy with { Quotas = [new(1, MembershipFreezeTierUnits.Months, 10)] });
-        Assert.False((await GetFreezeEligibilityAsync(member, membership.Id)).Eligible);
-        using var noTier = await member.PostAsJsonAsync(FreezeRequestsRoute, FreezeInput(membership.Id));
-        Assert.Equal(HttpStatusCode.BadRequest, noTier.StatusCode);
+        await ConfigureFreezeRequestsAsync();
+        var eligibility = await GetFreezeEligibilityAsync(member, membership.Id);
+        Assert.False(eligibility.Eligible);
+        Assert.Equal("FREEZE_ALLOWANCE_DISABLED", eligibility.MessageCode);
+        using var noAllowance = await PostFreezeWithDocumentAsync(member, FreezeInput(membership.Id));
+        Assert.Equal(HttpStatusCode.BadRequest, noAllowance.StatusCode);
     }
 
     [Theory]
@@ -230,7 +253,7 @@ public sealed partial class MembershipPurchaseApiTests
 
         using var member = Client("member", "Member");
         Assert.Equal(6, (await GetFreezeEligibilityAsync(member, membership.Id)).RemainingQuota);
-        using var response = await member.PostAsJsonAsync(FreezeRequestsRoute, FreezeInput(membership.Id, days: days));
+        using var response = await PostFreezeWithDocumentAsync(member, FreezeInput(membership.Id, days: days));
         Assert.Equal(expected, response.StatusCode);
     }
 
@@ -247,7 +270,7 @@ public sealed partial class MembershipPurchaseApiTests
 
         using var member = Client("member", "Member");
         Assert.Equal(6, (await GetFreezeEligibilityAsync(member, membership.Id)).RemainingQuota);
-        using var response = await member.PostAsJsonAsync(FreezeRequestsRoute, FreezeInput(membership.Id, days: 7));
+        using var response = await PostFreezeWithDocumentAsync(member, FreezeInput(membership.Id, days: 7));
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
@@ -267,7 +290,7 @@ public sealed partial class MembershipPurchaseApiTests
             await db.SaveChangesAsync();
         }
 
-        using var overlap = await member.PostAsJsonAsync(FreezeRequestsRoute,
+        using var overlap = await PostFreezeWithDocumentAsync(member,
             FreezeInput(membership.Id, start: first.EndDate, days: 2));
         Assert.Equal(HttpStatusCode.Conflict, overlap.StatusCode);
         var adjacent = await CreateFreezeRequestAsync(member, membership.Id, start: first.EndDate.AddDays(1));
@@ -290,7 +313,7 @@ public sealed partial class MembershipPurchaseApiTests
     }
 
     [Fact]
-    public async Task EditingPendingRequestsUsesTheCurrentPolicyAndPreservesThePreviousPolicyUntilEdited()
+    public async Task EditingPendingRequestsUsesTheSubmittedPolicyWhileNewRequestsUseTheCurrentPolicy()
     {
         var membership = await PrepareFreezeMembershipAsync();
         using var member = Client("member", "Member");
@@ -299,20 +322,19 @@ public sealed partial class MembershipPurchaseApiTests
             $"{FreezeRequestsRoute}/{original.FreezeRequestId}", FreezeInput(membership.Id) with { Reason = "Updated reason" }));
         Assert.Equal("Updated reason", renamed.Reason);
 
-        await ConfigureFreezeRequestsAsync(new(3, 6, 4, 5, [new(30, MembershipFreezeTierUnits.Days, 9)]));
+        await ConfigureFreezeRequestsAsync(new(3, 6, 4, 5));
         var history = await ReadOwnedFreezeRequestAsync(member, original.FreezeRequestId);
         Assert.Equal(2, history.AppliedPolicy?.Policy?.MinimumFreezeDays);
-        using var invalidEdit = await member.PutAsJsonAsync($"{FreezeRequestsRoute}/{original.FreezeRequestId}",
-            FreezeInput(membership.Id, start: Today.AddDays(5)));
-        Assert.Equal(HttpStatusCode.BadRequest, invalidEdit.StatusCode);
+        using var newRequest = await PostFreezeWithDocumentAsync(member, FreezeInput(membership.Id, start: Today.AddDays(5)));
+        Assert.Equal(HttpStatusCode.BadRequest, newRequest.StatusCode);
 
         var edited = await ReadFreezeRequestResponseAsync(await member.PutAsJsonAsync(
-            $"{FreezeRequestsRoute}/{original.FreezeRequestId}", FreezeInput(membership.Id, start: Today.AddDays(5), days: 3)));
+            $"{FreezeRequestsRoute}/{original.FreezeRequestId}", FreezeInput(membership.Id, start: Today.AddDays(3))));
         Assert.Equal(original.FreezeRequestId, edited.FreezeRequestId);
         Assert.Equal(original.SubmittedAt, edited.SubmittedAt);
-        Assert.Equal(Today.AddDays(7), edited.EndDate);
-        Assert.Equal(3, edited.AppliedPolicy?.Policy?.MinimumFreezeDays);
-        Assert.Equal(9, Assert.Single(edited.AppliedPolicy!.Quotas).MaximumCumulativeFreezeDays);
+        Assert.Equal(Today.AddDays(4), edited.EndDate);
+        Assert.Equal(2, edited.AppliedPolicy?.Policy?.MinimumFreezeDays);
+        Assert.Equal(10, edited.AppliedPolicy?.GrantedFreezeAllowanceDays);
     }
 
     [Fact]
@@ -365,7 +387,7 @@ public sealed partial class MembershipPurchaseApiTests
     }
 
     [Fact]
-    public async Task FreezeTierComesFromThePurchasedComponentSnapshotAfterCatalogDurationChanges()
+    public async Task FreezeAllowanceIsPreservedAfterCatalogDurationChanges()
     {
         var membership = await PrepareFreezeMembershipAsync();
         await UpdateRenewalPlanAsync("Renamed plan", 600_000m, duration: 60);
@@ -380,7 +402,7 @@ public sealed partial class MembershipPurchaseApiTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task FreezeTierSupportsLegacySnapshotsAndFallsBackOnlyWhenTheSnapshotIsAbsent(bool legacySnapshot)
+    public async Task PurchasedAllowanceDoesNotDependOnHistoricalDurationSnapshotFormat(bool legacySnapshot)
     {
         var membership = await PrepareFreezeMembershipAsync();
         await using (var scope = _app.Services.CreateAsyncScope())
@@ -396,15 +418,38 @@ public sealed partial class MembershipPurchaseApiTests
             await db.SaveChangesAsync();
         }
 
-        await ConfigureFreezeRequestsAsync(RequestPolicy with
-        {
-            Quotas = [new(30, MembershipFreezeTierUnits.Days, 10), new(60, MembershipFreezeTierUnits.Days, 0)]
-        });
+        await ConfigureFreezeRequestsAsync(RequestPolicy with { DefaultMaxFreezeCount = 0 });
         using var member = Client("member", "Member");
         var eligibility = await GetFreezeEligibilityAsync(member, membership.Id);
-        Assert.Equal(legacySnapshot ? 10 : 0, eligibility.RemainingQuota);
-        using var response = await member.PostAsJsonAsync(FreezeRequestsRoute, FreezeInput(membership.Id));
-        Assert.Equal(legacySnapshot ? HttpStatusCode.Created : HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(10, eligibility.RemainingQuota);
+        using var response = await PostFreezeWithDocumentAsync(member, FreezeInput(membership.Id));
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task MonthlyYogaWithoutItsOwnAllowanceDoesNotInheritGymDefaultsOrTheRetiredYogaDefault()
+    {
+        await ConfigureFreezeRequestsAsync(RequestPolicy with { EligibilityPaidDays = 0, DefaultMaxFreezeCount = 2 });
+        await using (var scope = _app.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+            (await db.FreezePolicies.SingleAsync()).DefaultFreezeAllowanceDays = 30;
+            await db.SaveChangesAsync();
+        }
+
+        using var member = Client("member", "Member");
+        var purchase = await CreateAsync(member, Purchase([new(_combo)]));
+        using var callback = await NotifyAsync(purchase, id: 131);
+        Assert.Equal(HttpStatusCode.OK, callback.StatusCode);
+        var owned = await ListOwnedMembershipsAsync(member);
+        var gym = Assert.Single(owned, row => row.ComponentType == "GYM");
+        var yoga = Assert.Single(owned, row => row.ComponentType == "YOGA");
+        await ActivateMembershipAsync(member, gym.MembershipId, Today);
+        var blocked = await GetFreezeEligibilityAsync(member, yoga.MembershipId);
+        Assert.False(blocked.Eligible);
+        Assert.Equal("FREEZE_ALLOWANCE_DISABLED", blocked.MessageCode);
+        Assert.Equal(0, blocked.GrantedFreezeAllowanceDays);
+        Assert.Equal(2, (await GetFreezeEligibilityAsync(member, gym.MembershipId)).RemainingFreezeCount);
     }
 
     [Theory]
@@ -412,11 +457,7 @@ public sealed partial class MembershipPurchaseApiTests
     [InlineData("YOGA")]
     public async Task PTEntitlementsAndWeeklyYogaCannotUseTheMembershipFreezeWorkflow(string type)
     {
-        await ConfigureFreezeRequestsAsync(RequestPolicy with
-        {
-            EligibilityPaidDays = 0,
-            Quotas = [new(30, MembershipFreezeTierUnits.Days, 10), new(7, MembershipFreezeTierUnits.Days, 10)]
-        });
+        await ConfigureFreezeRequestsAsync(RequestPolicy with { EligibilityPaidDays = 0 });
         await using (var scope = _app.Services.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
@@ -428,6 +469,8 @@ public sealed partial class MembershipPurchaseApiTests
                 var yoga = combo.Components.Single(component => component.ComponentType == ComponentType.YOGA);
                 yoga.DurationMonths = null;
                 yoga.DurationDays = 7;
+                combo.FreezeAllowanceOverrideDays = 30;
+                combo.FreezeAllowanceOverrideUnit = VFMS.Domain.Enums.MembershipDurationUnit.Day;
             }
             await db.SaveChangesAsync();
         }
@@ -439,7 +482,7 @@ public sealed partial class MembershipPurchaseApiTests
         var membership = Assert.Single(await ListOwnedMembershipsAsync(member), row => row.ComponentType == type);
         await ActivateMembershipAsync(member, membership.MembershipId, Today);
         Assert.False((await GetFreezeEligibilityAsync(member, membership.MembershipId)).Eligible);
-        using var response = await member.PostAsJsonAsync(FreezeRequestsRoute, FreezeInput(membership.MembershipId));
+        using var response = await PostFreezeWithDocumentAsync(member, FreezeInput(membership.MembershipId));
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     }
 
@@ -522,10 +565,24 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     }
 
+    // Recreate the cumulative-day entitlement on a membership sold before the per-visit migration.
+    private async Task<MemberMembership> SeedLegacyFreezeMembershipAsync(DateOnly expiry, MembershipStatus status,
+        string user = "member", string role = "Member", int allowance = 10)
+    {
+        var seeded = await SeedMembershipAsync(expiry, status, user, role);
+        await using var scope = _app.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+        var membership = await db.MemberMemberships.SingleAsync(row => row.Id == seeded.Id);
+        membership.GrantedFreezeCount = membership.GrantedMaxFreezeDays = membership.GrantedMinFreezeDays = null;
+        membership.GrantedFreezeAllowanceDays = allowance;
+        await db.SaveChangesAsync();
+        return membership;
+    }
+
     private async Task<MemberMembership> PrepareFreezeMembershipAsync(int elapsedDays = 9)
     {
         await ConfigureFreezeRequestsAsync();
-        return await SeedMembershipAsync(Today.AddDays(29 - elapsedDays), MembershipStatus.Active);
+        return await SeedLegacyFreezeMembershipAsync(Today.AddDays(29 - elapsedDays), MembershipStatus.Active);
     }
 
     private async Task ConfigureFreezeRequestsAsync(MembershipFreezePolicyRequest? request = null)
@@ -534,12 +591,33 @@ public sealed partial class MembershipPurchaseApiTests
         await SaveFreezePolicyAsync(manager, request ?? RequestPolicy);
     }
 
-    private MembershipFreezeRequest FreezeInput(int membershipId, DateOnly? start = null, int days = 2) =>
-        new(membershipId, start ?? Today.AddDays(2), days, "Travel");
+    private MembershipFreezeRequest FreezeInput(int membershipId, DateOnly? start = null, int days = 2)
+    {
+        var selectedStart = start ?? Today.AddDays(2);
+        return new(membershipId, selectedStart, null, "Travel", selectedStart.AddDays(days - 1));
+    }
+
+    private static async Task<HttpResponseMessage> PostFreezeWithDocumentAsync(HttpClient member, object input)
+    {
+        using var form = FreezeSubmissionForm(input);
+        var file = new ByteArrayContent(FreezeDocumentBytes("application/pdf"));
+        file.Headers.ContentType = new("application/pdf");
+        form.Add(file, "file", "certificate.pdf");
+        return await member.PostAsync(FreezeRequestsRoute, form);
+    }
+
+    private static MultipartFormDataContent FreezeSubmissionForm(object input)
+    {
+        var form = new MultipartFormDataContent();
+        foreach (var field in JsonSerializer.SerializeToElement(input).EnumerateObject())
+            if (field.Value.ValueKind != JsonValueKind.Null)
+                form.Add(new StringContent(field.Value.ToString()), field.Name);
+        return form;
+    }
 
     private async Task<MembershipFreezeRequestResponse> CreateFreezeRequestAsync(
         HttpClient member, int membershipId, DateOnly? start = null, int days = 2) =>
-        await ReadFreezeRequestResponseAsync(await member.PostAsJsonAsync(FreezeRequestsRoute,
+        await ReadFreezeRequestResponseAsync(await PostFreezeWithDocumentAsync(member,
             FreezeInput(membershipId, start, days)), HttpStatusCode.Created);
 
     private static async Task<MembershipFreezeEligibilityResponse> GetFreezeEligibilityAsync(HttpClient member, int membershipId) =>

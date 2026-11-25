@@ -55,21 +55,6 @@ public sealed partial class MembershipPlanApiClientTests
     }
 
     [Fact]
-    public async Task RemoveFreezeDocument_UsesBodylessDelete()
-    {
-        using var api = CreateClient(request =>
-        {
-            Assert.Equal(HttpMethod.Delete, request.Method);
-            Assert.Equal("Bearer access-token", request.Headers.Authorization?.ToString());
-            Assert.Equal("/api/membership-freeze-requests/9/document", request.RequestUri!.PathAndQuery);
-            Assert.Null(request.Content);
-            return Task.FromResult(Json(true));
-        }, role: "Member");
-
-        Assert.True(await api.RemoveFreezeDocumentAsync(9));
-    }
-
-    [Fact]
     public async Task BinaryDownload_PreservesStandardAuthorizationErrors()
     {
         using var api = CreateClient(_ => Task.FromResult(Json(

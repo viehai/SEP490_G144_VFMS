@@ -5,6 +5,13 @@
         <dt class="text-xs font-semibold text-vfms-text-secondary">Dịch vụ</dt>
         <dd class="mt-1 font-bold text-vfms-text">@ComponentLabel</dd>
     </div>
+    @if (Membership.DurationValue is { } duration && Membership.DurationUnit is { } unit)
+    {
+        <div>
+            <dt class="text-xs font-semibold text-vfms-text-secondary">Thời hạn gói</dt>
+            <dd class="mt-1 font-bold text-vfms-text">@duration @(unit == MembershipDurationUnit.Month ? "tháng" : "ngày")</dd>
+        </div>
+    }
     @if (Membership.Activation is { } activation)
     {
         <div>

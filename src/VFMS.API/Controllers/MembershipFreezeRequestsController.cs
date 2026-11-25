@@ -29,9 +29,18 @@ public sealed class MembershipFreezeRequestsController(IMembershipFreezeRequestS
     public Task<IActionResult> Get(int requestId, CancellationToken ct) => Run(memberId => service.GetAsync(memberId, requestId, ct));
 
     [HttpPost]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(MembershipFreezeDocumentLimits.MaximumBytes + 65_536)]
+    [RequestFormLimits(MultipartBodyLengthLimit = MembershipFreezeDocumentLimits.MaximumBytes + 65_536)]
     [ProducesResponseType(typeof(MembershipFreezeRequestResponse), 201)]
-    public Task<IActionResult> Create(MembershipFreezeRequest request, CancellationToken ct) =>
-        Run(memberId => service.CreateAsync(memberId, request, ct));
+    public async Task<IActionResult> Create([FromForm] MembershipFreezeRequest request, IFormFile? file, CancellationToken ct)
+    {
+        if (User.GetUserId() is not { } memberId)
+            return Unauthorized();
+        await using var content = file?.OpenReadStream();
+        var upload = file is null ? null : new MembershipFreezeDocumentUpload(file.FileName, file.ContentType, file.Length, content!);
+        return this.ToActionResult(await service.CreateAsync(memberId, request, upload, ct));
+    }
 
     [HttpPut("{requestId:int}")]
     [ProducesResponseType(typeof(MembershipFreezeRequestResponse), 200)]

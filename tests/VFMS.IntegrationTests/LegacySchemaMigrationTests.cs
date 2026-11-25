@@ -106,6 +106,7 @@ public sealed partial class LegacySchemaMigrationTests
         Assert.Equal(7, freeze.AppliedExpiryExtensionDays);
         Assert.Equal("Policy captured before upgrade", freeze.AppliedPolicySnapshot);
         var membership = await context.MemberMemberships.AsNoTracking().SingleAsync();
+        Assert.Null(membership.GrantedFreezeAllowanceDays);
         Assert.Equal(7, membership.TotalFrozenDays);
         Assert.Equal(1, membership.FreezeCount);
         Assert.Equal(original.MembershipEnd, membership.EndDate);

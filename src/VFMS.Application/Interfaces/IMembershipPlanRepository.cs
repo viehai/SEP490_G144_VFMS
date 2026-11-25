@@ -1,5 +1,7 @@
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
+using VFMS.Contracts.Memberships;
+using MembershipDurationUnit = VFMS.Contracts.Memberships.MembershipDurationUnit;
 
 namespace VFMS.Application.Interfaces;
 
@@ -15,6 +17,12 @@ public sealed record MembershipPlanReadModel(
     ComponentType ServiceType = ComponentType.GYM)
 {
     public bool IsSingleService { get; init; } = true;
+    public string? TargetAudience { get; init; }
+    public int? FreezeAllowanceOverrideDays { get; init; }
+    public int? MaxFreezeCount { get; init; }
+    public int? MinFreezeDaysPerRequest { get; init; }
+    public int? MaxFreezeDaysPerRequest { get; init; }
+    public VFMS.Domain.Enums.MembershipDurationUnit? FreezeAllowanceOverrideUnit { get; init; }
 }
 
 /// <summary>
@@ -42,13 +50,19 @@ public sealed record PackageCatalogReadModel(
     TimeOnly? AccessEndTime)
 {
     public bool IsSingleService { get; init; } = true;
+    public string? TargetAudience { get; init; }
+    public int? FreezeAllowanceOverrideDays { get; init; }
+    public int? MinFreezeDaysPerRequest { get; init; }
 }
+
+public sealed record CatalogMembershipFreezeRules(int? MinimumDays, int MaximumDays, int DefaultMaxFreezeCount = 0);
 
 public interface IMembershipPlanRepository : IAuditedRepository
 {
     Task<(IReadOnlyList<MembershipPlanReadModel> Items, int TotalCount)> SearchAsync(
         string? search, PackageStatus? status, int page, int pageSize, CancellationToken cancellationToken = default,
-        ComponentType? serviceType = null, DateTime? sellableAtUtc = null);
+        ComponentType? serviceType = null, DateTime? sellableAtUtc = null,
+        MembershipDurationUnit? durationUnit = null, MembershipFreezeAllowanceFilter? freezeAllowanceFilter = null);
 
     /// <param name="sellableAtUtc">Set for the public catalog: hides yoga-only plans while no yoga class can be booked.</param>
     Task<MembershipPlanReadModel?> GetDetailsAsync(
@@ -67,4 +81,5 @@ public interface IMembershipPlanRepository : IAuditedRepository
         ComponentType componentType, int page, int pageSize, CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<PackageCatalogReadModel>> ListActiveSingleServicePackagesAsync(CancellationToken cancellationToken);
+    Task<CatalogMembershipFreezeRules?> GetCatalogFreezeRulesAsync(CancellationToken cancellationToken);
 }

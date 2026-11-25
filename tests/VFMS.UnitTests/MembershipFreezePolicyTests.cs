@@ -5,6 +5,7 @@ using VFMS.Contracts.Memberships.Validators;
 using VFMS.Domain.Common;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
+using DurationUnit = VFMS.Contracts.Memberships.MembershipDurationUnit;
 
 namespace VFMS.UnitTests;
 
@@ -12,8 +13,7 @@ public sealed class MembershipFreezePolicyTests
 {
     private const string ManagerId = "manager";
     private const string ManagerIpAddress = "192.0.2.16";
-    private static readonly MembershipFreezePolicyRequest ValidRequest = new(3, 20, 2, 11,
-        [new(6, MembershipFreezeTierUnits.Months, 30), new(12, MembershipFreezeTierUnits.Months, 60)]);
+    private static readonly MembershipFreezePolicyRequest ValidRequest = new(3, 20, 2, 11, DefaultMaxFreezeCount: 4);
 
     [Fact]
     public async Task GetReturnsAnEmptyConfigurationBeforeSetup()
@@ -25,7 +25,7 @@ public sealed class MembershipFreezePolicyTests
 
         Assert.True(result.IsSuccess);
         Assert.Null(result.Data!.Policy);
-        Assert.Empty(result.Data.Quotas);
+        Assert.Empty(result.Data.Quotas!);
         Assert.Equal((false, cancellation.Token), repository.LastRead);
         Assert.Equal(0, repository.SaveCount);
         Assert.Empty(repository.Audits);
@@ -62,21 +62,18 @@ public sealed class MembershipFreezePolicyTests
         Assert.Equal(20, configuration.MaximumFreezeDays);
         Assert.Equal(2, configuration.MinimumRequestDays);
         Assert.Equal(11, configuration.EligibilityPaidDays);
-        Assert.Equal(new MembershipFreezeTierQuotaResponse[]
-        {
-            new(6, MembershipFreezeTierUnits.Months, 30),
-            new(12, MembershipFreezeTierUnits.Months, 60)
-        }, read.Data.Quotas.OrderBy(quota => quota.Duration));
+        Assert.Equal(4, configuration.DefaultMaxFreezeCount);
+        Assert.Empty(read.Data.Quotas!);
     }
 
     [Fact]
-    public async Task ManagerUpdatesTheSamePolicyAndReplacesTierQuotas()
+    public async Task ManagerUpdatesTheSamePolicyAndPreservesLegacyTierRecords()
     {
         var policy = ExistingPolicy();
         var repository = new PolicyRepositoryStub { Policy = policy };
         var service = CreateService(repository);
-        var request = new MembershipFreezePolicyRequest(1, 1, 0, 5,
-            [new(6, MembershipFreezeTierUnits.Months, 0), new(6, MembershipFreezeTierUnits.Days, 2)]);
+        var request = new MembershipFreezePolicyRequest(1, 2, 0, 0,
+            MaximumFreezeDaysUnit: DurationUnit.Month);
 
         var result = await service.UpdateAsync(request, ManagerId, ManagerIpAddress);
 
@@ -85,23 +82,11 @@ public sealed class MembershipFreezePolicyTests
         var configuration = Assert.IsType<MembershipFreezePolicyConfiguration>(result.Data!.Policy);
         Assert.Equal(policy.Id, configuration.PolicyId);
         Assert.Equal(1, configuration.MinimumFreezeDays);
-        Assert.Equal(1, configuration.MaximumFreezeDays);
+        Assert.Equal(60, configuration.MaximumFreezeDays);
+        Assert.Equal(DurationUnit.Month, configuration.MaximumFreezeDaysUnit);
         Assert.Equal(0, configuration.MinimumRequestDays);
-        Assert.Equal(5, configuration.EligibilityPaidDays);
-        Assert.Collection(policy.TierQuotas.OrderBy(quota => quota.Unit),
-            quota =>
-            {
-                Assert.Equal(6, quota.Duration);
-                Assert.Equal(FreezeTierUnit.Days, quota.Unit);
-                Assert.Equal(2, quota.MaximumCumulativeFreezeDays);
-            },
-            quota =>
-            {
-                Assert.Equal(6, quota.Duration);
-                Assert.Equal(FreezeTierUnit.Months, quota.Unit);
-                Assert.Equal(0, quota.MaximumCumulativeFreezeDays);
-            });
-        Assert.Equal(5, policy.EligibilityPaidDays);
+        Assert.Equal(0, configuration.EligibilityPaidDays);
+        Assert.Equal(new[] { 30, 60 }, policy.TierQuotas.OrderBy(quota => quota.Duration).Select(quota => quota.MaximumCumulativeFreezeDays));
         Assert.Equal(4, policy.DefaultMaxFreezeCount);
         var audit = Assert.Single(repository.Audits);
         AssertAudit(audit, policy.Id, AuditActionType.Update);
@@ -110,12 +95,10 @@ public sealed class MembershipFreezePolicyTests
     }
 
     [Fact]
-    public async Task ReorderingUnchangedQuotasDoesNotSaveOrAuditAnUpdate()
+    public async Task SubmittingUnchangedPolicyDoesNotSaveOrAuditAnUpdate()
     {
         var repository = new PolicyRepositoryStub { Policy = ExistingPolicy() };
-        var reordered = ValidRequest with { Quotas = ValidRequest.Quotas!.Reverse().ToArray() };
-
-        var result = await CreateService(repository).UpdateAsync(reordered, ManagerId, ManagerIpAddress);
+        var result = await CreateService(repository).UpdateAsync(ValidRequest, ManagerId, ManagerIpAddress);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(0, repository.SaveCount);
@@ -146,19 +129,11 @@ public sealed class MembershipFreezePolicyTests
     public Task InvalidEligibilityPaidDaysAreRejected(int? eligibilityPaidDays) =>
         AssertRejectedAsync(ValidRequest with { EligibilityPaidDays = eligibilityPaidDays });
 
-    [Theory]
-    [InlineData(null, MembershipFreezeTierUnits.Months, 30)]
-    [InlineData(0, MembershipFreezeTierUnits.Months, 30)]
-    [InlineData(-1, MembershipFreezeTierUnits.Months, 30)]
-    [InlineData(6, null, 30)]
-    [InlineData(6, "Weeks", 30)]
-    [InlineData(6, MembershipFreezeTierUnits.Months, null)]
-    [InlineData(6, MembershipFreezeTierUnits.Months, -1)]
-    public Task InvalidTierQuotasAreRejected(int? duration, string? unit, int? quota) =>
-        AssertRejectedAsync(ValidRequest with { Quotas = [new(duration, unit, quota)] });
+    [Fact]
+    public Task NegativeFreezeCountIsRejected() => AssertRejectedAsync(ValidRequest with { DefaultMaxFreezeCount = -1 });
 
     [Fact]
-    public Task DuplicateDurationAndUnitAreRejected() => AssertRejectedAsync(ValidRequest with
+    public Task LegacyTierConfigurationCannotBeReactivated() => AssertRejectedAsync(ValidRequest with
     {
         Quotas = [new(6, MembershipFreezeTierUnits.Months, 30), new(6, MembershipFreezeTierUnits.Months, 40)]
     });
@@ -201,6 +176,7 @@ public sealed class MembershipFreezePolicyTests
         CreatedByUserId = "original-manager",
         MinFreezeDaysPerRequest = 3,
         DefaultMaxFreezeDays = 20,
+        DefaultFreezeAllowanceDays = 30,
         MinimumRequestDays = 2,
         EligibilityPaidDays = 11,
         DefaultMaxFreezeCount = 4,

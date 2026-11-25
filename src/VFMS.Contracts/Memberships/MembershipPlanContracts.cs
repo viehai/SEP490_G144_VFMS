@@ -13,11 +13,27 @@ public static class MembershipPlanServiceTypes
     public const string Yoga = "YOGA";
 }
 
+public enum MembershipFreezeAllowanceFilter
+{
+    Default,
+    Disabled,
+    Custom
+}
+
 public sealed class MembershipPlanRequest
 {
     public string Name { get; set; } = string.Empty;
     public string? Description { get; set; }
+    public string? TargetAudience { get; set; }
+    public int? DurationValue { get; set; }
+    public MembershipDurationUnit DurationUnit { get; set; }
+    /// <summary>Compatibility with day-only plan clients.</summary>
     public int? DurationInDays { get; set; }
+    public int? MaxFreezeCount { get; set; }
+    public int? MinFreezeDaysPerRequest { get; set; }
+    public int? MaxFreezeDaysPerRequest { get; set; }
+    public int? FreezeAllowanceOverrideValue { get; set; }
+    public MembershipDurationUnit FreezeAllowanceOverrideUnit { get; set; }
     public decimal? Price { get; set; }
     public string Status { get; set; } = string.Empty;
 
@@ -37,6 +53,8 @@ public sealed class MembershipPlanListRequest
 
     /// <summary>GYM or YOGA; empty lists both.</summary>
     public string? ServiceType { get; set; }
+    public MembershipDurationUnit? DurationUnit { get; set; }
+    public MembershipFreezeAllowanceFilter? FreezeAllowanceFilter { get; set; }
     public int Page { get; set; } = 1;
     public int PageSize { get; set; } = 20;
 }
@@ -50,7 +68,19 @@ public sealed record MembershipPlanResponse(
     string Status,
     int SubscriberCount,
     int? DurationInMonths,
-    string ServiceType = MembershipPlanServiceTypes.Gym);
+    string ServiceType = MembershipPlanServiceTypes.Gym)
+{
+    public int? DurationValue => DurationInMonths ?? DurationInDays;
+    public MembershipDurationUnit DurationUnit => DurationInMonths.HasValue ? MembershipDurationUnit.Month : MembershipDurationUnit.Day;
+    public string? TargetAudience { get; init; }
+    public int? MaxFreezeCount { get; init; }
+    public int? MinFreezeDaysPerRequest { get; init; }
+    public int? MaxFreezeDaysPerRequest { get; init; }
+    public int? FreezeAllowanceOverrideDays { get; init; }
+    public MembershipDurationUnit FreezeAllowanceOverrideUnit { get; init; }
+    public int? FreezeAllowanceOverrideValue => FreezeAllowanceOverrideUnit == MembershipDurationUnit.Month
+        ? FreezeAllowanceOverrideDays / MembershipFreezeDuration.DaysPerMonth : FreezeAllowanceOverrideDays;
+}
 
 public sealed record MembershipPlanCatalogItemResponse(
     int Id,
@@ -63,6 +93,9 @@ public sealed record MembershipPlanCatalogItemResponse(
     string ServiceType = MembershipPlanServiceTypes.Gym)
 {
     public bool IsSingleService { get; init; } = true;
+    public string? TargetAudience { get; init; }
+    public int? DurationValue => DurationInMonths ?? DurationInDays;
+    public MembershipDurationUnit DurationUnit => DurationInMonths.HasValue ? MembershipDurationUnit.Month : MembershipDurationUnit.Day;
 }
 
 public sealed record MembershipPlanDeleteResponse(bool Deactivated, string Message);

@@ -12,7 +12,7 @@ public interface IMembershipFreezeRequestService
     Task<Result<IReadOnlyList<MembershipFreezeRequestResponse>>> ListAsync(string memberId, CancellationToken ct);
     Task<Result<MembershipFreezeRequestResponse>> GetAsync(string memberId, int requestId, CancellationToken ct);
     Task<Result<MembershipFreezeRequestResponse>> CreateAsync(
-        string memberId, MembershipFreezeRequest request, CancellationToken ct);
+        string memberId, MembershipFreezeRequest request, MembershipFreezeDocumentUpload? file, CancellationToken ct);
     Task<Result<MembershipFreezeRequestResponse>> UpdateAsync(
         string memberId, int requestId, MembershipFreezeRequest request, CancellationToken ct);
     Task<Result<MembershipFreezeRequestResponse>> CancelAsync(string memberId, int requestId, CancellationToken ct);
