@@ -4,7 +4,7 @@ using VFMS.Domain.Enums;
 namespace VFMS.Domain.Entities;
 
 /// <summary>
-/// Global freeze policy defaults. Component-level overrides live in <see cref="PackageComponent"/>.
+/// Global membership freeze rules and default purchased allowance.
 /// </summary>
 public class FreezePolicy : BaseEntity
 {
@@ -17,6 +17,12 @@ public class FreezePolicy : BaseEntity
     public int? MinFreezeDaysPerRequest { get; set; }
     /// <summary>Global maximum consecutive days per request (GBR-40).</summary>
     public int DefaultMaxFreezeDays { get; set; }
+    public int? DefaultFreezeAllowanceDays { get; set; }
+    public MembershipDurationUnit EligibilityPaidDaysUnit { get; set; }
+    public MembershipDurationUnit MinimumRequestDaysUnit { get; set; }
+    public MembershipDurationUnit MinimumFreezeDaysUnit { get; set; }
+    public MembershipDurationUnit MaximumFreezeDaysUnit { get; set; }
+    public MembershipDurationUnit DefaultFreezeAllowanceUnit { get; set; }
     public int DefaultMaxFreezeCount { get; set; }
     public PolicyStatus PolicyStatus { get; set; } = PolicyStatus.Active;
     public bool IsGlobal { get; set; } = true;

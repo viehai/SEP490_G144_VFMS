@@ -13,8 +13,8 @@ namespace VFMS.Application.Services;
 /// GBR-53 (registered, non-retired equipment), GBR-54 (definite outcome), GBR-55 (safe before Operational), GBR-56 (audit).
 /// </summary>
 /// <remarks>
-/// Status flow: Reported → InProgress (Staff) → Resolved / MarkedSafe, or → Escalated → InProgress (Manager repair)
-/// → Resolved. An InProgress issue whose handler is a Manager is a repair and can only be finished by a Manager.
+/// Status flow: InProgress (Staff handle it as soon as it is reported) → Resolved, or → Escalated (Manager repairs
+/// or retires the equipment) → Resolved.
 /// </remarks>
 public sealed class EquipmentIssueService : IEquipmentIssueService
 {
@@ -58,11 +58,11 @@ public sealed class EquipmentIssueService : IEquipmentIssueService
             IncidentType = incidentType,
             Description = request.Description.Trim(),
             ImageUrl = EquipmentService.Clean(request.ImageUrl),
-            IssueStatus = EquipmentIssueStatus.Reported,
+            IssueStatus = EquipmentIssueStatus.InProgress,
             ReportedAt = DateTime.UtcNow
         };
         // A Safety report takes a working machine out of use straight away, so nobody uses it before Staff check it.
-        // Resolving the issue or marking it safe puts the machine back to Operational.
+        // Closing the issue puts the machine back to Operational.
         var takenOutOfUse = incidentType == IncidentType.Safety && equipment.EquipmentStatus == EquipmentStatus.Operational;
         if (takenOutOfUse)
             equipment.EquipmentStatus = EquipmentStatus.Damaged;
@@ -114,38 +114,25 @@ public sealed class EquipmentIssueService : IEquipmentIssueService
 
     // ── Staff (UC-72) ────────────────────────────────────────────
 
-    public Task<Result<EquipmentIssueResponse>> StartHandlingAsync(
-        int id, string staffUserId, string? ipAddress, CancellationToken cancellationToken = default) =>
-        Act(id, staffUserId, ipAddress, cancellationToken, async issue =>
-        {
-            if (issue.IssueStatus != EquipmentIssueStatus.Reported)
-                return InvalidState(issue, "Only Reported issues can be started.");
-            issue.IssueStatus = EquipmentIssueStatus.InProgress;
-            issue.HandledByUserId = staffUserId;
-            return await Done();
-        });
-
+    /// <summary>Staff fixed a small problem themselves (or found nothing wrong): the issue is done and the equipment is back in use.</summary>
     public Task<Result<EquipmentIssueResponse>> ResolveAsync(
         int id, string note, string staffUserId, string? ipAddress, CancellationToken cancellationToken = default) =>
         Act(id, staffUserId, ipAddress, cancellationToken, async issue =>
         {
             if (issue.IssueStatus != EquipmentIssueStatus.InProgress)
-                return InvalidState(issue, "Only issues in progress can be resolved. Start handling the issue first.");
-            if (await IsRepairAsync(issue, cancellationToken))
-                return RepairOnly();
-            Close(issue, EquipmentIssueStatus.Resolved, note, staffUserId);
-            issue.Equipment.EquipmentStatus = EquipmentStatus.Operational;
+                return InvalidState(issue, "Only issues Staff are handling can be closed by Staff.");
+            Close(issue, note, staffUserId);
+            await BackInUseAsync(issue, cancellationToken);
             return await Done(NotifyReporter(issue, staffUserId, "Your equipment report was resolved", note));
         });
 
+    /// <summary>Too big for Staff: the Manager takes over and the equipment is out of use until repaired.</summary>
     public Task<Result<EquipmentIssueResponse>> EscalateAsync(
         int id, string note, string staffUserId, string? ipAddress, CancellationToken cancellationToken = default) =>
         Act(id, staffUserId, ipAddress, cancellationToken, async issue =>
         {
-            if (issue.IssueStatus is not (EquipmentIssueStatus.Reported or EquipmentIssueStatus.InProgress))
-                return InvalidState(issue, "Only Reported or in-progress issues can be escalated.");
-            if (await IsRepairAsync(issue, cancellationToken))
-                return RepairOnly();
+            if (issue.IssueStatus != EquipmentIssueStatus.InProgress)
+                return InvalidState(issue, "Only issues Staff are handling can be passed to the Manager.");
             issue.IssueStatus = EquipmentIssueStatus.Escalated;
             issue.HandledByUserId = staffUserId;
             issue.ResolutionNote = "Chuyển quản lý: " + note.Trim();
@@ -156,65 +143,27 @@ public sealed class EquipmentIssueService : IEquipmentIssueService
             return await Done(notify);
         });
 
-    public Task<Result<EquipmentIssueResponse>> MarkSafeAsync(
-        int id, string note, string staffUserId, string? ipAddress, CancellationToken cancellationToken = default) =>
-        Act(id, staffUserId, ipAddress, cancellationToken, async issue =>
-        {
-            if (issue.IssueStatus is not (EquipmentIssueStatus.Reported or EquipmentIssueStatus.InProgress))
-                return InvalidState(issue, "Only Reported or in-progress issues can be marked safe.");
-            if (await IsRepairAsync(issue, cancellationToken))
-                return RepairOnly();
-            Close(issue, EquipmentIssueStatus.MarkedSafe, note, staffUserId);
-            // Back in use if a Safety report had taken it out, unless another open issue still keeps it out.
-            if (issue.Equipment.EquipmentStatus == EquipmentStatus.Damaged
-                && !await _repository.HasOpenIssueAsync(issue.EquipmentId, issue.Id, cancellationToken))
-                issue.Equipment.EquipmentStatus = EquipmentStatus.Operational;
-            return await Done(NotifyReporter(issue, staffUserId, "Your equipment report was checked", note));
-        });
-
     // ── Manager (UC-73) ──────────────────────────────────────────
 
-    public Task<Result<EquipmentIssueResponse>> StartRepairAsync(
-        int id, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default) =>
-        Act(id, managerUserId, ipAddress, cancellationToken, async issue =>
-        {
-            if (issue.IssueStatus != EquipmentIssueStatus.Escalated)
-                return InvalidState(issue, "Only Escalated issues can be taken for repair.");
-            issue.IssueStatus = EquipmentIssueStatus.InProgress;
-            issue.HandledByUserId = managerUserId;
-            issue.Equipment.EquipmentStatus = EquipmentStatus.UnderMaintenance;
-            return await Done();
-        });
-
+    /// <summary>The Manager had the equipment repaired and checked it is safe: the issue is done and the equipment is back in use.</summary>
     public Task<Result<EquipmentIssueResponse>> ConfirmSafeAsync(
         int id, string note, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default) =>
         Act(id, managerUserId, ipAddress, cancellationToken, async issue =>
         {
-            if (issue.IssueStatus != EquipmentIssueStatus.InProgress || !await IsRepairAsync(issue, cancellationToken))
-                return InvalidState(issue, "Only issues under repair can be confirmed safe. Start the repair first.");
-            Close(issue, EquipmentIssueStatus.Resolved, note, managerUserId);
-            issue.Equipment.EquipmentStatus = EquipmentStatus.Operational;
+            if (issue.IssueStatus != EquipmentIssueStatus.Escalated)
+                return InvalidState(issue, "Only issues passed to the Manager can be closed as repaired.");
+            Close(issue, note, managerUserId);
+            await BackInUseAsync(issue, cancellationToken);
             return await Done(NotifyReporter(issue, managerUserId, "Reported equipment repaired", note));
         });
 
-    public Task<Result<EquipmentIssueResponse>> MarkNotSafeAsync(
-        int id, string note, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default) =>
-        Act(id, managerUserId, ipAddress, cancellationToken, async issue =>
-        {
-            if (issue.IssueStatus != EquipmentIssueStatus.InProgress || !await IsRepairAsync(issue, cancellationToken))
-                return InvalidState(issue, "Only issues under repair can be marked not safe.");
-            issue.ResolutionNote = "Chưa an toàn sau sửa chữa: " + note.Trim();
-            issue.Equipment.EquipmentStatus = EquipmentStatus.Damaged; // issue stays InProgress for another repair
-            return await Done();
-        });
-
+    /// <summary>Not worth repairing: the equipment is retired and the issue is done.</summary>
     public Task<Result<EquipmentIssueResponse>> DisposeAsync(
         int id, string note, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default) =>
         Act(id, managerUserId, ipAddress, cancellationToken, async issue =>
         {
-            var underRepair = issue.IssueStatus == EquipmentIssueStatus.InProgress && await IsRepairAsync(issue, cancellationToken);
-            if (issue.IssueStatus != EquipmentIssueStatus.Escalated && !underRepair)
-                return InvalidState(issue, "Only Escalated issues or issues under repair can be disposed.");
+            if (issue.IssueStatus != EquipmentIssueStatus.Escalated)
+                return InvalidState(issue, "Only issues passed to the Manager can lead to retiring the equipment.");
             issue.IssueStatus = EquipmentIssueStatus.Resolved;
             issue.HandledByUserId = managerUserId;
             issue.ResolvedAt = DateTime.UtcNow;
@@ -263,14 +212,10 @@ public sealed class EquipmentIssueService : IEquipmentIssueService
         new(Result<EquipmentIssueResponse>.Failure(
             $"{message} Current status: {issue.IssueStatus}.", "EQUIPMENT_ISSUE_INVALID_STATE", 409), []);
 
-    private static Outcome RepairOnly() =>
-        new(Result<EquipmentIssueResponse>.Failure(
-            "This issue is under repair by a Manager and is handled in Manage Equipment Repairs.",
-            "EQUIPMENT_ISSUE_UNDER_REPAIR", 409), []);
-
-    private void Close(EquipmentIssueReport issue, EquipmentIssueStatus status, string note, string userId)
+    /// <summary>Marks the issue done and records who confirmed the equipment safe to use (GBR-55).</summary>
+    private void Close(EquipmentIssueReport issue, string note, string userId)
     {
-        issue.IssueStatus = status;
+        issue.IssueStatus = EquipmentIssueStatus.Resolved;
         issue.HandledByUserId = userId;
         issue.ResolvedAt = DateTime.UtcNow;
         issue.ResolutionNote = note.Trim();
@@ -284,10 +229,13 @@ public sealed class EquipmentIssueService : IEquipmentIssueService
         });
     }
 
-    private async Task<bool> IsRepairAsync(EquipmentIssueReport issue, CancellationToken cancellationToken) =>
-        issue.IssueStatus == EquipmentIssueStatus.InProgress &&
-        issue.HandledByUserId is not null &&
-        await _repository.UserHasRoleAsync(issue.HandledByUserId, ManagerRole, cancellationToken);
+    /// <summary>Operational again, unless another open issue still keeps it out of use.</summary>
+    private async Task BackInUseAsync(EquipmentIssueReport issue, CancellationToken cancellationToken)
+    {
+        if (issue.Equipment.EquipmentStatus is EquipmentStatus.Damaged or EquipmentStatus.UnderMaintenance
+            && !await _repository.HasOpenIssueAsync(issue.EquipmentId, issue.Id, cancellationToken))
+            issue.Equipment.EquipmentStatus = EquipmentStatus.Operational;
+    }
 
     private async Task<IReadOnlyCollection<Notification>> NotifyRoleAsync(
         string role, string senderUserId, string title, string message, CancellationToken cancellationToken)

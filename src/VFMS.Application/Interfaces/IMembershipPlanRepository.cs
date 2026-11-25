@@ -1,5 +1,7 @@
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
+using VFMS.Contracts.Memberships;
+using MembershipDurationUnit = VFMS.Contracts.Memberships.MembershipDurationUnit;
 
 namespace VFMS.Application.Interfaces;
 
@@ -12,9 +14,14 @@ public sealed record MembershipPlanReadModel(
     decimal Price,
     PackageStatus Status,
     int SubscriberCount,
-    ComponentType ServiceType = ComponentType.GYM)
+    ComponentType ServiceType = ComponentType.GYM,
+    string? YogaDifficultyLevel = null)
 {
     public bool IsSingleService { get; init; } = true;
+    public string? TargetAudience { get; init; }
+    public int? MaxFreezeCount { get; init; }
+    public int? MinFreezeDaysPerRequest { get; init; }
+    public int? MaxFreezeDaysPerRequest { get; init; }
 }
 
 /// <summary>
@@ -30,8 +37,7 @@ public sealed record PackageCatalogReadModel(
     int? DurationDays,
     int? DurationMonths,
     int? SessionCount,
-    int? YogaClassTypeId,
-    string? YogaClassTypeName,
+    string? YogaDifficultyLevel,
     string? ApplicableTrainerLevel,
     int? PTFreezeMinimumDays,
     int? PTFreezeMaxTotalDays,
@@ -42,13 +48,18 @@ public sealed record PackageCatalogReadModel(
     TimeOnly? AccessEndTime)
 {
     public bool IsSingleService { get; init; } = true;
+    public string? TargetAudience { get; init; }
+    public int? MinFreezeDaysPerRequest { get; init; }
 }
+
+public sealed record CatalogMembershipFreezeRules(int? MinimumDays, int MaximumDays, int DefaultMaxFreezeCount = 0);
 
 public interface IMembershipPlanRepository : IAuditedRepository
 {
     Task<(IReadOnlyList<MembershipPlanReadModel> Items, int TotalCount)> SearchAsync(
         string? search, PackageStatus? status, int page, int pageSize, CancellationToken cancellationToken = default,
-        ComponentType? serviceType = null, DateTime? sellableAtUtc = null);
+        ComponentType? serviceType = null, DateTime? sellableAtUtc = null,
+        MembershipDurationUnit? durationUnit = null, MembershipFreezeAllowanceFilter? freezeAllowanceFilter = null);
 
     /// <param name="sellableAtUtc">Set for the public catalog: hides yoga-only plans while no yoga class can be booked.</param>
     Task<MembershipPlanReadModel?> GetDetailsAsync(
@@ -67,4 +78,5 @@ public interface IMembershipPlanRepository : IAuditedRepository
         ComponentType componentType, int page, int pageSize, CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<PackageCatalogReadModel>> ListActiveSingleServicePackagesAsync(CancellationToken cancellationToken);
+    Task<CatalogMembershipFreezeRules?> GetCatalogFreezeRulesAsync(CancellationToken cancellationToken);
 }

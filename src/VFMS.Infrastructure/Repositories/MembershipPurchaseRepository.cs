@@ -1,3 +1,4 @@
+using VFMS.Contracts.Yoga.Validators;
 using System.Data;
 using Microsoft.EntityFrameworkCore;
 using VFMS.Application.Interfaces;
@@ -22,8 +23,19 @@ public sealed partial class MembershipPurchaseRepository(VfmsDbContext context) 
         context.Packages.AsNoTracking().Where(plan => ids.Contains(plan.Id))
             .Include(plan => plan.Components).ToListAsync(ct);
 
+    public Task<FreezePolicy?> GetPurchaseFreezePolicyAsync(CancellationToken ct) =>
+        context.FreezePolicies.AsNoTracking().Where(policy => policy.IsGlobal && policy.PolicyStatus == PolicyStatus.Active)
+            .SingleOrDefaultAsync(ct);
+
     public Task<bool> AnyBookableYogaClassAsync(DateTime nowUtc, CancellationToken ct) =>
         context.YogaClasses.AnyAsync(YogaClassRules.Bookable(nowUtc), ct);
+
+    public Task<bool> AnyBookableYogaClassAsync(DateTime nowUtc, string maxLevel, CancellationToken ct)
+    {
+        var covered = YogaRules.DifficultyLevels.Take(YogaRules.LevelRank(maxLevel)).ToArray();
+        return context.YogaClasses.Where(YogaClassRules.Bookable(nowUtc))
+            .AnyAsync(yogaClass => covered.Contains(yogaClass.DifficultyLevel), ct);
+    }
 
     public Task<List<ApplicationUser>> LoadCheckoutUsersAsync(string purchaserId, string[] emails, CancellationToken ct)
     {
@@ -123,7 +135,11 @@ public sealed partial class MembershipPurchaseRepository(VfmsDbContext context) 
             .Select(membership => new OwnedMembership(membership.Id, membership.OrderItem.PackageId,
                 membership.OrderItem.PackageNameSnapshot, membership.PackageComponent.ComponentType,
                 membership.StartDate, membership.EndDate, membership.MembershipStatus,
-                membership.OrderItem.Order.PaymentTransaction!.PaidAt ?? membership.OrderItem.Order.CompletedAt))
+                membership.OrderItem.Order.PaymentTransaction!.PaidAt ?? membership.OrderItem.Order.CompletedAt)
+            {
+                PackageComponentId = membership.PackageComponentId,
+                ComponentTermsSnapshot = membership.OrderItem.ComponentTermsSnapshot
+            })
             .ToListAsync(ct);
 
     public Task<OwnedMembershipDetail?> FindOwnedMembershipAsync(string memberId, int membershipId, CancellationToken ct) =>
@@ -132,7 +148,11 @@ public sealed partial class MembershipPurchaseRepository(VfmsDbContext context) 
                 new OwnedMembership(membership.Id, membership.OrderItem.PackageId,
                     membership.OrderItem.PackageNameSnapshot, membership.PackageComponent.ComponentType,
                     membership.StartDate, membership.EndDate, membership.MembershipStatus,
-                    membership.OrderItem.Order.PaymentTransaction!.PaidAt ?? membership.OrderItem.Order.CompletedAt),
+                    membership.OrderItem.Order.PaymentTransaction!.PaidAt ?? membership.OrderItem.Order.CompletedAt)
+                {
+                    PackageComponentId = membership.PackageComponentId,
+                    ComponentTermsSnapshot = membership.OrderItem.ComponentTermsSnapshot
+                },
                 membership.OrderItem.Order.PaymentTransaction!.PaidAt ?? membership.OrderItem.Order.CompletedAt,
                 membership.OrderItem.Order.PurchaserUserId == memberId
                     ? membership.OrderItem.Order.PaymentTransaction!.Invoice!.InvoiceNumber : null,
@@ -140,7 +160,9 @@ public sealed partial class MembershipPurchaseRepository(VfmsDbContext context) 
                 membership.MembershipFreezes.OrderByDescending(period => period.RequestedStartDate)
                     .ThenByDescending(period => period.Id)
                     .Select(period => new OwnedMembershipFreeze(period.RequestedStartDate, period.RequestedEndDate,
-                        period.ActualStartDate, period.ActualEndDate, period.RequestStatus)).ToList()))
+                        period.ActualStartDate, period.ActualEndDate, period.RequestStatus, period.CreatedAt,
+                        period.RequestStatus == FreezeRequestStatus.Rejected ? period.ReviewNote : null)).ToList(),
+                membership.GrantedFreezeAllowanceDays, membership.GrantedFreezeCount, membership.GrantedMinFreezeDays, membership.GrantedMaxFreezeDays))
             .SingleOrDefaultAsync(ct);
 
     private IQueryable<MemberMembership> OwnedMemberships(string memberId) =>

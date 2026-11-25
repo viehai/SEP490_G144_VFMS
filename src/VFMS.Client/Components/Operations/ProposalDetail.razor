@@ -1,15 +1,18 @@
 @using VFMS.Contracts.Procurement
 
-@* Items, total and review history of a purchase proposal. *@
+@* Items, review history and, once the purchase is done, the real prices the Manager entered. *@
 <div class="space-y-4">
     @if (!string.IsNullOrWhiteSpace(Proposal.Description))
     {
         <p class="rounded-lg border border-vfms-border bg-vfms-bg p-4 text-sm whitespace-pre-wrap">@Proposal.Description</p>
     }
     <div class="overflow-x-auto rounded-lg border border-vfms-border">
-        <table class="workspace-table min-w-[640px]">
+        <table class="workspace-table @(Priced ? "min-w-[640px]" : "min-w-[420px]")">
             <thead>
-                <tr><th scope="col">Hạng mục</th><th scope="col">Thiết bị liên quan</th><th scope="col" class="text-right">SL</th><th scope="col" class="text-right">Đơn giá</th><th scope="col" class="text-right">Thành tiền</th></tr>
+                <tr>
+                    <th scope="col">Hạng mục</th><th scope="col">Thiết bị liên quan</th><th scope="col" class="text-right">SL</th>
+                    @if (Priced) { <th scope="col" class="text-right">Giá mua</th><th scope="col" class="text-right">Thành tiền</th> }
+                </tr>
             </thead>
             <tbody>
                 @foreach (var item in Proposal.Items)
@@ -18,14 +21,24 @@
                         <th scope="row" class="font-semibold">@item.ItemName@if (item.Reason is { } reason) { <span class="block text-xs font-normal text-vfms-text-secondary">@reason</span> }</th>
                         <td>@(item.EquipmentName ?? "—")</td>
                         <td class="text-right">@item.Quantity</td>
-                        <td class="text-right whitespace-nowrap">@OperationsText.Money(item.EstimatedUnitPrice)</td>
-                        <td class="text-right whitespace-nowrap font-semibold">@OperationsText.Money(item.LineTotal)</td>
+                        @if (Priced)
+                        {
+                            <td class="text-right whitespace-nowrap">@(item.UnitPrice is { } price ? OperationsText.Money(price) : "—")</td>
+                            <td class="text-right whitespace-nowrap font-semibold">@(item.LineTotal is { } total ? OperationsText.Money(total) : "—")</td>
+                        }
                     </tr>
                 }
             </tbody>
         </table>
     </div>
-    <p class="text-right text-sm">Tổng ngân sách dự kiến: <span class="text-lg font-extrabold text-vfms-primary">@OperationsText.Money(Proposal.TotalBudget)</span></p>
+    @if (Proposal.TotalCost is { } cost)
+    {
+        <p class="text-right text-sm">Tổng chi phí thực tế: <span class="text-lg font-extrabold text-vfms-primary">@OperationsText.Money(cost)</span></p>
+    }
+    else if (Proposal.Status is not ("Rejected" or "Completed"))
+    {
+        <p class="text-right text-xs text-vfms-text-secondary">Giá mua do quản lý nhập khi đã mua xong.</p>
+    }
     @if (Proposal.Reviews.Count > 0)
     {
         <div>
@@ -46,4 +59,6 @@
 
 @code {
     [Parameter, EditorRequired] public PurchaseProposalResponse Proposal { get; set; } = default!;
+
+    private bool Priced => Proposal.Items.Any(i => i.UnitPrice is not null);
 }

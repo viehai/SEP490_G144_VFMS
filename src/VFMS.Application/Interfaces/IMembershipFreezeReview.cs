@@ -14,9 +14,10 @@ public interface IMembershipFreezeReviewService
 
 public interface IMembershipFreezeReviewRepository : IAuditedRepository
 {
-    Task<(IReadOnlyList<MembershipFreezeReviewReadModel> Items, int TotalCount)> SearchAsync(string? type, int page, int pageSize, CancellationToken ct);
+    Task<(IReadOnlyList<MembershipFreezeReviewReadModel> Items, int TotalCount)> SearchAsync(MembershipFreezeReviewListRequest request, CancellationToken ct);
     Task<MembershipFreezeReviewReadModel?> FindAsync(int requestId, bool early, CancellationToken ct);
 }
 
 public sealed record MembershipFreezeReviewReadModel(
-    MembershipFreeze Request, string MemberName, string MemberEmail, string PlanName, MemberMembership Membership);
+    MembershipFreeze Request, string MemberName, string MemberEmail, string PlanName, MemberMembership Membership,
+    bool EarlyUnfreeze = false);

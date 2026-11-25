@@ -1,0 +1,20 @@
+@* Yoga page messages: no box or background, just an icon and text in the status colour (green = done, red = problem). *@
+@if (Notice is not null)
+{
+    <p role="status" class="flex items-start gap-2 text-sm font-medium text-[#15803D]">
+        <svg class="mt-0.5 h-4 w-4 flex-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="m9 12 2 2 4-4" /></svg>
+        <span>@Notice</span>
+    </p>
+}
+@if (Error is not null)
+{
+    <p role="alert" class="flex items-start gap-2 text-sm font-medium text-[#B91C1C]">
+        <svg class="mt-0.5 h-4 w-4 flex-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M12 8v4" /><path d="M12 16h.01" /></svg>
+        <span>@Error</span>
+    </p>
+}
+
+@code {
+    [Parameter] public string? Notice { get; set; }
+    [Parameter] public string? Error { get; set; }
+}

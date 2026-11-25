@@ -9,7 +9,7 @@
 <PageTitle>Duyệt yêu cầu bảo lưu | Victor Fitness</PageTitle>
 
 <div class="workspace-page space-y-6">
-    <PageHeader Overline="VFMS / MEMBERSHIPS" Title="Duyệt yêu cầu bảo lưu"
+    <PageHeader Title="Duyệt yêu cầu bảo lưu"
                 Description="Xem yêu cầu của hội viên và xét duyệt bảo lưu hoặc kết thúc bảo lưu sớm." />
 
     @if (_notice is not null)
@@ -59,16 +59,16 @@
                     <dd class="mt-1 text-vfms-text"><time datetime="@IsoTimestamp(detail.Request.SubmittedAt)">@DisplayTimestamp(detail.Request.SubmittedAt)</time></dd>
                 </div>
                 <div>
-                    <dt class="text-xs font-semibold text-vfms-text-secondary">@PeriodLabel(detail.Request.RequestType)</dt>
-                    <dd class="mt-1 font-semibold text-vfms-text"><MembershipDate Date="@detail.Request.StartDate" /><span class="mx-1">đến</span><MembershipDate Date="@detail.Request.EndDate" /></dd>
+                    <dt class="text-xs font-semibold text-vfms-text-secondary">Từ ngày</dt>
+                    <dd class="mt-1 font-semibold text-vfms-text"><MembershipDate Date="@detail.Request.StartDate" /></dd>
                 </div>
                 <div>
-                    <dt class="text-xs font-semibold text-vfms-text-secondary">Thời hạn đề nghị</dt>
+                    <dt class="text-xs font-semibold text-vfms-text-secondary">Đến hết ngày</dt>
+                    <dd class="mt-1 font-semibold text-vfms-text"><MembershipDate Date="@detail.Request.EndDate" /></dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-semibold text-vfms-text-secondary">Thời gian bảo lưu đề nghị</dt>
                     <dd class="mt-1 text-vfms-text">@detail.Request.RequestedDays ngày</dd>
-                </div>
-                <div>
-                    <dt class="text-xs font-semibold text-vfms-text-secondary">Hạn ngạch còn lại</dt>
-                    <dd class="mt-1 font-semibold text-vfms-text">@(detail.RemainingQuota is { } remaining ? $"{remaining} ngày" : "Chưa xác định")</dd>
                 </div>
                 @if (!string.IsNullOrWhiteSpace(detail.Reason))
                 {
@@ -80,13 +80,30 @@
             </dl>
             <div class="space-y-3 border-t border-vfms-border pt-4">
                 <div class="flex flex-wrap items-baseline justify-between gap-2">
-                    <h3 class="break-words font-heading text-base font-bold text-vfms-text">@detail.Membership.PlanName</h3>
+                    <h3 class="min-w-0 break-words font-heading text-base font-bold text-vfms-text">Gói hội viên · @detail.Membership.PlanName</h3>
                     <MembershipStatusBadge Status="@detail.Membership.Status" />
                 </div>
                 <MembershipTermDetails Membership="@detail.Membership" />
+                <dl class="grid gap-3 rounded-lg bg-vfms-surface-alt p-4 text-sm sm:grid-cols-3">
+                    @if (detail.GrantedFreezeCount is { } visits)
+                    {
+                        <div><dt>Lượt đã duyệt</dt><dd>@detail.UsedFreezeCount / @visits lượt</dd></div>
+                        <div><dt>Tối đa mỗi lượt</dt><dd>@Days(detail.AppliedPolicy?.Policy?.MaximumFreezeDays)</dd></div>
+                    }
+                    else
+                    {
+                    <div><dt class="text-xs font-semibold text-vfms-text-secondary">Tổng số ngày được bảo lưu</dt><dd class="mt-1 font-semibold text-vfms-text">@Days(detail.GrantedFreezeAllowanceDays)</dd></div>
+                    <div><dt class="text-xs font-semibold text-vfms-text-secondary">Đã sử dụng hoặc đã duyệt</dt><dd class="mt-1 font-semibold text-vfms-text">@Days(detail.CommittedFreezeDays)</dd></div>
+                    <div><dt class="text-xs font-semibold text-vfms-text-secondary">Số ngày còn được bảo lưu</dt><dd class="mt-1 font-semibold text-vfms-text">@Days(detail.RemainingQuota)</dd></div>
+                    }
+                </dl>
                 @if (detail.AppliedExpiryExtensionDays is { } extension)
                 {
                     <p class="text-sm text-vfms-text-secondary">Số ngày gia hạn đã ghi nhận cho lần bảo lưu này <strong class="text-vfms-text">@extension ngày</strong>.</p>
+                }
+                else if (detail.Request.RequestType == MembershipFreezeReviewTypes.Freeze && detail.Request.Status == "Pending")
+                {
+                    <p class="text-sm text-vfms-text-secondary">Nếu được duyệt, thời hạn gói sẽ được cộng <strong class="text-vfms-text">@detail.Request.RequestedDays ngày</strong>.</p>
                 }
                 @if (detail.ActualFrozenDays is { } actual)
                 {
@@ -98,20 +115,10 @@
                 @if (detail.AppliedPolicy?.Policy is { } policy)
                 {
                     <dl class="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-                        <div><dt class="text-xs font-semibold text-vfms-text-secondary">Tối thiểu mỗi yêu cầu</dt><dd class="mt-1 text-vfms-text">@policy.MinimumFreezeDays ngày</dd></div>
-                        <div><dt class="text-xs font-semibold text-vfms-text-secondary">Tối đa mỗi yêu cầu</dt><dd class="mt-1 text-vfms-text">@policy.MaximumFreezeDays ngày</dd></div>
-                        <div><dt class="text-xs font-semibold text-vfms-text-secondary">Báo trước tối thiểu</dt><dd class="mt-1 text-vfms-text">@policy.MinimumRequestDays ngày</dd></div>
-                        <div><dt class="text-xs font-semibold text-vfms-text-secondary">Đã thanh toán tối thiểu</dt><dd class="mt-1 text-vfms-text">@policy.EligibilityPaidDays ngày</dd></div>
+                        <div><dt class="text-xs font-semibold text-vfms-text-secondary">Thời gian bảo lưu mỗi lần</dt><dd class="mt-1 text-vfms-text">@policy.MinimumFreezeDays–@policy.MaximumFreezeDays ngày</dd></div>
+                        <div><dt class="text-xs font-semibold text-vfms-text-secondary">Cần đăng ký trước ít nhất</dt><dd class="mt-1 text-vfms-text">@policy.MinimumRequestDays ngày</dd></div>
+                        <div><dt class="text-xs font-semibold text-vfms-text-secondary">Thời gian chờ tối thiểu</dt><dd class="mt-1 text-vfms-text">@policy.EligibilityPaidDays ngày</dd></div>
                     </dl>
-                    @if (detail.AppliedPolicy.Quotas.Count > 0)
-                    {
-                        <ul class="list-none space-y-1 p-0 text-sm text-vfms-text-secondary">
-                            @foreach (var quota in detail.AppliedPolicy.Quotas)
-                            {
-                                <li>Kỳ hạn @quota.Duration @UnitLabel(quota.Unit) · hạn ngạch @quota.MaximumCumulativeFreezeDays ngày</li>
-                            }
-                        </ul>
-                    }
                 }
                 else
                 {
@@ -155,7 +162,7 @@
                         @if (detail.CanReject)
                         {
                             <div>
-                                <label for="freeze-rejection-reason" class="block text-sm font-semibold text-vfms-text">Lý do từ chối</label>
+                                <label for="freeze-rejection-reason" class="block text-sm font-semibold text-vfms-text">Lý do từ chối <span aria-hidden="true" class="text-vfms-primary">*</span></label>
                                 <InputTextArea id="freeze-rejection-reason" class="@(Ui.Field + " text-base sm:text-sm")" @bind-Value="_rejectForm.Reason" rows="3" maxlength="4000"
                                                required aria-describedby="freeze-rejection-error" />
                                 <div id="freeze-rejection-error"><ValidationMessage For="@(() => _rejectForm.Reason)" /></div>
@@ -179,9 +186,19 @@
 
     <section class="@Ui.ListCard" aria-labelledby="freeze-review-queue-title" aria-busy="@(_loading ? "true" : "false")">
         <div class="@Ui.ListHeader">
-            <h2 id="freeze-review-queue-title" class="mb-3 font-heading text-base font-bold text-vfms-text">Yêu cầu chờ duyệt</h2>
+            <h2 id="freeze-review-queue-title" class="mb-3 font-heading text-base font-bold text-vfms-text">Danh sách yêu cầu bảo lưu</h2>
             <form @onsubmit="ApplyFilterAsync" @onsubmit:preventDefault>
-                <fieldset disabled="@Busy" class="flex flex-wrap items-end gap-3">
+                <fieldset disabled="@Busy" class="flex min-w-0 flex-wrap items-end gap-3">
+                    <label for="freeze-review-status" class="@Ui.Label">
+                        Trạng thái
+                        <select id="freeze-review-status" class="@Ui.Field min-h-[44px]" @bind="_statusInput">
+                            <option value="All">Tất cả</option>
+                            <option value="Pending">Chờ duyệt</option>
+                            <option value="Approved">Đã duyệt</option>
+                            <option value="Active">Đang bảo lưu</option>
+                            <option value="History">Lịch sử</option>
+                        </select>
+                    </label>
                     <label for="freeze-review-type" class="@Ui.Label">
                         Loại yêu cầu
                         <select id="freeze-review-type" class="@Ui.Field min-h-[44px]" @bind="_typeInput">
@@ -190,13 +207,31 @@
                             <option value="@MembershipFreezeReviewTypes.EarlyUnfreeze">Kết thúc bảo lưu sớm</option>
                         </select>
                     </label>
+                    <label for="freeze-review-search" class="@Ui.Label w-full sm:w-60">
+                        Tìm hội viên
+                        <input id="freeze-review-search" type="search" class="@Ui.Field min-h-[44px]" @bind="_searchInput" maxlength="256" placeholder="Tên hoặc email" />
+                    </label>
+                    <label for="freeze-review-from" class="@Ui.Label">
+                        Từ ngày bảo lưu
+                        <input id="freeze-review-from" type="date" class="@Ui.Field min-h-[44px]" @bind="_fromDateInput" aria-describedby="freeze-review-filter-error" />
+                    </label>
+                    <label for="freeze-review-to" class="@Ui.Label">
+                        Đến hết ngày
+                        <input id="freeze-review-to" type="date" class="@Ui.Field min-h-[44px]" @bind="_toDateInput" aria-describedby="freeze-review-filter-error" />
+                    </label>
                     <button type="submit" class="@Ui.Button min-h-[44px]">Cập nhật danh sách</button>
                 </fieldset>
+                <div id="freeze-review-filter-error">
+                    @if (_filterError is not null)
+                    {
+                        <p class="mt-2 text-sm text-red-800" role="alert">@_filterError</p>
+                    }
+                </div>
             </form>
         </div>
         @if (_loading)
         {
-            <p role="status" class="p-5 text-sm text-vfms-text-secondary">Đang tải yêu cầu chờ duyệt...</p>
+            <p role="status" class="p-5 text-sm text-vfms-text-secondary">Đang tải yêu cầu bảo lưu...</p>
         }
         else if (_queueError is not null)
         {
@@ -229,7 +264,7 @@
         }
         else
         {
-            <p role="status" class="p-5 text-sm text-vfms-text-secondary">Không có yêu cầu chờ duyệt phù hợp.</p>
+            <p role="status" class="p-5 text-sm text-vfms-text-secondary">Không có yêu cầu bảo lưu phù hợp.</p>
         }
     </section>
 </div>

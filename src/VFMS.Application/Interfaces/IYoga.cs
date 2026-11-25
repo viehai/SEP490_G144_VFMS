@@ -71,6 +71,7 @@ public interface IYogaClassService
     // Sessions
     Task<Result<IReadOnlyList<YogaSessionResponse>>> GetClassSessionsAsync(int classId, CancellationToken cancellationToken = default);
     Task<Result<YogaSessionResponse>> CreateSessionAsync(YogaSessionRequest request, string actorUserId, string? ipAddress, CancellationToken cancellationToken = default);
+    Task<Result<YogaWeeklySessionsResponse>> CreateWeeklySessionsAsync(int classId, YogaWeeklySessionsRequest request, string actorUserId, string? ipAddress, CancellationToken cancellationToken = default);
     Task<Result<YogaSessionResponse>> UpdateSessionAsync(int id, YogaSessionRequest request, string actorUserId, string? ipAddress, CancellationToken cancellationToken = default);
     Task<Result<YogaSessionResponse>> CancelSessionAsync(int id, string actorUserId, string? ipAddress, CancellationToken cancellationToken = default);
 

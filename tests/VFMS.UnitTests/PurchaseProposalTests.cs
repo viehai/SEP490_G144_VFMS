@@ -17,34 +17,44 @@ public sealed class PurchaseProposalTests
 
     private static PurchaseProposalRequest Request(bool submit = true) => new(
         "Replace worn equipment",
-        [new("Dumbbell set", 2, 1_500_000m), new("Yoga mats", 10, 200_000m, Reason: "Torn")],
+        [new("Dumbbell set", 2), new("Yoga mats", 10, Reason: "Torn")],
         submit);
 
     // ── Validators (GBR-62) ──────────────────────────────────────
 
     [Fact]
-    public void ValidatorRequiresDescriptionItemsAndCostedLines()
+    public void ValidatorRequiresDescriptionAndNamedItemsButNoPrice()
     {
         var v = new PurchaseProposalRequestValidator();
         Assert.True(v.Validate(Request()).IsValid);
-        Assert.False(v.Validate(new PurchaseProposalRequest(" ", [new("A", 1, 1)])).IsValid);
+        Assert.False(v.Validate(new PurchaseProposalRequest(" ", [new("A", 1)])).IsValid);
         Assert.False(v.Validate(new PurchaseProposalRequest("x", [])).IsValid);
-        Assert.False(v.Validate(new PurchaseProposalRequest("x", [new("A", 0, 1)])).IsValid);
-        Assert.False(v.Validate(new PurchaseProposalRequest("x", [new("A", 1, 0)])).IsValid);
-        Assert.False(v.Validate(new PurchaseProposalRequest("x", [new(" ", 1, 1)])).IsValid);
+        Assert.False(v.Validate(new PurchaseProposalRequest("x", [new("A", 0)])).IsValid);
+        Assert.False(v.Validate(new PurchaseProposalRequest("x", [new(" ", 1)])).IsValid);
+    }
+
+    [Fact]
+    public void CompletionNeedsARealPriceForEachItemOnce()
+    {
+        var v = new PurchaseProposalCompleteRequestValidator();
+        Assert.True(v.Validate(new PurchaseProposalCompleteRequest([new(1, 1_500_000m), new(2, 200_000m)])).IsValid);
+        Assert.False(v.Validate(new PurchaseProposalCompleteRequest([])).IsValid);
+        Assert.False(v.Validate(new PurchaseProposalCompleteRequest([new(1, 0m)])).IsValid);
+        Assert.False(v.Validate(new PurchaseProposalCompleteRequest([new(1, 5m), new(1, 6m)])).IsValid);
     }
 
     // ── Staff (UC-74) ────────────────────────────────────────────
 
     [Fact]
-    public async Task CreateSubmittedCalculatesTotalAndNotifiesManagers()
+    public async Task CreateSubmittedHasNoPriceYetAndNotifiesManagers()
     {
         var repo = new Repo();
         var result = await Service(repo).CreateAsync(Request(), Staff, null);
 
         Assert.Equal(201, result.StatusCode);
         Assert.Equal("Submitted", result.Data!.Status);
-        Assert.Equal(5_000_000m, result.Data.TotalBudget);          // 2×1.5M + 10×200k
+        Assert.Null(result.Data.TotalCost);
+        Assert.All(result.Data.Items, item => Assert.Null(item.UnitPrice));
         Assert.Matches(@"^PP-\d{8}-\d{6}$", result.Data.ProposalNumber);
         Assert.NotNull(result.Data.SubmittedAt);
         Assert.Equal(Manager, Assert.Single(repo.Notifications).RecipientUserId);
@@ -61,9 +71,8 @@ public sealed class PurchaseProposalTests
         Assert.Empty(repo.Notifications);
 
         var edited = await service.UpdateDraftAsync(draft.Data.Id,
-            new PurchaseProposalRequest("Only mats", [new("Yoga mats", 5, 200_000m)], Submit: false), Staff, null);
-        Assert.Equal(1_000_000m, edited.Data!.TotalBudget);
-        Assert.Single(edited.Data.Items);
+            new PurchaseProposalRequest("Only mats", [new("Yoga mats", 5)], Submit: false), Staff, null);
+        Assert.Equal(5, Assert.Single(edited.Data!.Items).Quantity);
 
         var sent = await service.SubmitAsync(draft.Data.Id, Staff, null);
         Assert.Equal("Submitted", sent.Data!.Status);
@@ -96,7 +105,7 @@ public sealed class PurchaseProposalTests
     public async Task UnknownRelatedEquipmentIsRejected()
     {
         var result = await Service(new Repo()).CreateAsync(
-            new PurchaseProposalRequest("x", [new("Belt", 1, 100, EquipmentId: 999)]), Staff, null);
+            new PurchaseProposalRequest("x", [new("Belt", 1, EquipmentId: 999)]), Staff, null);
         Assert.Equal("PROPOSAL_EQUIPMENT_NOT_FOUND", result.ErrorCode);
     }
 
@@ -162,18 +171,40 @@ public sealed class PurchaseProposalTests
     }
 
     [Fact]
-    public async Task CompleteOnlyAfterApproval()
+    public async Task CompleteOnlyAfterApprovalWithTheRealPrices()
     {
         var repo = new Repo();
         var service = Service(repo);
         var created = await service.CreateAsync(Request(), Staff, null);
+        var items = created.Data!.Items.ToArray();
+        var prices = new PurchaseProposalCompleteRequest([new(items[0].Id, 1_500_000m), new(items[1].Id, 200_000m)]);
 
-        var early = await service.CompleteAsync(created.Data!.Id, Manager, null);
+        var early = await service.CompleteAsync(created.Data.Id, prices, Manager, null);
         await service.ApproveAsync(created.Data.Id, "OK", Manager, null);
-        var done = await service.CompleteAsync(created.Data.Id, Manager, null);
+        var done = await service.CompleteAsync(created.Data.Id, prices, Manager, null);
 
         Assert.Equal("PROPOSAL_INVALID_STATE", early.ErrorCode);
         Assert.Equal("Completed", done.Data!.Status);
+        Assert.Equal(5_000_000m, done.Data.TotalCost);              // 2×1.5M + 10×200k
+        Assert.Equal(3_000_000m, done.Data.Items.First().LineTotal);
+        Assert.Contains("Total=5000000", repo.Audits.Last().NewValue);
+    }
+
+    [Fact]
+    public async Task CompleteNeedsAPriceForEveryItemOfThisProposal()
+    {
+        var repo = new Repo();
+        var service = Service(repo);
+        var created = await service.CreateAsync(Request(), Staff, null);
+        await service.ApproveAsync(created.Data!.Id, null, Manager, null);
+        var first = created.Data.Items.First().Id;
+
+        var missing = await service.CompleteAsync(created.Data.Id, new([new(first, 10m)]), Manager, null);
+        var foreign = await service.CompleteAsync(created.Data.Id, new([new(first, 10m), new(9_999, 10m)]), Manager, null);
+
+        Assert.Equal("PROPOSAL_PRICES_REQUIRED", missing.ErrorCode);
+        Assert.Equal("PROPOSAL_PRICES_REQUIRED", foreign.ErrorCode);
+        Assert.Equal("Approved", (await service.GetAsync(created.Data.Id, null)).Data!.Status);
     }
 
     // ── Helpers ──────────────────────────────────────────────────

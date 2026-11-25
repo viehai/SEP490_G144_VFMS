@@ -7,6 +7,7 @@ using VFMS.Contracts.Memberships;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
 using VFMS.Infrastructure.Data;
+using MembershipDurationUnit = VFMS.Contracts.Memberships.MembershipDurationUnit;
 
 namespace VFMS.IntegrationTests;
 
@@ -61,7 +62,7 @@ public sealed partial class MembershipPurchaseApiTests
         var bought = Assert.Single((await buyerAsMember.GetFromJsonAsync<MembershipSummaryResponse[]>(
             $"{MembershipsRoute}/me?memberId=gift&beneficiaryUserId=gift"))!);
         Assert.Equal(new MembershipSummaryResponse(bought.MembershipId, _basic, "Basic", "GYM", Today,
-            Today.AddDays(29), "Active"), bought);
+            Today.AddDays(29), "Active") { DurationValue = 30, DurationUnit = MembershipDurationUnit.Day }, bought);
 
         var gifted = await ListOwnedMembershipsAsync(beneficiary);
         Assert.Equal(2, gifted.Length);
@@ -223,9 +224,10 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Equal(6, detail.Freeze.TotalFrozenDays);
         Assert.Equal(2, detail.Freeze.FreezeCount);
         Assert.Equal([
-            new MembershipFreezePeriodResponse(requestedStart, requestedEnd, actualStart, null, "Active"),
-            new MembershipFreezePeriodResponse(previousStart, previousEnd, previousStart, previousEnd, "Completed")
-        ], detail.Freeze.History);
+            new MembershipFreezePeriodResponse(requestedStart, requestedEnd, actualStart, null, "Active", RequestedDays: 6),
+            new MembershipFreezePeriodResponse(previousStart, previousEnd, previousStart, previousEnd, "Completed", RequestedDays: 3)
+        ], detail.Freeze.History.Select(period => period with { SubmittedAt = null }));
+        Assert.All(detail.Freeze.History, period => Assert.NotNull(period.SubmittedAt));
         Assert.DoesNotContain("Private review note", await response.Content.ReadAsStringAsync());
     }
 
@@ -245,7 +247,7 @@ public sealed partial class MembershipPurchaseApiTests
         var scheduled = Assert.Single(memberships, membership => membership.MembershipId != original.Id);
         var start = original.EndDate.AddDays(1);
         Assert.Equal(new MembershipSummaryResponse(scheduled.MembershipId, _basic, "Basic", "GYM", start,
-            start.AddDays(29), "Scheduled"), scheduled);
+            start.AddDays(29), "Scheduled") { DurationValue = 30, DurationUnit = MembershipDurationUnit.Day }, scheduled);
         Assert.Equal(scheduled, (await ReadMembershipDetailAsync(member, scheduled.MembershipId)).Membership);
 
         _clock.Now = _clock.Now.AddDays(7);

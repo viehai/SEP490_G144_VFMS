@@ -10,17 +10,20 @@ namespace VFMS.Application.Services;
 
 public sealed partial class MembershipFreezeRequestService(
     IMembershipFreezeRequestRepository repository, IMembershipFreezePolicyRepository policies,
-    IValidator<MembershipFreezeRequest> validator, TimeProvider clock, IMembershipFreezeDocumentStore? documents = null) : IMembershipFreezeRequestService
+    IValidator<MembershipFreezeRequest> validator, TimeProvider clock, IMembershipFreezeDocumentStore documents) : IMembershipFreezeRequestService
 {
     public async Task<Result<IReadOnlyList<MembershipFreezeRequestResponse>>> ListAsync(string memberId, CancellationToken ct)
     {
         var requests = await repository.ListOwnedRequestsAsync(memberId, ct);
         var today = LocalToday();
         var ids = requests.Select(row => row.Request.SupportingDocumentId).OfType<Guid>().Distinct().ToArray();
-        var metadata = documents is not null && ids.Length > 0
+        var metadata = ids.Length > 0
             ? await documents.GetMetadataAsync(ids, ct) : new Dictionary<Guid, MembershipFreezeDocumentResponse>();
         return Result<IReadOnlyList<MembershipFreezeRequestResponse>>.Success(requests
-            .Select(row => ToResponse(row.Request, row.PlanName, row.MembershipStatus, today) with
+            .OrderByDescending(row => row.Request.EarlyUnfreezeRequestStatus == FreezeRequestStatus.Pending ||
+                row.Request.RequestStatus is FreezeRequestStatus.Pending or FreezeRequestStatus.Active or FreezeRequestStatus.Approved)
+            .ThenByDescending(row => row.Request.CreatedAt).ThenByDescending(row => row.Request.Id)
+            .Select(row => ToResponse(row.Request, row.PlanName, row.MembershipStatus, row.ComponentType, today) with
             {
                 SupportingDocument = row.Request.SupportingDocumentId is { } id ? metadata.GetValueOrDefault(id) : null
             }).ToArray());
@@ -30,15 +33,22 @@ public sealed partial class MembershipFreezeRequestService(
     {
         var row = await repository.FindOwnedRequestAsync(memberId, requestId, ct);
         return row is null ? NotFound<MembershipFreezeRequestResponse>()
-            : Result<MembershipFreezeRequestResponse>.Success(await ToResponseAsync(row.Request, row.PlanName, row.MembershipStatus, LocalToday(), ct));
+            : Result<MembershipFreezeRequestResponse>.Success(await ToResponseAsync(row.Request, row.PlanName,
+                row.MembershipStatus, row.ComponentType, LocalToday(), ct));
     }
 
     public async Task<Result<MembershipFreezeRequestResponse>> CreateAsync(
-        string memberId, MembershipFreezeRequest request, CancellationToken ct)
+        string memberId, MembershipFreezeRequest request, MembershipFreezeDocumentUpload? file, CancellationToken ct)
     {
         var validation = await validator.ValidateAsync(request, ct);
         if (!validation.IsValid)
             return Invalid(validation.Errors.Select(error => error.ErrorMessage));
+
+        if (file is null)
+            return Result<MembershipFreezeRequestResponse>.Failure("Vui lòng chọn tài liệu minh chứng.", "FREEZE_DOCUMENT_REQUIRED");
+        var attachment = await MembershipFreezeDocumentService.ReadUploadAsync(file, ct);
+        if (!attachment.IsSuccess)
+            return Result<MembershipFreezeRequestResponse>.Failure(attachment.ErrorMessage!, attachment.ErrorCode!, attachment.StatusCode);
 
         var result = NotFound<MembershipFreezeRequestResponse>();
         await policies.ExecuteInSerializableTransactionAsync(async () =>
@@ -46,7 +56,7 @@ public sealed partial class MembershipFreezeRequestService(
             var membership = await repository.GetOwnedMembershipAsync(memberId, request.MembershipId!.Value, true, ct);
             if (membership is null)
                 return;
-            result = await SaveRequestAsync(memberId, membership, request, existing: null, ct);
+            result = await SaveRequestAsync(memberId, membership, request, existing: null, attachment.Data, ct);
         }, ct);
         return result;
     }
@@ -63,7 +73,7 @@ public sealed partial class MembershipFreezeRequestService(
                 return StateConflict();
             if (request.MembershipId != membership.Id)
                 return Result<MembershipFreezeRequestResponse>.Failure("Không thể đổi gói hội viên của yêu cầu.", "FREEZE_MEMBERSHIP_MISMATCH");
-            return await SaveRequestAsync(memberId, membership, request, existing, ct);
+            return await SaveRequestAsync(memberId, membership, request, existing, null, ct);
         }, ct);
     }
 
@@ -75,7 +85,7 @@ public sealed partial class MembershipFreezeRequestService(
             request.RequestStatus = FreezeRequestStatus.Cancelled;
             await repository.SaveChangesAsync(ct);
             return Result<MembershipFreezeRequestResponse>.Success(await ToResponseAsync(request,
-                membership.OrderItem.PackageNameSnapshot, membership.MembershipStatus, LocalToday(), ct));
+                membership.OrderItem.PackageNameSnapshot, membership.MembershipStatus, membership.PackageComponent.ComponentType, LocalToday(), ct));
         }, ct);
 
     public Task<Result<MembershipFreezeRequestResponse>> RequestEarlyUnfreezeAsync(
@@ -84,7 +94,7 @@ public sealed partial class MembershipFreezeRequestService(
         {
             if (request.EarlyUnfreezeRequestStatus == FreezeRequestStatus.Pending)
                 return Result<MembershipFreezeRequestResponse>.Success(await ToResponseAsync(request,
-                    membership.OrderItem.PackageNameSnapshot, membership.MembershipStatus, LocalToday(), ct));
+                    membership.OrderItem.PackageNameSnapshot, membership.MembershipStatus, membership.PackageComponent.ComponentType, LocalToday(), ct));
             if (!CanRequestEarlyUnfreeze(request, membership.MembershipStatus, LocalToday()))
                 return StateConflict();
             request.EarlyUnfreezeRequestedAt = clock.GetUtcNow().UtcDateTime;
@@ -94,17 +104,19 @@ public sealed partial class MembershipFreezeRequestService(
             request.EarlyUnfreezeReviewNote = null;
             await repository.SaveChangesAsync(ct);
             return Result<MembershipFreezeRequestResponse>.Success(await ToResponseAsync(request,
-                membership.OrderItem.PackageNameSnapshot, membership.MembershipStatus, LocalToday(), ct));
+                membership.OrderItem.PackageNameSnapshot, membership.MembershipStatus, membership.PackageComponent.ComponentType, LocalToday(), ct));
         }, ct);
 
     private async Task<Result<MembershipFreezeRequestResponse>> SaveRequestAsync(
-        string memberId, MemberMembership membership, MembershipFreezeRequest input, MembershipFreeze? existing, CancellationToken ct)
+        string memberId, MemberMembership membership, MembershipFreezeRequest input, MembershipFreeze? existing,
+        MembershipFreezeDocumentContent? attachment, CancellationToken ct)
     {
-        var policy = await policies.GetActiveGlobalAsync(false, ct);
-        var eligibility = Evaluate(membership, policy, LocalToday());
+        var policy = existing is null && membership.PackageComponent.ComponentType != ComponentType.YOGA
+            ? await policies.GetActiveGlobalAsync(false, ct) : null;
+        var eligibility = Evaluate(membership, MembershipFreezePolicyService.Configuration(policy), LocalToday(), existing);
         if (!eligibility.Eligible)
             return Ineligible<MembershipFreezeRequestResponse>(eligibility);
-        var period = ValidatePeriod(membership, input, eligibility, existing?.Id);
+        var period = ValidatePeriod(input, eligibility);
         if (!period.IsSuccess)
             return Result<MembershipFreezeRequestResponse>.Failure(period.ErrorMessage!, period.ErrorCode!, period.StatusCode);
 
@@ -116,18 +128,17 @@ public sealed partial class MembershipFreezeRequestService(
         request.RequestedStartDate = input.StartDate!.Value;
         request.RequestedEndDate = period.Data;
         request.Reason = input.Reason!.Trim();
-        request.FreezePolicyId = policy!.Id;
-        var (days, months) = MembershipPurchaseService.PurchasedDuration(membership.OrderItem.ComponentTermsSnapshot,
-            membership.PackageComponentId, membership.PackageComponent.DurationDays, membership.PackageComponent.DurationMonths);
-        var tier = policy.TierQuotas.Single(quota => quota.Unit == (days is > 0 ? FreezeTierUnit.Days : FreezeTierUnit.Months) &&
-            quota.Duration == (days is > 0 ? days : months));
-        request.AppliedPolicySnapshot = JsonSerializer.Serialize(
-            new MembershipFreezePolicyResponse(eligibility.Policy, [new(tier.Duration, tier.Unit.ToString(), tier.MaximumCumulativeFreezeDays)]));
         if (existing is null)
+        {
+            request.FreezePolicyId = policy!.Id;
+            request.AppliedPolicySnapshot = JsonSerializer.Serialize(new MembershipFreezePolicyResponse(eligibility.Policy,
+                [], membership.GrantedFreezeAllowanceDays, membership.GrantedFreezeCount));
+            documents.Set(request, attachment!);
             repository.Add(request);
+        }
         await repository.SaveChangesAsync(ct);
         return Result<MembershipFreezeRequestResponse>.Success(await ToResponseAsync(request,
-            membership.OrderItem.PackageNameSnapshot, membership.MembershipStatus, eligibility.Today, ct), existing is null ? 201 : 200);
+            membership.OrderItem.PackageNameSnapshot, membership.MembershipStatus, membership.PackageComponent.ComponentType, eligibility.Today, ct), existing is null ? 201 : 200);
     }
 
     private async Task<Result<MembershipFreezeRequestResponse>> MutateExistingAsync(
@@ -153,23 +164,24 @@ public sealed partial class MembershipFreezeRequestService(
     private DateOnly LocalToday() => DateOnly.FromDateTime(clock.GetUtcNow().ToOffset(TimeSpan.FromHours(7)).DateTime);
 
     private async Task<MembershipFreezeRequestResponse> ToResponseAsync(
-        MembershipFreeze request, string planName, MembershipStatus status, DateOnly today, CancellationToken ct)
+        MembershipFreeze request, string planName, MembershipStatus status, ComponentType componentType, DateOnly today, CancellationToken ct)
     {
-        var response = ToResponse(request, planName, status, today);
-        return documents is not null && request.SupportingDocumentId is { } id
+        var response = ToResponse(request, planName, status, componentType, today);
+        return request.SupportingDocumentId is { } id
             ? response with { SupportingDocument = await documents.GetMetadataAsync(id, ct) } : response;
     }
 
     private static MembershipFreezeRequestResponse ToResponse(
-        MembershipFreeze request, string planName, MembershipStatus membershipStatus, DateOnly today) =>
+        MembershipFreeze request, string planName, MembershipStatus membershipStatus, ComponentType componentType, DateOnly today) =>
         new(request.Id, request.MemberMembershipId, planName, request.RequestedStartDate, request.RequestedEndDate,
             request.RequestedEndDate.DayNumber - request.RequestedStartDate.DayNumber + 1, request.Reason, Utc(request.CreatedAt),
             request.RequestStatus.ToString(), request.ReviewNote, request.ReviewedAt is { } reviewed ? Utc(reviewed) : null,
             request.EarlyUnfreezeRequestedAt is { } early ? Utc(early) : null, request.EarlyUnfreezeRequestStatus?.ToString(),
-            request.RequestStatus == FreezeRequestStatus.Pending, request.RequestStatus == FreezeRequestStatus.Pending,
+            request.RequestStatus == FreezeRequestStatus.Pending && componentType != ComponentType.YOGA, request.RequestStatus == FreezeRequestStatus.Pending,
             CanRequestEarlyUnfreeze(request, membershipStatus, today), ReadAppliedPolicy(request.AppliedPolicySnapshot),
             request.EarlyUnfreezeReviewNote,
-            request.EarlyUnfreezeReviewedAt is { } earlyReviewed ? Utc(earlyReviewed) : null);
+            request.EarlyUnfreezeReviewedAt is { } earlyReviewed ? Utc(earlyReviewed) : null,
+            ActualStartDate: request.ActualStartDate, ActualEndDate: request.ActualEndDate);
 
     private static bool CanRequestEarlyUnfreeze(MembershipFreeze request, MembershipStatus membershipStatus, DateOnly today) =>
         membershipStatus == MembershipStatus.Frozen &&

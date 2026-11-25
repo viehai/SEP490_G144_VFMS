@@ -1,3 +1,4 @@
+using VFMS.Contracts.Yoga.Validators;
 using Microsoft.EntityFrameworkCore;
 using VFMS.Contracts.Feedback;
 using VFMS.Domain.Entities;
@@ -63,19 +64,19 @@ public sealed partial class FeedbackRepository
                 b.OrderItem.PackageId == packageId, ct)) return true;
 
         // Old bookings did not record the paying order line. Attribute them only if a single package
-        // could have covered this member and class type on the gym-local date of enrolment.
+        // could have covered this member and the class level on the gym-local date of enrolment.
         var legacyBookings = await attended.Where(b => b.OrderItemId == null)
-            .Select(b => new { b.BookedAt, b.YogaClass.YogaClassTypeId }).ToListAsync(ct);
+            .Select(b => new { b.BookedAt, b.YogaClass.DifficultyLevel }).ToListAsync(ct);
         if (legacyBookings.Count == 0) return false;
         var entitlements = await _context.MemberMemberships.Where(m => m.MemberUserId == memberId &&
                 m.OrderItem.BeneficiaryUserId == memberId && m.PackageComponent.ComponentType == ComponentType.YOGA)
-            .Select(m => new { m.OrderItem.PackageId, m.PackageComponent.YogaClassTypeId, m.CreatedAt, m.StartDate, m.EndDate })
+            .Select(m => new { m.OrderItem.PackageId, m.PackageComponent.YogaDifficultyLevel, m.CreatedAt, m.StartDate, m.EndDate })
             .ToListAsync(ct);
         foreach (var booking in legacyBookings)
         {
             var date = DateOnly.FromDateTime(booking.BookedAt.AddHours(7));
             var candidates = entitlements.Where(m => m.CreatedAt <= booking.BookedAt && m.StartDate <= date && m.EndDate >= date &&
-                (m.YogaClassTypeId == null || m.YogaClassTypeId == booking.YogaClassTypeId))
+                YogaRules.PlanCovers(m.YogaDifficultyLevel, booking.DifficultyLevel))
                 .Select(m => m.PackageId).Distinct().Take(2).ToArray();
             if (candidates.Length == 1 && candidates[0] == packageId) return true;
         }

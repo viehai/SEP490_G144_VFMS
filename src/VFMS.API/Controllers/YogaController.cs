@@ -127,6 +127,12 @@ public sealed class YogaClassesController : ControllerBase
             ? this.ToActionResult(await _service.CreateSessionAsync(request, userId, ClientIp, cancellationToken))
             : Unauthorized();
 
+    [HttpPost("classes/{id:int}/sessions/weekly")]
+    public async Task<IActionResult> CreateWeeklySessions(int id, [FromBody] YogaWeeklySessionsRequest request, CancellationToken cancellationToken) =>
+        User.GetUserId() is { } userId
+            ? this.ToActionResult(await _service.CreateWeeklySessionsAsync(id, request, userId, ClientIp, cancellationToken))
+            : Unauthorized();
+
     [HttpPut("sessions/{id:int}")]
     public async Task<IActionResult> UpdateSession(int id, [FromBody] YogaSessionRequest request, CancellationToken cancellationToken) =>
         User.GetUserId() is { } userId
@@ -200,6 +206,24 @@ public sealed class YogaBookingsController : ControllerBase
     public async Task<IActionResult> Cancel(int id, [FromBody] CancelYogaBookingRequest? request, CancellationToken cancellationToken) =>
         User.GetUserId() is { } userId
             ? this.ToActionResult(await _service.CancelAsync(userId, id, request ?? new CancelYogaBookingRequest(), cancellationToken))
+            : Unauthorized();
+}
+
+/// <summary>The signed-in user's yoga plan level, for the timetable's buy / book buttons. Any role (Customers have no plan yet).</summary>
+[ApiController]
+[Route("api/yoga/my-plan")]
+[Authorize]
+[Produces("application/json")]
+public sealed class YogaMyPlanController : ControllerBase
+{
+    private readonly IYogaBookingService _service;
+
+    public YogaMyPlanController(IYogaBookingService service) => _service = service;
+
+    [HttpGet]
+    public async Task<IActionResult> Get(CancellationToken cancellationToken) =>
+        User.GetUserId() is { } userId
+            ? this.ToActionResult(await _service.GetMyPlanAsync(userId, cancellationToken))
             : Unauthorized();
 }
 

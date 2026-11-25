@@ -4,14 +4,14 @@
 
 <div class="space-y-4 border-t border-vfms-border pt-4">
     <div class="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 class="font-heading text-base font-bold text-vfms-text">Yêu cầu bảo lưu</h3>
-        <a href="/my-freeze-requests" class="inline-flex min-h-[44px] items-center text-sm font-semibold text-vfms-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary">Yêu cầu bảo lưu của tôi</a>
+        <h3 class="font-heading text-base font-bold text-vfms-text">Đăng ký bảo lưu</h3>
+        <a href="/my-freeze-requests" class="inline-flex min-h-[44px] items-center text-sm font-semibold text-vfms-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary">Quản lý yêu cầu bảo lưu</a>
     </div>
     @if (_created is { } created)
     {
         <div role="status" tabindex="-1" @ref="_successNotice" class="space-y-2 rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-900">
             <p class="font-semibold">Đã gửi yêu cầu bảo lưu. Yêu cầu đang chờ duyệt.</p>
-            <p><MembershipDate Date="@created.StartDate" /> đến <MembershipDate Date="@created.EndDate" /> · @created.RequestedDays ngày</p>
+            <p><MembershipDate Date="@created.StartDate" /> đến hết <MembershipDate Date="@created.EndDate" /> · @created.RequestedDays ngày</p>
         </div>
         <MembershipFreezeDocumentPanel RequestId="@created.FreezeRequestId" Document="@created.SupportingDocument"
                                        CanEdit="@created.CanEdit" Changed="DocumentChanged" />

@@ -108,6 +108,7 @@ public class VfmsDbContext : DbContext
     //  Supplement Store (Module 11)
     // ─────────────────────────────────────────────────────────────
     public DbSet<SupplementProduct> SupplementProducts { get; set; }
+    public DbSet<UploadedImage> UploadedImages { get; set; }
     public DbSet<SupplementOrder> SupplementOrders { get; set; }
     public DbSet<SupplementOrderItem> SupplementOrderItems { get; set; }
     public DbSet<SupplementOrderDelivery> SupplementOrderDeliveries { get; set; }
@@ -245,6 +246,12 @@ public class VfmsDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Name).HasMaxLength(256).IsRequired();
+            entity.Property(e => e.TargetAudience).HasMaxLength(4000);
+            entity.ToTable(table => table.HasCheckConstraint("CK_Packages_FreezeAllowanceOverride",
+                "([FreezeAllowanceOverrideDays] IS NULL AND [FreezeAllowanceOverrideUnit] IS NULL) OR " +
+                "([FreezeAllowanceOverrideDays] IS NOT NULL AND [FreezeAllowanceOverrideUnit] IS NOT NULL AND " +
+                "[FreezeAllowanceOverrideDays] >= 0 AND ([FreezeAllowanceOverrideUnit] = 0 OR " +
+                "([FreezeAllowanceOverrideUnit] = 1 AND [FreezeAllowanceOverrideDays] % 30 = 0)))"));
             entity.Property(e => e.Price).HasColumnType("decimal(18,2)");
             entity.Property(e => e.PackageStatus).HasConversion<string>().HasMaxLength(50);
         });
@@ -260,10 +267,7 @@ public class VfmsDbContext : DbContext
                 .HasForeignKey(e => e.PackageId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            entity.HasOne(e => e.YogaClassType)
-                .WithMany(t => t.PackageComponents)
-                .HasForeignKey(e => e.YogaClassTypeId)
-                .OnDelete(DeleteBehavior.Restrict);
+            entity.Property(e => e.YogaDifficultyLevel).HasMaxLength(20);
         });
 
         // ── Order ─────────────────────────────────────────────────
@@ -363,6 +367,8 @@ public class VfmsDbContext : DbContext
         modelBuilder.Entity<MemberMembership>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.ToTable(table => table.HasCheckConstraint("CK_MemberMemberships_GrantedFreezeAllowanceDays",
+                "[GrantedFreezeAllowanceDays] >= 0"));
             entity.Property(e => e.MembershipStatus).HasConversion<string>().HasMaxLength(50);
 
             entity.HasOne(e => e.OrderItem)
@@ -441,6 +447,14 @@ public class VfmsDbContext : DbContext
         modelBuilder.Entity<FreezePolicy>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.ToTable(table => table.HasCheckConstraint("CK_FreezePolicies_DurationUnits", """
+                ([EligibilityPaidDaysUnit] = 0 OR ([EligibilityPaidDaysUnit] = 1 AND [EligibilityPaidDays] % 30 = 0)) AND
+                ([MinimumRequestDaysUnit] = 0 OR ([MinimumRequestDaysUnit] = 1 AND [MinimumRequestDays] % 30 = 0)) AND
+                ([MinimumFreezeDaysUnit] = 0 OR ([MinimumFreezeDaysUnit] = 1 AND [MinFreezeDaysPerRequest] IS NOT NULL AND [MinFreezeDaysPerRequest] % 30 = 0)) AND
+                ([MaximumFreezeDaysUnit] = 0 OR ([MaximumFreezeDaysUnit] = 1 AND [DefaultMaxFreezeDays] % 30 = 0)) AND
+                ([DefaultFreezeAllowanceUnit] = 0 OR ([DefaultFreezeAllowanceUnit] = 1 AND [DefaultFreezeAllowanceDays] IS NOT NULL AND [DefaultFreezeAllowanceDays] % 30 = 0)) AND
+                ([DefaultFreezeAllowanceDays] IS NULL OR [DefaultFreezeAllowanceDays] >= 0)
+                """.ReplaceLineEndings(" ")));
             entity.Property(e => e.PolicyName).HasMaxLength(256).IsRequired();
             entity.Property(e => e.PolicyStatus).HasConversion<string>().HasMaxLength(20);
             entity.HasIndex(e => e.IsGlobal).IsUnique()
@@ -729,11 +743,6 @@ public class VfmsDbContext : DbContext
             entity.HasOne(e => e.YogaClassSchedule)
                 .WithMany(s => s.Waitlists)
                 .HasForeignKey(e => e.YogaClassScheduleId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            entity.HasOne(e => e.YogaClassType)
-                .WithMany(t => t.YogaWaitlists)
-                .HasForeignKey(e => e.YogaClassTypeId)
                 .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasOne(e => e.Member)
@@ -1029,6 +1038,7 @@ public class VfmsDbContext : DbContext
             entity.Property(e => e.PurchasePrice).HasColumnType("decimal(18,2)");
             entity.Property(e => e.EquipmentModel).HasMaxLength(100);
             entity.Property(e => e.EquipmentBrand).HasMaxLength(100);
+            entity.Property(e => e.ImageUrl).HasMaxLength(500);
 
             entity.HasOne(e => e.Gym)
                 .WithMany(g => g.Equipments)
@@ -1103,7 +1113,7 @@ public class VfmsDbContext : DbContext
         modelBuilder.Entity<PurchaseProposalItem>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.Property(e => e.EstimatedUnitPrice).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.UnitPrice).HasColumnType("decimal(18,2)");
 
             entity.HasOne(e => e.PurchaseProposal)
                 .WithMany(p => p.Items)
@@ -1134,6 +1144,17 @@ public class VfmsDbContext : DbContext
         });
 
         // ── SupplementProduct ─────────────────────────────────────
+        // ── UploadedImage (equipment and supplement photos) ──────
+        modelBuilder.Entity<UploadedImage>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.ImageKey).IsUnique();
+            entity.Property(e => e.FileName).HasMaxLength(255).IsRequired();
+            entity.Property(e => e.ContentType).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Content).IsRequired();
+            entity.Property(e => e.UploadedByUserId).HasMaxLength(450).IsRequired();
+        });
+
         modelBuilder.Entity<SupplementProduct>(entity =>
         {
             entity.HasKey(e => e.Id);

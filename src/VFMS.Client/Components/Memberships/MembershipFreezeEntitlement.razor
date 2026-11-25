@@ -1,0 +1,57 @@
+@using VFMS.Contracts.Memberships
+
+<div class="space-y-3">
+    @if (Freeze.GrantedFreezeCount is { } total)
+    {
+        var pending = Freeze.History.Count(period => period.Status == "Pending");
+        var available = Math.Max(0, total - Freeze.FreezeCount - pending);
+        <p class="text-base font-semibold">Còn @available / @total lượt bảo lưu</p>
+        @if (total > 0)
+        {
+            <p class="text-sm">Mỗi lượt từ @Freeze.GrantedMinFreezeDays đến @Freeze.GrantedMaxFreezeDays ngày liên tiếp.</p>
+        }
+        <p class="text-sm text-vfms-text-secondary">Đã dùng @Freeze.FreezeCount lượt · Đang chờ duyệt @pending lượt</p>
+    }
+    else
+    {
+    <dl class="grid gap-2 text-sm sm:grid-cols-3">
+        <div class="rounded-lg bg-vfms-muted p-3">
+            <dt class="text-xs font-semibold text-vfms-text-secondary">Tổng số ngày được bảo lưu</dt>
+            <dd class="mt-1 text-lg font-bold text-vfms-text">@Days(Freeze.GrantedFreezeAllowanceDays)</dd>
+        </div>
+        <div class="rounded-lg bg-vfms-muted p-3">
+            <dt class="text-xs font-semibold text-vfms-text-secondary">Đã bảo lưu</dt>
+            <dd class="mt-1 text-lg font-bold text-vfms-text">@Days(Freeze.CompletedFreezeDays)</dd>
+            @if (ReservedDays > 0)
+            {
+                <dd class="mt-1 text-xs text-vfms-text-secondary">@ReservedDays ngày đã được duyệt hoặc đang bảo lưu.</dd>
+            }
+        </div>
+        <div class="rounded-lg bg-vfms-muted p-3">
+            <dt class="text-xs font-semibold text-vfms-text-secondary">Còn được bảo lưu</dt>
+            <dd class="mt-1 text-lg font-bold text-vfms-text">@Days(Freeze.RemainingFreezeDays)</dd>
+        </div>
+    </dl>
+    @if (Freeze.GrantedFreezeAllowanceDays is > 0 and var granted)
+    {
+        <progress class="block h-2 w-full accent-vfms-primary" value="@Math.Min(Freeze.CommittedFreezeDays, granted)" max="@granted"
+                  aria-label="Số ngày đã bảo lưu và đã được duyệt"></progress>
+        <div class="flex flex-wrap justify-between gap-2 text-xs text-vfms-text-secondary">
+            <span>Đã bảo lưu và đã được duyệt @Freeze.CommittedFreezeDays/@granted ngày</span>
+            <span>Số lần bảo lưu: @Freeze.FreezeCount</span>
+        </div>
+    }
+    else
+    {
+        <p class="text-xs text-vfms-text-secondary">Số lần bảo lưu: @Freeze.FreezeCount</p>
+    }
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public MembershipFreezeSummaryResponse Freeze { get; set; } = default!;
+
+    private int ReservedDays => Math.Max(0, Freeze.CommittedFreezeDays - Freeze.CompletedFreezeDays);
+
+    private static string Days(int? days) => days is { } value ? $"{value} ngày" : "Chưa xác định";
+}

@@ -238,7 +238,7 @@
 
             <!-- 5. FREEZE POLICY -->
             <section class="mb-12" aria-labelledby="freeze-title">
-                <h2 id="freeze-title" class="@SectionTitle">Chính sách bảo lưu thẻ</h2>
+                <h2 id="freeze-title" class="@SectionTitle">Chính sách bảo lưu gói Gym</h2>
                 @if (gym.FreezePolicy is not { } policy)
                 {
                     <p class="text-sm text-[#6F6966]">Chính sách bảo lưu đang được cập nhật. Vui lòng liên hệ quầy lễ tân để được hỗ trợ.</p>
@@ -254,20 +254,15 @@
                             @if (policy.EligibilityPaidDays > 0)
                             {
                                 <li class="flex gap-2.5"><span class="text-[#B83A3A] font-bold">▪</span>
-                                    <span>Áp dụng cho gói có thời hạn từ <strong>@policy.EligibilityPaidDays ngày</strong> trở lên.</span></li>
+                                    <span>Gửi yêu cầu sau ít nhất <strong>@policy.EligibilityPaidDays ngày</strong> kể từ ngày kích hoạt gói.</span></li>
                             }
                         </ul>
-                        @if (policy.Quotas.Count > 0)
+                        @if (policy.DefaultMaxFreezeCount is { } count)
                         {
-                            <p class="@Label mt-5 mb-2">Tổng số ngày bảo lưu tối đa theo gói</p>
-                            <ul class="flex flex-wrap gap-2">
-                                @foreach (var quota in policy.Quotas)
-                                {
-                                    <li class="text-xs bg-[#ECE8E4] rounded px-3 py-1.5">
-                                        Gói @quota.Duration @(quota.Unit == MembershipFreezeTierUnits.Months ? "tháng" : "ngày"): <strong>@quota.MaximumCumulativeFreezeDays ngày</strong>
-                                    </li>
-                                }
-                            </ul>
+                            <p class="mt-5 text-sm text-vfms-text-secondary">
+                                Gói Gym mặc định có <strong class="text-vfms-text">@count lượt bảo lưu</strong>.
+                                Xem quyền lợi cụ thể trong chi tiết từng gói.
+                            </p>
                         }
                     </div>
                 }
@@ -361,8 +356,7 @@
             : "Đang cập nhật";
 
     public static string Duration(MembershipPlanCatalogItemResponse plan) =>
-        plan.DurationInMonths is > 0 ? $"{plan.DurationInMonths} tháng"
-        : plan.DurationInDays is > 0 ? $"{plan.DurationInDays} ngày"
+        plan.DurationValue is > 0 ? $"{plan.DurationValue} {(plan.DurationUnit == MembershipDurationUnit.Month ? "tháng" : "ngày")}"
         : "—";
 
     private static string GenderLabel(string restriction) => restriction switch

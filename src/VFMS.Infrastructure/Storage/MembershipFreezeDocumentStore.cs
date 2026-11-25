@@ -28,19 +28,11 @@ public sealed class MembershipFreezeDocumentStore(VfmsDbContext context) : IMemb
                     request.SupportingDocumentContent!.LongLength), request.SupportingDocumentContent!))
             .SingleOrDefaultAsync(ct);
 
-    public void Set(MembershipFreeze request, Guid id, string fileName, string contentType, byte[] content)
+    public void Set(MembershipFreeze request, MembershipFreezeDocumentContent content)
     {
-        request.SupportingDocumentId = id;
-        request.SupportingDocumentFileName = fileName;
-        request.SupportingDocumentContentType = contentType;
-        request.SupportingDocumentContent = content;
-    }
-
-    public void Remove(MembershipFreeze request)
-    {
-        request.SupportingDocumentId = null;
-        request.SupportingDocumentFileName = null;
-        request.SupportingDocumentContentType = null;
-        request.SupportingDocumentContent = null;
+        request.SupportingDocumentId = content.Document.DocumentId;
+        request.SupportingDocumentFileName = content.Document.FileName;
+        request.SupportingDocumentContentType = content.Document.ContentType;
+        request.SupportingDocumentContent = content.Content;
     }
 }
