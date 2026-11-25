@@ -354,7 +354,9 @@
     {
         ("ProfileUpdate", "Pending" or "UnderReview") => ["Approve", "Reject"],
         ("Recruitment", "Pending") => ["Interview", "Reject"],
-        ("Recruitment", "Interviewing" or "UnderReview") => ["Interview", "Hire", "Reject"],
+        ("Recruitment", "UnderReview") => ["Interview", "Hire", "Reject"],
+        // The interview is recorded once; an interviewed application is hired or rejected.
+        ("Recruitment", "Interviewing") => ["Hire", "Reject"],
         _ => []
     };
 

@@ -499,6 +499,10 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
             return Result<TrainerApplicationResponse>.Success(await ApplicationResponse(a, ct));
         if (a.ApplicationStatus is not (TrainerApplicationStatus.Pending or TrainerApplicationStatus.UnderReview or TrainerApplicationStatus.Interviewing))
             return Error<TrainerApplicationResponse>("TRAINER_INVALID_STATE", "Chỉ có thể xét duyệt hồ sơ đang chờ hoặc đang phỏng vấn.");
+        // UC 3.2 step 5 (changed, see NewScope.txt): the interview is recorded once; after that the Manager hires or rejects.
+        if (r.Action == "Interview" && a.ApplicationStatus == TrainerApplicationStatus.Interviewing)
+            return Error<TrainerApplicationResponse>("TRAINER_INTERVIEW_ALREADY_RECORDED",
+                "Hồ sơ đã được ghi nhận phỏng vấn. Chỉ ghi nhận phỏng vấn một lần, hãy tuyển dụng hoặc từ chối.");
         if (r.Action == "Hire")
         {
             if (a.ApplicationStatus is not (TrainerApplicationStatus.Interviewing or TrainerApplicationStatus.UnderReview)) return Error<TrainerApplicationResponse>("TRAINER_INTERVIEW_REQUIRED", "Cần ghi nhận phỏng vấn trước khi tuyển dụng.");
@@ -612,12 +616,7 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
         }
         if (r.Action == "Interview")
         {
-            // UC 3.2 step 5: a later interview adds to the notes instead of replacing them.
-            var entry = $"[{DateTime.UtcNow.AddHours(7):dd/MM/yyyy HH:mm}] {Note(r)}";
-            var notes = string.IsNullOrEmpty(a.InterviewNote) ? entry : a.InterviewNote + "\n" + entry;
-            if (notes.Length > 2000)
-                return Error<TrainerApplicationResponse>("TRAINER_VALIDATION", "Tổng ghi chú phỏng vấn không được vượt quá 2.000 ký tự.", 400);
-            a.InterviewNote = notes;
+            a.InterviewNote = $"[{DateTime.UtcNow.AddHours(7):dd/MM/yyyy HH:mm}] {Note(r)}";
         }
         else
             a.ReviewNote = Note(r);

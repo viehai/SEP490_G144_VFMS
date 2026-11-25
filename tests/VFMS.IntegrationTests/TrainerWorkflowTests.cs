@@ -945,22 +945,20 @@ public class TrainerWorkflowTests
         Assert.Equal(TrainerApplicationStatus.Interviewing, (await db.TrainerApplications.SingleAsync()).ApplicationStatus);
     }
 
-    // UC 3.2 steps 3 and 5: date filter; a second interview keeps the first interview's notes.
+    // UC 3.2 steps 3 and 5: date filter; the interview can be recorded only once.
     [SqlTrainerFact]
-    public async Task Repeat_interview_keeps_earlier_notes_and_the_list_filters_by_date()
+    public async Task A_second_interview_is_refused_and_the_list_filters_by_date()
     {
         await using var fixture = new TrainerTestDatabase(); await fixture.Initialize();
         var db = fixture.Db; var service = fixture.Service;
         TrainerTestDatabase.Success(await service.Submit(TrainerTestDatabase.Request, null, default));
         var application = await db.TrainerApplications.SingleAsync();
         TrainerTestDatabase.Success(await service.Review(application.Id, new("Interview", "First round"), "manager", default));
-        TrainerTestDatabase.Success(await service.Review(application.Id, new("Interview", "Second round"), "manager", default));
+        Assert.Equal("TRAINER_INTERVIEW_ALREADY_RECORDED", (await service.Review(application.Id,
+            new("Interview", "Second round"), "manager", default)).ErrorCode);
         var notes = TrainerTestDatabase.Success(await service.Application(application.Id, "manager", default)).InterviewNote!;
         Assert.Contains("First round", notes);
-        Assert.Contains("Second round", notes);
-        Assert.True(notes.IndexOf("First round", StringComparison.Ordinal) < notes.IndexOf("Second round", StringComparison.Ordinal));
-        Assert.Equal("TRAINER_VALIDATION", (await service.Review(application.Id,
-            new("Interview", new string('x', 1990)), "manager", default)).ErrorCode);
+        Assert.DoesNotContain("Second round", notes);
 
         var now = DateTime.UtcNow;
         Assert.Single(TrainerTestDatabase.Success(await service.Applications(new(From: now.AddHours(-1), To: now.AddHours(1)), "manager", default)).Items);
