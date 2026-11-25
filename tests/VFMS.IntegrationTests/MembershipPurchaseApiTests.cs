@@ -59,7 +59,7 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
         builder.Services.AddValidatorsFromAssemblyContaining<MembershipPurchaseRequestValidator>();
         if (sqlServer is null)
         {
-            var dbOptions = new DbContextOptionsBuilder<VfmsDbContext>().UseSqlite(_connection).Options;
+            var dbOptions = new DbContextOptionsBuilder<VfmsDbContext>().UseSqlite(_connection).AddInterceptors(UniqueTestPhoneInterceptor.Instance).Options;
             builder.Services.AddScoped<VfmsDbContext>(_ => new TestContext(dbOptions));
         }
         else
@@ -75,7 +75,7 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
         builder.Services.AddPersonalTrainingModule();
         builder.Services.AddLockerModule();
         builder.Services.Remove(builder.Services.Single(service =>
-            service.ImplementationType == typeof(VFMS.Infrastructure.Lockers.LockerWorker)));
+            service.ImplementationType == typeof(VFMS.Infrastructure.Workers.LockerWorker)));
         var ptWorker = builder.Services.Single(service => service.ImplementationType ==
             typeof(VFMS.Infrastructure.Workers.PersonalTrainingWorker));
         builder.Services.Remove(ptWorker);

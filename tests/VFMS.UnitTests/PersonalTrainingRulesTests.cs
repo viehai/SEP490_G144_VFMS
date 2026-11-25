@@ -44,13 +44,15 @@ public sealed class PersonalTrainingRulesTests
     }
 
     [Theory]
-    [InlineData("2026-11-17", "2026-11-23", true)]   // Tuesday -> next Monday
-    [InlineData("2026-11-20", "2026-11-23", true)]   // Friday -> Monday after: last day to hold
-    [InlineData("2026-11-21", "2026-11-23", false)]  // Saturday is too late for that Monday
+    [InlineData("2026-11-17", "2026-11-23", true)]
+    [InlineData("2026-11-20", "2026-11-23", true)]
+    [InlineData("2026-11-21", "2026-11-23", true)]
     [InlineData("2026-11-21", "2026-11-30", true)]
-    [InlineData("2026-11-16", "2026-11-16", false)]  // the current week is never allowed
-    [InlineData("2026-11-17", "2026-11-24", false)]  // not a Monday
-    public void Start_week_follows_GBR_12(string today, string start, bool allowed) =>
+    [InlineData("2026-11-16", "2026-11-16", false)]  // Same-day starts cannot provide 24 hours' notice.
+    [InlineData("2026-11-17", "2026-11-24", true)]
+    [InlineData("2026-11-17", "2026-11-18", true)]
+    [InlineData("2026-11-17", "2026-11-16", false)]
+    public void Start_date_can_be_any_future_weekday(string today, string start, bool allowed) =>
         Assert.Equal(allowed, PersonalTrainingRules.CanStartOn(DateOnly.Parse(start), DateOnly.Parse(today)));
 
     [Fact]

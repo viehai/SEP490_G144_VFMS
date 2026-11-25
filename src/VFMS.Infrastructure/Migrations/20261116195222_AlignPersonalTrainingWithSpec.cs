@@ -11,7 +11,7 @@ namespace VFMS.Infrastructure.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            // Readiness changes now apply immediately (GBR-98): settle scheduled changes that are already due.
+            // Readiness changes now apply immediately (GBR-104): settle scheduled changes that are already due.
             migrationBuilder.Sql("""
                 UPDATE TrainerProfiles SET AcceptingNewMembers = PendingAcceptingNewMembers
                 WHERE PendingAcceptingNewMembers IS NOT NULL

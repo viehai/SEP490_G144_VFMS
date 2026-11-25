@@ -49,6 +49,13 @@ public sealed partial class MembershipPurchaseApiTests
             new PTTrainerAbsenceReportRequest());
         Assert.True(reported.StatusCode == HttpStatusCode.OK, await reported.Content.ReadAsStringAsync());
         Assert.Equal("Cancelled", (await reported.Content.ReadFromJsonAsync<PTSessionResponse>())!.Status);
+        // GBR-103: the make-up unit is usable only after the PT's response period (end of the next day).
+        var waiting = await ContractOf(member, id);
+        Assert.Equal(0, waiting.MakeUpUnits);
+        Assert.Equal(waiting.EndDate.AddDays(14), waiting.MakeUpDeadline);   // UC 4.5: shown while the unit waits too
+        Assert.Equal(LocalTime(first.Date.AddDays(2), TimeOnly.MinValue).UtcDateTime,
+            waiting.Sessions.Single(s => s.Id == first.Id).MakeUpAvailableAt);
+        _clock.Now = LocalTime(first.Date.AddDays(2), new TimeOnly(0, 1));
         var afterFirst = await ContractOf(member, id);
         Assert.Equal(1, afterFirst.MakeUpUnits);
         Assert.Equal(afterFirst.EndDate.AddDays(14), afterFirst.MakeUpDeadline);
@@ -69,6 +76,7 @@ public sealed partial class MembershipPurchaseApiTests
         using var decided = await manager.PostAsJsonAsync($"/api/pt/manager/attendance-disputes/{second.Id}/decision",
             new PTAttendanceDisputeDecision(PTDisputeDecisions.PTAbsent, "Front desk confirmed the PT was away"));
         Assert.True(decided.StatusCode == HttpStatusCode.OK, await decided.Content.ReadAsStringAsync());
+        _clock.Now = LocalTime(second.Date.AddDays(2), new TimeOnly(0, 1));   // both units past the PT's response period
         Assert.Equal(2, (await ContractOf(member, id)).MakeUpUnits);
         var processed = (await manager.GetFromJsonAsync<PagedResponse<PTAttendanceDispute>>(
             "/api/pt/manager/attendance-disputes?processed=true&page=1"))!.Items;
@@ -89,7 +97,7 @@ public sealed partial class MembershipPurchaseApiTests
 
         _clock.Now = LocalTime(session.Date.AddDays(1), new TimeOnly(1, 0));
         await using (var scope = _app.Services.CreateAsyncScope())
-            await scope.ServiceProvider.GetRequiredService<PersonalTrainingService>().ProcessAttendance(CancellationToken.None);
+            await scope.ServiceProvider.GetRequiredService<VFMS.Application.Interfaces.IPersonalTrainingService>().ProcessAttendance(CancellationToken.None);
         using var late = await trainer.PostAsJsonAsync($"/api/pt/sessions/{session.Id}/attendance", false);
         Assert.Equal(HttpStatusCode.Conflict, late.StatusCode);
         var after = await ContractOf(member, id);
@@ -165,15 +173,72 @@ public sealed partial class MembershipPurchaseApiTests
             Assert.Equal(3, await db.PTSessions.CountAsync(s => s.PTPurchaseId == id && s.SessionStatus == PTSessionStatus.PendingFreeze));
         }
 
+        // The Member first sees what the schedule would be if the Manager approves.
+        var outcome = (await member.GetFromJsonAsync<PTWithdrawPreview>($"/api/pt/freezes/{created.Id}/withdraw-preview"))!;
+        Assert.Empty(outcome.Items);
+        Assert.Equal(contract.Sessions.Count, outcome.Schedule.Count);
+
         using var withdrawn = await member.PostAsync($"/api/pt/freezes/{created.Id}/withdraw", null);
         Assert.True(withdrawn.StatusCode == HttpStatusCode.OK, await withdrawn.Content.ReadAsStringAsync());
-        Assert.Equal("Withdrawn", (await withdrawn.Content.ReadFromJsonAsync<PTFreezeResponse>())!.Status);
+        var requestedWithdraw = (await withdrawn.Content.ReadFromJsonAsync<PTFreezeResponse>())!;
+        Assert.Equal("Pending", requestedWithdraw.Status); // nothing changes until the Manager decides
+        Assert.Equal("Pending", requestedWithdraw.ChangeRequestStatus);
+        Assert.Equal("Withdraw", requestedWithdraw.ChangeRequestType);
+        await using (var scope = _app.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+            Assert.Equal(3, await db.PTSessions.CountAsync(s => s.PTPurchaseId == id && s.SessionStatus == PTSessionStatus.FreezeHold));
+        }
+        using var twice = await member.PostAsync($"/api/pt/freezes/{created.Id}/withdraw", null);
+        Assert.Equal(HttpStatusCode.Conflict, twice.StatusCode);
+        using var manager = Client("manager", "Manager");
+        using var blocked = await manager.PostAsJsonAsync($"/api/pt/manager/freezes/{created.Id}/decision", new PTFreezeDecision(true, null));
+        Assert.Equal(HttpStatusCode.Conflict, blocked.StatusCode);
+
+        // A rejection needs a reason and leaves the freeze as it was; the Member may ask again.
+        using var noReason = await manager.PostAsJsonAsync($"/api/pt/manager/freezes/{created.Id}/change-decision", new PTFreezeDecision(false, " "));
+        Assert.Equal(HttpStatusCode.BadRequest, noReason.StatusCode);
+        using var rejected = await manager.PostAsJsonAsync($"/api/pt/manager/freezes/{created.Id}/change-decision", new PTFreezeDecision(false, "Đã duyệt xong"));
+        Assert.True(rejected.IsSuccessStatusCode, await rejected.Content.ReadAsStringAsync());
+        var rejectedFreeze = (await rejected.Content.ReadFromJsonAsync<PTFreezeResponse>())!;
+        Assert.Equal("Rejected", rejectedFreeze.ChangeRequestStatus);
+        Assert.Equal("Pending", rejectedFreeze.Status);
+        using var asked = await member.PostAsync($"/api/pt/freezes/{created.Id}/withdraw", null);
+        Assert.True(asked.IsSuccessStatusCode, await asked.Content.ReadAsStringAsync());
+        var list = (await manager.GetFromJsonAsync<PagedResponse<PTFreezeResponse>>("/api/pt/manager/freezes/page?processed=false&page=1"))!;
+        Assert.Contains(list.Items, f => f.Id == created.Id && f.ChangeRequestStatus == "Pending");
+
+        using var approvedWithdraw = await manager.PostAsJsonAsync($"/api/pt/manager/freezes/{created.Id}/change-decision", new PTFreezeDecision(true, null));
+        Assert.True(approvedWithdraw.IsSuccessStatusCode, await approvedWithdraw.Content.ReadAsStringAsync());
+        Assert.Equal("Withdrawn", (await approvedWithdraw.Content.ReadFromJsonAsync<PTFreezeResponse>())!.Status);
         var after = await ContractOf(member, id);
         Assert.Equal(contract.Sessions.Count, after.Sessions.Count);
         Assert.All(after.Sessions, s => Assert.Equal("Scheduled", s.Status));
         Assert.False(after.FreezeUsed);
         using var again = await member.PostAsJsonAsync($"/api/pt/contracts/{id}/freezes", freeze);
         Assert.Equal(HttpStatusCode.Created, again.StatusCode);
+    }
+
+    [Fact]
+    public async Task FreezeSlotOptionsShowTheTrainersTableWithFreeBusyAndUnusableSlots()
+    {
+        using var member = Client("member", "Member");
+        var (id, contract) = await ActivatedPTContract(member);
+        var from = contract.StartDate.AddDays(8);
+
+        using var response = await member.PostAsJsonAsync($"/api/pt/contracts/{id}/freeze-slot-options", new PTFreezeSlotOptionsRequest(from));
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+        var slots = (await response.Content.ReadFromJsonAsync<PTRescheduleSlot[]>())!;
+        Assert.NotEmpty(slots);
+        Assert.All(slots.Where(s => s.Date < from), s => Assert.Equal("Unavailable", s.Status));
+        Assert.Contains(slots, s => s.Date >= from && s.Status == "Available");
+        // A day that already carries a session of the contract cannot take another one.
+        var taken = contract.Sessions.First(s => s.Date >= from).Date;
+        Assert.DoesNotContain(slots, s => s.Date == taken && s.Status == "Available");
+
+        using var other = Client("gift", "Customer");
+        using var forbidden = await other.PostAsJsonAsync($"/api/pt/contracts/{id}/freeze-slot-options", new PTFreezeSlotOptionsRequest(from));
+        Assert.Equal(HttpStatusCode.NotFound, forbidden.StatusCode);
     }
 
     [Fact]

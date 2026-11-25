@@ -27,6 +27,7 @@ builder.Services.AddScoped(sp => new PromotionApiClient(CreateApiHttpClient(), s
 
 builder.Services.AddScoped(sp => new TrainerApiClient(CreateApiHttpClient(), sp.GetRequiredService<AuthSession>()));
 builder.Services.AddScoped(sp => new PersonalTrainingApiClient(CreateApiHttpClient(), sp.GetRequiredService<AuthSession>()));
+builder.Services.AddScoped(sp => new LockerApiClient(sp.GetRequiredService<VfmsApiClient>()));
 
 await builder.Build().RunAsync();
 

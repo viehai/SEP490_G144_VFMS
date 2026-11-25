@@ -64,6 +64,10 @@
                     }
                     @if (auth.User.IsInRole("Member"))
                     {
+                        <NavLink href="/my-locker" Match="NavLinkMatch.Prefix" ActiveClass="text-[#B83A3A] underline underline-offset-4"
+                                 class="@MyMembershipsClass">
+                            Tủ đồ
+                        </NavLink>
                         <NavLink href="/equipment-issues" Match="NavLinkMatch.All" ActiveClass="text-[#B83A3A] underline underline-offset-4"
                                  class="@MyMembershipsClass">
                             Báo hỏng

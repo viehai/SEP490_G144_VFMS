@@ -72,6 +72,8 @@ public sealed class PersonalTrainingApiClient(HttpClient http, AuthSession sessi
     public Task<PagedResponse<PTAttendanceDispute>> AttendanceDisputesAsync(bool processed, int page) =>
         Send<PagedResponse<PTAttendanceDispute>>(HttpMethod.Get,
             $"manager/attendance-disputes?processed={(processed ? "true" : "false")}&page={page}");
+    public Task<IReadOnlyList<PTDisputeCheckIn>> DisputeCheckInsAsync(int id) =>
+        Send<IReadOnlyList<PTDisputeCheckIn>>(HttpMethod.Get, $"manager/attendance-disputes/{id}/check-ins");
     public Task<PTSessionResponse> DecideDisputeAsync(int id, PTAttendanceDisputeDecision request) =>
         Send<PTSessionResponse>(HttpMethod.Post, $"manager/attendance-disputes/{id}/decision", request);
     public Task<PTSessionResponse> NoteAsync(int id, PTNoteRequest request) =>
@@ -94,6 +96,14 @@ public sealed class PersonalTrainingApiClient(HttpClient http, AuthSession sessi
         Send<PTFreezeResponse>(HttpMethod.Put, $"freezes/{id}/slots", request);
     public Task<PTFreezeResponse> WithdrawFreezeAsync(int id) =>
         Send<PTFreezeResponse>(HttpMethod.Post, $"freezes/{id}/withdraw");
+    public Task<PTRescheduleSlot[]> FreezeSlotOptionsAsync(int contract, PTFreezeSlotOptionsRequest request) =>
+        Send<PTRescheduleSlot[]>(HttpMethod.Post, $"contracts/{contract}/freeze-slot-options", request);
+    public Task<PTWithdrawPreview> PreviewWithdrawAsync(int id) =>
+        Send<PTWithdrawPreview>(HttpMethod.Get, $"freezes/{id}/withdraw-preview");
+    public Task<PTFreezeChangePreview> PreviewFreezeChangeAsync(int id) =>
+        Send<PTFreezeChangePreview>(HttpMethod.Get, $"manager/freezes/{id}/change-preview");
+    public Task<PTFreezeResponse> DecideFreezeChangeAsync(int id, PTFreezeDecision request) =>
+        Send<PTFreezeResponse>(HttpMethod.Post, $"manager/freezes/{id}/change-decision", request);
     public Task<PTReplacementTrainer[]> ReplacementTrainersAsync(int contract) =>
         Send<PTReplacementTrainer[]>(HttpMethod.Get, $"contracts/{contract}/replacement-trainers");
     public Task<PTTrainerChangePreview> PreviewTrainerChangeAsync(int contract, PTTrainerChangeRequest request) =>

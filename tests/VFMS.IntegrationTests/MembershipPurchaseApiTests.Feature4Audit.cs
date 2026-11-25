@@ -66,7 +66,7 @@ public sealed partial class MembershipPurchaseApiTests
         using var saved = await member.PostAsJsonAsync($"/api/pt/contracts/{id}/review", valid);
         Assert.True(saved.StatusCode == HttpStatusCode.Created, await saved.Content.ReadAsStringAsync());
         Assert.True((await ContractOf(member, id)).HasReview);
-        // POST-1 / GBR-102: one published review per contract, for the trainer of the final session.
+        // POST-1 / GBR-108: one published review per contract, for the trainer of the final session.
         using var again = await member.PostAsJsonAsync($"/api/pt/contracts/{id}/review", valid);
         Assert.Equal(HttpStatusCode.Conflict, again.StatusCode);
         await using (var scope = _app.Services.CreateAsyncScope())
@@ -153,7 +153,7 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.True(requested.StatusCode == HttpStatusCode.Created, await requested.Content.ReadAsStringAsync());
         var session = await Disputed(member, trainer, contract.Sessions[0]);
 
-        // GBR-97: a session flagged 'Pending Freeze' is never forfeited, also through a dispute.
+        // GBR-103: a session flagged 'Pending Freeze' is never forfeited, also through a dispute.
         using var absent = await manager.PostAsJsonAsync($"/api/pt/manager/attendance-disputes/{session.Id}/decision",
             new PTAttendanceDisputeDecision(PTDisputeDecisions.MemberAbsent, "Member was away"));
         Assert.True(absent.StatusCode == HttpStatusCode.OK, await absent.Content.ReadAsStringAsync());
@@ -172,14 +172,14 @@ public sealed partial class MembershipPurchaseApiTests
         profile.AcceptingNewMembers = false;
         profile.NotAcceptingSince = Today.AddDays(-90);
         await db.SaveChangesAsync();
-        var service = scope.ServiceProvider.GetRequiredService<PersonalTrainingService>();
+        var service = scope.ServiceProvider.GetRequiredService<VFMS.Application.Interfaces.IPersonalTrainingService>();
         async Task<TrainerProfile> Swept(DateOnly day)
         {
             await service.ExpireInactiveTrainers(day, default);
             return await db.TrainerProfiles.AsNoTracking().SingleAsync(p => p.PTUserId == "buyer");
         }
 
-        // GBR-98: 90 days 'Not Accepting', but the contract is still running, so the 60 days have not started.
+        // GBR-104: 90 days 'Not Accepting', but the contract is still running, so the 60 days have not started.
         var running = await Swept(Today);
         Assert.Equal((true, Today), (running.IsActive, running.NotAcceptingCountFrom));
 

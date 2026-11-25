@@ -1,0 +1,332 @@
+@using VFMS.Client.Components.Operations
+@using VFMS.Contracts.Lockers
+@inject LockerApiClient Api
+@inject ToastService Toasts
+@implements IDisposable
+@* UC 5.2 renewal, UC 5.3 return and settlement, UC 5.4 clearance and relocation, UC 5.6 key handover for one locker contract. *@
+
+@{ var rental = Item.Rental; var now = _now; }
+<div class="space-y-5">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+        <h3 class="font-heading text-lg font-extrabold">Tủ @rental.Locker.Number · @Item.MemberName</h3>
+        <StatusBadge Status="@LockerText.ContractTone(rental.Status)" Label="@LockerText.Contract(rental.Status)" />
+    </div>
+    <dl class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-sm">
+        <dt class="text-[#6F6966]">Điện thoại</dt><dd>@Item.Phone</dd>
+        <dt class="text-[#6F6966]">Mã hợp đồng</dt><dd>@rental.ContractNumber</dd>
+        <dt class="text-[#6F6966]">Loại thuê</dt><dd>@(rental.Type == "Daily" ? "Theo ngày" : $"{rental.TermMonths} tháng")</dd>
+        @if (rental.ExpiresAt is { } expires)
+        {
+            <dt class="text-[#6F6966]">@(rental.Type == "Daily" ? "Hết hạn lúc" : "Hạn thuê đến")</dt>
+            <dd>@(rental.Type == "Daily" ? LockerText.Local(expires) : LockerText.LastDay(expires))</dd>
+        }
+        @if (rental.CollectBy is { } by)
+        {
+            <dt class="text-[#6F6966]">Hạn nhận chìa</dt><dd>@LockerText.Local(by)</dd>
+        }
+        <dt class="text-[#6F6966]">Cọc chìa</dt><dd>@OperationsText.Money(rental.DepositHeld)</dd>
+        @if (rental.OverdueDays > 0)
+        {
+            <dt class="text-[#6F6966]">Quá hạn</dt><dd>@rental.OverdueDays ngày · phí @OperationsText.Money(rental.OverdueFees)</dd>
+        }
+        @if (rental.ClearanceAfter is { } clear)
+        {
+            <dt class="text-[#6F6966]">Được dọn tủ từ</dt><dd>@LockerText.Local(clear)</dd>
+        }
+        @if (rental.ReminderSentAt is { } reminder)
+        {
+            <dt class="text-[#6F6966]">Đã nhắc trước hạn</dt><dd>@LockerText.Local(reminder)</dd>
+        }
+        @if (rental.OverdueNoticeSentAt is { } notice)
+        {
+            <dt class="text-[#6F6966]">Đã báo quá hạn</dt><dd>@LockerText.Local(notice)</dd>
+        }
+    </dl>
+    <Alerts Error="@_error" />
+
+    @if (rental.Status == "PendingHandover")
+    {
+        <div class="space-y-3 border-t border-[#D8D1CD] pt-4">
+            <h4 class="text-sm font-bold">Giao chìa (đơn trực tuyến đã thanh toán)</h4>
+            <label class="flex items-center gap-2 text-sm"><input type="checkbox" @bind="_identity" disabled="@_busy" /> Đã xác minh danh tính hội viên</label>
+            <label class="flex items-center gap-2 text-sm"><input type="checkbox" @bind="_terms" disabled="@_busy" /> Hội viên đồng ý nội quy tủ</label>
+            <button type="button" class="@Ui.PrimaryButton" disabled="@(_busy || !_identity || !_terms)" @onclick="HandoverAsync">Xác nhận giao chìa</button>
+        </div>
+    }
+
+    @if (rental.ReplacementLockerId is { } replacement)
+    {
+        <div class="space-y-3 border-t border-[#D8D1CD] pt-4">
+            <h4 class="text-sm font-bold">Đổi sang tủ thay thế</h4>
+            <p class="text-sm">Hội viên đã chọn tủ thay thế. Đổi chìa rồi xác nhận, hợp đồng giữ nguyên hạn và cọc, không thu phí.</p>
+            <button type="button" class="@Ui.PrimaryButton" disabled="@_busy" @onclick="() => RelocateAsync(replacement)">Xác nhận đã đổi tủ</button>
+        </div>
+    }
+
+    @if (rental.CanRenew)
+    {
+        <div class="space-y-3 border-t border-[#D8D1CD] pt-4">
+            <h4 class="text-sm font-bold">Gia hạn tại quầy (thuê tháng)</h4>
+            @if (_renewal is null)
+            {
+                <p class="text-xs text-[#6F6966]">Phí quá hạn (nếu có) được cộng vào tiền gia hạn. Kỳ mới tính từ hạn cũ.</p>
+                <div class="flex flex-wrap items-end gap-3">
+                    <label class="@Ui.Label">Thời hạn
+                        <select class="@Ui.Field" @bind="_renewPolicy" disabled="@_busy">
+                            @foreach (var policy in Policies.Where(p => p.Type != "Daily"))
+                            {
+                                <option value="@policy.Id">@LockerText.Duration(policy) · @OperationsText.Money(policy.RentalFee)</option>
+                            }
+                        </select>
+                    </label>
+                    <label class="@Ui.Label">Thanh toán
+                        <select class="@Ui.Field" @bind="_renewMethod" disabled="@_busy"><option value="Cash">Tiền mặt</option><option value="VietQR">VietQR</option></select>
+                    </label>
+                    <button type="button" class="@Ui.PrimaryButton" disabled="@(_busy || _renewPolicy == 0)"
+                            @onclick="() => RunAsync(async () => _renewal = await Api.DeskRenewAsync(rental.Id, new LockerRenewalRequest(_renewPolicy, _renewMethod)))">Tạo đơn gia hạn</button>
+                </div>
+            }
+            else
+            {
+                <CollectPayment Order="_renewal" Method="@_renewMethod" Now="now" Busy="_busy" OnCash="CollectRenewalAsync" OnCancel="CancelRenewalAsync" />
+            }
+        </div>
+    }
+
+    @if (rental.Status is "Active" or "Overdue" or "Expired" && rental.HandedOverAt is not null)
+    {
+        <div class="space-y-3 border-t border-[#D8D1CD] pt-4">
+            <h4 class="text-sm font-bold">Trả tủ &amp; tất toán cọc</h4>
+            @if (rental.ReturnedAt is null)
+            {
+                <label class="flex items-center gap-2 text-sm"><input type="checkbox" @bind="_lockerEmpty" disabled="@_busy" /> Tủ đã trống</label>
+                <label class="flex items-center gap-2 text-sm"><input type="checkbox" @bind="_keyLost" disabled="@_busy" /> Chìa bị mất hoặc hỏng (mất cọc)</label>
+                <button type="button" class="@Ui.Button" disabled="@(_busy || !_lockerEmpty)"
+                        @onclick="() => RunAsync(async () => _quote = await Api.ReturnAsync(rental.Id, new LockerReturnRequest(_lockerEmpty, _keyLost)))">Ghi nhận trả tủ</button>
+            }
+            else if (_quote is { } quote)
+            {
+                <dl class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-sm">
+                    <dt class="text-[#6F6966]">Phí quá hạn cần thu</dt><dd>@OperationsText.Money(quote.AdditionalAmountDue)</dd>
+                    <dt class="text-[#6F6966]">Cọc chìa</dt><dd>@OperationsText.Money(quote.DepositHeld)</dd>
+                    <dt class="text-[#6F6966]">Hoàn cọc</dt><dd>@OperationsText.Money(quote.RefundAmount)</dd>
+                    <dt class="text-[#6F6966]">Mất cọc</dt><dd>@OperationsText.Money(quote.ForfeitedDeposit)</dd>
+                </dl>
+                @if (quote.AdditionalAmountDue > 0 && _settlement is null)
+                {
+                    <div class="flex flex-wrap items-end gap-3">
+                        <label class="@Ui.Label">Thu phí bằng
+                            <select class="@Ui.Field" @bind="_settleMethod" disabled="@_busy"><option value="Cash">Tiền mặt</option><option value="VietQR">VietQR</option></select>
+                        </label>
+                        <button type="button" class="@Ui.PrimaryButton" disabled="@_busy"
+                                @onclick="() => RunAsync(async () => _settlement = await Api.StartSettlementAsync(rental.Id, new LockerSettlementRequest(_keyLost, _settleMethod)))">Thu phí quá hạn</button>
+                    </div>
+                }
+                @if (_settlement is { } settlement && settlement.Status != "Paid")
+                {
+                    <CollectPayment Order="settlement" Method="@_settleMethod" Now="now" Busy="_busy"
+                                    OnCash="CollectSettlementAsync" OnCancel="CancelSettlementAsync" />
+                }
+                @if (quote.AdditionalAmountDue <= 0 || _settlement is { Status: "Paid" })
+                {
+                    @if (quote.RefundAmount > 0)
+                    {
+                        <div class="flex flex-wrap items-end gap-3">
+                            <label class="@Ui.Label">Hoàn cọc bằng
+                                <select class="@Ui.Field" @bind="_refundMethod" disabled="@_busy"><option value="Cash">Tiền mặt</option><option value="BankTransfer">Chuyển khoản</option></select>
+                            </label>
+                            @if (_refundMethod == "BankTransfer")
+                            {
+                                <label class="@Ui.Label">Mã giao dịch<input class="@Ui.Field" maxlength="100" @bind="_refundRef" disabled="@_busy" /></label>
+                            }
+                        </div>
+                    }
+                    <button type="button" class="@Ui.PrimaryButton" disabled="@_busy" @onclick="TerminateAsync">Kết thúc hợp đồng</button>
+                }
+            }
+        </div>
+    }
+
+    @if (rental.ClearanceAfter is { } after && rental.ReturnedAt is null && now >= after && rental.Status == "Overdue")
+    {
+        <div class="space-y-3 border-t border-[#D8D1CD] pt-4">
+            <h4 class="text-sm font-bold">Dọn tủ quá hạn (cần quản lý xác nhận)</h4>
+            <p class="text-xs text-[#6F6966]">Mở tủ cùng quản lý, ghi lại đồ bỏ lại. Một quản lý khác sẽ xác nhận để kết thúc hợp đồng: mất cọc@(rental.Type == "Daily" ? "" : $", ghi nợ phí quá hạn tối đa 7 ngày").</p>
+            <label class="flex items-center gap-2 text-sm"><input type="checkbox" @bind="_noBelongings" disabled="@_busy" /> Tủ trống, không có đồ bỏ lại</label>
+            @if (!_noBelongings)
+            {
+                @for (var i = 0; i < _items.Count; i++)
+                {
+                    var item = _items[i];
+                    <div class="flex gap-2" @key="item">
+                        <input class="@Ui.Field !mt-0" aria-label="Tên đồ" placeholder="Tên đồ" maxlength="200" @bind="item.Name" disabled="@_busy" />
+                        <input class="@Ui.Field !mt-0 w-24" type="number" min="1" max="10000" aria-label="Số lượng" @bind="item.Quantity" disabled="@_busy" />
+                        <button type="button" class="@Ui.Button" aria-label="Bỏ dòng" disabled="@_busy" @onclick="() => _items.Remove(item)">×</button>
+                    </div>
+                }
+                <button type="button" class="@Ui.Button" disabled="@(_busy || _items.Count >= 100)" @onclick="() => _items.Add(new())">+ Thêm đồ</button>
+            }
+            <button type="button" class="@Ui.PrimaryButton" disabled="@_busy" @onclick="ClearanceAsync">Gửi biên bản kiểm kê</button>
+        </div>
+    }
+
+    @if (rental.Status == "Abandoned" && rental.OutstandingAmount is > 0 && rental.OutstandingPaidAt is null)
+    {
+        <div class="space-y-3 border-t border-[#D8D1CD] pt-4">
+            <h4 class="text-sm font-bold">Thu phí tủ còn nợ</h4>
+            <p class="text-sm">Hội viên nợ <strong>@OperationsText.Money(rental.OutstandingAmount.Value)</strong> (phí quá hạn tối đa 7 ngày). Thu tiền mặt rồi trả đồ đã kiểm kê. Nợ này chặn thuê tủ mới đến khi thu xong.</p>
+            <button type="button" class="@Ui.PrimaryButton" disabled="@_busy"
+                    @onclick="CollectOutstandingAsync">Đã thu @OperationsText.Money(rental.OutstandingAmount.Value)</button>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public LockerStaffRental Item { get; set; } = null!;
+    [Parameter] public IReadOnlyList<LockerPolicy> Policies { get; set; } = [];
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private sealed class Inventory { public string Name { get; set; } = ""; public int Quantity { get; set; } = 1; }
+
+    private readonly CancellationTokenSource _lifetime = new();
+    private DateTime _now = DateTime.UtcNow;
+    private bool _identity, _terms, _lockerEmpty, _keyLost, _noBelongings, _busy;
+    private int _renewPolicy;
+    private string _renewMethod = "Cash", _settleMethod = "Cash", _refundMethod = "Cash", _refundRef = "";
+    private LockerCheckout? _renewal, _settlement;
+    private LockerSettlementQuote? _quote;
+    private readonly List<Inventory> _items = [new()];
+    private string? _error;
+    private int _loadedFor;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_renewPolicy == 0)
+            _renewPolicy = Policies.FirstOrDefault(p => p.Type != "Daily")?.Id ?? 0;
+        // A returned contract shows its settlement quote again after a reload.
+        if (Item.Rental.ReturnedAt is not null && _quote is null && _loadedFor != Item.Rental.Id)
+        {
+            _loadedFor = Item.Rental.Id;
+            try { _quote = await Api.SettlementQuoteAsync(Item.Rental.Id, _keyLost, _lifetime.Token); }
+            catch (ApiException ex) { _error = ex.Message; }
+        }
+    }
+
+    protected override void OnInitialized() => _ = TickAsync(_lifetime.Token);
+
+    // The QR countdown ticks every second; unpaid VietQR orders are re-read every 5 seconds.
+    private async Task TickAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+            var seconds = 0;
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                _now = DateTime.UtcNow;
+                if (++seconds % 5 == 0 && !_busy)
+                {
+                    try
+                    {
+                        if (_renewal is { Status: "Pending" } renewal && _renewMethod == "VietQR")
+                            _renewal = await Api.CounterOrderAsync(renewal.OrderNumber, ct);
+                        if (_settlement is { Status: "Pending" } settlement && _settleMethod == "VietQR")
+                            _settlement = await Api.CounterOrderAsync(settlement.OrderNumber, ct);
+                        if (_renewal is { Status: "Paid" })
+                        {
+                            _renewal = null;
+                            Toasts.Show("Đã gia hạn thuê tủ thành công.");
+                            await InvokeAsync(OnChanged.InvokeAsync);
+                        }
+                    }
+                    catch (ApiException) { }
+                }
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private async Task RunAsync(Func<Task> work)
+    {
+        if (_busy) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            await work();
+            await OnChanged.InvokeAsync();
+        }
+        catch (ApiException ex) { _error = ex.Message; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        finally { _busy = false; }
+    }
+
+    private Task HandoverAsync() => RunAsync(async () =>
+    {
+        await Api.HandoverAsync(Item.Rental.Id, new LockerHandoverRequest(_terms, _identity), _lifetime.Token);
+        Toasts.Show("Đã cập nhật hợp đồng thành công.");
+    });
+
+    private Task RelocateAsync(int lockerId) => RunAsync(async () =>
+    {
+        await Api.ConfirmRelocationAsync(Item.Rental.Id, lockerId, _lifetime.Token);
+        Toasts.Show("Đã cập nhật hợp đồng thành công.");
+    });
+
+    private Task CollectRenewalAsync() => RunAsync(async () =>
+    {
+        await Api.ConfirmCashAsync(_renewal!.OrderNumber, _renewal.AmountDue, _lifetime.Token);
+        _renewal = null;
+        Toasts.Show("Đã gia hạn thuê tủ thành công.");
+    });
+
+    private Task CancelRenewalAsync() => RunAsync(async () =>
+    {
+        await Api.CancelCounterOrderAsync(_renewal!.OrderNumber, _lifetime.Token);
+        _renewal = null;
+    });
+
+    private Task CollectSettlementAsync() => RunAsync(async () =>
+    {
+        await Api.ConfirmCashAsync(_settlement!.OrderNumber, _settlement.AmountDue, _lifetime.Token);
+        _settlement = _settlement with { Status = "Paid" };
+        Toasts.Show("Đã thu phí tủ thành công.");
+    });
+
+    private Task CancelSettlementAsync() => RunAsync(async () =>
+    {
+        await Api.CancelCounterOrderAsync(_settlement!.OrderNumber, _lifetime.Token);
+        _settlement = null;
+    });
+
+    private Task CollectOutstandingAsync() => RunAsync(async () =>
+    {
+        await Api.CollectOutstandingAsync(Item.Rental.Id, Item.Rental.OutstandingAmount!.Value, _lifetime.Token);
+        Toasts.Show("Đã cập nhật khoản phí thành công.");
+    });
+
+    private Task TerminateAsync() => RunAsync(async () =>
+    {
+        var refund = _quote is { RefundAmount: > 0 } ? _refundMethod : null;
+        var result = await Api.TerminateAsync(Item.Rental.Id, new LockerTerminationRequest(
+            _keyLost, true, true, _settlement?.OrderNumber, refund, refund == "BankTransfer" ? _refundRef.Trim() : null), _lifetime.Token);
+        // MSG-40 when the whole deposit is returned, MSG-45 when it is forfeited.
+        Toasts.Show(result.RefundedDeposit > 0
+            ? $"Đã trả tủ {result.Locker.Number} thành công. Hoàn cọc {OperationsText.Money(result.RefundedDeposit)} cho hội viên."
+            : $"Đã kết thúc hợp đồng tủ {result.Locker.Number}. Cọc chìa bị mất.");
+    });
+
+    private Task ClearanceAsync() => RunAsync(async () =>
+    {
+        var items = _noBelongings ? [] : _items.Where(i => !string.IsNullOrWhiteSpace(i.Name)).Select(i => new LockerInventoryItem(i.Name.Trim(), i.Quantity)).ToArray();
+        await Api.RequestClearanceAsync(Item.Rental.Id, new LockerClearanceRequest(items, _noBelongings), _lifetime.Token);
+        Toasts.Show("Đã gửi biên bản kiểm kê, chờ quản lý xác nhận.");
+    });
+
+    public void Dispose()
+    {
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+    }
+}

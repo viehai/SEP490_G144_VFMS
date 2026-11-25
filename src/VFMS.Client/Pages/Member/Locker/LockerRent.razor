@@ -1,0 +1,120 @@
+@page "/my-locker/rent"
+@layout PublicLayout
+@using Microsoft.AspNetCore.Authorization
+@using VFMS.Client.Components.Operations
+@using VFMS.Client.Components.Lockers
+@using VFMS.Contracts.Lockers
+@attribute [Authorize(Roles = "Member")]
+@inject LockerApiClient Api
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<PageTitle>Thuê tủ | Victor Fitness</PageTitle>
+
+<section class="mx-auto min-w-0 max-w-4xl space-y-6 px-[20px] pb-16 pt-28 font-body" aria-labelledby="rent-title" aria-busy="@_loading.ToString().ToLowerInvariant()">
+    <PageHeader Overline="VFMS / TỦ ĐỒ" Title="Thuê tủ trực tuyến" Description="Chọn thời hạn và một tủ còn trống. Thuê theo ngày chỉ làm tại quầy lễ tân.">
+        <a href="/my-locker" class="@Ui.Button">← Tủ của tôi</a>
+    </PageHeader>
+    <Alerts Error="@_error" />
+
+    @if (_loading)
+    {
+        <p role="status" class="text-sm text-vfms-text-secondary">Đang tải…</p>
+    }
+    else if (_blocked is not null)
+    {
+        <p role="alert" class="@Ui.Error">@_blocked</p>
+    }
+    else
+    {
+        <div class="@Ui.Card space-y-3">
+            <h2 class="text-sm font-bold">1. Thời hạn thuê</h2>
+            <div class="grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Thời hạn thuê">
+                @foreach (var policy in _policies)
+                {
+                    <label class="@PolicyCard(policy.Id)">
+                        <input type="radio" name="policy" class="sr-only" checked="@(_policyId == policy.Id)" @onchange="() => _policyId = policy.Id" disabled="@_busy" />
+                        <span class="text-sm font-bold">@LockerText.Duration(policy)</span>
+                        <span class="text-xs text-vfms-text-secondary">@OperationsText.Money(policy.RentalFee) + cọc chìa @OperationsText.Money(policy.Deposit)</span>
+                    </label>
+                }
+            </div>
+        </div>
+
+        <div class="@Ui.Card space-y-3">
+            <h2 class="text-sm font-bold">2. Chọn tủ</h2>
+            <LockerGrid Slots="_grid" SelectedId="_lockerId" Selectable="s => s.Status == AvailableStatus && !_busy" OnSelect="s => _lockerId = s.Id" />
+        </div>
+
+        @if (_policies.FirstOrDefault(p => p.Id == _policyId) is { } chosen)
+        {
+            <div class="@Ui.Card space-y-3">
+                <p class="text-sm">Tổng thanh toán: <strong>@OperationsText.Money(chosen.RentalFee + chosen.Deposit)</strong> (phí thuê + cọc chìa, cọc được hoàn khi trả chìa đúng hạn).</p>
+                <p class="text-xs text-vfms-text-secondary">Tủ được giữ 20 phút. Bạn cần bấm "Tiếp tục thanh toán" trong 10 phút đầu, sau đó chuyển khoản trước 15 phút.</p>
+                <button type="button" class="@Ui.PrimaryButton" disabled="@(_busy || _lockerId is null)" @onclick="RentAsync">@(_busy ? "Đang giữ tủ…" : "Giữ tủ và tiếp tục")</button>
+            </div>
+        }
+    }
+</section>
+
+@code {
+    private const string AvailableStatus = "Available";
+    private readonly CancellationTokenSource _lifetime = new();
+    private LockerPolicy[] _policies = [];
+    private LockerSlot[] _grid = [];
+    private int _policyId;
+    private int? _lockerId;
+    private string? _blocked;
+    private string? _error;
+    private bool _loading = true;
+    private bool _busy;
+
+    private string PolicyCard(int id) => "flex cursor-pointer flex-col gap-1 rounded-lg border p-3 transition " +
+        (id == _policyId ? "border-[#B83A3A] bg-[#F3E4E2]" : "border-[#D8D1CD] bg-[#F8F5F2] hover:border-[#B83A3A]");
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var ct = _lifetime.Token;
+            if (await Api.MyRentalAsync(ct) is not null)
+                _blocked = "Mỗi hội viên chỉ được thuê tối đa 1 tủ tại một thời điểm.";
+            else if ((await Api.OutstandingAsync(ct)).Amount is > 0 and var owed)
+                _blocked = $"Bạn còn khoản phí tủ chưa thanh toán {OperationsText.Money(owed)}. Vui lòng thanh toán tại quầy lễ tân trước khi thuê tủ mới.";
+            else
+            {
+                _policies = (await Api.PricingAsync(ct)).Where(p => p.Type != "Daily").ToArray();
+                _grid = await Api.GridAsync(ct);
+                _policyId = _policies.FirstOrDefault()?.Id ?? 0;
+            }
+        }
+        catch (ApiException ex) { _error = ex.Message; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        _loading = false;
+    }
+
+    private async Task RentAsync()
+    {
+        if (_busy || _lockerId is not { } locker || _policyId == 0) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            var order = await Api.RentAsync(new LockerRentalRequest(locker, _policyId), _lifetime.Token);
+            Navigation.NavigateTo($"/locker-checkout/{Uri.EscapeDataString(order.OrderNumber)}");
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+            try { _grid = await Api.GridAsync(_lifetime.Token); } catch (ApiException) { }
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        finally { _busy = false; }
+    }
+
+    public void Dispose()
+    {
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+    }
+}

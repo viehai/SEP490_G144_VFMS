@@ -1,0 +1,193 @@
+@using VFMS.Client.Components.Operations
+@using VFMS.Contracts.Lockers
+@inject LockerApiClient Api
+@inject ToastService Toasts
+@implements IDisposable
+@* UC 5.2: Staff creates a walk-in rental for an Available locker, collects payment and hands over the key. *@
+
+<div class="space-y-4">
+    <h3 class="text-sm font-extrabold">Thuê tại quầy · Tủ @Slot.Number</h3>
+    <Alerts Error="@_error" />
+
+    @if (_checkout is { } checkout)
+    {
+        <p class="text-sm">Đơn <strong>@checkout.OrderNumber</strong> · <strong>@OperationsText.Money(checkout.AmountDue)</strong> (@(Policies.FirstOrDefault(p => p.Id == _policyId)?.Type == "Daily" ? "cọc chìa" : "phí thuê + cọc chìa"))</p>
+        @if (checkout.Status == "Paid")
+        {
+            <p role="status" class="@Ui.Notice">Đã nhận đủ tiền. Xác minh hội viên rồi giao chìa.</p>
+        }
+        else if (_method == "Cash")
+        {
+            <p class="text-sm">Thu <strong>@OperationsText.Money(checkout.AmountDue)</strong> tiền mặt rồi xác nhận giao chìa.</p>
+        }
+        else
+        {
+            <LockerQr Checkout="checkout" Now="_now" />
+        }
+        <label class="flex items-center gap-2 text-sm"><input type="checkbox" @bind="_identity" disabled="@_busy" /> Đã xác minh danh tính hội viên</label>
+        <label class="flex items-center gap-2 text-sm"><input type="checkbox" @bind="_terms" disabled="@_busy" /> Hội viên đồng ý nội quy tủ</label>
+        <div class="flex flex-wrap gap-2">
+            <button type="button" class="@Ui.PrimaryButton" disabled="@(_busy || !_identity || !_terms || (_method != "Cash" && checkout.Status != "Paid"))" @onclick="HandoverAsync">
+                @(_busy ? "Đang xử lý…" : _method == "Cash" ? "Xác nhận đã thu tiền & giao chìa" : "Xác nhận giao chìa")
+            </button>
+            @if (checkout.Status != "Paid")
+            {
+                <button type="button" class="@Ui.DangerButton" disabled="@_busy" @onclick="CancelAsync">Hủy đơn</button>
+            }
+        </div>
+    }
+    else
+    {
+        <form class="space-y-3" @onsubmit="SearchAsync" @onsubmit:preventDefault>
+            <label class="@Ui.Label">Tìm hội viên (tên hoặc số điện thoại)
+                <div class="mt-1 flex gap-2">
+                    <input class="@Ui.Field !mt-0" maxlength="100" @bind="_search" disabled="@_busy" />
+                    <button type="submit" class="@Ui.Button" disabled="@(_busy || string.IsNullOrWhiteSpace(_search))">Tìm</button>
+                </div>
+            </label>
+        </form>
+        @if (_members is { Length: 0 })
+        {
+            <p role="status" class="text-sm text-vfms-text-secondary">Không tìm thấy hội viên phù hợp.</p>
+        }
+        else if (_members is not null)
+        {
+            <ul class="divide-y divide-[#ECE8E4] rounded-lg border border-[#D8D1CD]">
+                @foreach (var member in _members.Skip((_memberPage - 1) * PageSize).Take(PageSize))
+                {
+                    <li @key="member.Id" class="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                        <span>@member.Name · @member.Phone</span>
+                        @if (member.Eligible)
+                        {
+                            <button type="button" class="@(_member?.Id == member.Id ? Ui.PrimaryButton : Ui.Button)" @onclick="() => _member = member">@(_member?.Id == member.Id ? "Đã chọn" : "Chọn")</button>
+                        }
+                        else
+                        {
+                            <span class="text-xs text-vfms-text-secondary">Chưa đủ điều kiện: cần gói Gym hiệu lực, chưa có tủ và không nợ phí tủ</span>
+                        }
+                    </li>
+                }
+            </ul>
+            <Pager Page="_memberPage" PageSize="PageSize" TotalCount="_members.Length" Noun="hội viên" Disabled="_busy" OnPage="page => _memberPage = page" />
+        }
+        @if (_member is not null)
+        {
+            <div class="grid gap-3 sm:grid-cols-2">
+                <label class="@Ui.Label">Loại thuê
+                    <select class="@Ui.Field" @bind="_policyId" disabled="@_busy">
+                        @foreach (var policy in Policies)
+                        {
+                            <option value="@policy.Id">@LockerText.Duration(policy) · @(policy.Type == "Daily" ? $"Chỉ cọc chìa {OperationsText.Money(policy.Deposit)}" : $"{OperationsText.Money(policy.RentalFee)} + cọc {OperationsText.Money(policy.Deposit)}")</option>
+                        }
+                    </select>
+                </label>
+                <label class="@Ui.Label">Thanh toán
+                    <select class="@Ui.Field" @bind="_method" disabled="@_busy">
+                        <option value="Cash">Tiền mặt</option>
+                        <option value="VietQR">VietQR</option>
+                    </select>
+                </label>
+            </div>
+            <p class="text-xs text-vfms-text-secondary">Thuê theo ngày chỉ thu cọc chìa, tạo trong giờ mở cửa và hết hạn lúc đóng cửa.</p>
+            <button type="button" class="@Ui.PrimaryButton" disabled="@(_busy || _policyId == 0)" @onclick="CreateAsync">@(_busy ? "Đang tạo…" : "Tạo hợp đồng")</button>
+        }
+    }
+</div>
+
+@code {
+    private const int PageSize = 10;
+    private int _memberPage = 1;
+    [Parameter, EditorRequired] public LockerSlot Slot { get; set; } = null!;
+    [Parameter, EditorRequired] public IReadOnlyList<LockerPolicy> Policies { get; set; } = [];
+    [Parameter] public EventCallback OnDone { get; set; }
+
+    private readonly CancellationTokenSource _lifetime = new();
+    private string _search = "";
+    private LockerMember[]? _members;
+    private LockerMember? _member;
+    private int _policyId;
+    private string _method = "Cash";
+    private LockerCheckout? _checkout;
+    private DateTime _now = DateTime.UtcNow;
+    private bool _identity, _terms, _busy;
+    private string? _error;
+
+    protected override void OnInitialized()
+    {
+        _policyId = Policies.FirstOrDefault()?.Id ?? 0;
+        _ = TickAsync(_lifetime.Token);
+    }
+
+    // The QR countdown ticks every second; a VietQR order is re-read every 5 seconds until it is paid.
+    private async Task TickAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+            var seconds = 0;
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                _now = DateTime.UtcNow;
+                if (_checkout is { Status: "Pending" } order && _method == "VietQR" && ++seconds % 5 == 0 && !_busy)
+                {
+                    try { _checkout = await Api.CounterOrderAsync(order.OrderNumber, ct); } catch (ApiException) { }
+                }
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private async Task SearchAsync()
+    {
+        if (_busy || string.IsNullOrWhiteSpace(_search)) return;
+        _memberPage = 1;
+        await Run(async () => { _members = await Api.MembersAsync(_search.Trim(), _lifetime.Token); _member = null; });
+    }
+
+    private async Task CreateAsync()
+    {
+        if (_busy || _member is null) return;
+        await Run(async () =>
+            _checkout = await Api.CounterRentAsync(new CounterLockerRentalRequest(_member.Id, Slot.Id, _policyId, _method), _lifetime.Token));
+    }
+
+    private async Task HandoverAsync()
+    {
+        if (_busy || _checkout is not { } order) return;
+        await Run(async () =>
+        {
+            decimal? cash = _method == "Cash" ? order.AmountDue : null;
+            await Api.HandoverAsync(order.RentalId, new LockerHandoverRequest(_terms, _identity, cash), _lifetime.Token);
+            Toasts.Show("Đã tạo hợp đồng thuê tủ thành công.");
+            await OnDone.InvokeAsync();
+        });
+    }
+
+    private async Task CancelAsync()
+    {
+        if (_busy || _checkout is not { } order) return;
+        await Run(async () =>
+        {
+            await Api.CancelCounterOrderAsync(order.OrderNumber, _lifetime.Token);
+            _checkout = null;
+            await OnDone.InvokeAsync();
+        });
+    }
+
+    private async Task Run(Func<Task> work)
+    {
+        _busy = true;
+        _error = null;
+        try { await work(); }
+        catch (ApiException ex) { _error = ex.Message; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        finally { _busy = false; }
+    }
+
+    public void Dispose()
+    {
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+    }
+}

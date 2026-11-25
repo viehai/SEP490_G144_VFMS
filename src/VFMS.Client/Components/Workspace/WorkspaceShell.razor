@@ -45,6 +45,8 @@
                     <NavLink href="/manager/pt-packages" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">16</span> Quản lý gói PT <span aria-hidden="true">↗</span></NavLink>
                     <NavLink href="/manager/pt-freeze-requests" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">17</span> Duyệt bảo lưu PT <span aria-hidden="true">↗</span></NavLink>
                     <NavLink href="/manager/pt-attendance-disputes" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">18</span> Tranh chấp điểm danh <span aria-hidden="true">↗</span></NavLink>
+                    <NavLink href="/manager/lockers" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">19</span> Danh mục tủ &amp; giá <span aria-hidden="true">↗</span></NavLink>
+                    <NavLink href="/manager/locker-clearances" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">20</span> Xác nhận dọn tủ <span aria-hidden="true">↗</span></NavLink>
                     <p class="workspace-sidebar-label mt-4 px-3">MARKETING</p>
                     <NavLink href="/manager/promotions" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">15</span> Khuyến mãi <span aria-hidden="true">↗</span></NavLink>
                     <p class="workspace-sidebar-label mt-4 px-3">KHÁCH HÀNG</p>
@@ -72,8 +74,6 @@
             {
                 <AuthorizeView Roles="Customer,Member">
                     <NavLink href="/my-vouchers" class="workspace-nav-link" ActiveClass="workspace-nav-link--active">Voucher của tôi</NavLink>
-                </AuthorizeView>
-                <AuthorizeView Roles="Member">
                     <NavLink href="/my-memberships" Match="NavLinkMatch.Prefix" class="workspace-nav-link" ActiveClass="workspace-nav-link--active">Gói của tôi</NavLink>
                     <NavLink href="/my-pt-packages" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active">Gói PT</NavLink>
                 </AuthorizeView>
@@ -86,6 +86,8 @@
                     <NavLink href="/staff/purchase-proposals" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">07</span> Đề xuất mua sắm <span aria-hidden="true">↗</span></NavLink>
                     <NavLink href="/staff/supplement-orders" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">08</span> Đơn bổ sung <span aria-hidden="true">↗</span></NavLink>
                     <NavLink href="/staff/membership-cash-receipt" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">09</span> Đơn gói tập <span aria-hidden="true">↗</span></NavLink>
+                    <NavLink href="/staff/lockers" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">◼</span> Sơ đồ tủ <span aria-hidden="true">↗</span></NavLink>
+                    <NavLink href="/staff/locker-contracts" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">◼</span> Hợp đồng tủ <span aria-hidden="true">↗</span></NavLink>
                     <p class="workspace-sidebar-label mt-4 px-3">KHÁCH HÀNG</p>
                     <NavLink href="/staff/feedback" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">10</span> Phản hồi khách hàng <span aria-hidden="true">↗</span></NavLink>
                     <NavLink href="/staff/consultations" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">11</span> Tư vấn trực tuyến <span aria-hidden="true">↗</span></NavLink>

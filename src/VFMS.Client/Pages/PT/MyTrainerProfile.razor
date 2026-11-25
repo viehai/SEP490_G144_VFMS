@@ -19,8 +19,9 @@
             <section id="pt-basic-profile" class="trainer-panel trainer-stack trainer-anchor">
                 <div class="trainer-row">
                     <TrainerAvatar Trainer="detail.Profile" />
-                    <div><h2>@detail.Profile.FullName</h2><p class="trainer-muted">@detail.Profile.TrainerRole · @detail.Profile.Specialty · @detail.Profile.Level · @detail.Profile.ExperienceYears năm kinh nghiệm</p>
-                    <p class="trainer-muted">@(detail.Profile.AverageRating > 0 ? $"{detail.Profile.AverageRating:0.0} / 5 sao" : "Chưa có đánh giá")</p></div>
+                    <div><h2>@detail.Profile.FullName</h2><p class="trainer-muted">@detail.Profile.TrainerRole · @detail.Profile.Specialty · @PTDisplay.Level(detail.Profile.Level) · @detail.Profile.ExperienceYears năm kinh nghiệm</p>
+                    @if (detail.Profile.AverageRating > 0) { <StarRating Value="detail.Profile.AverageRating" /> }
+                    else { <p class="trainer-muted">Chưa có đánh giá</p> }</div>
                 </div>
                 @* UC 4.12: accepting status belongs to Trainer Role PT only. *@
                 @if (detail.Profile.TrainerRole == "PT")
@@ -30,8 +31,9 @@
                         <strong>@(detail.Profile.IsAcceptingNewMembers ? "Đang nhận học viên mới" : "Không nhận học viên mới")</strong>
                         @if (!detail.Profile.IsAcceptingNewMembers && detail.Profile.NotAcceptingSince is { } since)
                         {
-                            <p class="trainer-muted">Từ ngày @since.ToString("dd/MM/yyyy"). 60 ngày được tính từ ngày @((detail.Profile.NotAcceptingCountFrom ?? since).ToString("dd/MM/yyyy")); nếu còn hợp đồng đang chạy, mốc này lùi tới ngày hợp đồng cuối kết thúc. Vẫn không nhận học viên quá 60 ngày thì mất quyền PT.</p>
+                            <p class="trainer-muted">Ngừng nhận từ ngày @since.ToString("dd/MM/yyyy"). Đã ghi nhận @detail.Profile.NotAcceptingAccumulatedDays ngày ngừng nhận; bộ đếm tạm dừng khi còn hợp đồng đang chạy. Tích lũy quá 60 ngày thì mất quyền PT.</p>
                         }
+                        <p class="trainer-muted">Nhận học viên liên tục đủ 10 ngày mới xóa số ngày ngừng nhận đã tích lũy. Ngừng nhận sớm hơn sẽ tiếp tục bộ đếm cũ.</p>
                     </div>
                     <button type="button" class="trainer-button" disabled="@_saving" @onclick="ToggleReadinessAsync">
                         @(detail.Profile.IsAcceptingNewMembers ? "Ngừng nhận học viên" : "Sẵn sàng nhận học viên")
@@ -70,7 +72,7 @@
                 }
                 else
                 {
-                    <p class="trainer-muted">Manager duyệt trước khi thay đổi được công bố.</p>
+                    <p class="trainer-muted">quản lý duyệt trước khi thay đổi được công bố.</p>
                     <div class="trainer-row">
                         <button type="button" class="trainer-button" aria-pressed="@(_editingCredentials && _replacement is null)"
                                 @onclick="() => OpenCredentials(null)">Thêm chứng chỉ mới</button>

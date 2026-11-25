@@ -7,6 +7,7 @@
         <strong>@(IsUpdate ? "Đã gửi hồ sơ chứng chỉ để duyệt" : "Đã nhận hồ sơ ứng tuyển")</strong>
         <p>Mã theo dõi <strong>@receipt.TrackingCode</strong> · Lần nộp @receipt.SubmissionAttempt</p>
         <div><TrainerStatus Status="@receipt.Status" /></div>
+        <a class="trainer-link" href="@($"/careers/trainer/status?code={Uri.EscapeDataString(receipt.TrackingCode)}")">Xem trạng thái hồ sơ</a>
         @if (IsUpdate)
         {
             <button type="button" class="trainer-button" @onclick="ResetReceipt">Gửi hồ sơ khác</button>
@@ -34,14 +35,17 @@ else
             }
             else
             {
+                @if (_prefill is not null)
+                {
+                    <p class="trainer-muted" role="note">Thông tin lấy từ tài khoản của bạn nên không chỉnh sửa tại đây. Cần đổi thì cập nhật trong hồ sơ cá nhân.</p>
+                }
                 <div class="trainer-grid">
-                    <label>Họ và tên<input class="trainer-input" autocomplete="name" maxlength="256" required @bind="_name" />@FieldError("FullName")</label>
-                    <label>Email<input class="trainer-input" type="email" autocomplete="email" maxlength="256" required @bind="_email" readonly="@LockEmail" />@FieldError("Email")</label>
-                    <label>Số điện thoại<input class="trainer-input" type="tel" autocomplete="tel" required maxlength="16" @bind="_phone" />@FieldError("PhoneNumber")</label>
-                    <label>CCCD<input class="trainer-input" inputmode="numeric" required maxlength="12" minlength="12" @bind="_citizenId" />@FieldError("CitizenId")</label>
-                    <label>Ngày sinh<input class="trainer-input" type="date" autocomplete="bday" required @bind="_birthDate" />@FieldError("DateOfBirth")</label>
+                    <label>Họ và tên<input class="trainer-input" autocomplete="name" maxlength="50" required @bind="_name" readonly="@LockAccount" />@FieldError("FullName")</label>
+                    <label>Email<input class="trainer-input" type="email" autocomplete="email" maxlength="256" required @bind="_email" readonly="@(LockEmail || LockAccount)" />@FieldError("Email")</label>
+                    <label>Số điện thoại<input class="trainer-input" type="tel" autocomplete="tel" required maxlength="16" placeholder="0912 345 678" @bind="_phone" readonly="@LockAccount" />@FieldError("PhoneNumber")</label>
+                    <label>Ngày sinh<input class="trainer-input" type="date" autocomplete="bday" required min="1900-01-01" max="@LatestBirthDate" @bind="_birthDate" readonly="@LockBirthDate" />@FieldError("DateOfBirth")</label>
                     <label>Giới tính
-                        <select class="trainer-input" required @bind="_gender">
+                        <select class="trainer-input" required @bind="_gender" disabled="@LockGender">
                             <option value="">Chọn giới tính</option><option value="Male">Nam</option><option value="Female">Nữ</option><option value="Other">Khác</option>
                         </select>
                         @FieldError("Gender")
@@ -53,7 +57,7 @@ else
                         @FieldError("TrainerRole")
                     </label>
                     <label>Chuyên môn<input class="trainer-input" maxlength="200" required placeholder="Ví dụ: tăng cơ, Hatha yoga" @bind="_specialty" />@FieldError("Specialty")</label>
-                    <label>Số năm kinh nghiệm<input class="trainer-input" type="number" min="0" max="80" required @bind="_experience" />@FieldError("ExperienceYears")</label>
+                    <label>Số năm kinh nghiệm<input class="trainer-input" type="number" min="0" max="@MaxExperience" required @bind="_experience" />@FieldError("ExperienceYears")</label>
                 </div>
                 <label>Giới thiệu chuyên môn<textarea class="trainer-input" rows="4" maxlength="4000" required @bind="_bio"></textarea>@FieldError("Bio")</label>
                 <BannedWordPreview Text="@_bio" Words="_bannedWords" />
@@ -87,7 +91,7 @@ else
                 }
                     <fieldset class="trainer-certificate-links">
                         <legend>Link chứng chỉ</legend>
-                        <p class="trainer-muted">Gửi từ 1 đến 5 chứng chỉ bằng tệp hoặc link HTTPS.</p>
+                        <p class="trainer-muted">Gửi từ 1 đến 5 chứng chỉ bằng tệp hoặc liên kết HTTPS.</p>
                         @for (var index = 0; index < _links.Count; index++)
                         {
                             var link = _links[index];
@@ -108,23 +112,45 @@ else
                                 @if (index > 0)
                                 {
                                     <button type="button" class="trainer-button" aria-label="@($"Bỏ {label.ToLowerInvariant()}")"
-                                            @onclick="() => _links.Remove(link)">Bỏ link</button>
+                                            @onclick="() => _links.Remove(link)">Bỏ liên kết</button>
                                 }
                             </div>
                         }
                         <button type="button" class="trainer-button" disabled="@(_links.Count + _files.Count >= 5)"
-                                @onclick="() => _links.Add(new())">+ Thêm link</button>
+                                @onclick="() => _links.Add(new())">+ Thêm liên kết</button>
                     </fieldset>
                 <TrainerFeedback Error="@_fileError" />
                 @FieldError("Certificates")
             </div>
-            <label class="trainer-row"><input type="checkbox" required @bind="_consent" /> Tôi đồng ý cho VFMS xử lý thông tin và xác minh hồ sơ này.</label>
-            @FieldError("Consent")
+            <div class="trainer-stack">
+                <label class="trainer-row"><input type="checkbox" required disabled="@(!_termsOpened)" @bind="_consent" /> Tôi đã đọc và đồng ý với điều khoản xác minh dữ liệu và quyền riêng tư.</label>
+                <button type="button" class="trainer-link text-left" @onclick="() => _termsDialog = true">Đọc điều khoản xác minh dữ liệu và quyền riêng tư</button>
+                @if (!_termsOpened) { <small class="trainer-muted">Mở và đọc điều khoản để có thể xác nhận đồng ý.</small> }
+                @FieldError("Consent")
+            </div>
             <button type="submit" class="trainer-button trainer-primary">@(_busy ? "Đang xử lý…" : IsUpdate ? "Gửi yêu cầu duyệt" : "Nộp hồ sơ")</button>
         </fieldset>
         <TrainerFeedback Error="@_error" />
     </form>
 }
+
+<WorkspaceModal Open="_termsDialog" Eyebrow="Ứng tuyển huấn luyện viên" Title="Điều khoản xác minh dữ liệu và quyền riêng tư" OnClose="CloseTerms">
+    <div class="trainer-stack">
+        <p>Khi nộp hồ sơ ứng tuyển, bạn đồng ý với các nội dung sau:</p>
+        <ul class="trainer-list">
+            <li>VFMS thu thập họ tên, email, số điện thoại, ngày sinh, giới tính, chuyên môn, kinh nghiệm, giới thiệu và chứng chỉ bạn cung cấp để xét tuyển huấn luyện viên.</li>
+            <li>Quản lý được xem hồ sơ để xác minh danh tính và chứng chỉ. Tệp chứng chỉ được lưu riêng tư, chỉ quản lý có quyền xem trong khi hồ sơ chờ duyệt.</li>
+            <li>Nộp hồ sơ không tạo tài khoản đăng nhập. Tài khoản chỉ được tạo hoặc cấp quyền khi quản lý tuyển dụng bạn.</li>
+            <li>Email của bạn dùng để gửi mã theo dõi, kết quả xét duyệt và liên kết thiết lập mật khẩu khi được tuyển. Mã theo dõi dùng để xem trạng thái hồ sơ tại trang tra cứu.</li>
+            <li>Phần giới thiệu và chuyên môn sẽ được công khai trên hồ sơ huấn luyện viên nếu bạn được tuyển, và được kiểm duyệt theo danh sách từ ngữ không được phép.</li>
+            <li>Thời điểm bạn đồng ý được ghi lại cùng hồ sơ.</li>
+        </ul>
+        <div class="trainer-row">
+            <button type="button" class="trainer-button trainer-primary" @onclick="AcceptTerms">Tôi đã đọc và đồng ý</button>
+            <button type="button" class="trainer-button" @onclick="CloseTerms">Đóng</button>
+        </div>
+    </div>
+</WorkspaceModal>
 
 @code {
     [Parameter] public TrainerProfileResponse? Profile { get; set; }
@@ -137,21 +163,42 @@ else
     private const long MaxFileBytes = 5 * 1024 * 1024;
     private readonly List<SelectedCertificate> _files = [];
     private readonly List<CertificateLink> _links = [new()];
-    private string _name = "", _email = "", _phone = "", _citizenId = "", _gender = "", _specialty = "", _trainerRole = "", _bio = "";
+    private string _name = "", _email = "", _phone = "", _gender = "", _specialty = "", _trainerRole = "", _bio = "";
     private DateOnly? _birthDate;
     private int _experience, _fileVersion;
-    private bool _consent, _busy;
+    private bool _consent, _busy, _termsDialog, _termsOpened;
+    private TrainerApplicantPrefill? _prefill;
     private string? _error, _fileError;
     private Dictionary<string, string> _fieldErrors = [];
     private IReadOnlyList<string> _bannedWords = [];
     private TrainerApplicationReceipt? _receipt;
     private bool IsUpdate => Profile is not null;
     private bool LockEmail => IsUpdate && !string.IsNullOrWhiteSpace(Email);
+    private bool LockAccount => _prefill is not null;
+    private bool LockBirthDate => _prefill?.DateOfBirth is not null;
+    private bool LockGender => _prefill?.Gender is not null;
+    private static string LatestBirthDate => TrainerApplicantRules.Today().AddYears(-TrainerApplicantRules.MinimumAge).ToString("yyyy-MM-dd");
+    private int MaxExperience => _birthDate is { } birth && birth.Year >= 1900
+        ? Math.Max(0, TrainerApplicantRules.AgeOn(birth, TrainerApplicantRules.Today()) - TrainerApplicantRules.MinimumAge) : 80;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        if (Profile is not { } profile)
+        if (Profile is null)
+        {
+            // UC 3.1: a signed-in Customer or Member applies with their account details; guests and other roles fill the form.
+            try
+            {
+                _prefill = await Api.ApplicantPrefillAsync();
+                _name = _prefill.FullName;
+                _email = _prefill.Email;
+                _phone = _prefill.PhoneNumber;
+                _birthDate = _prefill.DateOfBirth;
+                _gender = _prefill.Gender ?? "";
+            }
+            catch (AuthApiException) { _prefill = null; }
             return;
+        }
+        var profile = Profile;
         _name = profile.FullName;
         // UC 3.3: the API takes identity and personal details from the account and TrainerProfile.
         _email = Email ?? "";
@@ -208,7 +255,7 @@ else
     {
         if (_busy) return;
         _error = null;
-        var request = new SubmitTrainerApplicationRequest(_name.Trim(), _email.Trim(), _phone.Trim(), _citizenId.Trim(),
+        var request = new SubmitTrainerApplicationRequest(_name.Trim(), _email.Trim(), _phone.Trim(),
             _birthDate ?? default, _gender, _specialty.Trim(), _experience, _bio.Trim(), _consent,
             _files.Select(file => file.Input with { ReplacesCertificateId = string.IsNullOrEmpty(file.Replaces) ? null : file.Replaces }).ToList(),
             IsUpdate ? "ProfileUpdate" : "Recruitment",
@@ -218,7 +265,8 @@ else
             IsUpdate ? null : _trainerRole);
         _fieldErrors = new SubmitTrainerApplicationValidator().Validate(request).Errors
             .Select(issue => FieldKey(issue.PropertyName))
-            .Distinct().ToDictionary(key => key, FieldMessage);
+            .Distinct().ToDictionary(key => key, key => FieldMessage(key) +
+                (LockAccount && key is "FullName" or "Email" or "PhoneNumber" or "DateOfBirth" ? " Thông tin này lấy từ tài khoản, hãy cập nhật trong hồ sơ cá nhân." : ""));
         var targets = request.Certificates.Select(file => file.ReplacesCertificateId)
             .Concat((request.CertificateLinks ?? []).Select(link => link.ReplacesCertificateId)).OfType<string>().ToArray();
         if (targets.Distinct().Count() != targets.Length)
@@ -231,7 +279,7 @@ else
         {
             _receipt = await Api.SubmitAsync(request);
             // MSG-04
-            Toasts.Show(IsUpdate ? "Đã tạo yêu cầu cập nhật chứng chỉ thành công. Chứng chỉ đang chờ Manager duyệt."
+            Toasts.Show(IsUpdate ? "Đã tạo yêu cầu cập nhật chứng chỉ thành công. Chứng chỉ đang chờ quản lý duyệt."
                 : "Đã tạo hồ sơ ứng tuyển thành công.");
             _files.Clear();
             _links.Clear();
@@ -244,9 +292,8 @@ else
             _bannedWords = TrainerContentRules.ProhibitedWords(ex.ErrorCode, ex.Message);
             _error = ex.ErrorCode switch
             {
-                "TRAINER_CHANGE_PENDING" => "Bạn đang có yêu cầu cập nhật chờ Manager duyệt.",
-                "TRAINER_NOT_ELIGIBLE" => "Bạn không đủ điều kiện ứng tuyển: email hoặc CCCD thuộc tài khoản nhân viên hoặc huấn luyện viên đang hoạt động.",
-                "TRAINER_IDENTITY_MISSING" => "Hồ sơ huấn luyện viên chưa có CCCD đã xác minh. Liên hệ Manager để cập nhật.",
+                "TRAINER_CHANGE_PENDING" => "Bạn đang có yêu cầu cập nhật chờ quản lý duyệt.",
+                "TRAINER_NOT_ELIGIBLE" => "Bạn không đủ điều kiện ứng tuyển: email hoặc số điện thoại thuộc tài khoản nhân viên hoặc huấn luyện viên đang hoạt động.",
                 "TRAINER_RECRUITMENT_CLOSED" => "Phòng tập đang tạm dừng nhận hồ sơ ứng tuyển. Vui lòng quay lại sau.",
                 "TRAINER_FORBIDDEN" => IsUpdate ? "Chỉ huấn luyện viên đang hoạt động mới gửi được yêu cầu này."
                     : "Tài khoản đang đăng nhập không được nộp hồ sơ ứng tuyển. Đăng xuất hoặc dùng tài khoản khách hàng.",
@@ -260,7 +307,7 @@ else
     }
 
     private static readonly HashSet<string> SimpleFields =
-        ["FullName", "Email", "PhoneNumber", "CitizenId", "DateOfBirth", "Gender", "TrainerRole", "Specialty", "ExperienceYears", "Bio", "Consent"];
+        ["FullName", "Email", "PhoneNumber", "DateOfBirth", "Gender", "TrainerRole", "Specialty", "ExperienceYears", "Bio", "Consent"];
 
     private static string FieldKey(string property) => SimpleFields.Contains(property) ? property : "Certificates";
 
@@ -270,20 +317,31 @@ else
 
     private void ResetReceipt() => _receipt = null;
 
+    private void CloseTerms()
+    {
+        _termsDialog = false;
+        _termsOpened = true;
+    }
+
+    private void AcceptTerms()
+    {
+        _consent = true;
+        CloseTerms();
+    }
+
     private static string FieldMessage(string field) => field switch
     {
-        "FullName" => "Nhập họ tên hợp lệ, tối đa 256 ký tự.",
-        "Email" => "Nhập email hợp lệ.",
-        "PhoneNumber" => "Nhập số điện thoại gồm 9–15 chữ số, có thể bắt đầu bằng dấu +.",
-        "CitizenId" => "CCCD phải có đúng 12 chữ số.",
-        "DateOfBirth" => "Ngày sinh phải từ năm 1900 và trước hôm nay.",
+        "FullName" => "Nhập họ tên chỉ gồm chữ cái, tối đa 50 ký tự.",
+        "Email" => "Nhập email hợp lệ, tên miền cần có dấu chấm (ví dụ gmail.com).",
+        "PhoneNumber" => "Nhập số điện thoại Việt Nam, ví dụ 0912345678 hoặc +84912345678.",
+        "DateOfBirth" => "Ứng viên phải từ 18 tuổi trở lên.",
         "Gender" => "Chọn giới tính.",
         "TrainerRole" => "Chọn vị trí ứng tuyển PT hoặc Yoga.",
         "Specialty" => "Nhập chuyên môn, tối đa 200 ký tự.",
-        "ExperienceYears" => "Nhập số năm kinh nghiệm từ 0 đến 80.",
+        "ExperienceYears" => "Số năm kinh nghiệm không được vượt quá số năm kể từ khi đủ 18 tuổi (có thể là 0).",
         "Bio" => "Nhập giới thiệu chuyên môn, tối đa 4.000 ký tự.",
         "Consent" => "Xác nhận đồng ý trước khi gửi.",
-        _ => "Gửi từ 1 đến 5 chứng chỉ hợp lệ (tệp PDF/JPG/PNG tối đa 5 MB hoặc link HTTPS tối đa 2.048 ký tự)."
+        _ => "Gửi từ 1 đến 5 chứng chỉ hợp lệ (tệp PDF/JPG/PNG tối đa 5 MB hoặc liên kết HTTPS tối đa 2.048 ký tự)."
     };
 
     private sealed class CertificateLink

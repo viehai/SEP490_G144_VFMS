@@ -1,0 +1,217 @@
+@page "/my-locker"
+@layout PublicLayout
+@using Microsoft.AspNetCore.Authorization
+@using VFMS.Client.Components.Operations
+@using VFMS.Client.Components.Lockers
+@using VFMS.Contracts.Lockers
+@attribute [Authorize(Roles = "Member")]
+@inject LockerApiClient Api
+@inject NavigationManager Navigation
+@inject ToastService Toasts
+@implements IDisposable
+
+<PageTitle>Tủ của tôi | Victor Fitness</PageTitle>
+
+<section class="mx-auto min-w-0 max-w-4xl space-y-6 px-[20px] pb-16 pt-28 font-body" aria-labelledby="locker-title" aria-busy="@_loading.ToString().ToLowerInvariant()">
+    <PageHeader Overline="VFMS / TỦ ĐỒ" Title="Tủ của tôi" Description="Xem hợp đồng thuê tủ, hạn sử dụng, tiền cọc chìa và gia hạn." />
+    <Alerts Error="@_error" />
+
+    @if (_loading)
+    {
+        <p role="status" class="text-sm text-vfms-text-secondary">Đang tải…</p>
+    }
+    else
+    {
+        @if (_outstanding > 0)
+        {
+            <p role="alert" class="@Ui.Error">Bạn còn khoản phí tủ chưa thanh toán @OperationsText.Money(_outstanding). Vui lòng thanh toán tại quầy lễ tân trước khi thuê tủ mới.</p>
+        }
+        @if (_rental is not { } rental)
+        {
+            <div class="@Ui.Card space-y-3">
+                <p role="status" class="text-sm">Không có tủ nào đang thuê.</p>
+                @if (_outstanding <= 0)
+                {
+                    <a href="/my-locker/rent" class="@Ui.PrimaryButton inline-block">Thuê tủ</a>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="@Ui.Card space-y-4">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <h2 class="font-heading text-xl font-extrabold">Tủ @rental.Locker.Number</h2>
+                    <StatusBadge Status="@LockerText.ContractTone(rental.Status)" Label="@LockerText.Contract(rental.Status)" />
+                </div>
+                <dl class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 text-sm">
+                    <dt class="text-vfms-text-secondary">Khu / tầng</dt><dd>@rental.Locker.Zone · Tầng @rental.Locker.Floor</dd>
+                    <dt class="text-vfms-text-secondary">Loại thuê</dt><dd>@(rental.Type == "Daily" ? "Theo ngày" : $"{rental.TermMonths} tháng")</dd>
+                    @if (rental.StartDate is { } start)
+                    {
+                        <dt class="text-vfms-text-secondary">Ngày bắt đầu</dt><dd>@start.ToString("dd/MM/yyyy")</dd>
+                    }
+                    @if (rental.ExpiresAt is { } expires)
+                    {
+                        <dt class="text-vfms-text-secondary">@(rental.Type == "Daily" ? "Hết hạn lúc" : "Hạn thuê đến")</dt>
+                        <dd>@(rental.Type == "Daily" ? LockerText.Local(expires) : LockerText.LastDay(expires))</dd>
+                    }
+                    <dt class="text-vfms-text-secondary">Cọc chìa</dt><dd>@OperationsText.Money(rental.DepositHeld)</dd>
+                    <dt class="text-vfms-text-secondary">Mã hợp đồng</dt><dd>@rental.ContractNumber</dd>
+                </dl>
+
+                @if (rental.Status == "PendingHandover")
+                {
+                    <p role="status" class="@Ui.Notice">
+                        Đã thanh toán. @rental.PickupInstructions
+                        @if (rental.CollectBy is { } by) { <span> Nhận chìa trước <strong>@LockerText.Local(by)</strong>.</span> }
+                    </p>
+                }
+                @if (rental.Status == "Overdue" && rental.Type != "Daily")
+                {
+                    <p role="alert" class="@Ui.Error">
+                        Tủ đã quá hạn <strong>@rental.OverdueDays</strong> ngày, phí quá hạn hiện tại <strong>@OperationsText.Money(rental.OverdueFees)</strong>.
+                        @if (rental.ClearanceAfter is { } clear) { <span> Từ @LockerText.Local(clear) tủ có thể bị dọn và mất cọc.</span> }
+                        Hãy gia hạn hoặc trả chìa tại quầy.
+                    </p>
+                }
+                @if (rental.DailyKeyOutstanding)
+                {
+                    <p role="alert" class="@Ui.Error">Đã hết giờ thuê trong ngày mà chưa trả chìa nên tiền cọc bị mất. Vui lòng trả chìa tại quầy lễ tân.</p>
+                }
+                @if (rental.RenewalDue && rental.Status == "Active")
+                {
+                    <p role="status" class="rounded-[10px] border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">Tủ sắp hết hạn trong 7 ngày. Bạn có thể gia hạn ngay bên dưới.</p>
+                }
+
+                @if (rental.Locker.Status == "Maintenance" && rental.Status is "Active")
+                {
+                    <div class="space-y-3 border-t border-vfms-border pt-4">
+                        <h3 class="text-sm font-bold">Tủ cần bảo trì</h3>
+                        @if (rental.ReplacementLockerId is { } chosen)
+                        {
+                            <p class="text-sm">Đã chọn tủ thay thế <strong>@_available.FirstOrDefault(s => s.Id == chosen)?.Number</strong>. Mang chìa đến quầy lễ tân để đổi tủ, hợp đồng giữ nguyên hạn và cọc.</p>
+                        }
+                        else
+                        {
+                            <p class="text-sm text-vfms-text-secondary">Chọn một tủ còn trống để chuyển hợp đồng, không mất phí.</p>
+                        }
+                        <LockerGrid Slots="_available" SelectedId="rental.ReplacementLockerId" Selectable="s => s.Status == LockerSlotAvailable && !_busy" OnSelect="s => ReplaceAsync(rental, s)" />
+                    </div>
+                }
+
+                @if (rental.CanRenew)
+                {
+                    <div class="space-y-3 border-t border-vfms-border pt-4">
+                        <h3 class="text-sm font-bold">Gia hạn thuê tháng</h3>
+                        <p class="text-xs text-vfms-text-secondary">Phí quá hạn (nếu có) được cộng thêm vào tiền gia hạn. Thanh toán bằng VietQR, hạn chuyển khoản 15 phút.</p>
+                        <div class="flex flex-wrap items-end gap-3">
+                            <label class="@Ui.Label">Thời hạn
+                                <select class="@Ui.Field" @bind="_renewPolicy" disabled="@_busy">
+                                    @foreach (var policy in _monthly)
+                                    {
+                                        <option value="@policy.Id">@LockerText.Duration(policy) · @OperationsText.Money(policy.RentalFee)</option>
+                                    }
+                                </select>
+                            </label>
+                            <button type="button" class="@Ui.PrimaryButton" disabled="@(_busy || _renewPolicy == 0)" @onclick="() => RenewAsync(rental)">@(_busy ? "Đang tạo đơn…" : "Gia hạn")</button>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+
+        <div class="@Ui.Card space-y-3">
+            <button type="button" class="@Ui.Button" aria-expanded="@_showRules.ToString().ToLowerInvariant()" @onclick="ToggleRulesAsync">Xem nội quy tủ</button>
+            @if (_showRules)
+            {
+                <p class="whitespace-pre-line text-sm">@(string.IsNullOrWhiteSpace(_rules) ? "Phòng tập chưa đăng nội quy tủ." : _rules)</p>
+            }
+        </div>
+    }
+</section>
+
+@code {
+    private const string LockerSlotAvailable = "Available";
+    private readonly CancellationTokenSource _lifetime = new();
+    private LockerRentalView? _rental;
+    private LockerSlot[] _available = [];
+    private LockerPolicy[] _monthly = [];
+    private decimal _outstanding;
+    private int _renewPolicy;
+    private bool _loading = true;
+    private bool _busy;
+    private bool _showRules;
+    private string? _rules;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        _loading = false;
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            var ct = _lifetime.Token;
+            _rental = await Api.MyRentalAsync(ct);
+            _outstanding = (await Api.OutstandingAsync(ct)).Amount;
+            if (_rental is { CanRenew: true })
+            {
+                _monthly = (await Api.PricingAsync(ct)).Where(p => p.Type != "Daily").ToArray();
+                _renewPolicy = _monthly.FirstOrDefault()?.Id ?? 0;
+            }
+            if (_rental is { Status: "Active", Locker.Status: "Maintenance" })
+                _available = (await Api.GridAsync(ct)).Where(s => s.Status == LockerSlotAvailable).ToArray();
+            _error = null;
+        }
+        catch (ApiException ex) { _error = ex.Message; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+    }
+
+    private async Task RenewAsync(LockerRentalView rental)
+    {
+        if (_busy || _renewPolicy == 0) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            var order = await Api.RenewAsync(rental.Id, new LockerRenewalRequest(_renewPolicy, null), _lifetime.Token);
+            Navigation.NavigateTo($"/locker-checkout/{Uri.EscapeDataString(order.OrderNumber)}");
+        }
+        catch (ApiException ex) { _error = ex.Message; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        finally { _busy = false; }
+    }
+
+    private async Task ReplaceAsync(LockerRentalView rental, LockerSlot slot)
+    {
+        if (_busy) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            _rental = await Api.SelectReplacementAsync(rental.Id, slot.Id, _lifetime.Token);
+            Toasts.Show("Đã chọn tủ thay thế. Mang chìa đến quầy lễ tân để đổi tủ.");
+        }
+        catch (ApiException ex) { _error = ex.Message; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        finally { _busy = false; }
+    }
+
+    private async Task ToggleRulesAsync()
+    {
+        _showRules = !_showRules;
+        if (!_showRules || _rules is not null) return;
+        try { _rules = (await Api.RulesAsync(_lifetime.Token)).Text; }
+        catch (ApiException ex) { _error = ex.Message; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+    }
+
+    public void Dispose()
+    {
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+    }
+}

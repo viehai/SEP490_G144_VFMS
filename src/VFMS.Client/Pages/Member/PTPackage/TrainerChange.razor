@@ -1,6 +1,6 @@
 @page "/my-pt-packages/{ContractId:int}/change-trainer"
 @layout AccountLayout
-@attribute [Authorize(Roles = "Member")]
+@attribute [Authorize(Roles = "Customer,Member")]
 @using VFMS.Client.Components.Operations
 @inject PersonalTrainingApiClient Api
 @inject NavigationManager Navigation

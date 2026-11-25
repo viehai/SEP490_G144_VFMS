@@ -5,7 +5,7 @@ namespace VFMS.Domain.Entities;
 
 /// <summary>
 /// A PT package purchase contract between a member and a personal trainer.
-/// Requires an active General Gym Membership covering the training period (GBR-10).
+/// Purchasing PT and recording PT attendance do not require a Gym membership.
 /// </summary>
 public class PTPurchase : BaseEntity
 {
@@ -20,7 +20,7 @@ public class PTPurchase : BaseEntity
     public DateTime? HoldExpiresAt { get; set; }
     public DateTime? ReceiptEmailSentAt { get; set; }
     public DateTime? ReceiptEmailRetryAt { get; set; }
-    public int MemberMembershipId { get; set; }
+    public int? MemberMembershipId { get; set; }
     public string MemberUserId { get; set; } = string.Empty;
     public string PTUserId { get; set; } = string.Empty;
     public int TotalSessions { get; set; }
@@ -30,11 +30,11 @@ public class PTPurchase : BaseEntity
     public decimal PurchasePrice { get; set; }
     public DateOnly PurchaseDate { get; set; }
     public bool IsCompleted { get; set; } = false;
-    /// <summary>End of the one-week window to change trainer after the trainer stops accepting members (GBR-98).</summary>
+    /// <summary>End of the one-week window to change trainer after the trainer stops accepting members (GBR-104).</summary>
     public DateTime? TrainerChangeDeadline { get; set; }
 
     // ── Navigation Properties ──────────────────────────────────
-    public MemberMembership MemberMembership { get; set; } = null!;
+    public MemberMembership? MemberMembership { get; set; }
     public ApplicationUser Member { get; set; } = null!;
     public ApplicationUser PTUser { get; set; } = null!;
     public ICollection<PTSession> Sessions { get; set; } = [];
