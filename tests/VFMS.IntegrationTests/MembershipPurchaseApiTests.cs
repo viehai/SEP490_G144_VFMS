@@ -658,6 +658,10 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
             base.OnModelCreating(modelBuilder);
             modelBuilder.Entity<FaceData>().Property(face => face.FaceNetEmbedding).HasColumnType("BLOB");
             modelBuilder.Entity<Voucher>().Property(voucher => voucher.Code).UseCollation("NOCASE");
+            // SQLite's NUMERIC affinity rounds large decimals through a double. TEXT preserves invoice cents.
+            modelBuilder.Entity<OrderItem>().Property(item => item.UnitPriceSnapshot).HasColumnType("TEXT");
+            modelBuilder.Entity<PaymentTransaction>().Property(payment => payment.AmountDue).HasColumnType("TEXT");
+            modelBuilder.Entity<PaymentTransaction>().Property(payment => payment.AmountReceived).HasColumnType("TEXT");
         }
     }
 }

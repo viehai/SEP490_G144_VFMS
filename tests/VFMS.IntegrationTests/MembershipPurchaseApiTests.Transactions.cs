@@ -179,10 +179,10 @@ public sealed partial class MembershipPurchaseApiTests
             var memberRoles = await db.ApplicationUserRoles.Include(row => row.Role)
                 .Where(row => row.UserId == "buyer" && row.Role.RoleName == "Member").ToListAsync();
             db.ApplicationUserRoles.RemoveRange(memberRoles);
-            var customerRole = await db.ApplicationRoles.SingleAsync(row => row.RoleName == "Customer");
-            db.ApplicationUserRoles.Add(new ApplicationUserRole { UserId = "buyer", RoleId = customerRole.Id });
             await db.SaveChangesAsync();
-            Assert.DoesNotContain("Member", await RolesAsync(db, "buyer"));
+            var roles = await RolesAsync(db, "buyer");
+            Assert.DoesNotContain("Member", roles);
+            Assert.Contains("Customer", roles);
             Assert.Equal(MembershipStatus.Expired,
                 (await db.MemberMemberships.SingleAsync(row => row.Id == expiredMembership.Id)).MembershipStatus);
         }

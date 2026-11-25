@@ -281,8 +281,10 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Equal(maximumPersistedAmount, detail.Transaction.AmountDue);
         Assert.Equal(maximumPersistedAmount, detail.Transaction.AmountReceived);
         Assert.Equal(0m, detail.DiscountAmount);
-        AssertPdfTextContains(pdf.Text, longName, "9.999.999.999.999.999,99 VND");
-        Assert.Equal(4, Regex.Matches(pdf.Text, Regex.Escape("9.999.999.999.999.999,99 VND")).Count);
+        const string amountText = "9.999.999.999.999.999,99 VND";
+        // The PDF draws the price column between the first and second lines of the wrapped item name.
+        AssertPdfTextContains(pdf.Text.Replace(amountText, string.Empty), longName);
+        Assert.Equal(4, Regex.Matches(pdf.Text, Regex.Escape(amountText)).Count);
         Assert.Equal(before, await CommerceSnapshotAsync());
     }
 
