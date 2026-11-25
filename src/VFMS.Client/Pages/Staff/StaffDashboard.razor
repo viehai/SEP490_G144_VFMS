@@ -128,7 +128,7 @@
         await Task.WhenAll(
             Load("check-in", async ct => _checkIns = await Api.GetAsync<ActiveCheckInsResponse>("api/check-ins/active", ct)),
             Load("thiết bị", async ct => _newIssues = (await Api.GetAsync<PagedResponse<EquipmentIssueResponse>>(
-                "api/equipment-issues?status=Reported&page=1&pageSize=1", ct)).TotalCount),
+                "api/equipment-issues?status=InProgress&page=1&pageSize=1", ct)).TotalCount),
             Load("tư vấn", async ct => _openConsultations = (await Api.GetAsync<PagedResponse<ConsultationConversationResponse>>(
                 "api/consultations?status=Open&page=1&pageSize=1", ct)).TotalCount));
         _loading = false;

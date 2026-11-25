@@ -201,7 +201,7 @@ public sealed class MembershipVoucherTests
         Assert.Equal(100000, fixture.Order.VoucherRedemption.DiscountAmount);
         Assert.Equal(400000, fixture.Order.PaymentTransaction!.AmountDue);
         Assert.Equal(400000, fixture.Order.PaymentTransaction.AmountReceived);
-        Assert.Single(fixture.Order.Items.Single().MemberMemberships);
+        Assert.Equal(1, Assert.Single(fixture.Order.Items.Single().MemberMemberships).GrantedFreezeCount);
         Assert.NotNull(fixture.Order.PaymentTransaction.Invoice);
         Assert.Equal(2, fixture.Repository.SaveCount);
     }
@@ -285,6 +285,7 @@ public sealed class MembershipVoucherTests
         var fixture = new Fixture();
         fixture.Voucher.DiscountType = DiscountType.FIXED;
         fixture.Voucher.DiscountValue = 600000;
+        fixture.Order.Items.Single().Package.Components.Single().MaxFreezeCount = 0;
         var applied = await fixture.Apply();
         Assert.Equal(0, applied.Data!.AmountDue);
         Assert.Equal("Pending", applied.Data.OrderStatus);
@@ -302,7 +303,7 @@ public sealed class MembershipVoucherTests
         Assert.Equal(0, fixture.Order.PaymentTransaction!.AmountReceived);
         Assert.Equal("NoCharge", fixture.Order.PaymentTransaction.GatewayName);
         Assert.Null(fixture.Order.PaymentTransaction.GatewayTransactionReference);
-        Assert.Single(fixture.Order.Items.Single().MemberMemberships);
+        Assert.Equal(0, Assert.Single(fixture.Order.Items.Single().MemberMemberships).GrantedFreezeCount);
         Assert.NotNull(fixture.Order.PaymentTransaction.Invoice);
     }
 
@@ -413,6 +414,7 @@ public sealed class MembershipVoucherTests
         public void Add(AuditLog audit) => Audits.Add(audit);
         public void Add(Order order) => throw new NotSupportedException();
         public Task<List<Package>> LoadPlansAsync(int[] ids, CancellationToken ct) => throw new NotSupportedException();
+        public Task<FreezePolicy?> GetPurchaseFreezePolicyAsync(CancellationToken ct) => Task.FromResult<FreezePolicy?>(new() { DefaultFreezeAllowanceDays = 20, DefaultMaxFreezeCount = 1, MinFreezeDaysPerRequest = 1, DefaultMaxFreezeDays = 90 });
         public Task<bool> AnyBookableYogaClassAsync(DateTime nowUtc, CancellationToken ct) => throw new NotSupportedException();
         public Task<List<OwnedMembership>> ListOwnedMembershipsAsync(string memberId, CancellationToken ct) => throw new NotSupportedException();
         public Task<OwnedMembershipDetail?> FindOwnedMembershipAsync(string memberId, int membershipId, CancellationToken ct) => throw new NotSupportedException();

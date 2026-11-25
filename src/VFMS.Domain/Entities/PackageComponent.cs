@@ -22,6 +22,7 @@ public class PackageComponent : BaseEntity
 
     // ── Freeze configuration (component-level overrides for GBR-40/41/42) ──
     public bool AllowFreeze { get; set; } = false;
+    public int? MinFreezeDaysPerRequest { get; set; }
     public int? MaxFreezeDaysPerRequest { get; set; }
     public int? MaxFreezeCount { get; set; }
 

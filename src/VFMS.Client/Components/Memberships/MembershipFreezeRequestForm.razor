@@ -4,34 +4,43 @@
 @implements IDisposable
 @inject MembershipPlanApiClient Api
 
-<div class="space-y-4">
-    <dl class="grid gap-3 text-sm sm:grid-cols-2">
-        @if (Eligibility.Policy is { } policy)
-        {
-            <div>
-                <dt class="text-xs font-semibold text-vfms-text-secondary">Thời hạn mỗi yêu cầu</dt>
-                <dd class="mt-1 font-semibold text-vfms-text">@policy.MinimumFreezeDays đến @policy.MaximumFreezeDays ngày</dd>
-            </div>
-            <div>
-                <dt class="text-xs font-semibold text-vfms-text-secondary">Báo trước tối thiểu</dt>
-                <dd class="mt-1 font-semibold text-vfms-text">@policy.MinimumRequestDays ngày</dd>
-            </div>
-        }
-        @if (Eligibility.RemainingQuota is { } remaining)
-        {
-            <div>
-                <dt class="text-xs font-semibold text-vfms-text-secondary">Hạn ngạch còn lại</dt>
-                <dd class="mt-1 font-semibold text-vfms-text">@remaining ngày</dd>
-            </div>
-        }
-        @if (Eligibility.EarliestStartDate is { } earliest)
-        {
-            <div>
-                <dt class="text-xs font-semibold text-vfms-text-secondary">Có thể bắt đầu từ</dt>
-                <dd class="mt-1 font-semibold text-vfms-text"><MembershipDate Date="@earliest" /></dd>
-            </div>
-        }
-    </dl>
+<div class="freeze-form space-y-4">
+    @if (Eligibility.Policy is { } policy)
+    {
+        <section class="space-y-3 rounded-lg border border-vfms-border p-3" aria-labelledby="@($"{_fieldPrefix}-conditions")">
+            <h4 id="@($"{_fieldPrefix}-conditions")" class="text-sm font-bold text-vfms-text">Thời gian bảo lưu</h4>
+            @if (Eligibility.Eligible && Eligibility.RemainingFreezeCount is { } visits)
+            {
+                var maxDays = _model.StartDate is { } selected && DateRange is { } dates
+                    ? dates.LastEnd.DayNumber - selected.DayNumber + 1 : Eligibility.MaximumAvailableDays;
+                <p class="text-sm">Bạn còn <strong>@visits lượt bảo lưu</strong>. Lần này bạn có thể chọn từ @policy.MinimumFreezeDays đến @maxDays ngày liên tiếp.</p>
+            }
+            else if (Eligibility.Eligible && Eligibility.RemainingQuota is { } remaining)
+            {
+                var maximum = _model.StartDate is { } start && DateRange is { } rangeForStart
+                    ? rangeForStart.LastEnd.DayNumber - start.DayNumber + 1 : Eligibility.MaximumAvailableDays;
+                var duration = policy.MinimumFreezeDays == maximum ? $"{maximum} ngày" : $"từ {policy.MinimumFreezeDays} đến {maximum} ngày";
+                <p class="text-sm text-vfms-text">Gói của bạn còn <strong>@remaining ngày bảo lưu</strong>. Lần này, bạn có thể chọn <strong>@duration liên tiếp</strong>.</p>
+                @if (_model.EndDate is null && remaining > maximum)
+                {
+                    <p class="text-sm text-vfms-text-secondary">Nếu được duyệt @maximum ngày, bạn sẽ còn @(remaining - maximum) ngày bảo lưu.</p>
+                }
+            }
+            <dl class="grid gap-3 text-sm sm:grid-cols-2">
+                <div>
+                    <dt class="text-xs font-semibold text-vfms-text-secondary">Gửi yêu cầu trước ngày bắt đầu ít nhất</dt>
+                    <dd class="mt-1 font-semibold text-vfms-text">@policy.MinimumRequestDays ngày</dd>
+                </div>
+                @if (Eligibility.EarliestStartDate is { } earliest)
+                {
+                    <div>
+                        <dt class="text-xs font-semibold text-vfms-text-secondary">Ngày bắt đầu sớm nhất</dt>
+                        <dd class="mt-1 font-semibold text-vfms-text"><MembershipDate Date="@earliest" /></dd>
+                    </div>
+                }
+            </dl>
+        </section>
+    }
 
     @if (!Eligibility.Eligible)
     {
@@ -39,7 +48,12 @@
     }
     else
     {
-        <EditForm @key="_model" Model="_model" OnValidSubmit="SaveAsync" OnInvalidSubmit="InvalidSubmit" novalidate>
+        var startError = StartError;
+        var range = DateRange;
+        var endError = GetEndError(startError, range);
+        var preview = GetPreview(startError, endError);
+
+        <EditForm @key="_model" EditContext="_editContext" OnValidSubmit="SaveAsync" OnInvalidSubmit="InvalidSubmit" novalidate>
             <ContractValidation TRequest="MembershipFreezeRequest" Validator="_validator" CreateRequest="CreateRequest" @ref="_validation" />
             @if (_error is not null)
             {
@@ -48,31 +62,82 @@
                     <ValidationSummary />
                 </div>
             }
-            <fieldset disabled="@_saving" aria-busy="@(_saving ? "true" : "false")" class="grid gap-4 sm:grid-cols-2">
+            <fieldset disabled="@_saving" aria-busy="@(_saving ? "true" : "false")" class="grid min-w-0 gap-4 sm:grid-cols-2">
                 <legend class="sr-only">@(ExistingRequest is null ? "Gửi yêu cầu bảo lưu" : "Chỉnh sửa yêu cầu bảo lưu")</legend>
-                <div>
-                    <label class="block text-sm font-semibold text-vfms-text" for="@($"{_fieldPrefix}-start")">Ngày bắt đầu bảo lưu</label>
-                    <InputDate id="@($"{_fieldPrefix}-start")" class="@Field" @bind-Value="_model.StartDate"
-                               min="@Eligibility.EarliestStartDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)"
-                               required aria-describedby="@($"{_fieldPrefix}-start-error")" ParsingErrorMessage="Nhập ngày bắt đầu hợp lệ." />
-                    <div id="@($"{_fieldPrefix}-start-error")"><ValidationMessage For="@(() => _model.StartDate)" /></div>
+                <div class="min-w-0">
+                    <label class="block text-sm font-semibold text-vfms-text" for="@($"{_fieldPrefix}-start")">Từ ngày <span class="text-red-700" aria-hidden="true">*</span></label>
+                    <InputDate id="@($"{_fieldPrefix}-start")" class="@Field" @bind-Value="_model.StartDate" lang="vi"
+                               min="@DateInput(Eligibility.EarliestStartDate)" max="@DateInput(Eligibility.LatestStartDate)"
+                               required aria-describedby="@($"{_fieldPrefix}-start-error")" aria-invalid="@(startError is not null ? "true" : null)"
+                               ParsingErrorMessage="Nhập ngày bắt đầu hợp lệ." />
+                    <div id="@($"{_fieldPrefix}-start-error")" class="mt-1 text-sm text-red-800">
+                        @if (startError is not null)
+                        {
+                            <p role="status">@startError</p>
+                        }
+                        <ValidationMessage For="@(() => _model.StartDate)" />
+                    </div>
                 </div>
-                <div>
-                    <label class="block text-sm font-semibold text-vfms-text" for="@($"{_fieldPrefix}-days")">Thời gian bảo lưu (ngày)</label>
-                    <InputNumber id="@($"{_fieldPrefix}-days")" class="@Field" @bind-Value="_model.RequestedDays"
-                                 min="@Eligibility.Policy?.MinimumFreezeDays" max="@Eligibility.Policy?.MaximumFreezeDays"
-                                 step="1" required aria-describedby="@($"{_fieldPrefix}-days-error")" ParsingErrorMessage="Nhập số ngày nguyên." />
-                    <div id="@($"{_fieldPrefix}-days-error")"><ValidationMessage For="@(() => _model.RequestedDays)" /></div>
+                <div class="min-w-0">
+                    <label class="block text-sm font-semibold text-vfms-text" for="@($"{_fieldPrefix}-end")">Đến hết ngày <span class="text-red-700" aria-hidden="true">*</span></label>
+                    <InputDate id="@($"{_fieldPrefix}-end")" class="@Field" @bind-Value="_model.EndDate" lang="vi"
+                               min="@DateInput(range?.FirstEnd)" max="@DateInput(range?.LastEnd)" disabled="@(range is null)"
+                               required aria-describedby="@($"{_fieldPrefix}-end-error")" aria-invalid="@(endError is not null ? "true" : null)"
+                               ParsingErrorMessage="Nhập ngày kết thúc hợp lệ." />
+                    <div id="@($"{_fieldPrefix}-end-error")" class="mt-1 text-sm text-red-800">
+                        @if (endError is not null)
+                        {
+                            <p role="status">@endError</p>
+                        }
+                        <ValidationMessage For="@(() => _model.EndDate)" />
+                    </div>
                 </div>
+                @if (preview is { } estimate)
+                {
+                    <section class="space-y-3 rounded-lg bg-vfms-muted p-3 sm:col-span-2" aria-labelledby="@($"{_fieldPrefix}-preview")" aria-live="polite">
+                        <h4 id="@($"{_fieldPrefix}-preview")" class="text-sm font-bold text-vfms-text">Thông tin bảo lưu dự kiến</h4>
+                        <dl class="grid gap-2 text-sm text-vfms-text">
+                            <div class="@PreviewRow">
+                                <dt>Thời gian bảo lưu</dt>
+                                <dd class="font-bold">@estimate.Days ngày</dd>
+                            </div>
+                            <div class="@PreviewRow">
+                                <dt>Ngày quay lại tập</dt>
+                                <dd class="font-bold"><MembershipDate Date="@estimate.ReturnDate" /></dd>
+                            </div>
+                            <div class="@PreviewRow">
+                                <dt>Số ngày được cộng vào thời hạn gói</dt>
+                                <dd class="font-bold">+@estimate.Days ngày</dd>
+                            </div>
+                            <div class="@PreviewRow">
+                                <dt>Ngày hết hạn dự kiến</dt>
+                                <dd class="font-bold"><MembershipDate Date="@estimate.Expiry" /></dd>
+                            </div>
+                            <div class="@PreviewRow">
+                                <dt>@(Eligibility.RemainingFreezeCount.HasValue ? "Số lượt còn lại sau khi duyệt" : "Số ngày còn được bảo lưu sau khi duyệt")</dt>
+                                <dd class="font-bold">@(Eligibility.RemainingFreezeCount is { } count ? $"{count - 1} lượt" : $"{estimate.RemainingDays} ngày")</dd>
+                            </div>
+                        </dl>
+                        <p class="text-xs text-vfms-text-secondary">Thông tin dự kiến chỉ có hiệu lực sau khi quản lý phê duyệt.</p>
+                    </section>
+                }
                 <div class="sm:col-span-2">
-                    <label class="block text-sm font-semibold text-vfms-text" for="@($"{_fieldPrefix}-reason")">Lý do bảo lưu</label>
-                    <InputTextArea id="@($"{_fieldPrefix}-reason")" class="@Field" @bind-Value="_model.Reason"
-                                   rows="4" maxlength="4000" required aria-describedby="@($"{_fieldPrefix}-reason-error")" />
-                    <div id="@($"{_fieldPrefix}-reason-error")"><ValidationMessage For="@(() => _model.Reason)" /></div>
+                    <label class="block text-sm font-semibold text-vfms-text" for="@($"{_fieldPrefix}-reason")">Lý do bảo lưu <span class="text-red-700" aria-hidden="true">*</span></label>
+                    <textarea id="@($"{_fieldPrefix}-reason")" class="@Field" @bind="_model.Reason" @bind:event="oninput" @bind:after="ReasonChanged"
+                              rows="3" maxlength="4000" required aria-describedby="@($"{_fieldPrefix}-reason-error")"
+                              placeholder="Ví dụ: Đi công tác, du lịch hoặc lý do sức khỏe..."></textarea>
+                    <div id="@($"{_fieldPrefix}-reason-error")" class="mt-1 text-sm text-red-800"><ValidationMessage For="@(() => _model.Reason)" /></div>
                 </div>
+                @if (ExistingRequest is null)
+                {
+                    <div class="sm:col-span-2">
+                        <MembershipFreezeDocumentChooser InputId="@($"{_fieldPrefix}-document")" Required="true" Selected="SelectDocument" Disabled="@_saving" />
+                    </div>
+                }
+                <p class="text-sm text-vfms-text-secondary sm:col-span-2">Yêu cầu cần được quản lý phê duyệt. Trong thời gian bảo lưu có hiệu lực, bạn sẽ tạm thời không thể sử dụng các dịch vụ thuộc gói tập này.</p>
                 <div class="flex flex-wrap gap-3 sm:col-span-2">
-                    <button type="submit" class="min-h-[44px] rounded-lg bg-vfms-primary px-5 py-2 text-sm font-semibold text-white hover:bg-vfms-primary-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary">
-                        @(_saving ? "Đang gửi..." : ExistingRequest is null ? "Gửi yêu cầu bảo lưu" : "Lưu thay đổi")
+                    <button type="submit" disabled="@(!CanSubmit(preview))" class="min-h-[44px] rounded-lg bg-vfms-primary px-5 py-2 text-sm font-semibold text-white hover:bg-vfms-primary-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary disabled:cursor-not-allowed disabled:opacity-50">
+                        @(_saving ? "Đang lưu..." : ExistingRequest is null ? "Gửi yêu cầu bảo lưu" : "Lưu thay đổi")
                     </button>
                     @if (ExistingRequest is not null)
                     {
@@ -80,7 +145,6 @@
                                 @onclick="CancelEditingAsync">Đóng chỉnh sửa</button>
                     }
                 </div>
-                <p role="status" class="text-sm text-vfms-text-secondary sm:col-span-2">@(_saving ? "Đang gửi yêu cầu bảo lưu..." : "")</p>
             </fieldset>
         </EditForm>
     }
@@ -92,14 +156,17 @@
     [Parameter] public EventCallback<MembershipFreezeRequestResponse> Saved { get; set; }
     [Parameter] public EventCallback CancelEditing { get; set; }
 
-    private const string Field = "mt-1 block min-h-[44px] w-full rounded-lg border border-vfms-border bg-vfms-surface px-3 py-2 text-base text-vfms-text focus:border-vfms-primary focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-vfms-primary sm:text-sm";
+    private const string Field = "mt-1 block min-h-[44px] w-full min-w-0 rounded-lg border border-vfms-border bg-vfms-surface px-3 py-2 text-base text-vfms-text focus:border-vfms-primary focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-vfms-primary disabled:bg-vfms-muted sm:text-sm";
+    private const string PreviewRow = "flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1";
     private readonly CancellationTokenSource _lifetime = new();
     private readonly MembershipFreezeRequestValidator _validator = new();
     private RequestForm _model = new();
+    private EditContext _editContext = default!;
     private ContractValidation<MembershipFreezeRequest>? _validation;
+    private IBrowserFile? _document;
     private ElementReference _errorNotice;
     private string _fieldPrefix = "";
-    private int _membershipId;
+    private int? _membershipId;
     private int? _requestId;
     private string? _error;
     private bool _saving;
@@ -116,9 +183,11 @@
         _model = new()
         {
             StartDate = ExistingRequest?.StartDate,
-            RequestedDays = ExistingRequest?.RequestedDays,
+            EndDate = ExistingRequest?.EndDate,
             Reason = ExistingRequest?.Reason ?? ""
         };
+        _editContext = new(_model);
+        _document = null;
         _error = null;
     }
 
@@ -126,12 +195,102 @@
     {
         if (!_focusError)
             return;
+
         _focusError = false;
         await _errorNotice.FocusAsync();
     }
 
+    private IReadOnlyList<MembershipFreezeBlockedPeriod> BlockedPeriods => Eligibility.OverlappingPeriods ?? [];
+
+    private string? StartError
+    {
+        get
+        {
+            if (_model.StartDate is not { } start)
+                return null;
+            var conflict = BlockedPeriods.FirstOrDefault(period => period.StartDate <= start && start <= period.EndDate);
+            if (conflict is not null)
+                return $"Ngày bắt đầu trùng với yêu cầu {FreezeStatus(conflict.Status)} đến hết ngày {Format(conflict.EndDate)}.";
+            if (start < Eligibility.EarliestStartDate)
+                return $"Vui lòng chọn từ ngày {Format(Eligibility.EarliestStartDate!.Value)}.";
+            if (start > Eligibility.LatestStartDate)
+                return $"Vui lòng chọn đến ngày {Format(Eligibility.LatestStartDate!.Value)}.";
+            return DateRange is null ? "Khoảng ngày còn trống không đủ để bảo lưu từ ngày này." : null;
+        }
+    }
+
+    private (DateOnly FirstEnd, DateOnly LastEnd)? DateRange
+    {
+        get
+        {
+            if (_model.StartDate is not { } start || Eligibility.Policy is not { } policy ||
+                start < Eligibility.EarliestStartDate || start > Eligibility.LatestStartDate ||
+                BlockedPeriods.Any(period => period.StartDate <= start && start <= period.EndDate))
+                return null;
+
+            var maxDays = Math.Min(Eligibility.MaximumAvailableDays, DateOnly.MaxValue.DayNumber - start.DayNumber);
+            foreach (var period in BlockedPeriods.Where(period => period.StartDate > start))
+                maxDays = Math.Min(maxDays, period.StartDate.DayNumber - start.DayNumber);
+            if (maxDays < policy.MinimumFreezeDays)
+                return null;
+
+            return (start.AddDays(policy.MinimumFreezeDays - 1), start.AddDays(maxDays - 1));
+        }
+    }
+
+    private string? GetEndError(string? startError, (DateOnly FirstEnd, DateOnly LastEnd)? range)
+    {
+        if (startError is not null || range is not { } dates || _model.EndDate is not { } end)
+            return null;
+        if (end < _model.StartDate)
+            return "Ngày kết thúc phải từ ngày bắt đầu trở đi.";
+        if (end < dates.FirstEnd)
+            return $"Vui lòng chọn đến hết ngày {Format(dates.FirstEnd)} hoặc muộn hơn để đủ thời gian tối thiểu.";
+        if (end > dates.LastEnd)
+        {
+            var conflict = BlockedPeriods.FirstOrDefault(period => period.StartDate <= end && period.EndDate >= _model.StartDate);
+            return conflict is null
+                ? $"Với ngày bắt đầu đã chọn, bạn có thể bảo lưu đến hết ngày {Format(dates.LastEnd)}."
+                : $"Khoảng ngày trùng với yêu cầu {FreezeStatus(conflict.Status)}. Vui lòng chọn đến hết ngày {Format(dates.LastEnd)} hoặc sớm hơn.";
+        }
+        return null;
+    }
+
+    private FreezePreview? GetPreview(string? startError, string? endError)
+    {
+        if (startError is not null || endError is not null || _model.StartDate is not { } start ||
+            _model.EndDate is not { } end || Eligibility.Membership.EndDate is not { } expiry ||
+            end >= DateOnly.MaxValue)
+            return null;
+
+        var days = end.DayNumber - start.DayNumber + 1;
+        if (days <= 0 || days > (Eligibility.RemainingQuota ?? Eligibility.MaximumAvailableDays) || days > DateOnly.MaxValue.DayNumber - expiry.DayNumber)
+            return null;
+
+        return new(days, end.AddDays(1), expiry.AddDays(days), (Eligibility.RemainingQuota ?? Eligibility.MaximumAvailableDays) - days);
+    }
+
+    private bool CanSubmit(FreezePreview? preview) =>
+        !_saving && Eligibility.Eligible && preview is not null && (ExistingRequest is not null || _document is not null) &&
+        !string.IsNullOrWhiteSpace(_model.Reason) && _model.Reason.Length <= 4000;
+
+    private static string? DateInput(DateOnly? date) => date is { } value ? MembershipDisplay.DateInput(value) : null;
+
+    private static string Format(DateOnly date) => date.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
+
+    private static string FreezeStatus(string status) => status switch
+    {
+        "Pending" => "chờ duyệt",
+        "Approved" => "đã duyệt",
+        _ => "đang bảo lưu"
+    };
+
     private MembershipFreezeRequest CreateRequest() =>
-        new(_membershipId, _model.StartDate, _model.RequestedDays, _model.Reason.Trim());
+        new(_membershipId, _model.StartDate, null, _model.Reason.Trim(), EndDate: _model.EndDate);
+
+    private void ReasonChanged() => _editContext.NotifyFieldChanged(FieldIdentifier.Create(() => _model.Reason));
+
+    private void SelectDocument(IBrowserFile? file) => _document = file;
 
     private void InvalidSubmit()
     {
@@ -141,7 +300,8 @@
 
     private async Task SaveAsync()
     {
-        if (_saving || !Eligibility.Eligible)
+        var startError = StartError;
+        if (!CanSubmit(GetPreview(startError, GetEndError(startError, DateRange))))
             return;
 
         _saving = true;
@@ -150,9 +310,16 @@
         try
         {
             var request = CreateRequest();
-            var response = _requestId is { } id
-                ? await Api.UpdateFreezeRequestAsync(id, request, ct)
-                : await Api.CreateFreezeRequestAsync(request, ct);
+            MembershipFreezeRequestResponse response;
+            if (_requestId is { } id)
+                response = await Api.UpdateFreezeRequestAsync(id, request, ct);
+            else
+            {
+                var file = _document!;
+                await using var content = file.OpenReadStream(MembershipFreezeDocumentLimits.MaximumBytes, ct);
+                response = await Api.CreateFreezeRequestAsync(request, content, file.Name,
+                    MembershipFreezeDocumentChooser.ContentType(file)!, ct);
+            }
             if (!ct.IsCancellationRequested)
                 await Saved.InvokeAsync(response);
         }
@@ -162,6 +329,13 @@
                 return;
             _error = error.Message;
             _validation?.ShowErrors(error.Errors);
+            _focusError = true;
+        }
+        catch (Exception error) when (error is IOException or JSException)
+        {
+            if (ct.IsCancellationRequested)
+                return;
+            _error = "Không thể đọc tài liệu minh chứng. Vui lòng chọn lại tệp và gửi lại.";
             _focusError = true;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
@@ -182,7 +356,9 @@
     private sealed class RequestForm
     {
         public DateOnly? StartDate { get; set; }
-        public int? RequestedDays { get; set; }
+        public DateOnly? EndDate { get; set; }
         public string Reason { get; set; } = "";
     }
+
+    private sealed record FreezePreview(int Days, DateOnly ReturnDate, DateOnly Expiry, int RemainingDays);
 }

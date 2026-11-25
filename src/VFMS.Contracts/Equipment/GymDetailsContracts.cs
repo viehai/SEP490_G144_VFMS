@@ -1,5 +1,3 @@
-using VFMS.Contracts.Memberships;
-
 namespace VFMS.Contracts.Equipment;
 
 // ── View Gym Details & Facilities (UC-70) ────────────────────────
@@ -39,4 +37,4 @@ public sealed record GymFreezePolicySummary(
     int MaximumFreezeDays,
     int MinimumRequestDays,
     int EligibilityPaidDays,
-    IReadOnlyList<MembershipFreezeTierQuotaResponse> Quotas);
+    int? DefaultMaxFreezeCount = null);

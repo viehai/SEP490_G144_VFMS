@@ -119,7 +119,7 @@ public sealed partial class MembershipPurchaseApiTests
     public async Task LifecycleUsesApprovedStateAfterPolicyChangesAndLeavesEarlyCompletionTerminal()
     {
         var (membership, request) = await PrepareFutureFreezeAsync(days: 7);
-        await ConfigureFreezeRequestsAsync(new(20, 30, 100, 100, [new(30, MembershipFreezeTierUnits.Days, 0)]));
+        await ConfigureFreezeRequestsAsync(new(20, 30, 100, 100));
         _clock.Now = _clock.Now.AddDays(1);
         await RunFreezeLifecycleAsync();
         _clock.Now = _clock.Now.AddDays(2);
@@ -211,7 +211,7 @@ public sealed partial class MembershipPurchaseApiTests
     public async Task MalformedLegacyApprovalDoesNotStarveAnotherMembersValidFreeze()
     {
         var (membership, request) = await PrepareFutureFreezeAsync();
-        var other = await SeedMembershipAsync(Today.AddDays(20), MembershipStatus.Active, "buyer", "Customer");
+        var other = await SeedLegacyFreezeMembershipAsync(Today.AddDays(20), MembershipStatus.Active, "buyer", "Customer");
         using var buyer = Client("buyer", "Member");
         using var manager = Client("manager", "Manager");
         var valid = await CreateFreezeRequestAsync(buyer, other.Id, start: Today.AddDays(1), days: 3);
@@ -250,7 +250,7 @@ public sealed partial class MembershipPurchaseApiTests
     public async Task FailedLifecycleNotificationRollsBackThatRecordAndLetsTheNextRecordProceed(bool completing)
     {
         var (membership, request) = await PrepareFutureFreezeAsync();
-        var other = await SeedMembershipAsync(Today.AddDays(20), MembershipStatus.Active, "buyer", "Customer");
+        var other = await SeedLegacyFreezeMembershipAsync(Today.AddDays(20), MembershipStatus.Active, "buyer", "Customer");
         using var buyer = Client("buyer", "Member");
         using var manager = Client("manager", "Manager");
         var otherRequest = await CreateFreezeRequestAsync(buyer, other.Id, start: request.StartDate, days: 3);
@@ -395,11 +395,6 @@ public sealed partial class MembershipPurchaseApiTests
     [Fact]
     public async Task CentralClassEligibilityBlocksTheFrozenYogaEntitlementAndPreservesTheSeparateGymEntitlement()
     {
-        await ConfigureFreezeRequestsAsync(RequestPolicy with
-        {
-            EligibilityPaidDays = 0, MinimumRequestDays = 0,
-            Quotas = [new(1, MembershipFreezeTierUnits.Months, 10), new(30, MembershipFreezeTierUnits.Days, 10)]
-        });
         using var member = Client("member", "Member");
         using var manager = Client("manager", "Manager");
         var purchase = await CreateAsync(member, Purchase([new(_combo)]));
@@ -412,8 +407,27 @@ public sealed partial class MembershipPurchaseApiTests
         await using var scope = _app.Services.CreateAsyncScope();
         var access = scope.ServiceProvider.GetRequiredService<IMembershipAccessService>();
         Assert.True((await access.CheckClassBookingAsync("member", yoga.MembershipId, CancellationToken.None)).IsSuccess);
-        var request = await CreateFreezeRequestAsync(member, yoga.MembershipId, start: Today);
-        await ApproveFreezeReviewAsync(manager, request.FreezeRequestId);
+
+        // Reproduce a Yoga freeze that was already approved before the policy changed.
+        var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+        var stored = await db.MemberMemberships.SingleAsync(row => row.Id == yoga.MembershipId);
+        stored.MembershipStatus = MembershipStatus.Frozen;
+        stored.EndDate = stored.EndDate.AddDays(3);
+        stored.FreezeCount = 1;
+        stored.TotalFrozenDays = 3;
+        var request = new MembershipFreeze
+        {
+            MemberMembershipId = stored.Id,
+            RequestedByUserId = stored.MemberUserId,
+            RequestedStartDate = Today,
+            RequestedEndDate = Today.AddDays(2),
+            ActualStartDate = Today,
+            ActualEndDate = Today.AddDays(2),
+            RequestStatus = FreezeRequestStatus.Active,
+            AppliedExpiryExtensionDays = 3
+        };
+        db.MembershipFreezes.Add(request);
+        await db.SaveChangesAsync();
         var frozen = await access.CheckClassBookingAsync("member", yoga.MembershipId, CancellationToken.None);
         Assert.False(frozen.IsSuccess);
         Assert.Equal(403, frozen.StatusCode);
@@ -422,8 +436,8 @@ public sealed partial class MembershipPurchaseApiTests
         var foreign = await access.CheckClassBookingAsync("buyer", yoga.MembershipId, CancellationToken.None);
         Assert.Equal(404, foreign.StatusCode);
 
-        await ReadFreezeRequestResponseAsync(await member.PostAsync($"{FreezeRequestsRoute}/{request.FreezeRequestId}/early-unfreeze", null));
-        await ApproveFreezeReviewAsync(manager, request.FreezeRequestId, early: true);
+        await ReadFreezeRequestResponseAsync(await member.PostAsync($"{FreezeRequestsRoute}/{request.Id}/early-unfreeze", null));
+        await ApproveFreezeReviewAsync(manager, request.Id, early: true);
         Assert.True((await access.CheckClassBookingAsync("member", yoga.MembershipId, CancellationToken.None)).IsSuccess);
     }
 

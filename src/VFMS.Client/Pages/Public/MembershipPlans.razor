@@ -1,9 +1,9 @@
 @page "/membership-plans"
 @layout PublicLayout
+@using VFMS.Client.Components.Memberships
 @using VFMS.Contracts.Common
 @using VFMS.Contracts.Packages
 @using VFMS.Contracts.Yoga.Validators
-@using VFMS.Client.Components.Memberships
 @inject IJSRuntime JS
 @inject MembershipPlanApiClient PlanApi
 @inject NavigationManager Navigation
@@ -177,8 +177,14 @@
                             <!-- Optional Description -->
                             @if (!string.IsNullOrWhiteSpace(package.Description))
                             {
-                                <p class="text-xs text-[#6F6966] mt-2 leading-relaxed line-clamp-3">
+                                <p class="text-xs text-[#6F6966] mt-2 break-words leading-relaxed line-clamp-3">
                                     @package.Description
+                                </p>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(package.TargetAudience))
+                            {
+                                <p class="mt-2 break-words text-xs leading-relaxed text-vfms-text-secondary">
+                                    <strong>Phù hợp với ai</strong><br />@package.TargetAudience
                                 </p>
                             }
 
@@ -198,7 +204,7 @@
                                     {
                                         <li class="flex items-start gap-2.5">
                                             <span class="text-[#B83A3A] font-bold">▪</span>
-                                            <span><strong>Thời hạn:</strong> @package.DurationMonths tháng @(package.DurationDays is > 0 ? $"({package.DurationDays} ngày)" : "")</span>
+                                            <span><strong>Thời hạn:</strong> @package.DurationMonths tháng</span>
                                         </li>
                                     }
                                     else if (package.DurationDays is > 0)
@@ -220,19 +226,7 @@
                                     <li class="flex items-start gap-2.5">
                                         <span class="text-[#B83A3A] font-bold">▪</span>
                                         <span>
-                                            <strong>Bảo lưu thẻ:</strong>
-                                            @if (package.AllowFreeze)
-                                            {
-                                                <span> Có hỗ trợ</span>
-                                                @if (package.MaxFreezeDaysPerRequest is > 0)
-                                                {
-                                                    <span> (tối đa @package.MaxFreezeDaysPerRequest ngày/lần@(package.MaxFreezeCount is > 0 ? $", {package.MaxFreezeCount} lần" : ""))</span>
-                                                }
-                                            }
-                                            else
-                                            {
-                                                <span> Không áp dụng bảo lưu</span>
-                                            }
+                                            <strong>Bảo lưu:</strong> @MembershipDisplay.CatalogFreeze(package)
                                         </span>
                                     </li>
                                 }
@@ -259,24 +253,17 @@
                                     {
                                         <li class="flex items-start gap-2.5">
                                             <span class="text-[#B83A3A] font-bold">▪</span>
-                                            <span><strong>Hiệu lực:</strong> @package.DurationMonths tháng @(package.DurationDays is > 0 ? $"({package.DurationDays} ngày)" : "")</span>
+                                            <span><strong>Thời hạn:</strong> @package.DurationMonths tháng</span>
                                         </li>
                                     }
                                     else if (package.DurationDays is > 0)
                                     {
                                         <li class="flex items-start gap-2.5">
                                             <span class="text-[#B83A3A] font-bold">▪</span>
-                                            <span><strong>Hiệu lực:</strong> @package.DurationDays ngày</span>
+                                            <span><strong>Thời hạn:</strong> @package.DurationDays ngày</span>
                                         </li>
                                     }
 
-                                    @if (package.AllowFreeze)
-                                    {
-                                        <li class="flex items-start gap-2.5">
-                                            <span class="text-[#B83A3A] font-bold">▪</span>
-                                            <span><strong>Bảo lưu:</strong> Có hỗ trợ @(package.MaxFreezeDaysPerRequest is > 0 ? $"({package.MaxFreezeDaysPerRequest} ngày/lần)" : "")</span>
-                                        </li>
-                                    }
                                 }
                                 else if (string.Equals(package.ComponentType, "PT", StringComparison.OrdinalIgnoreCase))
                                 {

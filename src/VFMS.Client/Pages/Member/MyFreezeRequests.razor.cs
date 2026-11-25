@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
+using VFMS.Client.Components.Memberships;
 using VFMS.Client.Services;
 using VFMS.Contracts.Memberships;
 
@@ -10,6 +11,8 @@ public partial class MyFreezeRequests : IDisposable
 {
     private const string SecondaryButton = "min-h-[44px] rounded-lg border border-vfms-border bg-white px-4 py-2 text-sm font-semibold text-vfms-text hover:bg-vfms-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary disabled:opacity-50";
     private const string TextLink = "inline-flex min-h-[44px] items-center gap-2 text-sm font-semibold text-vfms-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary";
+    private static readonly (string Status, string Label)[] Filters =
+        [("", "Tất cả"), ("Active", "Đang bảo lưu"), ("Pending", "Chờ duyệt"), ("Approved", "Đã duyệt"), ("History", "Lịch sử")];
 
     [Inject] private MembershipPlanApiClient Api { get; set; } = default!;
     [Inject] private IJSRuntime JS { get; set; } = default!;
@@ -24,10 +27,22 @@ public partial class MyFreezeRequests : IDisposable
     private bool _working;
     private bool _focusEditor;
     private bool _focusNotice;
+    private string _filter = "";
     private string? _loadError;
     private string? _actionError;
     private string? _notice;
     private bool ActionsDisabled => _loading || _working || _editing is not null;
+    private MembershipFreezeRequestResponse[] FilteredRequests => _requests
+        .Where(request => _filter switch
+        {
+            "" => true,
+            "History" => MembershipFreezeStatusBadge.Priority(request.Status) == 3,
+            _ => request.Status == _filter
+        })
+        .OrderBy(request => MembershipFreezeStatusBadge.Priority(request.Status))
+        .ThenByDescending(request => request.SubmittedAt)
+        .ThenByDescending(request => request.FreezeRequestId)
+        .ToArray();
 
     protected override Task OnInitializedAsync() => LoadAsync();
 

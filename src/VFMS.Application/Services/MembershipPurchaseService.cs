@@ -229,6 +229,7 @@ public sealed partial class MembershipPurchaseService(
         var userIds = order.Items.Select(item => item.BeneficiaryUserId).Distinct().ToArray();
         var beneficiaries = await repository.LockUsersAsync(userIds, ct);
         var active = new HashSet<string>();
+        var freezePolicy = await repository.GetPurchaseFreezePolicyAsync(ct);
 
         foreach (var item in order.Items.OrderBy(item => item.Id))
         {
@@ -244,8 +245,17 @@ public sealed partial class MembershipPurchaseService(
                     PackageComponentId = component.Id,
                     MemberUserId = item.BeneficiaryUserId,
                     MembershipStatus = MembershipStatus.AwaitingActivation,
+                    GrantedFreezeAllowanceDays = component.Type == ComponentType.YOGA ? 0 : null,
                     RemainingSessionCount = component.Type == ComponentType.PT ? component.SessionCount : null
                 };
+                if (component.Type == ComponentType.GYM)
+                {
+                    var config = item.Package?.Components.FirstOrDefault(row => row.Id == component.Id);
+                    membership.GrantedFreezeCount = config?.MaxFreezeCount ?? freezePolicy?.DefaultMaxFreezeCount ?? 0;
+                    membership.GrantedMinFreezeDays = config?.MinFreezeDaysPerRequest ?? freezePolicy?.MinFreezeDaysPerRequest;
+                    membership.GrantedMaxFreezeDays = config?.MaxFreezeDaysPerRequest ?? freezePolicy?.DefaultMaxFreezeDays;
+                    membership.GrantedFreezeAllowanceDays = null;
+                }
                 // Pre-existing checkout dates and renewals already have a start date on the order line.
                 if (item.ActivationStartDate is { } requested)
                 {

@@ -80,11 +80,6 @@ public sealed class EquipmentIssuesController : ControllerBase
 
     // ── Staff (UC-72) ────────────────────────────────────────────
 
-    [HttpPost("{id:int}/start")]
-    [Authorize(Roles = "Staff")]
-    public Task<IActionResult> Start(int id, CancellationToken cancellationToken) =>
-        Run((userId, ip) => _service.StartHandlingAsync(id, userId, ip, cancellationToken));
-
     [HttpPost("{id:int}/resolve")]
     [Authorize(Roles = "Staff")]
     public Task<IActionResult> Resolve(int id, [FromBody] EquipmentIssueActionRequest request, CancellationToken cancellationToken) =>
@@ -95,27 +90,12 @@ public sealed class EquipmentIssuesController : ControllerBase
     public Task<IActionResult> Escalate(int id, [FromBody] EquipmentIssueActionRequest request, CancellationToken cancellationToken) =>
         Run((userId, ip) => _service.EscalateAsync(id, request.Note, userId, ip, cancellationToken));
 
-    [HttpPost("{id:int}/mark-safe")]
-    [Authorize(Roles = "Staff")]
-    public Task<IActionResult> MarkSafe(int id, [FromBody] EquipmentIssueActionRequest request, CancellationToken cancellationToken) =>
-        Run((userId, ip) => _service.MarkSafeAsync(id, request.Note, userId, ip, cancellationToken));
-
     // ── Manager repairs (UC-73) ──────────────────────────────────
-
-    [HttpPost("{id:int}/repair/start")]
-    [Authorize(Roles = "Manager")]
-    public Task<IActionResult> StartRepair(int id, CancellationToken cancellationToken) =>
-        Run((userId, ip) => _service.StartRepairAsync(id, userId, ip, cancellationToken));
 
     [HttpPost("{id:int}/repair/confirm-safe")]
     [Authorize(Roles = "Manager")]
     public Task<IActionResult> ConfirmSafe(int id, [FromBody] EquipmentIssueActionRequest request, CancellationToken cancellationToken) =>
         Run((userId, ip) => _service.ConfirmSafeAsync(id, request.Note, userId, ip, cancellationToken));
-
-    [HttpPost("{id:int}/repair/not-safe")]
-    [Authorize(Roles = "Manager")]
-    public Task<IActionResult> NotSafe(int id, [FromBody] EquipmentIssueActionRequest request, CancellationToken cancellationToken) =>
-        Run((userId, ip) => _service.MarkNotSafeAsync(id, request.Note, userId, ip, cancellationToken));
 
     [HttpPost("{id:int}/repair/dispose")]
     [Authorize(Roles = "Manager")]

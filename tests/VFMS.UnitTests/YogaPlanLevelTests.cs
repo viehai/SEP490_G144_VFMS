@@ -6,6 +6,7 @@ using VFMS.Domain.Common;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
 using Xunit;
+using MembershipDurationUnit = VFMS.Contracts.Memberships.MembershipDurationUnit;
 
 namespace VFMS.UnitTests;
 
@@ -76,12 +77,15 @@ public sealed class YogaPlanLevelTests
             Task.FromResult<MembershipPlanReadModel?>(new(1, Plan.Name, null, 30, null, Plan.Price, Plan.PackageStatus, 0,
                 ComponentType.YOGA, Plan.Components.Single().YogaDifficultyLevel));
         public Task<(IReadOnlyList<MembershipPlanReadModel> Items, int TotalCount)> SearchAsync(string? search, PackageStatus? status, int page,
-            int pageSize, CancellationToken cancellationToken = default, ComponentType? serviceType = null, DateTime? sellableAtUtc = null) =>
+            int pageSize, CancellationToken cancellationToken = default, ComponentType? serviceType = null, DateTime? sellableAtUtc = null,
+            MembershipDurationUnit? durationUnit = null, MembershipFreezeAllowanceFilter? freezeAllowanceFilter = null) =>
             throw new NotSupportedException();
         public void Remove(Package package) => throw new NotSupportedException();
         public Task<(IReadOnlyList<PackageCatalogReadModel> Items, int TotalCount)> SearchByComponentTypeAsync(ComponentType componentType,
             int page, int pageSize, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<IReadOnlyList<PackageCatalogReadModel>> ListActiveSingleServicePackagesAsync(CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+        public Task<CatalogMembershipFreezeRules?> GetCatalogFreezeRulesAsync(CancellationToken cancellationToken) =>
             throw new NotSupportedException();
         public Task<IReadOnlyList<string>> GetActiveUserIdsInRoleAsync(string roleName, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();

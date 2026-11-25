@@ -84,9 +84,11 @@ public sealed partial class MembershipPlanApiClientTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task SaveFreezeRequest_SendsOnlyEditableValuesAndReadsServerPeriod(bool updating)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task SaveFreezeRequest_SendsOnlyEditableValuesAndReadsServerPeriod(bool updating, bool dates)
     {
         var expected = PendingFreezeRequest();
         using var api = CreateClient(async message =>
@@ -95,19 +97,44 @@ public sealed partial class MembershipPlanApiClientTests
             Assert.Equal("Bearer access-token", message.Headers.Authorization?.ToString());
             Assert.Equal(updating ? "/api/membership-freeze-requests/9" : "/api/membership-freeze-requests",
                 message.RequestUri!.PathAndQuery);
+            if (!updating)
+            {
+                var form = Assert.IsType<MultipartFormDataContent>(message.Content)
+                    .ToDictionary(part => part.Headers.ContentDisposition!.Name!.Trim('"'));
+                Assert.Equal("application/pdf", form["file"].Headers.ContentType!.MediaType);
+                Assert.Equal("%PDF-proof", await form["file"].ReadAsStringAsync());
+                Assert.Equal("7", await form["MembershipId"].ReadAsStringAsync());
+                Assert.Equal("Travel", await form["Reason"].ReadAsStringAsync());
+                Assert.Equal("2026-12-03", await form["StartDate"].ReadAsStringAsync());
+                Assert.Equal(dates ? "2026-12-09" : "7", await form[dates ? "EndDate" : "RequestedDays"].ReadAsStringAsync());
+                Assert.Equal(5, form.Count);
+                return Json(expected, HttpStatusCode.Created);
+            }
             var body = await message.Content!.ReadFromJsonAsync<JsonElement>();
-            Assert.Equal(4, body.EnumerateObject().Count());
+            Assert.Equal(5, body.EnumerateObject().Count());
             Assert.Equal(7, body.GetProperty("membershipId").GetInt32());
             Assert.Equal("2026-12-03", body.GetProperty("startDate").GetString());
-            Assert.Equal(7, body.GetProperty("requestedDays").GetInt32());
+            if (dates)
+            {
+                Assert.Equal("2026-12-09", body.GetProperty("endDate").GetString());
+                Assert.Equal(JsonValueKind.Null, body.GetProperty("requestedDays").ValueKind);
+            }
+            else
+            {
+                Assert.Equal(7, body.GetProperty("requestedDays").GetInt32());
+                Assert.Equal(JsonValueKind.Null, body.GetProperty("endDate").ValueKind);
+            }
             Assert.Equal("Travel", body.GetProperty("reason").GetString());
             return Json(expected, updating ? HttpStatusCode.OK : HttpStatusCode.Created);
         }, role: "Member");
-        var request = new MembershipFreezeRequest(7, expected.StartDate, 7, "Travel");
+        var request = dates
+            ? new MembershipFreezeRequest(7, expected.StartDate, null, "Travel", EndDate: expected.EndDate)
+            : new MembershipFreezeRequest(7, expected.StartDate, 7, "Travel");
 
+        using var file = new MemoryStream("%PDF-proof"u8.ToArray());
         var result = updating
             ? await api.UpdateFreezeRequestAsync(9, request)
-            : await api.CreateFreezeRequestAsync(request);
+            : await api.CreateFreezeRequestAsync(request, file, "proof.pdf", "application/pdf");
 
         Assert.Equal(new DateOnly(2026, 12, 9), result.EndDate);
         Assert.Equal(7, result.RequestedDays);
@@ -157,7 +184,7 @@ public sealed partial class MembershipPlanApiClientTests
             HttpStatusCode.BadRequest)), role: "Member");
 
         var error = await Assert.ThrowsAsync<AuthApiException>(() =>
-            api.CreateFreezeRequestAsync(new(7, null, 7, "")));
+            api.CreateFreezeRequestAsync(new(7, null, 7, ""), Stream.Null, "proof.pdf", "application/pdf"));
 
         Assert.Equal("Select a start date.", Assert.Single(error.Errors["StartDate"]));
         Assert.Equal("Enter a reason.", Assert.Single(error.Errors["Reason"]));

@@ -28,10 +28,10 @@ public static class ListExports
         ]));
 
     public static byte[] AuditLogs(IEnumerable<AuditLogResponse> rows, Func<string, string> actionLabel) => CsvFile.Build(
-        ["Thời gian", "Người thực hiện", "Mã người dùng", "Thao tác", "Đối tượng", "ID đối tượng", "Giá trị cũ", "Giá trị mới", "Địa chỉ IP"],
+        ["Thời gian", "Người thực hiện", "Mã người dùng", "Thao tác", "Đối tượng", "ID đối tượng", "Giá trị cũ", "Giá trị mới"],
         rows.Select(log => (IReadOnlyList<string?>)
         [
             CsvFile.Time(log.OccurredAt), log.ActorName, log.ActorUserId, actionLabel(log.ActionType), log.AuditEntity,
-            log.EntityId?.ToString(), log.OldValue, log.NewValue, log.IpAddress,
+            log.EntityId?.ToString(), log.OldValue, log.NewValue,
         ]));
 }

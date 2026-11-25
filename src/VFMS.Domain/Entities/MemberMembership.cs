@@ -18,6 +18,11 @@ public class MemberMembership : BaseEntity
     public DateOnly EndDate { get; set; }
     /// <summary>Remaining PT sessions (null for GYM/YOGA components).</summary>
     public int? RemainingSessionCount { get; set; }
+    /// <summary>Gym freeze visits granted at settlement. Null identifies a legacy cumulative-day entitlement.</summary>
+    public int? GrantedFreezeCount { get; set; }
+    public int? GrantedMinFreezeDays { get; set; }
+    public int? GrantedMaxFreezeDays { get; set; }
+    public int? GrantedFreezeAllowanceDays { get; set; }
     /// <summary>Total days currently frozen (cumulative).</summary>
     public int TotalFrozenDays { get; set; } = 0;
     /// <summary>Total number of freeze requests used.</summary>

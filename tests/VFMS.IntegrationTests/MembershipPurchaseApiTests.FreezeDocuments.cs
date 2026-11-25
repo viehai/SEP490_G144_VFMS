@@ -16,15 +16,24 @@ namespace VFMS.IntegrationTests;
 
 public sealed partial class MembershipPurchaseApiTests
 {
-    [Fact]
-    public async Task SupportingDocumentRemainsOptionalForAValidFreezeRequest()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("invalid signature")]
+    public async Task FreezeSubmissionRequiresAValidDocumentBeforeCreatingTheRequest(string? invalidContent)
     {
         var membership = await PrepareFreezeMembershipAsync();
         using var member = Client("member", "Member");
-        var request = await CreateFreezeRequestAsync(member, membership.Id);
-        Assert.Null(request.SupportingDocument);
-        using var response = await member.GetAsync(FreezeDocumentRoute(request.FreezeRequestId));
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        using var form = FreezeSubmissionForm(FreezeInput(membership.Id));
+        if (invalidContent is not null)
+        {
+            var file = new ByteArrayContent(Encoding.ASCII.GetBytes(invalidContent));
+            file.Headers.ContentType = new("application/pdf");
+            form.Add(file, "file", "proof.pdf");
+        }
+        using var response = await member.PostAsync(FreezeRequestsRoute, form);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Empty((await member.GetFromJsonAsync<MembershipFreezeRequestResponse[]>(FreezeRequestsRoute))!);
     }
 
     [Theory]
@@ -37,6 +46,7 @@ public sealed partial class MembershipPurchaseApiTests
         using var member = Client("member", "Member");
         using var manager = Client("manager", "Manager");
         var request = await CreateFreezeRequestAsync(member, membership.Id);
+        Assert.NotNull(request.SupportingDocument);
         var bytes = FreezeDocumentBytes(type);
         var document = await ReadFreezeDocumentResponseAsync(await UploadFreezeDocumentAsync(
             member, request.FreezeRequestId, bytes, type, "../../certificate.exe"));
@@ -83,7 +93,7 @@ public sealed partial class MembershipPurchaseApiTests
     public async Task AnotherMemberCannotUploadReplaceRemoveOrDownloadAnOwnedFreezeDocument()
     {
         var membership = await PrepareFreezeMembershipAsync();
-        await SeedMembershipAsync(Today.AddDays(20), VFMS.Domain.Enums.MembershipStatus.Active, "buyer", "Customer");
+        await SeedLegacyFreezeMembershipAsync(Today.AddDays(20), VFMS.Domain.Enums.MembershipStatus.Active, "buyer", "Customer");
         using var member = Client("member", "Member");
         using var other = Client("buyer", "Member");
         var request = await CreateFreezeRequestAsync(member, membership.Id);
@@ -107,14 +117,14 @@ public sealed partial class MembershipPurchaseApiTests
         var request = await CreateFreezeRequestAsync(member, membership.Id);
         using var response = await UploadFreezeDocumentAsync(member, request.FreezeRequestId, FreezeDocumentBytes(actualType), claimedType);
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Null((await ReadOwnedFreezeRequestAsync(member, request.FreezeRequestId)).SupportingDocument);
+        Assert.Equal(request.SupportingDocument, (await ReadOwnedFreezeRequestAsync(member, request.FreezeRequestId)).SupportingDocument);
     }
 
     [Theory]
     [InlineData(0, HttpStatusCode.BadRequest)]
     [InlineData(MembershipFreezeDocumentLimits.MaximumBytes, HttpStatusCode.OK)]
     [InlineData(MembershipFreezeDocumentLimits.MaximumBytes + 1, HttpStatusCode.RequestEntityTooLarge)]
-    public async Task DocumentUploadEnforcesTheOptionalFilesSizeBoundary(int length, HttpStatusCode expected)
+    public async Task DocumentUploadEnforcesTheFileSizeBoundary(int length, HttpStatusCode expected)
     {
         var membership = await PrepareFreezeMembershipAsync();
         using var member = Client("member", "Member");
@@ -127,7 +137,7 @@ public sealed partial class MembershipPurchaseApiTests
     }
 
     [Fact]
-    public async Task PendingDocumentCanBeReplacedAndRemovedWithoutLeavingStoredPayloads()
+    public async Task PendingDocumentCanBeReplacedButCannotBeRemoved()
     {
         var membership = await PrepareFreezeMembershipAsync();
         using var member = Client("member", "Member");
@@ -145,16 +155,9 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Equal(replacement.DocumentId, (await db.MembershipFreezes.AsNoTracking().SingleAsync()).SupportingDocumentId);
 
         using var remove = await member.DeleteAsync(FreezeDocumentRoute(request.FreezeRequestId));
-        Assert.Equal(HttpStatusCode.OK, remove.StatusCode);
-        Assert.True(await remove.Content.ReadFromJsonAsync<bool>());
-        Assert.Null((await ReadOwnedFreezeRequestAsync(member, request.FreezeRequestId)).SupportingDocument);
-        var cleared = await db.MembershipFreezes.AsNoTracking().SingleAsync();
-        Assert.Null(cleared.SupportingDocumentId);
-        Assert.Null(cleared.SupportingDocumentFileName);
-        Assert.Null(cleared.SupportingDocumentContentType);
-        Assert.Null(cleared.SupportingDocumentContent);
-        using var missing = await member.GetAsync(FreezeDocumentRoute(request.FreezeRequestId));
-        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, remove.StatusCode);
+        Assert.Equal(replacement, (await ReadOwnedFreezeRequestAsync(member, request.FreezeRequestId)).SupportingDocument);
+        Assert.Equal(replacementBytes, (await db.MembershipFreezes.AsNoTracking().SingleAsync()).SupportingDocumentContent);
     }
 
     [Fact]
@@ -232,8 +235,8 @@ public sealed partial class MembershipPurchaseApiTests
             await using var verification = FileFreezeContext(connectionString);
             var freeze = await verification.MembershipFreezes.AsNoTracking().SingleAsync();
             Assert.Equal(VFMS.Domain.Enums.FreezeRequestStatus.Approved, freeze.RequestStatus);
-            Assert.Equal(uploadResult.IsSuccess ? uploadResult.Data!.DocumentId : (Guid?)null, freeze.SupportingDocumentId);
-            Assert.Equal(uploadResult.IsSuccess ? 1 : 0, await verification.MembershipFreezes.CountAsync(item => item.SupportingDocumentId != null));
+            Assert.Equal(uploadResult.IsSuccess ? uploadResult.Data!.DocumentId : request.SupportingDocument!.DocumentId, freeze.SupportingDocumentId);
+            Assert.Equal(1, await verification.MembershipFreezes.CountAsync(item => item.SupportingDocumentId != null));
         });
     }
 

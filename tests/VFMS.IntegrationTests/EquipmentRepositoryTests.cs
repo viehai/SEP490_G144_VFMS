@@ -121,12 +121,12 @@ public sealed class EquipmentRepositoryTests : IAsyncLifetime
         Assert.Equal(["Dusty", "Belt slips", "Emergency stop broken", "Torn pad", "Loose bolt"], await Issues(EquipmentIssueSort.Newest));
 
     [Fact]
-    public async Task OpenOnlyKeepsReportedInProgressAndEscalatedIssues()
+    public async Task OpenOnlyKeepsInProgressAndEscalatedIssues()
     {
         await using (var db = new SqliteTestContext(_options))
         {
             (await db.EquipmentIssueReports.SingleAsync(i => i.Description == "Dusty")).IssueStatus = EquipmentIssueStatus.Resolved;
-            (await db.EquipmentIssueReports.SingleAsync(i => i.Description == "Torn pad")).IssueStatus = EquipmentIssueStatus.MarkedSafe;
+            (await db.EquipmentIssueReports.SingleAsync(i => i.Description == "Torn pad")).IssueStatus = EquipmentIssueStatus.Resolved;
             (await db.EquipmentIssueReports.SingleAsync(i => i.Description == "Belt slips")).IssueStatus = EquipmentIssueStatus.InProgress;
             (await db.EquipmentIssueReports.SingleAsync(i => i.Description == "Loose bolt")).IssueStatus = EquipmentIssueStatus.Escalated;
             await db.SaveChangesAsync();
@@ -136,7 +136,7 @@ public sealed class EquipmentRepositoryTests : IAsyncLifetime
         var (items, total) = await new EquipmentRepository(read).SearchIssuesAsync(
             new EquipmentIssueQuery(null, null, null, null, EquipmentIssueSort.Severity, 1, 20, OpenOnly: true));
 
-        // Safety first (newest first within it), then Malfunction; Resolved and MarkedSafe are left out.
+        // Safety first (newest first within it), then Malfunction; Resolved issues are left out.
         Assert.Equal(["Emergency stop broken", "Loose bolt", "Belt slips"], items.Select(i => i.Description).ToArray());
         Assert.Equal(3, total);
     }
@@ -206,7 +206,7 @@ public sealed class EquipmentRepositoryTests : IAsyncLifetime
 
         var counts = await new EquipmentRepository(db).CountIssuesByStatusAsync(null);
 
-        Assert.Equal(4, counts[EquipmentIssueStatus.Reported]);
+        Assert.Equal(4, counts[EquipmentIssueStatus.InProgress]);
         Assert.Equal(1, counts[EquipmentIssueStatus.Resolved]);
         Assert.False(counts.ContainsKey(EquipmentIssueStatus.Escalated));
         Assert.Empty(await new EquipmentRepository(db).CountIssuesByStatusAsync("someone-else"));

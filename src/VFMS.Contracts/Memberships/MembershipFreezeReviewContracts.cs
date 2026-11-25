@@ -9,6 +9,10 @@ public static class MembershipFreezeReviewTypes
 public sealed class MembershipFreezeReviewListRequest
 {
     public string? Type { get; init; }
+    public string? Status { get; init; }
+    public string? Search { get; init; }
+    public DateOnly? FromDate { get; init; }
+    public DateOnly? ToDate { get; init; }
     public int Page { get; init; } = 1;
     public int PageSize { get; init; } = 20;
 }
@@ -22,6 +26,7 @@ public sealed record MembershipFreezeReviewDetailResponse(
     string? Reason, string? ReviewNote, DateTimeOffset? ReviewedAt, string? EarlyUnfreezeReviewNote,
     DateTimeOffset? EarlyUnfreezeReviewedAt, int? RemainingQuota, MembershipFreezePolicyResponse? AppliedPolicy,
     int? AppliedExpiryExtensionDays, DateOnly Today, int? ActualFrozenDays, bool CanApprove, bool CanReject,
-    string? ApprovalMessage, MembershipFreezeDocumentResponse? SupportingDocument = null);
+    string? ApprovalMessage, MembershipFreezeDocumentResponse? SupportingDocument = null,
+    int? GrantedFreezeAllowanceDays = null, int CommittedFreezeDays = 0, int? GrantedFreezeCount = null, int UsedFreezeCount = 0);
 
 public sealed record RejectMembershipFreezeRequest(string? Reason);

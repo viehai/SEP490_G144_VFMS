@@ -3,6 +3,7 @@ using FluentValidation;
 using VFMS.Application.Interfaces;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Memberships;
+using VFMS.Contracts.Memberships.Validators;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
 
@@ -17,13 +18,12 @@ public sealed partial class MembershipFreezeReviewService(
     public async Task<Result<PagedResponse<MembershipFreezeReviewSummaryResponse>>> ListAsync(
         MembershipFreezeReviewListRequest request, CancellationToken ct)
     {
-        if (request.Type is not (null or "" or MembershipFreezeReviewTypes.Freeze or MembershipFreezeReviewTypes.EarlyUnfreeze) ||
-            request.Page is < 1 or > 1_000_000 || request.PageSize is < 1 or > 100)
+        if (!new MembershipFreezeReviewListRequestValidator().Validate(request).IsValid)
             return Result<PagedResponse<MembershipFreezeReviewSummaryResponse>>.Failure("Bộ lọc không hợp lệ.");
-        var (items, count) = await repository.SearchAsync(request.Type, request.Page, request.PageSize, ct);
+        var (items, count) = await repository.SearchAsync(request, ct);
         return Result<PagedResponse<MembershipFreezeReviewSummaryResponse>>.Success(new(
             request.Page, request.PageSize, count, items.Select(row =>
-                Summary(row, row.Request.EarlyUnfreezeRequestStatus == FreezeRequestStatus.Pending)).ToArray()));
+                Summary(row, row.EarlyUnfreeze)).ToArray()));
     }
 
     public async Task<Result<MembershipFreezeReviewDetailResponse>> GetAsync(int requestId, string type, CancellationToken ct)
@@ -154,10 +154,11 @@ public sealed partial class MembershipFreezeReviewService(
     {
         var membership = row.Membership;
         var today = Today();
-        var snapshot = AppliedPolicy(membership, row.Request);
+        var snapshot = MembershipFreezeRequestService.ReadAppliedPolicy(row.Request.AppliedPolicySnapshot);
         var check = CheckApproval(membership, row.Request, early, today);
         var used = MembershipFreezeRequestService.ConsumedDays(membership);
-        int? remaining = snapshot is null ? null : (int)Math.Max(0L, snapshot.Quotas[0].MaximumCumulativeFreezeDays - used);
+        var allowance = membership.GrantedFreezeAllowanceDays;
+        var remaining = MembershipFreezeRequestService.RemainingDays(allowance, used);
         int? actualDays = early && row.Request.ActualStartDate is { } actualStart && row.Request.ActualEndDate is { } actualEnd
             ? Math.Max(0, actualEnd.DayNumber - actualStart.DayNumber + 1)
             : early && check.IsSuccess ? check.Data : null;
@@ -166,9 +167,11 @@ public sealed partial class MembershipFreezeReviewService(
             membership.StartDate, membership.EndDate, membership.MembershipStatus), today),
             row.Request.Reason, row.Request.ReviewNote, Utc(row.Request.ReviewedAt),
             row.Request.EarlyUnfreezeReviewNote, Utc(row.Request.EarlyUnfreezeReviewedAt), remaining,
-            MembershipFreezeRequestService.ReadAppliedPolicy(row.Request.AppliedPolicySnapshot),
+            snapshot,
             row.Request.AppliedExpiryExtensionDays, today,
-            actualDays, check.IsSuccess, IsPending(row.Request, early), check.ErrorMessage);
+            actualDays, check.IsSuccess, IsPending(row.Request, early), check.ErrorMessage,
+            GrantedFreezeAllowanceDays: allowance, CommittedFreezeDays: (int)Math.Min(int.MaxValue, used),
+            GrantedFreezeCount: membership.GrantedFreezeCount, UsedFreezeCount: membership.FreezeCount);
     }
 
     private static MembershipFreezeReviewSummaryResponse Summary(MembershipFreezeReviewReadModel row, bool early) =>

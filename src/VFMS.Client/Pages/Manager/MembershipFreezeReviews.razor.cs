@@ -28,9 +28,14 @@ public partial class MembershipFreezeReviews : IDisposable
     private ElementReference _noticeElement;
     private ElementReference _decisionErrorElement;
     private string _typeInput = "";
-    private string? _activeType;
+    private string _statusInput = "Pending";
+    private string _searchInput = "";
+    private DateOnly? _fromDateInput;
+    private DateOnly? _toDateInput;
+    private MembershipFreezeReviewListRequest _filters = new();
     private int _requestedPage = 1;
     private string? _queueError;
+    private string? _filterError;
     private string? _detailError;
     private string? _decisionError;
     private string? _notice;
@@ -71,12 +76,12 @@ public partial class MembershipFreezeReviews : IDisposable
         var ct = _lifetime.Token;
         try
         {
-            var result = await Api.ListFreezeReviewsAsync(new() { Type = _activeType, Page = page, PageSize = PageSize }, ct);
+            var result = await Api.ListFreezeReviewsAsync(Query(page), ct);
             var lastPage = Math.Max(1, (int)Math.Ceiling((double)result.TotalCount / Math.Max(1, result.PageSize)));
             if (result.Page > lastPage)
             {
                 _requestedPage = lastPage;
-                result = await Api.ListFreezeReviewsAsync(new() { Type = _activeType, Page = lastPage, PageSize = PageSize }, ct);
+                result = await Api.ListFreezeReviewsAsync(Query(lastPage), ct);
             }
             if (!ct.IsCancellationRequested)
                 _page = result;
@@ -97,11 +102,36 @@ public partial class MembershipFreezeReviews : IDisposable
     {
         if (Busy)
             return Task.CompletedTask;
+        _filterError = null;
+        if (_fromDateInput > _toDateInput)
+        {
+            _filterError = "Ngày kết thúc bộ lọc phải từ ngày bắt đầu trở đi.";
+            return Task.CompletedTask;
+        }
+
         CloseDetail();
         _notice = null;
-        _activeType = string.IsNullOrEmpty(_typeInput) ? null : _typeInput;
+        _filters = new()
+        {
+            Type = _typeInput,
+            Status = _statusInput,
+            Search = _searchInput,
+            FromDate = _fromDateInput,
+            ToDate = _toDateInput
+        };
         return LoadQueueCoreAsync(1);
     }
+
+    private MembershipFreezeReviewListRequest Query(int page) => new()
+    {
+        Type = _filters.Type,
+        Status = _filters.Status,
+        Search = _filters.Search,
+        FromDate = _filters.FromDate,
+        ToDate = _filters.ToDate,
+        Page = page,
+        PageSize = PageSize
+    };
 
     private Task RetryQueueAsync() => Busy ? Task.CompletedTask : LoadQueueCoreAsync(_requestedPage);
 
@@ -221,10 +251,7 @@ public partial class MembershipFreezeReviews : IDisposable
     private static string TypeLabel(string type) => type == MembershipFreezeReviewTypes.EarlyUnfreeze
         ? "Kết thúc bảo lưu sớm" : "Bảo lưu";
 
-    private static string PeriodLabel(string type) => type == MembershipFreezeReviewTypes.EarlyUnfreeze
-        ? "Khoảng bảo lưu đã duyệt" : "Thời gian bảo lưu đề nghị";
-
-    private static string UnitLabel(string unit) => unit == MembershipFreezeTierUnits.Months ? "tháng" : "ngày";
+    private static string Days(int? days) => days is { } count ? $"{count} ngày" : "Chưa xác định";
 
     private static DateOnly VietnamDate(DateTimeOffset timestamp) =>
         DateOnly.FromDateTime(timestamp.ToOffset(TimeSpan.FromHours(7)).DateTime);
