@@ -19,11 +19,14 @@
 | GBR-Y9 | Several yoga classes may run at the same time as long as each has a different studio and a different instructor (restates GBR-74/75: only a studio or instructor clash is a conflict). | `YogaClassService.FindConflict` |
 | GBR-Y11 | Buyers keep the level they bought: once a yoga plan has an order or a membership, its level cannot be changed (`YOGA_LEVEL_LOCKED`). The Manager creates a new plan for another level. An old no-level plan that was bought therefore stays unsold; one that was never bought must get a level when it is edited. | `MembershipPlanService.UpdateAsync` |
 | GBR-Y10 | A yoga plan no longer limits bookings to one class type ("Dòng lớp"); only the level decides which classes it books. | removed `PackageComponent.YogaClassTypeId` |
+| GBR-Y12 | When the Manager creates a class's sessions by weekday, the number of weekdays picked must equal the class's sessions per week (`YOGA_SESSION_DAYS_COUNT`). The picker disables the other days once that many are picked. | `YogaClassService.CreateWeeklySessionsAsync`, `YogaManagement.razor` |
+| GBR-C1 | A member's check-in QR code works all gym day, for check-in, check-out and yoga attendance, until 24:00 gym time. Opening "Mã QR của tôi" again shows the same code; "Tạo mã mới" replaces it and the old one stops working. (Replaces "single use, 2 minutes".) | `MemberQrService`, `GET/POST api/my-qr` |
 
 ## New error codes
 
 | Code | HTTP | Message |
 |---|---|---|
+| `YOGA_SESSION_DAYS_COUNT` | 400 | Lớp này có N buổi/tuần: hãy chọn đúng N ngày trong tuần. |
 | `YOGA_LEVEL_NOT_COVERED` | 403 | Gói yoga của bạn chưa bao gồm lớp {cấp độ}. Hãy mua gói có độ khó cao hơn để được đăng ký. |
 | `YOGA_LEVEL_REQUIRED` | 400 | Hãy chọn cấp độ yoga: Cơ bản, Trung bình hoặc Nâng cao. |
 | `YOGA_LEVEL_LOCKED` | 409 | Gói đã có người mua nên không đổi được cấp độ. Hãy tạo gói mới với cấp độ khác. |
@@ -38,6 +41,27 @@
 
 - `GET api/yoga/my-plan` (any signed-in user): `{ hasPlan, maxLevel }`.
 - `/membership-plans/{id}`: plan details, with the classes a yoga plan can book in the next 4 weeks.
+
+## Open rule: a booked class when the yoga plan expires (TC-YEXP)
+
+**Not decided yet.** A booking is per class (every session of the class), but a plan can end before the class does.
+The automated test `YogaPersistenceTests.CurrentBehaviour_BookingMadeWithValidPlanSurvivesThePlanExpiring` pins what
+happens **today**; change its "today" asserts once the rule is chosen.
+
+**Setup for every case:** member M has a usable yoga plan, books class C (sessions run past the plan's end date), then
+the plan reaches its end date (status Expired). C still has sessions after that date.
+
+| ID | Steps | Today (tested) | Option A: keep until the class ends | Option B: pause until renewed | Option C: remove from the class |
+|---|---|---|---|---|---|
+| TC-YEXP-01 | M opens `/yoga/my-bookings` → **Sắp tới** | Booking stays **Confirmed**, still listed with its mat | Same as today | Listed, marked "Gói đã hết hạn: gia hạn để tham gia" | Booking cancelled by the system, M notified, mat freed for the waitlist |
+| TC-YEXP-02 | Instructor opens the roster of C's next session; M shows their QR | M is **on the roster** and the QR scan marks **Có mặt** | Same as today | M listed but the scan is refused ("gói hết hạn"); marked present only after renewal | M not on the roster |
+| TC-YEXP-03 | M tries to book another class (or C again after cancelling) | Refused, `MEMBERSHIP_REQUIRED` | Same | Same | Same |
+| TC-YEXP-04 | M was on C's waitlist; a seat frees after M's plan ended | M is still **offered** the seat (notification), but taking it is refused with `MEMBERSHIP_REQUIRED`; the seat is not passed on to the next person | Skip M and offer the next person | Skip M | Remove M from the waitlist when the plan ends |
+| TC-YEXP-05 | M renews or buys a covering plan, then the next session comes | Nothing changes (the booking never stopped); read from code, not in the test | Same | Attendance works again for the remaining sessions | M must book again (the mat may be gone) |
+| TC-YEXP-06 | No-show counting for sessions after the plan ended | M can be marked **Vắng** if absent (the roster keeps M); read from code, not in the test | Same | Don't count sessions while paused | Not applicable (no booking) |
+
+Note: under "today", a member keeps attending every session of a class after the plan has ended, so a one-month plan
+can cover a class that runs much longer. TC-YEXP-04 also shows a seat can stay idle while the offered member can't take it.
 
 ## Known limits
 
