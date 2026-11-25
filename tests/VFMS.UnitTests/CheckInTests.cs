@@ -257,22 +257,28 @@ public sealed class CheckInTests
     }
 
     [Fact]
-    public async Task QrTokenIsSingleUseShortLivedAndReplacedOnReissue()
+    public async Task QrTokenLastsTheGymDayIsReusableAndReplacedOnlyOnRequest()
     {
         var repo = new RepoFake();
-        var qr = new MemberQrService(repo, Clock);
-        var first = (await qr.IssueAsync("m1")).Data!;
-        var second = (await qr.IssueAsync("m1")).Data!;
+        var qr = new MemberQrService(repo, Clock);   // 10:00 gym time on 07/11
+        var midnight = new DateTime(2026, 11, 7, 17, 0, 0, DateTimeKind.Utc);   // 00:00 on 08/11 gym time
 
-        Assert.Equal(64, second.Token.Length);
-        Assert.Equal(Now + MemberQrService.Lifetime, second.ExpiresAt);
-        Assert.Null(await qr.RedeemAsync(first.Token));   // replaced by the reissue
-        Assert.Equal("m1", await qr.RedeemAsync(second.Token));
-        Assert.Null(await qr.RedeemAsync(second.Token));  // used up
+        var today = (await qr.GetOrIssueAsync("m1")).Data!;
+        Assert.Equal(64, today.Token.Length);
+        Assert.Equal(midnight, today.ExpiresAt);
+        Assert.Equal(today.Token, (await qr.GetOrIssueAsync("m1")).Data!.Token);   // reopening the page shows the same code
 
-        var third = (await qr.IssueAsync("m1")).Data!;
-        var later = new MemberQrService(repo, new FixedClock(Clock.GetUtcNow() + MemberQrService.Lifetime));
-        Assert.Null(await later.RedeemAsync(third.Token));
+        Assert.Equal("m1", await qr.RedeemAsync(today.Token));   // check-in
+        Assert.Equal("m1", await qr.RedeemAsync(today.Token));   // check-out with the same code
+
+        var replaced = (await qr.IssueAsync("m1")).Data!;   // "Tạo mã mới"
+        Assert.NotEqual(today.Token, replaced.Token);
+        Assert.Null(await qr.RedeemAsync(today.Token));
+        Assert.Equal(replaced.Token, (await qr.GetOrIssueAsync("m1")).Data!.Token);
+
+        var nextDay = new MemberQrService(repo, new FixedClock(new DateTimeOffset(midnight)));
+        Assert.Null(await nextDay.RedeemAsync(replaced.Token));
+        Assert.NotEqual(replaced.Token, (await nextDay.GetOrIssueAsync("m1")).Data!.Token);   // a new day gets a new code
     }
 
     [Theory]

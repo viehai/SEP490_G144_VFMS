@@ -30,11 +30,15 @@ public interface ICheckInRepository : IAuditedRepository
         string term, CancellationToken cancellationToken = default);
 }
 
-/// <summary>Issues and redeems the member's short-lived QR token (kiosk UC-44/45, yoga attendance UC-42).</summary>
+/// <summary>Issues and redeems the member's QR token, valid until midnight gym time (kiosk UC-44/45, yoga attendance UC-42).</summary>
 public interface IMemberQrService
 {
+    /// <summary>A new code for the rest of the gym day; the member's older codes stop working.</summary>
     Task<Result<MemberQrResponse>> IssueAsync(string userId, CancellationToken cancellationToken = default);
-    /// <summary>The member who owns this unexpired token; the token is used up.</summary>
+    /// <summary>Today's code: the member's live code if any, otherwise a new one.</summary>
+    Task<Result<MemberQrResponse>> GetOrIssueAsync(string userId, CancellationToken cancellationToken = default) =>
+        IssueAsync(userId, cancellationToken);
+    /// <summary>The member who owns this live, unexpired token. A token can be scanned many times until it expires.</summary>
     Task<string?> RedeemAsync(string token, CancellationToken cancellationToken = default);
 }
 

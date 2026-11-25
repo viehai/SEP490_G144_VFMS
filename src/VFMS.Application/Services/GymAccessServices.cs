@@ -83,8 +83,6 @@ internal static class GymAccessMessages
 
 public sealed class MemberQrService : IMemberQrService
 {
-    public static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(2);
-
     private readonly ICheckInRepository _repository;
     private readonly TimeProvider _clock;
 
@@ -93,6 +91,9 @@ public sealed class MemberQrService : IMemberQrService
         _repository = repository;
         _clock = clock;
     }
+
+    /// <summary>A code lasts until the gym day ends (midnight gym time), so check-in, check-out and yoga all use one code.</summary>
+    public DateTime EndOfGymDayUtc() => YogaTime.ToUtc(YogaTime.Today(_clock).AddDays(1), TimeOnly.MinValue);
 
     public async Task<Result<MemberQrResponse>> IssueAsync(string userId, CancellationToken cancellationToken = default)
     {
@@ -104,20 +105,27 @@ public sealed class MemberQrService : IMemberQrService
             UserId = userId,
             QRToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)),
             GeneratedAt = now,
-            ExpiresAt = now + Lifetime
+            ExpiresAt = EndOfGymDayUtc()
         };
         _repository.Add(code);
         await _repository.SaveChangesAsync(cancellationToken);
         return Result<MemberQrResponse>.Success(new MemberQrResponse(code.QRToken, code.ExpiresAt), 201);
     }
 
+    public async Task<Result<MemberQrResponse>> GetOrIssueAsync(string userId, CancellationToken cancellationToken = default)
+    {
+        var now = _clock.GetUtcNow().UtcDateTime;
+        var live = (await _repository.GetActiveQrCodesAsync(userId, null, cancellationToken))
+            .Where(code => code.ExpiresAt > now).MaxBy(code => code.GeneratedAt);
+        return live is null
+            ? await IssueAsync(userId, cancellationToken)
+            : Result<MemberQrResponse>.Success(new MemberQrResponse(live.QRToken, live.ExpiresAt));
+    }
+
     public async Task<string?> RedeemAsync(string token, CancellationToken cancellationToken = default)
     {
         var code = (await _repository.GetActiveQrCodesAsync(null, token, cancellationToken)).FirstOrDefault();
-        if (code is null || code.ExpiresAt <= _clock.GetUtcNow().UtcDateTime)
-            return null;
-        code.IsActive = false;   // single use: saved together with the caller's change
-        return code.UserId;
+        return code is null || code.ExpiresAt <= _clock.GetUtcNow().UtcDateTime ? null : code.UserId;
     }
 }
 
@@ -188,7 +196,7 @@ public sealed class CheckInService : ICheckInService
 
     public async Task<Result<KioskScanResultResponse>> KioskScanAsync(KioskScanRequest request, string? selfUserId = null, CancellationToken cancellationToken = default)
     {
-        // Identify once: a QR token is single-use, so the in/out decision must not redeem it twice.
+        // Identify once, then decide in or out.
         var (userId, method) = await IdentifyAsync(request, cancellationToken);
         if (userId is null || (selfUserId is not null && userId != selfUserId))
             return Result<KioskScanResultResponse>.Failure(GymAccessMessages.Denied, GymAccessMessages.NotRecognisedCode, 403);
@@ -230,7 +238,7 @@ public sealed class CheckInService : ICheckInService
             open.Id, open.MemberUserId, name, open.CheckinTime, now, (int)(now - open.CheckinTime).TotalMinutes));
     }
 
-    /// <summary>The member behind a kiosk scan, or null (MSG-36). A matched face gets LastUsedAt; a QR token is used up.</summary>
+    /// <summary>The member behind a kiosk scan, or null (MSG-36). A matched face gets LastUsedAt.</summary>
     internal async Task<(string? UserId, CheckInMethod Method)> IdentifyAsync(KioskScanRequest request, CancellationToken cancellationToken)
     {
         if (request.QrToken is { Length: > 0 } token)
