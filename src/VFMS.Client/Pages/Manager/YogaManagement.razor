@@ -24,7 +24,7 @@
 
     @if (_message is not null)
     {
-        <p role="status" class="border px-4 py-3 text-sm rounded-lg @(_isError ? "border-[#EF4444] bg-red-50 text-[#B91C1C]" : "border-[#10B981] bg-emerald-50 text-[#047857]")">@_message</p>
+        <StatusMessage Notice="@(_isError ? null : _message)" Error="@(_isError ? _message : null)" />
     }
 
     @if (_loading)
@@ -55,13 +55,13 @@
                     <tbody>
                         @if (_studios.Count == 0)
                         {
-                            <tr><td colspan="5" class="px-5 py-6 text-[#6F6966]">No matching records found.</td></tr>
+                            <tr><td colspan="5" class="px-5 py-6 text-[#6F6966]">Không tìm thấy kết quả phù hợp.</td></tr>
                         }
                         @foreach (var s in _studios)
                         {
                             <tr class="border-t border-[#D8D1CD]">
                                 <td class="px-5 py-4 font-semibold">@s.StudioName</td><td class="px-5 py-4">@s.FloorNumber</td><td class="px-5 py-4">@s.Capacity</td>
-                                <td class="px-5 py-4"><StatusBadge Status="@(s.IsActive ? "Active" : "Inactive")" /></td>
+                                <td class="px-5 py-4"><StatusBadge Status="@(s.IsActive ? "Active" : "Inactive")" Label="@(s.IsActive ? "Hoạt động" : "Ngừng")" /></td>
                                 <td class="px-5 py-4 text-right whitespace-nowrap">
                                     <button type="button" class="mr-3 text-xs font-bold underline" @onclick="() => EditStudio(s)">Sửa</button>
                                     <button type="button" class="text-xs font-bold underline" disabled="@_busy" @onclick="() => ToggleStudio(s)">@(s.IsActive ? "Ngừng dùng" : "Kích hoạt")</button>
@@ -85,7 +85,7 @@
             <ul class="divide-y divide-[#D8D1CD] border border-[#D8D1CD] bg-[#F8F5F2] rounded-lg">
                 @if (_types.Count == 0)
                 {
-                    <li class="px-5 py-6 text-sm text-[#6F6966]">No matching records found.</li>
+                    <li class="px-5 py-6 text-sm text-[#6F6966]">Không tìm thấy kết quả phù hợp.</li>
                 }
                 @foreach (var t in _types)
                 {
@@ -112,7 +112,7 @@
                     </label>
                     <label class="block text-xs font-semibold">Độ khó
                         <select class="mt-1 w-full border border-[#D8D1CD] px-3 py-2 text-sm rounded-lg bg-[#F8F5F2] focus:border-[#B83A3A] focus:ring-2 focus:ring-[#B83A3A]/20 outline-none" @bind="_class.Difficulty">
-                            <option>Beginner</option><option>Intermediate</option><option>Advanced</option>
+                            <option value="Beginner">Cơ bản</option><option value="Intermediate">Trung bình</option><option value="Advanced">Nâng cao</option>
                         </select>
                     </label>
                 </div>
@@ -149,15 +149,15 @@
             <div class="space-y-4">
                 @if (_classes.Count == 0)
                 {
-                    <p class="border border-[#D8D1CD] bg-[#F8F5F2] px-5 py-6 text-sm text-[#6F6966] rounded-xl">No matching records found.</p>
+                    <p class="border border-[#D8D1CD] bg-[#F8F5F2] px-5 py-6 text-sm text-[#6F6966] rounded-xl">Không tìm thấy kết quả phù hợp.</p>
                 }
                 @foreach (var c in _classes)
                 {
                     <article class="border border-[#D8D1CD] bg-[#F8F5F2] rounded-lg">
                         <div class="flex flex-wrap items-start justify-between gap-3 px-5 py-4">
                             <div>
-                                <p class="workspace-heading text-sm font-extrabold uppercase">@c.ClassName <span class="ml-2 align-middle"><StatusBadge Status="@c.Status" /></span></p>
-                                <p class="mt-1 text-xs text-[#6F6966]">@c.TypeName · @c.DifficultyLevel · @c.InstructorName · @c.MinParticipants–@c.MaxParticipants người · @c.DurationMinutes phút</p>
+                                <p class="workspace-heading text-sm font-extrabold uppercase">@c.ClassName <span class="ml-2 align-middle"><StatusBadge Status="@c.Status" Label="@VFMS.Client.Components.Memberships.YogaClassCard.StatusName(c.Status)" /></span></p>
+                                <p class="mt-1 text-xs text-[#6F6966]">@c.TypeName · @VFMS.Client.Components.Memberships.YogaClassCard.LevelName(c.DifficultyLevel) · @c.InstructorName · @c.MinParticipants–@c.MaxParticipants người · @c.DurationMinutes phút</p>
                                 <p class="text-xs text-[#6F6966]">@c.StartDate.ToString("dd/MM/yyyy") → @c.EndDate.ToString("dd/MM/yyyy") · Hạn đăng ký @DateTime.SpecifyKind(c.RegistrationDeadline, DateTimeKind.Utc).AddHours(7).ToString("dd/MM/yyyy HH:mm") · @c.SessionCount buổi</p>
                             </div>
                             <div class="flex flex-wrap gap-2">
@@ -179,7 +179,25 @@
                                 @if (c.Status is "Draft" or "Open" or "Full")
                                 {
                                     <form class="grid gap-3 sm:grid-cols-[1fr_1fr_1fr_1fr_1fr_auto] sm:items-end" @onsubmit="() => SaveSession(c)">
-                                        <label class="block text-xs font-semibold">Ngày<input type="date" class="mt-1 w-full border border-[#D8D1CD] bg-[#F8F5F2] px-2 py-2 text-sm rounded-lg" @bind="_session.Date" /></label>
+                                        @if (_sessionEditId is null)
+                                        {
+                                            @* New sessions: pick weekdays; one session per chosen day from the class start to end date. *@
+                                            <fieldset class="sm:col-span-6">
+                                                <legend class="text-xs font-semibold">Thứ trong tuần <span class="font-normal text-[#6F6966]">(lớp @c.SessionsPerWeek buổi/tuần, @c.StartDate.ToString("dd/MM/yyyy") → @c.EndDate.ToString("dd/MM/yyyy"))</span></legend>
+                                                <div class="mt-1 flex flex-wrap gap-2">
+                                                    @foreach (var (day, label) in WeekDays)
+                                                    {
+                                                        var on = _session.Days.Contains(day);
+                                                        <button type="button" aria-pressed="@(on ? "true" : "false")" @onclick="() => ToggleDay(day)"
+                                                                class="@($"min-h-[44px] min-w-[52px] rounded-lg border px-3 text-xs font-bold transition-colors {(on ? "border-[#B83A3A] bg-[#B83A3A] text-white" : "border-[#C9C0BB] bg-[#F8F5F2] text-[#242424] hover:bg-[#F3EDEA]")}")">@label</button>
+                                                    }
+                                                </div>
+                                            </fieldset>
+                                        }
+                                        else
+                                        {
+                                            <label class="block text-xs font-semibold">Ngày<input type="date" class="mt-1 w-full border border-[#D8D1CD] bg-[#F8F5F2] px-2 py-2 text-sm rounded-lg" @bind="_session.Date" /></label>
+                                        }
                                         <label class="block text-xs font-semibold">Bắt đầu<input type="time" class="mt-1 w-full border border-[#D8D1CD] bg-[#F8F5F2] px-2 py-2 text-sm rounded-lg" @bind="_session.Start" /></label>
                                         <label class="block text-xs font-semibold">Phòng
                                             <select class="mt-1 w-full border border-[#D8D1CD] bg-[#F8F5F2] px-2 py-2 text-sm rounded-lg" @bind="_session.StudioId">
@@ -194,7 +212,7 @@
                                             </select>
                                         </label>
                                         <p class="text-xs text-[#6F6966]">Kết thúc: @_session.Start.AddMinutes(c.DurationMinutes).ToString("HH:mm")</p>
-                                        <button type="submit" disabled="@_busy" class="bg-[#B83A3A] hover:bg-[#9F3030] px-4 py-2 text-xs font-bold uppercase text-white rounded-lg">@(_sessionEditId is null ? "Thêm buổi" : "Lưu buổi")</button>
+                                        <button type="submit" disabled="@_busy" class="bg-[#B83A3A] hover:bg-[#9F3030] px-4 py-2 text-xs font-bold uppercase text-white rounded-lg">@(_sessionEditId is null ? "Tạo lịch" : "Lưu buổi")</button>
                                     </form>
                                 }
                                 <table class="w-full text-left text-sm">
@@ -202,14 +220,14 @@
                                     <tbody>
                                         @if (_sessions.Count == 0)
                                         {
-                                            <tr><td colspan="7" class="py-3 text-[#6F6966]">No matching records found.</td></tr>
+                                            <tr><td colspan="7" class="py-3 text-[#6F6966]">Không tìm thấy kết quả phù hợp.</td></tr>
                                         }
                                         @foreach (var s in _sessions)
                                         {
                                             <tr class="border-t border-[#D8D1CD]">
-                                                <td class="py-2">@s.ScheduledDate.ToString("ddd dd/MM")</td><td class="py-2">@s.StartTime.ToString("HH:mm")–@s.EndTime.ToString("HH:mm")</td>
+                                                <td class="py-2">@VFMS.Client.Components.Memberships.YogaClassCard.DayName(s.ScheduledDate) @s.ScheduledDate.ToString("dd/MM")</td><td class="py-2">@s.StartTime.ToString("HH:mm")–@s.EndTime.ToString("HH:mm")</td>
                                                 <td class="py-2">@s.StudioName</td><td class="py-2">@s.InstructorName</td><td class="py-2">@s.ConfirmedBookings/@s.MaxParticipants</td>
-                                                <td class="py-2"><StatusBadge Status="@s.Status" /></td>
+                                                <td class="py-2"><StatusBadge Status="@s.Status" Label="@VFMS.Client.Components.Memberships.YogaClassCard.StatusName(s.Status)" /></td>
                                                 <td class="py-2 text-right whitespace-nowrap">
                                                     @if (s.Status == "Scheduled")
                                                     {
@@ -294,7 +312,7 @@
         await Run(() => _studioEditId is { } id
                 ? Api.PutAsync<YogaStudioResponse>($"api/yoga/studios/{id}", body)
                 : Api.PostAsync<YogaStudioResponse>("api/yoga/studios", body),
-            _studioEditId is null ? "Yoga studio created successfully." : "Yoga studio updated successfully.",
+            _studioEditId is null ? "Tạo phòng yoga thành công." : "Cập nhật phòng yoga thành công.",
             async () => { ResetStudio(); _studios = await Api.GetAsync<List<YogaStudioResponse>>("api/yoga/studios?includeInactive=true"); });
     }
 
@@ -303,7 +321,7 @@
 
     private Task ToggleStudio(YogaStudioResponse s) =>
         Run(() => Api.PostAsync<YogaStudioResponse>($"api/yoga/studios/{s.Id}/{(s.IsActive ? "deactivate" : "activate")}"),
-            "Yoga studio updated successfully.",
+            "Cập nhật phòng yoga thành công.",
             async () => _studios = await Api.GetAsync<List<YogaStudioResponse>>("api/yoga/studios?includeInactive=true"));
 
     // Types
@@ -313,7 +331,7 @@
         await Run(() => _typeEditId is { } id
                 ? Api.PutAsync<YogaClassTypeResponse>($"api/yoga/class-types/{id}", body)
                 : Api.PostAsync<YogaClassTypeResponse>("api/yoga/class-types", body),
-            "Class type saved successfully.",
+            "Lưu loại lớp thành công.",
             async () => { _typeEditId = null; _typeName = string.Empty; _typeDescription = null; _types = await Api.GetAsync<List<YogaClassTypeResponse>>("api/yoga/class-types"); });
     }
 
@@ -323,11 +341,22 @@
         var deadlineUtc = DateTime.SpecifyKind(_class.Deadline.AddHours(-7), DateTimeKind.Utc);   // form is gym-local (UTC+7)
         var body = new YogaClassRequest(_class.TypeId, _class.Name, _class.InstructorId, _class.Difficulty, _class.PerWeek,
             _class.Min, _class.Max, _class.Duration, deadlineUtc, _class.Start, _class.End, _class.Description);
-        await Run(() => _classEditId is { } id
+        var isNew = _classEditId is null;
+        YogaClassResponse? saved = null;
+        await Run(async () => saved = await (_classEditId is { } id
                 ? Api.PutAsync<YogaClassResponse>($"api/yoga/classes/{id}", body)
-                : Api.PostAsync<YogaClassResponse>("api/yoga/classes", body),
-            _classEditId is null ? "Yoga class created successfully." : "Yoga class updated successfully.",
-            () => { ResetClass(); return Task.CompletedTask; });
+                : Api.PostAsync<YogaClassResponse>("api/yoga/classes", body)),
+            isNew ? "Tạo lớp yoga thành công. Chọn thứ và giờ học bên dưới để tạo lịch." : "Cập nhật lớp yoga thành công.",
+            async () =>
+            {
+                ResetClass();
+                if (!isNew) return;
+                // Next step of creating a class: its weekly schedule.
+                _openClassId = saved!.Id;
+                _sessionEditId = null;
+                _session = new();
+                await LoadSessions(saved.Id);
+            });
     }
 
     private void EditClass(YogaClassResponse c)
@@ -365,13 +394,40 @@
 
     private async Task SaveSession(YogaClassResponse c)
     {
+        if (_sessionEditId is null) { await SaveWeekly(c); return; }
         var body = new YogaSessionRequest(c.Id, _session.StudioId, _session.Date, _session.Start, _session.Start.AddMinutes(c.DurationMinutes),
             string.IsNullOrEmpty(_session.InstructorId) ? null : _session.InstructorId);
         await Run(() => _sessionEditId is { } id
                 ? Api.PutAsync<YogaSessionResponse>($"api/yoga/sessions/{id}", body)
                 : Api.PostAsync<YogaSessionResponse>("api/yoga/sessions", body),
-            "Yoga session saved successfully.",
+            "Lưu buổi học thành công.",
             async () => { _sessionEditId = null; await LoadSessions(c.Id); });
+    }
+
+    private static readonly (DayOfWeek Day, string Label)[] WeekDays =
+    [
+        (DayOfWeek.Monday, "T2"), (DayOfWeek.Tuesday, "T3"), (DayOfWeek.Wednesday, "T4"), (DayOfWeek.Thursday, "T5"),
+        (DayOfWeek.Friday, "T6"), (DayOfWeek.Saturday, "T7"), (DayOfWeek.Sunday, "CN")
+    ];
+
+    private void ToggleDay(DayOfWeek day)
+    {
+        if (!_session.Days.Remove(day)) _session.Days.Add(day);
+    }
+
+    private async Task SaveWeekly(YogaClassResponse c)
+    {
+        YogaWeeklySessionsResponse? made = null;
+        var body = new YogaWeeklySessionsRequest(_session.StudioId, _session.Days.OrderBy(d => ((int)d + 6) % 7).ToArray(), _session.Start,
+            string.IsNullOrEmpty(_session.InstructorId) ? null : _session.InstructorId);
+        await Run(async () => made = await Api.PostAsync<YogaWeeklySessionsResponse>($"api/yoga/classes/{c.Id}/sessions/weekly", body),
+            "Đã tạo lịch học.",
+            async () =>
+            {
+                Show($"Đã tạo {made!.Created} buổi học{(made.Skipped > 0 ? $", bỏ qua {made.Skipped} ngày đã có buổi, đã qua hoặc quá gần hôm nay" : "")}.", false);
+                _session = new();
+                await LoadSessions(c.Id);
+            });
     }
 
     private void EditSession(YogaSessionResponse s)
@@ -408,5 +464,6 @@
         public TimeOnly Start { get; set; } = new(7, 0);
         public int StudioId { get; set; }
         public string? InstructorId { get; set; }
+        public HashSet<DayOfWeek> Days { get; } = [];
     }
 }

@@ -30,7 +30,7 @@ public sealed class YogaStudioService : IYogaStudioService
     {
         var gymId = await _repository.GetDefaultGymIdAsync(cancellationToken);
         if (gymId is null)
-            return Result<YogaStudioResponse>.Failure("No gym configured in the system.", "YOGA_NO_GYM", 500);
+            return Result<YogaStudioResponse>.Failure("Hệ thống chưa cấu hình phòng gym.", "YOGA_NO_GYM", 500);
 
         var name = request.StudioName.Trim();
         if (await _repository.StudioNameExistsAsync(gymId.Value, name, null, cancellationToken))
@@ -60,7 +60,7 @@ public sealed class YogaStudioService : IYogaStudioService
         var largestClass = await _repository.GetLargestClassUsingStudioAsync(id, YogaTime.Today(_clock), cancellationToken);
         if (request.Capacity < largestClass)
             return Result<YogaStudioResponse>.Failure(
-                $"Upcoming classes in this studio allow up to {largestClass} participants. Capacity cannot be lower.",
+                $"Các lớp sắp tới ở phòng này cho phép tối đa {largestClass} học viên. Sức chứa không được nhỏ hơn.",
                 "YOGA_STUDIO_CAPACITY_IN_USE", 409);
 
         var before = Describe(studio);
@@ -84,7 +84,7 @@ public sealed class YogaStudioService : IYogaStudioService
 
         if (!isActive && await _repository.StudioHasFutureSessionsAsync(id, YogaTime.Today(_clock), cancellationToken))
             return Result<YogaStudioResponse>.Failure(
-                "This studio has upcoming class sessions. Move or cancel them before deactivating the studio.",
+                "Phòng này còn buổi học sắp tới. Hãy dời hoặc hủy các buổi đó trước khi ngừng hoạt động phòng.",
                 "YOGA_STUDIO_HAS_SESSIONS", 409);   // GBR-72
 
         var before = Describe(studio);
@@ -101,10 +101,10 @@ public sealed class YogaStudioService : IYogaStudioService
         $"Name={s.StudioName}; Floor={s.FloorNumber}; Capacity={s.Capacity}; Active={s.IsActive}";
 
     private static Result<YogaStudioResponse> NotFound() =>
-        Result<YogaStudioResponse>.Failure("Yoga studio not found.", "YOGA_STUDIO_NOT_FOUND", 404);
+        Result<YogaStudioResponse>.Failure("Không tìm thấy phòng yoga.", "YOGA_STUDIO_NOT_FOUND", 404);
 
     private static Result<YogaStudioResponse> NameTaken() =>
-        Result<YogaStudioResponse>.Failure("A studio with this name already exists in the gym.", "YOGA_STUDIO_NAME_TAKEN", 409);
+        Result<YogaStudioResponse>.Failure("Đã có phòng yoga trùng tên.", "YOGA_STUDIO_NAME_TAKEN", 409);
 }
 
 /// <summary>Gym-local time helpers (Asia/Ho_Chi_Minh, UTC+7, no DST).</summary>

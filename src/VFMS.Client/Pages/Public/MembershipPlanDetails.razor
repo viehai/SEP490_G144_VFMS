@@ -1,0 +1,133 @@
+@page "/membership-plans/{Id:int}"
+@layout PublicLayout
+@using VFMS.Client.Components.Memberships
+@using VFMS.Client.Components.Operations
+@using VFMS.Contracts.Memberships
+@using VFMS.Contracts.Yoga
+@using VFMS.Contracts.Yoga.Validators
+@inject MembershipPlanApiClient Plans
+@inject VfmsApiClient Api
+@inject NavigationManager Navigation
+@inject MembershipCart Cart
+
+<PageTitle>@(_plan?.Name ?? "Chi tiết gói") | Victor Fitness</PageTitle>
+
+<section class="mx-auto max-w-4xl space-y-8 px-4 pb-20 pt-28 font-['Inter',sans-serif] text-[#242424] sm:px-6">
+    <a href="@BackHref" class="inline-flex min-h-[44px] items-center gap-1.5 text-sm font-bold text-[#B83A3A] hover:underline"><span aria-hidden="true">←</span> Về danh sách gói</a>
+
+    @if (_error is not null)
+    {
+        <StatusMessage Error="@_error" />
+    }
+    else if (_plan is not { } plan)
+    {
+        <p class="text-sm text-[#6F6966]" role="status">Đang tải…</p>
+    }
+    else
+    {
+        <header class="space-y-3 border-b border-[#D8D1CD] pb-6">
+            <p class="text-[11px] font-bold uppercase tracking-[.18em] text-[#B83A3A]">
+                @(IsYoga ? "Gói Yoga" : "Gói tập Gym")@if (plan.YogaDifficultyLevel is { } level)
+                {
+                    <span> · @YogaRules.LevelLabel(level)</span>
+                }
+            </p>
+            <h1 class="break-words font-['Montserrat'] text-3xl font-black uppercase tracking-tight sm:text-4xl">@plan.Name</h1>
+            <p class="font-['Montserrat'] text-3xl font-black">@Vnd.Format(plan.Price)</p>
+        </header>
+
+        <dl class="grid gap-4 text-sm sm:grid-cols-2">
+            <div><dt class="font-semibold text-[#6F6966]">Thời hạn</dt><dd class="font-bold">@Duration(plan)</dd></div>
+            @if (plan.YogaDifficultyLevel is { } covers)
+            {
+                <div><dt class="font-semibold text-[#6F6966]">Đăng ký được lớp</dt><dd class="font-bold">@YogaRules.CoveredLabels(covers)</dd></div>
+            }
+            @if (!IsYoga)
+            {
+                <div><dt class="font-semibold text-[#6F6966]">Quyền lợi</dt><dd class="font-bold">Ra vào phòng gym trong giờ mở cửa</dd></div>
+            }
+            <div class="sm:col-span-2"><dt class="font-semibold text-[#6F6966]">Mô tả</dt><dd class="whitespace-pre-wrap break-words">@(plan.Description ?? "—")</dd></div>
+        </dl>
+
+        <AuthorizeView>
+            <Authorized Context="auth">
+                @if (auth.User.IsInRole("Customer") || auth.User.IsInRole("Member"))
+                {
+                    <div class="flex flex-wrap items-center gap-3">
+                        <button type="button" disabled="@(Cart.Count >= MembershipCart.MaximumItems)" @onclick="() => Cart.Add(plan.Id, plan.Name, plan.Price)"
+                                class="min-h-[44px] rounded-lg bg-[#B83A3A] px-6 text-xs font-bold uppercase tracking-wider text-white transition-colors hover:bg-[#9F3030] disabled:opacity-50">Thêm vào giỏ</button>
+                        @if (Cart.Count > 0)
+                        {
+                            <a href="/membership-cart" class="inline-flex min-h-[44px] items-center text-sm font-bold text-[#B83A3A] hover:underline">Xem giỏ hàng (@Cart.Count gói)</a>
+                        }
+                    </div>
+                }
+            </Authorized>
+            <NotAuthorized>
+                <a href="@LoginUrl" class="inline-flex min-h-[44px] items-center rounded-lg bg-[#B83A3A] px-6 text-xs font-bold uppercase tracking-wider text-white hover:bg-[#9F3030]">Đăng nhập để mua</a>
+            </NotAuthorized>
+        </AuthorizeView>
+
+        @if (IsYoga)
+        {
+            <section class="space-y-3" aria-labelledby="plan-classes">
+                <h2 id="plan-classes" class="font-['Montserrat'] text-lg font-extrabold uppercase">Lớp đăng ký được trong 4 tuần tới</h2>
+                @if (_classes is null)
+                {
+                    <p class="text-sm text-[#6F6966]" role="status">Đang tải lịch lớp…</p>
+                }
+                else if (_classes.Count == 0)
+                {
+                    <p class="text-sm text-[#6F6966]">Chưa có lớp nào gói này đăng ký được trong 4 tuần tới.</p>
+                }
+                else
+                {
+                    <ul class="grid gap-3 sm:grid-cols-2">
+                        @foreach (var c in _classes)
+                        {
+                            <li @key="c.ClassId" class="rounded-xl border border-[#D8D1CD] bg-[#F8F5F2] p-4">
+                                <a href="@c.ScheduleHref" class="font-bold hover:text-[#B83A3A] hover:underline">@c.Name</a>
+                                <p class="mt-1 text-xs text-[#6F6966]">@c.DifficultyName · @c.Studio · @c.Instructor</p>
+                                <p class="mt-1 text-xs">@string.Join(" · ", c.Slots.Select(s => $"{string.Join(" ", s.Days)} {s.Start:HH:mm}–{s.End:HH:mm}"))</p>
+                            </li>
+                        }
+                    </ul>
+                }
+            </section>
+        }
+    }
+</section>
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private MembershipPlanCatalogItemResponse? _plan;
+    private IReadOnlyList<YogaClassCard>? _classes;
+    private string? _error;
+
+    private bool IsYoga => string.Equals(_plan?.ServiceType, MembershipPlanServiceTypes.Yoga, StringComparison.OrdinalIgnoreCase);
+    private string BackHref => IsYoga ? "/membership-plans?type=yoga" : "/membership-plans";
+    private string LoginUrl => $"/auth/login?returnUrl={Uri.EscapeDataString($"/membership-plans/{Id}")}";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _plan = null;
+        _classes = null;
+        _error = null;
+        try { _plan = await Plans.GetCatalogItemAsync(Id); }
+        catch (Exception) { _error = "Gói này không còn mở bán hoặc không tồn tại."; return; }
+
+        if (!IsYoga) return;
+        try
+        {
+            var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7));
+            var sessions = await Api.GetAsync<List<YogaSessionResponse>>($"api/yoga/schedule?from={today:yyyy-MM-dd}&to={today.AddDays(27):yyyy-MM-dd}");
+            _classes = YogaClassCard.FromSessions(sessions.Where(s => YogaRules.PlanCovers(_plan.YogaDifficultyLevel, s.DifficultyLevel) &&
+                s.ClassStatus is "Open" or "Full" && (s.RegistrationDeadline is null || s.RegistrationDeadline > DateTime.UtcNow)));
+        }
+        catch (ApiException) { _classes = []; }
+    }
+
+    private static string Duration(MembershipPlanCatalogItemResponse plan) => plan.DurationInMonths is > 0 ? $"{plan.DurationInMonths} tháng"
+        : plan.DurationInDays is { } days ? $"{days} ngày" : "—";
+}

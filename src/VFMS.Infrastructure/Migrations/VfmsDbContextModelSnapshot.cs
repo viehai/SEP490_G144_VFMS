@@ -2297,14 +2297,13 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<int?>("YogaClassTypeId")
-                        .HasColumnType("int");
+                    b.Property<string>("YogaDifficultyLevel")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
                     b.HasKey("Id");
 
                     b.HasIndex("PackageId");
-
-                    b.HasIndex("YogaClassTypeId");
 
                     b.ToTable("PackageComponents");
                 });
@@ -4108,14 +4107,9 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<int>("YogaClassScheduleId")
                         .HasColumnType("int");
 
-                    b.Property<int?>("YogaClassTypeId")
-                        .HasColumnType("int");
-
                     b.HasKey("Id");
 
                     b.HasIndex("MemberUserId");
-
-                    b.HasIndex("YogaClassTypeId");
 
                     b.HasIndex("YogaClassScheduleId", "MemberUserId")
                         .IsUnique();
@@ -4802,14 +4796,7 @@ namespace VFMS.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("VFMS.Domain.Entities.YogaClassType", "YogaClassType")
-                        .WithMany("PackageComponents")
-                        .HasForeignKey("YogaClassTypeId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.Navigation("Package");
-
-                    b.Navigation("YogaClassType");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.PaymentTransaction", b =>
@@ -5335,16 +5322,9 @@ namespace VFMS.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("VFMS.Domain.Entities.YogaClassType", "YogaClassType")
-                        .WithMany("YogaWaitlists")
-                        .HasForeignKey("YogaClassTypeId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.Navigation("Member");
 
                     b.Navigation("YogaClassSchedule");
-
-                    b.Navigation("YogaClassType");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.ApplicationRole", b =>
@@ -5627,11 +5607,7 @@ namespace VFMS.Infrastructure.Migrations
 
             modelBuilder.Entity("VFMS.Domain.Entities.YogaClassType", b =>
                 {
-                    b.Navigation("PackageComponents");
-
                     b.Navigation("YogaClasses");
-
-                    b.Navigation("YogaWaitlists");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.YogaStudio", b =>

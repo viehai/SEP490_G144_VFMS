@@ -34,8 +34,7 @@ public sealed record PackageCatalogItemResponse(
     int? SessionCount,
 
     // --- Yoga-specific ---
-    int? YogaClassTypeId,
-    string? YogaClassTypeName,
+    string? YogaDifficultyLevel,   // highest class level the plan books; lower levels included
 
     // --- PT-specific ---
     string? TrainerLevel,

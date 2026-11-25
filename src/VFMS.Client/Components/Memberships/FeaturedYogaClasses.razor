@@ -9,7 +9,7 @@
 }
 else if (_error is not null)
 {
-    <p role="alert" class="rounded-xl border border-red-200 bg-red-50 p-5 font-body text-sm text-red-900">@_error</p>
+    <StatusMessage Error="@_error" />
 }
 else if (_cards.Count == 0)
 {
@@ -25,7 +25,7 @@ else
             {
                 var card = _cards[i];
                 var badge = card.Badge(DateTime.UtcNow);
-                <a href="/yoga/schedule" aria-label="@($"{card.Name}, {YogaClassCard.BadgeText(badge)}")"
+                <a href="@card.ScheduleHref" aria-label="@($"{card.Name}, {YogaClassCard.BadgeText(badge)}")"
                    class="group relative block w-full h-[68vh] min-h-[520px] max-h-[750px] overflow-hidden bg-[#ECE8E4] border border-[#D8D1CD] hover:border-[#B83A3A] focus-visible:border-[#B83A3A] rounded-xl select-none transition-all duration-300">
                     <img src="@Photo(i)" alt="" loading="lazy"
                          class="w-full h-full object-cover object-center group-hover:scale-105 transition-all duration-700 ease-out pointer-events-none" />

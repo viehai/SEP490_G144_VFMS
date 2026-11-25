@@ -108,7 +108,7 @@
             }
             _profile = await Api.PutAsync<FaceProfileResponse>("api/face-profile", new RegisterFaceRequest(descriptor, _consent));
             await StopCamera();
-            Show("Face profile updated successfully.", false);
+            Show("Cập nhật FaceID thành công.", false);
         }
         catch (ApiException ex) { Show(ex.Message, true); }
         catch (JSException ex) { Log.LogWarning(ex, "FaceProfile: vfmsFace.capture (face-capture.js) failed"); Show("Không xử lý được ảnh. Vui lòng thử lại.", true); }

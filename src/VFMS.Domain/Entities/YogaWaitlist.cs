@@ -9,7 +9,6 @@ namespace VFMS.Domain.Entities;
 public class YogaWaitlist : BaseEntity
 {
     public int YogaClassScheduleId { get; set; }
-    public int? YogaClassTypeId { get; set; }
     public string MemberUserId { get; set; } = string.Empty;
     public int Position { get; set; }
     public DateTime JoinedAt { get; set; }
@@ -18,7 +17,6 @@ public class YogaWaitlist : BaseEntity
 
     // ── Navigation Properties ──────────────────────────────────
     public YogaClassSchedule YogaClassSchedule { get; set; } = null!;
-    public YogaClassType? YogaClassType { get; set; }
     public ApplicationUser Member { get; set; } = null!;
 }
 

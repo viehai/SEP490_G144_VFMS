@@ -261,10 +261,7 @@ public class VfmsDbContext : DbContext
                 .HasForeignKey(e => e.PackageId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            entity.HasOne(e => e.YogaClassType)
-                .WithMany(t => t.PackageComponents)
-                .HasForeignKey(e => e.YogaClassTypeId)
-                .OnDelete(DeleteBehavior.Restrict);
+            entity.Property(e => e.YogaDifficultyLevel).HasMaxLength(20);
         });
 
         // ── Order ─────────────────────────────────────────────────
@@ -730,11 +727,6 @@ public class VfmsDbContext : DbContext
             entity.HasOne(e => e.YogaClassSchedule)
                 .WithMany(s => s.Waitlists)
                 .HasForeignKey(e => e.YogaClassScheduleId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            entity.HasOne(e => e.YogaClassType)
-                .WithMany(t => t.YogaWaitlists)
-                .HasForeignKey(e => e.YogaClassTypeId)
                 .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasOne(e => e.Member)

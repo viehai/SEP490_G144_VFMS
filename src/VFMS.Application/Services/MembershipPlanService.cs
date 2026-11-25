@@ -5,6 +5,7 @@ using VFMS.Contracts.Memberships;
 using VFMS.Contracts.Packages;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
+using VFMS.Contracts.Yoga.Validators;
 
 namespace VFMS.Application.Services;
 
@@ -54,6 +55,8 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
     {
         // A plan sells one service, GYM or YOGA (legacy combos keep GYM as their main part).
         var service = new PackageComponent { ComponentType = ParseServiceType(request.ServiceType) ?? ComponentType.GYM };
+        if (service.ComponentType == ComponentType.YOGA && !YogaRules.IsDifficulty(request.YogaDifficultyLevel))
+            return YogaLevelRequired();
         var plan = new Package { Components = [service] };
         Apply(plan, service, request);
 
@@ -68,6 +71,16 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
         MutateAsync(id, async plan =>
         {
             var gym = PrimaryComponent(plan);   // the type never changes on update
+            if (gym.ComponentType == ComponentType.YOGA)
+            {
+                // Buyers keep the level they bought until their membership ends, so a bought plan's level is fixed.
+                var used = await repository.HasUsageAsync(id, cancellationToken);
+                if (used && CanonicalLevel(request.YogaDifficultyLevel) != gym.YogaDifficultyLevel)
+                    return Result<MembershipPlanResponse>.Failure(
+                        "Gói đã có người mua nên không đổi được cấp độ. Hãy tạo gói mới với cấp độ khác.", "YOGA_LEVEL_LOCKED", 409);
+                if (!used && !YogaRules.IsDifficulty(request.YogaDifficultyLevel))
+                    return YogaLevelRequired();
+            }
             var oldStatus = plan.PackageStatus;
             var before = Snapshot(plan, gym);
             Apply(plan, gym, request);
@@ -156,7 +169,15 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
             gym.DurationDays = request.DurationInDays;
             gym.DurationMonths = null;
         }
+        if (gym.ComponentType == ComponentType.YOGA)
+            gym.YogaDifficultyLevel = CanonicalLevel(request.YogaDifficultyLevel);
     }
+
+    private static string? CanonicalLevel(string? level) =>
+        YogaRules.DifficultyLevels.FirstOrDefault(code => code.Equals(level?.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    private static Result<MembershipPlanResponse> YogaLevelRequired() => Result<MembershipPlanResponse>.Failure(
+        "Hãy chọn cấp độ yoga: Cơ bản, Trung bình hoặc Nâng cao.", "YOGA_LEVEL_REQUIRED", 400);
 
     /// <summary>The plan's main part: its GYM component, or for a yoga plan its YOGA component.</summary>
     private static PackageComponent PrimaryComponent(Package plan)
@@ -168,15 +189,15 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
 
     private static MembershipPlanReadModel ReadCreatedPlan(Package plan, PackageComponent service) =>
         new(plan.Id, plan.Name, plan.Description, service.DurationDays, service.DurationMonths, plan.Price,
-            plan.PackageStatus, SubscriberCount: 0, service.ComponentType);
+            plan.PackageStatus, SubscriberCount: 0, service.ComponentType, service.YogaDifficultyLevel);
 
     private static MembershipPlanResponse ToResponse(MembershipPlanReadModel plan) =>
         new(plan.Id, plan.Name, plan.Description, DisplayDays(plan.DurationDays, plan.DurationMonths), plan.Price,
-            FormatStatus(plan.Status), plan.SubscriberCount, LegacyMonths(plan), plan.ServiceType.ToString());
+            FormatStatus(plan.Status), plan.SubscriberCount, LegacyMonths(plan), plan.ServiceType.ToString(), plan.YogaDifficultyLevel);
 
     private static MembershipPlanCatalogItemResponse ToCatalogResponse(MembershipPlanReadModel plan) =>
         new(plan.Id, plan.Name, plan.Description, DisplayDays(plan.DurationDays, plan.DurationMonths), plan.Price,
-            FormatStatus(plan.Status), LegacyMonths(plan), plan.ServiceType.ToString())
+            FormatStatus(plan.Status), LegacyMonths(plan), plan.ServiceType.ToString(), plan.YogaDifficultyLevel)
         {
             IsSingleService = plan.IsSingleService
         };
@@ -197,6 +218,7 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
         plan.Description,
         DurationInDays = gym.DurationDays,
         DurationInMonths = gym.DurationMonths,
+        gym.YogaDifficultyLevel,
         plan.Price,
         Status = FormatStatus(plan.PackageStatus)
     });
@@ -293,8 +315,7 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
             m.DurationDays,
             m.DurationMonths,
             m.SessionCount,
-            m.YogaClassTypeId,
-            m.YogaClassTypeName,
+            m.YogaDifficultyLevel,
             m.ApplicableTrainerLevel,
             m.PTFreezeMinimumDays,
             m.PTFreezeMaxTotalDays,

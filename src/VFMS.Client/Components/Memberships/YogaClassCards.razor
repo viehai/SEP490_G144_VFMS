@@ -9,7 +9,7 @@
 }
 else if (_error is not null)
 {
-    <p role="alert" class="rounded-xl border border-red-200 bg-red-50 p-5 font-body text-sm text-red-900">@_error</p>
+    <StatusMessage Error="@_error" />
 }
 else if (_cards.Count == 0)
 {
@@ -71,7 +71,7 @@ else
                 {
                     <AuthorizeView>
                         <Authorized>
-                            <a href="/yoga/schedule" class="w-full bg-[#B83A3A] hover:bg-[#9F3030] text-white py-4 font-heading font-bold text-xs uppercase tracking-wider text-center transition-colors block rounded-lg">Đăng ký lớp</a>
+                            <a href="@card.ScheduleHref" class="w-full bg-[#B83A3A] hover:bg-[#9F3030] text-white py-4 font-heading font-bold text-xs uppercase tracking-wider text-center transition-colors block rounded-lg">Đăng ký lớp</a>
                         </Authorized>
                         <NotAuthorized>
                             <a href="/auth/register" class="w-full bg-[#B83A3A] hover:bg-[#9F3030] text-white py-4 font-heading font-bold text-xs uppercase tracking-wider text-center transition-colors block rounded-lg">Đăng ký lớp</a>

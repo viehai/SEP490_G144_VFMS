@@ -60,6 +60,7 @@
     };
 
     let scannerLoading = null;
+    window.vfmsQr.loadScanner = loadScanner;
     function loadScanner() {
         if (window.jsQR) return Promise.resolve();
         return scannerLoading ??= new Promise((resolve, reject) => {
