@@ -163,7 +163,7 @@
                         {
                             <div>
                                 <label for="freeze-rejection-reason" class="block text-sm font-semibold text-vfms-text">Lý do từ chối <span aria-hidden="true" class="text-vfms-primary">*</span></label>
-                                <InputTextArea id="freeze-rejection-reason" class="@(Ui.Field + " text-base sm:text-sm")" @bind-Value="_rejectForm.Reason" rows="3" maxlength="4000"
+                                <InputTextArea id="freeze-rejection-reason" class="@(Ui.Field + " resize-none text-base sm:text-sm")" @bind-Value="_rejectForm.Reason" rows="3" maxlength="4000"
                                                required aria-describedby="freeze-rejection-error" />
                                 <div id="freeze-rejection-error"><ValidationMessage For="@(() => _rejectForm.Reason)" /></div>
                             </div>

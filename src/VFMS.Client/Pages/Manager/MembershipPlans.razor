@@ -88,12 +88,12 @@
                     </label>
                     <label class="text-sm font-semibold text-[#242424] sm:col-span-2" for="plan-description">
                         Mô tả
-                        <InputTextArea id="plan-description" class="@Field" @bind-Value="form.Description" rows="3" maxlength="4000" placeholder="Mô tả quyền lợi của gói..." />
+                        <InputTextArea id="plan-description" class="@(Field + " resize-none")" @bind-Value="form.Description" rows="3" maxlength="4000" placeholder="Mô tả quyền lợi của gói..." />
                         <ValidationMessage For="@(() => form.Description)" />
                     </label>
                     <label class="text-sm font-semibold text-[#242424] sm:col-span-2" for="plan-audience">
                         Phù hợp với ai
-                        <InputTextArea id="plan-audience" class="@Field" @bind-Value="form.TargetAudience" rows="3" maxlength="4000" placeholder="Đối tượng phù hợp với gói tập..." />
+                        <InputTextArea id="plan-audience" class="@(Field + " resize-none")" @bind-Value="form.TargetAudience" rows="3" maxlength="4000" placeholder="Đối tượng phù hợp với gói tập..." />
                         <ValidationMessage For="@(() => form.TargetAudience)" />
                     </label>
                     @if (form.ServiceType == MembershipPlanServiceTypes.Gym)
@@ -285,7 +285,7 @@
 
     private readonly CancellationTokenSource _lifetime = new();
     private readonly MembershipPlanRequestValidator _validator = new();
-    private readonly MembershipPlanListRequest _query = new() { Status = Active };
+    private readonly MembershipPlanListRequest _query = new() { Status = Active, PageSize = 10 };
     private PagedResponse<MembershipPlanResponse>? _list;
     private MembershipPlanResponse? _selected;
     private MembershipPlanRequest? _form;

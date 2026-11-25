@@ -2,6 +2,7 @@
 @layout PublicLayout
 @using Microsoft.AspNetCore.Authorization
 @using VFMS.Client.Components.Memberships
+@using VFMS.Client.Components.Operations
 @attribute [Authorize(Roles = "Member")]
 
 <PageTitle>Quản lý yêu cầu bảo lưu | Victor Fitness</PageTitle>
@@ -48,7 +49,7 @@
                 {
                     <button type="button" class="@SecondaryButton @(_filter == filter.Status ? "border-vfms-primary text-vfms-primary" : "")"
                             aria-pressed="@(_filter == filter.Status ? "true" : "false")" disabled="@ActionsDisabled"
-                            @onclick="() => _filter = filter.Status">@filter.Label</button>
+                            @onclick="() => SetFilter(filter.Status)">@filter.Label</button>
                 }
             </div>
         }
@@ -64,7 +65,7 @@
         else
         {
             <ul class="list-none space-y-4 p-0">
-                @foreach (var request in requests)
+                @foreach (var request in requests.Skip((_page - 1) * PageSize).Take(PageSize))
                 {
                     <li @key="request.FreezeRequestId" class="space-y-4 rounded-xl border border-vfms-border bg-white p-5 sm:p-6">
                         <div class="flex flex-wrap items-baseline justify-between gap-2 border-b border-vfms-border pb-4">
@@ -175,6 +176,11 @@
                     </li>
                 }
             </ul>
+            @if (requests.Length > PageSize)
+            {
+                <Pager Page="_page" PageSize="PageSize" TotalCount="requests.Length" Noun="yêu cầu"
+                       AriaLabel="Phân trang yêu cầu bảo lưu" Disabled="ActionsDisabled" OnPage="page => _page = page" />
+            }
         }
     }
 </section>
