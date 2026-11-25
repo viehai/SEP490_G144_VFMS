@@ -92,20 +92,21 @@ Open to Staff, Manager, Customer and Member.
 1. Open `/kiosk` and allow camera access. The camera starts by itself; the face models take a few seconds to load the first time ("Đang mở camera và tải mô hình nhận diện…"). If the browser refuses the camera, press **Bật camera**.
 2. While it shows "Đang chờ khuôn mặt hoặc mã QR…", stand in front of the camera **or** hold a QR code in the middle of the frame. It checks the camera a few times a second: QR first, then face.
 3. After a successful scan it shows "Mời bạn rời khỏi khung hình để người tiếp theo quét." and waits until that person (same face) or that QR code has been out of view for about 1.5 seconds. **Step out of the frame before the next scan**; otherwise the same person would be checked straight back out.
-4. After a refused scan it waits 3 seconds and tries again. A QR code it already sent is never sent twice.
+4. After a refused scan it waits 3 seconds and tries again. A QR code it already sent is not sent again while it stays in view; once the code leaves the frame it can be scanned again (for example to check out).
+5. **Beep (25/11/2026):** one short beep on check-in, two on check-out (WebAudio, no sound file). The kiosk opens by itself, so some browsers keep sound off until someone touches the screen or presses a key once; after that it beeps. A refused scan makes no sound.
 
 Test it in Edge with a real camera: check in with your face, step away, come back: you are checked out. Try it with a QR from `/my-qr` on a phone too.
 
 Things that look like errors but are the rules:
 - **No wait between visits (23/11/2026):** the old 15-minute anti-passback rule is gone. A member can check in again right after checking out. Checking in while already inside is refused (409, "Hội viên này đang ở trong phòng tập. Hãy check-out trước.").
-- **QR codes** work once, expire after **2 minutes**, and are **replaced each time `/my-qr` is opened**. To scan a photo of the code: open `/my-qr` once, take the photo, don't reload, and scan within 2 minutes.
+- **QR codes (25/11/2026)** work **all gym day**, until 24:00 gym time, for check-in, check-out and yoga attendance; scanning does not use them up. Opening `/my-qr` again shows **the same code** (`GET /api/my-qr`). **Tạo mã mới** (`POST /api/my-qr`) replaces it, and the old one stops working. The next day `/my-qr` gives a new code. To test: open `/my-qr`, note the first characters of the text code, reload: they are the same; check in and then check out at `/kiosk` with that one code.
 - "Từ chối truy cập: không tìm thấy gói hội viên còn hiệu lực hoặc không xác thực được khuôn mặt/mã QR…" means one of these:
-  - the face didn't match, or the QR was used, expired or replaced (code `SCAN_NOT_RECOGNISED`; for a QR the kiosk adds how to make a new code);
+  - the face didn't match, or the QR expired (after 24:00) or was replaced by Tạo mã mới (code `SCAN_NOT_RECOGNISED`; for a QR the kiosk adds how to make a new code);
   - the person has no usable membership (code `ACCESS_DENIED`, and the message adds "Trạng thái gói: …", for example "Chưa có gói Gym").
 
 ### Member pages
 
-- `/my-qr` (Customer, Member): the check-in QR image, its expiry time and a **Tạo mã mới** button.
+- `/my-qr` (Customer, Member): the check-in QR image, "Dùng được đến hết ngày dd/MM/yyyy" and a **Tạo mã mới** button.
 - `/face-id` (Customer, Member): consent, camera capture, delete.
 - The profile page's **TIỆN ÍCH HỘI VIÊN** box links to these pages, the kiosk, the yoga schedule and the workout plan.
 
@@ -130,7 +131,7 @@ Things that look like errors but are the rules:
 - **Kiosk endpoints:**
   - `POST /api/kiosk/scan` checks in or out on its own.
   - `POST /api/kiosk/check-in` and `POST /api/kiosk/check-out` still exist.
-  - Body for all three: `{ "qrToken": "<token from POST /api/my-qr>" }` or `{ "descriptor": [128 numbers] }`.
+  - Body for all three: `{ "qrToken": "<token from GET /api/my-qr>" }` or `{ "descriptor": [128 numbers] }`.
 
 ## 4. Workout plan: `/workout` (Member)
 
@@ -200,6 +201,12 @@ How to tell which plan you got:
   - A yoga-only member still sees and can buy gym plans (home → GYM MEMBERSHIP tab). Other features that need a gym plan refuse them with a message saying so: PT packages ("Cần gói Gym đang hoạt động…") and locker rental ("Hội viên cần có gói Gym đang hiệu lực.").
   - Still open to Customers and to yoga-only members, because they need no plan: `/workout` (AI workout plan), `/face-id`, and `/my-qr` (yoga attendance scans it). Equipment-issue reports stay open to every Member.
 - API: `POST /api/manager/membership-plans` takes `"serviceType": "YOGA"` (default `GYM`) and, for yoga, `"yogaDifficultyLevel": "Beginner" | "Intermediate" | "Advanced"`; `GET /api/membership-plans?serviceType=YOGA` and the manager list filter by it.
+
+**Weekly sessions must match "buổi/tuần" (25/11/2026):** on `/manager/yoga` → a class's **Buổi học** panel, the weekday chips allow exactly as many days as the class's sessions per week. Under them "Đã chọn x/N ngày" counts; once N are picked the other days grey out (unpick one to change) and **Tạo lịch** turns on only at N/N. The API refuses another count with 400 `YOGA_SESSION_DAYS_COUNT`. Try the class TEST (2 buổi/tuần): pick T2 and T4, T3 is greyed out.
+
+**My next class, `/yoga/my-bookings` → Sắp tới (25/11/2026):** classes are sorted by their next session. The nearest one is a highlighted card, "Buổi yoga tiếp theo của bạn", with a red date block (weekday, day, month), a countdown in gym time ("Hôm nay · còn 3 giờ" or "Ngày mai" in amber; "Còn 6 ngày"), the time, the studio and the mat ("Thảm do phòng tập xếp" when none). Other bookings use the same layout in plain cards. Cancelling works as before. Try it as Demo Trung Bình (section 2): Vinyasa Dynamic, Thứ 3 01/12, Studio A, mat 1.
+
+**A booked class when the plan expires (open rule):** today the booking stays, the member stays on the roster and can be marked present, a new booking is refused (`MEMBERSHIP_REQUIRED`), and a waitlisted member with an expired plan is still offered a seat they can't take. The test cases and the three options for the coming rule are in `docs/BR-pending-yoga-plan-levels.md` (TC-YEXP); the test `CurrentBehaviour_BookingMadeWithValidPlanSurvivesThePlanExpiring` pins today's behaviour.
 
 **Book (Member, on `/yoga/schedule`):**
 - Each session shows **Đặt chỗ**, or **Vào danh sách chờ (miễn phí)** when the class is full, when your yoga plan's level covers the class (see "Yoga plan levels" above for the other cases).
@@ -292,10 +299,10 @@ Try it: book a mat someone else just took, cancel a yoga booking less than 2 hou
   - `InvoicePdfPreservesMaximumPersistedDecimalPrecision…`: SQLite decimal precision, see above.
   - `TransactionHistoryRetainsPaidPurchases…`: a duplicate user-role row.
 
-  Expected result now:
-  - Unit: 701 pass.
-  - Client: 511 pass.
-  - Integration: 611 pass, 3 fail, 47 skipped.
+  Expected result now (25/11/2026, after merging main again):
+  - Unit: 722 pass.
+  - Client: 538 pass.
+  - Integration: 627 pass, 3 fail, 50 skipped.
 - **PR #21 to main is open (25/11/2026):** https://github.com/viehai/SEP490_G144_VFMS/pull/21. Once it is merged, teammates who pull main get the migration `YogaPlanLevelReplacesClassType`. It drops `PackageComponents.YogaClassTypeId` and `YogaWaitlists.YogaClassTypeId`, so code or tests that still use `YogaClassType` on a plan no longer build, and yoga plans in test seeds need `YogaDifficultyLevel`.
 
 - **Yoga plans can't be renewed yet.** Renewal (`/my-memberships` → gia hạn) still only covers gym plans, so a yoga member buys a new yoga plan instead; it starts after the current one ends.
@@ -305,4 +312,5 @@ Try it: book a mat someone else just took, cancel a yoga booking less than 2 hou
 - **Still showing written-in demo content (not changed here):** the PT dashboard `/pt/dashboard` (PT module, another team member), the home page equipment showcase (static), and the template pages Weather and Counter with their menu links.
 - **Business reports made while testing.** On 20/11/2026 two business reports were generated on the local database to check the Manager dashboard: Monthly 2026-10 (empty) and Daily 2026-11-16. The dashboard shows the newest one.
 - **Self check-in from anywhere.** Because the kiosk is open to Customers and Members, one can check in from anywhere with `/my-qr` plus `/kiosk` on one phone. That check-in can also mark a PT session as done.
+- **A shared QR screenshot works all day (25/11/2026, by request).** The QR code now lasts until 24:00 and can be scanned many times, so a photo of it passed to someone else also works for the rest of the day (before, a code lasted 2 minutes and worked once). The member can stop it with **Tạo mã mới**.
 - **Phones can't open localhost.** To test QR with a phone, photograph the code shown on the laptop.
