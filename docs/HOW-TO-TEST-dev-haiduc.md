@@ -52,6 +52,8 @@ dotnet user-secrets set "Gemini:ApiKey" "YOUR_KEY" --project src/VFMS.API
 | Member (demo)  | demo1@example.com, demo2@example.com, demo3@example.com | Test@1234 |
 | Member (yoga only) | yoga1@example.com | Test@1234 |
 | Member (yoga Trung bình) | yoga2@example.com | Test@1234 |
+| Member (gym plan expired) | expired.gym@example.com | Test@1234 |
+| Member (yoga plan expired, class still booked) | expired.yoga@example.com | Test@1234 |
 
 Member user id: `b7a2e8b5-23e2-4415-8679-357bb5c33ad3`. Use an InPrivate window to be signed in as two roles at once.
 
@@ -60,6 +62,18 @@ The three demo members (Demo Hội Viên Một / Hai / Ba, phones `0900000011`�
 Demo Yoga (`yoga1@example.com`, phone `0900000021`) has only a yoga plan. It was registered on 16/11/2026 and bought "Yoga 1 Tháng" (600.000 ₫, 30 days) on the home page with cash; staff confirmed the cash on `/staff/membership-cash-receipt` (order ORD-20261116-72A8729070BF). The yoga plan is valid 16/11 to 15/12/2026, and the account has booked Hatha Morning on mat 1.
 
 Demo Trung Bình (`yoga2@example.com`, phone `0900000022`) was added on 25/11/2026 to test yoga plan levels, through the app's own API (no SQL, no DbInitializer): registered, bought **Yoga Trung bình 1 Tháng** (plan 6, level Trung bình, 800.000 ₫, 30 days, created on `/manager/membership-plans`) with cash (order ORD-20261125-30BF9D34F6A1, confirmed by staff), activated 25/11, valid to 24/12/2026, and booked Vinyasa Dynamic on mat 1 from the timetable. On `/yoga/schedule` it sees **Đặt chỗ** on Cơ bản and Trung bình classes and the "Mua gói có độ khó cao hơn…" note with **Mua gói** on Ashtanga Flow (Nâng cao).
+
+**Demo accounts for cases you can't reach by waiting (25/11/2026).** Both were made through the app's own API: registered, bought a plan with cash, cash confirmed by staff, activated 25/11. Only the dates were then moved into the past with SQL on the local VfmsDb, because no screen or API can make a plan expire early. They exist only in this local database, not in DbInitializer.
+
+| Account | Data | What to try | What you should see |
+|---|---|---|---|
+| Demo Gym Hết Hạn, `expired.gym@example.com`, phone `0900000023` | Gym "3 Tháng" (order ORD-20261125-BD35C7BB7890), membership 21, **Expired**, 20/08 to 17/11/2026 | `/kiosk` with its `/my-qr` code; front desk `/staff/check-ins`, search `0900000023`; `/my-memberships` | Kiosk: "Từ chối truy cập… Trạng thái gói: Hết hạn." Checked through the API. The front desk and `/my-memberships` should also show the plan as expired; not checked on screen. |
+| Demo Yoga Hết Hạn, `expired.yoga@example.com`, phone `0900000024` | "Yoga Trung bình 1 Tháng" (order ORD-20261125-42E6881D53E2), membership 22, **Expired**, 25/10 to 24/11/2026; booked **Vinyasa Dynamic** on mat 2 (booking 9, booked 20/11, while the plan was valid) | `/yoga/my-bookings`; `/yoga/schedule`; book another class; the instructor's roster on 01/12 (`/pt/yoga`, `yoga@test.vn`) | The open rule TC-YEXP (section 5): Vinyasa still under **Sắp tới** with mat 2; the timetable offers **Mua gói và đăng ký** on other classes (`api/yoga/my-plan` says no plan); booking is refused with `MEMBERSHIP_REQUIRED` (these three checked through the API). The roster part is covered by the automated test, not checked on this account. |
+
+To make them expired again after testing a renewal, rerun (SQL Server needs `-I`):
+```powershell
+sqlcmd -S localhost -d VfmsDb -E -I -Q "UPDATE MemberMemberships SET StartDate='2026-08-20', EndDate='2026-11-17', MembershipStatus='Expired' WHERE Id=21; UPDATE MemberMemberships SET StartDate='2026-10-25', EndDate='2026-11-24', MembershipStatus='Expired' WHERE Id=22;"
+```
 
 Data that already exists:
 - The member has "Gym 1 Month" (order ORD-20261112-367A858627B3, paid in cash), valid 12/11 to 11/12/2026, and "Yoga 1 Tháng" (order ORD-20261120-D5FCE39ABCD6, paid in cash, confirmed by staff), valid 20/11 to 19/12/2026.
@@ -146,7 +160,8 @@ Then try the rest:
 
 How to tell which plan you got:
 - **AI plan:** its name follows your goal, and the header doesn't say "Giáo án tiêu chuẩn".
-- **Standard plan:** shows "Dịch vụ AI tạm thời không khả dụng…". It means there's no key, Gemini failed, or it took longer than 25 s. The API log line `Gemini returned HTTP …` gives the reason.
+- **Standard plan:** shows "Dịch vụ AI tạm thời không khả dụng…". It means there's no key, Gemini failed, or it took longer than 25 s. The API log line `Gemini returned HTTP …` now includes Google's own error message.
+- **Why AI plans kept failing (25/11/2026):** the key was fine. Google answered **HTTP 503 "This model is currently experiencing high demand"** for `gemini-3.5-flash-lite`, and the app gave up on the first error, so AI Studio counted the calls with 0 successes. Now a busy reply (429, 500, 502, 503 or 504) is retried up to 3 times, 1 s then 2 s apart; other errors (bad key, unknown model) and a timeout fall back at once. In a test right after the fix, one plan came from Gemini on a retry; the other still fell back after 3 busy replies, because Google stayed busy. One direct call took 22 s, close to the 25 s timeout.
 
 ## 5. Yoga
 
