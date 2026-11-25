@@ -60,6 +60,10 @@ public sealed class GeminiWorkoutPlanGeneratorTests
         var (badKey, badCalls) = Generator((HttpStatusCode.Forbidden, """{"error":{"message":"API key not valid"}}"""));
         Assert.Null(await badKey.GenerateAsync(Survey, Catalog));
         Assert.Single(badCalls);
+
+        var (quota, quotaCalls) = Generator((HttpStatusCode.TooManyRequests, """{"error":{"code":429,"message":"Quota exceeded"}}"""));
+        Assert.Null(await quota.GenerateAsync(Survey, Catalog));
+        Assert.Single(quotaCalls);
     }
 
     private sealed class Fake(Func<HttpResponseMessage> reply) : HttpMessageHandler
