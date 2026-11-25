@@ -64,9 +64,9 @@
                         {
                             <div><dt class="text-vfms-text-secondary">Giờ tập</dt><dd class="mt-1 font-semibold">@start.ToString("HH:mm") – @end.ToString("HH:mm")</dd></div>
                         }
-                        @if (!string.IsNullOrWhiteSpace(package.YogaClassTypeName))
+                        @if (package.YogaDifficultyLevel is { } level)
                         {
-                            <div><dt class="text-vfms-text-secondary">Dòng lớp Yoga</dt><dd class="mt-1 font-semibold">@package.YogaClassTypeName</dd></div>
+                            <div><dt class="text-vfms-text-secondary">Cấp độ Yoga</dt><dd class="mt-1 font-semibold">@VFMS.Contracts.Yoga.Validators.YogaRules.LevelLabel(level) · đăng ký được lớp @VFMS.Contracts.Yoga.Validators.YogaRules.CoveredLabels(level)</dd></div>
                         }
                         @if (FreezeLabel(package) is { } freeze)
                         {

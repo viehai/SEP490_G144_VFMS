@@ -66,6 +66,19 @@ public sealed record YogaSessionRequest(
     string? InstructorUserId = null
 );
 
+/// <summary>
+/// Creates a session on each chosen weekday (0 = Sunday … 6 = Saturday) from the class start date to its end date.
+/// Dates already used by this class, already past, or too close for a published class are skipped.
+/// </summary>
+public sealed record YogaWeeklySessionsRequest(
+    int YogaStudioId,
+    IReadOnlyList<DayOfWeek> Days,
+    TimeOnly StartTime,
+    string? InstructorUserId = null
+);
+
+public sealed record YogaWeeklySessionsResponse(int Created, int Skipped);
+
 public sealed record YogaSessionResponse(
     int Id,
     int YogaClassId,
@@ -134,6 +147,9 @@ public sealed record MyYogaPastSessionResponse(
     int SessionId, string ClassName, DateOnly Date, TimeOnly StartTime, string StudioName, string Result);
 
 public sealed record MyYogaWaitlistResponse(int YogaClassId, string ClassName, int Position, bool SeatOffered);
+
+/// <summary>The signed-in user's yoga plan for the timetable. MaxLevel is the highest class level it books; null with HasPlan = all levels (old plan).</summary>
+public sealed record YogaMyPlanResponse(bool HasPlan, string? MaxLevel);
 
 public sealed record MyYogaBookingsResponse(
     IReadOnlyList<MyYogaBookingResponse> Upcoming, IReadOnlyList<MyYogaPastSessionResponse> Past, IReadOnlyList<MyYogaWaitlistResponse> Waitlist);

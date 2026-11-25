@@ -130,6 +130,7 @@ public sealed partial class PackageCatalogApiTests : IAsyncLifetime
             DurationDays = durationDays,
             SessionCount = sessionCount,
             ApplicableTrainerLevel = trainerLevel,
+            YogaDifficultyLevel = componentType == ComponentType.YOGA ? "Advanced" : null,   // yoga plans without a level are not sold
             AllowFreeze = false
         };
 
@@ -246,7 +247,7 @@ public sealed partial class PackageCatalogApiTests : IAsyncLifetime
             Components =
             [
                 new PackageComponent { ComponentType = ComponentType.GYM,  DurationDays = 30 },
-                new PackageComponent { ComponentType = ComponentType.YOGA, SessionCount = 8 }
+                new PackageComponent { ComponentType = ComponentType.YOGA, SessionCount = 8, YogaDifficultyLevel = "Advanced" }
             ]
         };
         db.Packages.Add(combo);

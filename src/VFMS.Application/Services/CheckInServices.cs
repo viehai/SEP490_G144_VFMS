@@ -33,7 +33,7 @@ public sealed class FaceProfileService : IFaceProfileService
     {
         if (!request.ConsentToBiometricProcessing)
             return Result<FaceProfileResponse>.Failure(
-                "You must agree to facial biometric processing before registering your face.", "FACE_CONSENT_REQUIRED");
+                "Bạn cần đồng ý cho xử lý dữ liệu khuôn mặt trước khi đăng ký FaceID.", "FACE_CONSENT_REQUIRED");
 
         var now = _clock.GetUtcNow().UtcDateTime;
         var template = _protector.Protect(request.Descriptor);
@@ -63,7 +63,7 @@ public sealed class FaceProfileService : IFaceProfileService
     {
         var face = await _repository.GetFaceDataAsync(userId, cancellationToken);
         if (face is null || !face.IsActive)
-            return Result<FaceProfileResponse>.Failure("No face profile is registered.", "FACE_NOT_REGISTERED", 404);
+            return Result<FaceProfileResponse>.Failure("Bạn chưa đăng ký FaceID.", "FACE_NOT_REGISTERED", 404);
 
         face.FaceNetEmbedding = [];   // erase the biometric template, keep the row for the audit trail
         face.IsActive = false;

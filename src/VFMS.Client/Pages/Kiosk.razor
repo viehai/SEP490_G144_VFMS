@@ -21,7 +21,7 @@
 
     @if (_result is not null)
     {
-        <div class="border p-6 rounded-xl @(_ok ? "border-emerald-700 bg-emerald-50" : "border-red-700 bg-red-50")" role="status">
+        <div aria-live="polite" class="border p-6 rounded-xl @(_ok ? "border-emerald-700 bg-emerald-50" : "border-red-700 bg-red-50")" role="status">
             <p class="font-['Montserrat'] text-lg font-extrabold uppercase @(_ok ? "text-emerald-800" : "text-red-800")">@(_ok ? "Mở cổng" : "Từ chối")</p>
             <p class="mt-2 text-sm">@_result</p>
         </div>
@@ -38,7 +38,7 @@
                 <video @ref="_video" class="h-full w-full -scale-x-100 object-cover" playsinline muted></video>
                 @if (!_cameraOn)
                 {
-                    <p class="absolute inset-0 flex items-center justify-center p-6 text-center text-xs text-[#ECE8E4]">Camera đang tắt</p>
+                    <p class="absolute inset-0 flex items-center justify-center p-6 text-center text-xs text-[#ECE8E4]">@(_busy ? "Đang mở camera…" : "Camera đang tắt")</p>
                 }
             </div>
             <div class="flex flex-wrap gap-2">
@@ -48,8 +48,6 @@
                 }
                 else
                 {
-                    <button type="button" disabled="@_busy" class="bg-[#B83A3A] hover:bg-[#9F3030] px-6 py-3 text-xs font-bold uppercase text-white rounded-lg disabled:opacity-40" @onclick="ScanFace">Quét khuôn mặt</button>
-                    <button type="button" disabled="@_busy" class="border border-[#D8D1CD] px-6 py-3 text-xs font-bold uppercase rounded-lg disabled:opacity-40" @onclick="ScanQr">Quét mã QR</button>
                     <button type="button" class="px-4 py-3 text-xs font-bold uppercase underline" @onclick="StopCamera">Tắt camera</button>
                 }
             </div>
@@ -58,70 +56,111 @@
 
         <section class="space-y-3 border border-[#D8D1CD] bg-[#F8F5F2] p-6 text-sm rounded-xl">
             <h2 class="font-['Montserrat'] text-sm font-extrabold uppercase">Cách dùng</h2>
-            <p><b>FaceID:</b> nhìn thẳng vào camera rồi bấm Quét khuôn mặt.</p>
-            <p><b>Mã QR:</b> mở trang Mã QR của tôi trên điện thoại, đưa mã trước camera rồi bấm Quét mã QR.</p>
-            <p class="text-xs text-[#6F6966]">Mã QR dùng một lần và hết hạn sau 2 phút.</p>
+            <p>Camera tự quét liên tục, không cần bấm nút.</p>
+            <p><b>FaceID:</b> nhìn thẳng vào camera.</p>
+            <p><b>Mã QR:</b> mở trang Mã QR của tôi trên điện thoại và đưa mã vào giữa khung hình.</p>
+            <p class="text-xs text-[#6F6966]">Sau mỗi lượt quét thành công, hãy rời khỏi khung hình để người tiếp theo quét. Mã QR dùng một lần và hết hạn sau 2 phút.</p>
         </section>
     </div>
 </div>
 
 @code {
+    private const string Waiting = "Đang chờ khuôn mặt hoặc mã QR…";
     private ElementReference _video;
     private bool _cameraOn, _busy, _ok;
     private string? _result, _scanning;
+    private CancellationTokenSource? _loop;
+
+    private sealed record Look(string? Qr, float[]? Face);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            await StartCamera();   // a kiosk runs hands-free; the button stays for when the browser refuses
+    }
 
     private async Task StartCamera()
     {
         _busy = true;
+        _scanning = "Đang mở camera và tải mô hình nhận diện…";
+        StateHasChanged();
         try
         {
             await JS.InvokeVoidAsync("import", "./js/face-capture.js");
-            _cameraOn = await JS.InvokeAsync<bool>("vfmsFace.start", _video);
+            await JS.InvokeVoidAsync("import", "./js/qr-code.js");
+            await JS.InvokeVoidAsync("import", "./js/kiosk-scan.js");
+            _cameraOn = await JS.InvokeAsync<bool>("vfmsFace.start", _video) && await JS.InvokeAsync<bool>("vfmsKiosk.ready");
             _result = null;
         }
-        catch (JSException ex) { Log.LogWarning(ex, "Kiosk: vfmsFace.start (face-capture.js) failed"); Show(false, "Không mở được camera hoặc tải mô hình nhận diện. Hãy cấp quyền camera và thử lại."); }
-        finally { _busy = false; }
+        catch (JSException ex) { Log.LogWarning(ex, "Kiosk: vfmsFace.start / vfmsKiosk.ready failed"); Show(false, "Không mở được camera hoặc tải mô hình nhận diện. Hãy cấp quyền camera và bấm Bật camera."); }
+        finally { _busy = false; _scanning = null; }
+
+        if (_cameraOn)
+        {
+            _loop = new CancellationTokenSource();
+            _ = RunScanLoop(_loop.Token);
+        }
+        StateHasChanged();
     }
 
-    private async Task ScanQr()
+    /// <summary>Looks at the camera a few times a second and sends what it finds, one scan at a time.</summary>
+    private async Task RunScanLoop(CancellationToken ct)
     {
-        _busy = true;
-        _scanning = "Đang tìm mã QR… đưa mã vào giữa khung hình.";
-        StateHasChanged();
+        string? lastQr = null;   // a QR token is single-use: sending it twice only shows "invalid"
         try
         {
-            await JS.InvokeVoidAsync("import", "./js/qr-code.js");
-            var token = await JS.InvokeAsync<string?>("vfmsQr.scan", _video, 10000);
-            if (string.IsNullOrWhiteSpace(token))
-                Show(false, "Không đọc được mã QR. Hãy đưa mã gần camera hơn và thử lại.");
-            else if (!await Scan(new KioskScanRequest(null, token.Trim())))
-                _result += " Đã đọc được mã QR nhưng mã không hợp lệ: mã chỉ dùng một lần, hết hạn sau 2 phút và bị thay khi mở lại trang Mã QR của tôi. Hãy tạo mã mới rồi quét lại.";
-        }
-        catch (JSException ex) { Log.LogWarning(ex, "Kiosk: vfmsQr.scan (qr-code.js) failed"); Show(false, "Không đọc được mã QR. Vui lòng thử lại."); }
-        finally { _busy = false; _scanning = null; }
-    }
+            while (!ct.IsCancellationRequested)
+            {
+                await SetStatus(Waiting);
+                var look = await JS.InvokeAsync<Look?>("vfmsKiosk.look", ct, _video);
+                if (look is null || (look.Qr is null && look.Face is null) || (look.Qr is not null && look.Qr == lastQr))
+                {
+                    await Task.Delay(250, ct);
+                    continue;
+                }
 
-    private async Task ScanFace()
-    {
-        _busy = true;
-        _scanning = "Đang nhận diện khuôn mặt…";
-        StateHasChanged();
-        try
+                lastQr = look.Qr ?? lastQr;
+                var ok = await Scan(look.Qr is not null ? new KioskScanRequest(null, look.Qr) : new KioskScanRequest(look.Face, null), look.Qr is not null);
+                await InvokeAsync(StateHasChanged);
+                await Task.Delay(3000, ct);
+                // The gate opened: the next scan of the same person would check them straight back out,
+                // so wait until they (or their QR code) have left the camera for about 1.5 seconds.
+                if (ok)
+                    await WaitUntilGone(look, ct);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (JSDisconnectedException) { }
+        catch (JSException ex)
         {
-            var descriptor = await JS.InvokeAsync<float[]?>("vfmsFace.capture", _video);
-            if (descriptor is null)
-                Show(false, "Không phát hiện khuôn mặt. Hãy nhìn thẳng vào camera và thử lại.");
-            else
-                await Scan(new KioskScanRequest(descriptor, null));
+            Log.LogWarning(ex, "Kiosk: vfmsKiosk.look / stillThere (kiosk-scan.js) failed");
+            Show(false, "Camera ngừng quét do lỗi. Hãy tắt rồi bật lại camera.");
+            _scanning = null;
+            await InvokeAsync(StateHasChanged);
         }
-        catch (JSException ex) { Log.LogWarning(ex, "Kiosk: vfmsFace.capture (face-capture.js) failed"); Show(false, "Không xử lý được ảnh. Vui lòng thử lại."); }
-        finally { _busy = false; _scanning = null; }
     }
 
-    /// <summary>The API decides the direction: inside → check out, outside → check in.</summary>
-    private async Task<bool> Scan(KioskScanRequest request)
+    private async Task WaitUntilGone(Look scanned, CancellationToken ct)
     {
-        _busy = true;
+        await SetStatus("Mời bạn rời khỏi khung hình để người tiếp theo quét.");
+        for (var clear = 0; clear < 6; )
+        {
+            var there = await JS.InvokeAsync<bool>("vfmsKiosk.stillThere", ct, _video, scanned.Qr, scanned.Face);
+            clear = there ? 0 : clear + 1;
+            await Task.Delay(250, ct);
+        }
+    }
+
+    private async Task SetStatus(string text)
+    {
+        if (_scanning == text) return;
+        _scanning = text;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>The API decides the direction: inside → check out, outside → check in. Returns true when the gate opened.</summary>
+    private async Task<bool> Scan(KioskScanRequest request, bool isQr)
+    {
         try
         {
             var r = await Api.PostAsync<KioskScanResultResponse>("api/kiosk/scan", request);
@@ -131,13 +170,20 @@
                 Show(true, $"CHECK-OUT. Tạm biệt, {exit.MemberName}! Thời gian tập: {exit.MinutesInside / 60}h {exit.MinutesInside % 60}m.");
             return true;
         }
-        catch (ApiException ex) { Show(false, ex.Message); return !(ex.ErrorCode == "ACCESS_DENIED" && !ex.Message.Contains("Membership status")); }   // plain MSG-36 = scan not recognised
-        finally { _busy = false; }
+        catch (ApiException ex)
+        {
+            Show(false, ex.Message);
+            if (isQr && ex.ErrorCode == "SCAN_NOT_RECOGNISED")
+                _result += " Đã đọc được mã QR nhưng mã không hợp lệ: mã chỉ dùng một lần, hết hạn sau 2 phút và bị thay khi mở lại trang Mã QR của tôi. Hãy tạo mã mới rồi quét lại.";
+            return false;
+        }
     }
 
     private async Task StopCamera()
     {
+        _loop?.Cancel();
         _cameraOn = false;
+        _scanning = null;
         try { await JS.InvokeVoidAsync("vfmsFace.stop"); } catch (JSException) { }
     }
 
@@ -145,6 +191,8 @@
 
     public async ValueTask DisposeAsync()
     {
+        _loop?.Cancel();
+        _loop?.Dispose();
         if (_cameraOn)
             try { await JS.InvokeVoidAsync("vfmsFace.stop"); } catch (JSException) { } catch (JSDisconnectedException) { }
     }

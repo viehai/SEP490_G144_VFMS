@@ -68,6 +68,10 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
             (string.IsNullOrWhiteSpace(serviceType) ? "" : $"&serviceType={Uri.EscapeDataString(serviceType)}"), cancellationToken,
             allowAnonymous: true);   // the public price list on the home page
 
+    /// <summary>One plan that is on sale (404 otherwise), for the plan details page.</summary>
+    public Task<MembershipPlanCatalogItemResponse> GetCatalogItemAsync(int id, CancellationToken cancellationToken = default) =>
+        SendAsync<MembershipPlanCatalogItemResponse>(HttpMethod.Get, $"api/membership-plans/{id}", cancellationToken, allowAnonymous: true);
+
     /// <summary>
     /// Gọi public catalog endpoint GET /api/packages?type={type}&page={page}&pageSize={pageSize}.
     /// Hỗ trợ cả người dùng nặc danh (anonymous) và người dùng đã đăng nhập.

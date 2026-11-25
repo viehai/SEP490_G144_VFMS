@@ -31,6 +31,7 @@ public sealed class YogaClassCardTests
         Assert.Equal([1, 2], cards.Select(c => c.ClassId));
         var hatha = cards[0];
         Assert.Equal("Studio 1 (Tầng 3)", hatha.Studio);
+        Assert.Equal("/yoga/schedule?date=2026-11-16&classId=1", hatha.ScheduleHref);   // opens the week of the first session, not today
         Assert.Equal("Cơ bản", hatha.DifficultyName);
         Assert.Collection(hatha.Slots,
             slot => { Assert.Equal(new TimeOnly(6, 0), slot.Start); Assert.Equal(["T2", "T4", "CN"], slot.Days); },

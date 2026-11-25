@@ -135,6 +135,24 @@ public sealed class YogaTests
     }
 
     [Fact]
+    public async Task ClassesCanRunAtTheSameTimeInAnotherStudioWithAnotherInstructor()   // GBR-74/75: only room or instructor clash
+    {
+        var repo = Seeded(out var yogaClass, out var studio);   // yogaClass is taught by pt-1
+        var otherStudio = new YogaStudio { Id = 2, GymId = 1, StudioName = "Sen", FloorNumber = 3, Capacity = 20, IsActive = true };
+        repo.Studios.Add(otherStudio);
+        repo.Sessions.Add(Session(50, otherStudio, Class("pt-2"), Today.AddDays(10), new(9, 0), new(10, 0)));
+        var service = new YogaClassService(repo, Clock);
+
+        var sameTime = await service.CreateSessionAsync(
+            new YogaSessionRequest(yogaClass.Id, studio.Id, Today.AddDays(10), new(9, 0), new(10, 0)), "manager", null);
+        var sameStudio = await service.CreateSessionAsync(
+            new YogaSessionRequest(yogaClass.Id, otherStudio.Id, Today.AddDays(10), new(9, 0), new(10, 0)), "manager", null);
+
+        Assert.True(sameTime.IsSuccess, sameTime.ErrorMessage);
+        Assert.Equal("YOGA_SESSION_CONFLICT", sameStudio.ErrorCode);
+    }
+
+    [Fact]
     public async Task CancelledSessionDoesNotBlockStudio()
     {
         var repo = Seeded(out var yogaClass, out var studio);

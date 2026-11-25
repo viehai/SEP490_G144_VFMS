@@ -16,17 +16,17 @@ public sealed class RegisterFaceRequestValidator : AbstractValidator<RegisterFac
     public RegisterFaceRequestValidator()
     {
         RuleFor(x => x.ConsentToBiometricProcessing).Equal(true)
-            .WithMessage("You must agree to facial biometric processing before registering your face.");
+            .WithMessage("Bạn cần đồng ý cho xử lý dữ liệu khuôn mặt trước khi đăng ký FaceID.");
         RuleFor(x => x.Descriptor)
-            .NotNull().WithMessage("No face was captured. Please try again.")
+            .NotNull().WithMessage("Chưa chụp được khuôn mặt. Vui lòng thử lại.")
             .Must(FaceRules.IsValidDescriptor)
-            .WithMessage("The face capture is invalid. Please try again.");
+            .WithMessage("Ảnh khuôn mặt không hợp lệ. Vui lòng thử lại.");
     }
 }
 
 public sealed class ManualCheckInRequestValidator : AbstractValidator<ManualCheckInRequest>
 {
-    public ManualCheckInRequestValidator() => RuleFor(x => x.MemberUserId).NotEmpty().MaximumLength(450);
+    public ManualCheckInRequestValidator() => RuleFor(x => x.MemberUserId).NotEmpty().WithMessage("Vui lòng chọn hội viên.").MaximumLength(450).WithMessage("Tối đa 450 ký tự.");
 }
 
 public sealed class KioskScanRequestValidator : AbstractValidator<KioskScanRequest>
@@ -34,9 +34,9 @@ public sealed class KioskScanRequestValidator : AbstractValidator<KioskScanReque
     public KioskScanRequestValidator()
     {
         RuleFor(x => x).Must(x => (x.Descriptor is null) != string.IsNullOrWhiteSpace(x.QrToken))
-            .WithMessage("Scan either a face or a QR code.");
+            .WithMessage("Hãy quét khuôn mặt hoặc mã QR.");
         RuleFor(x => x.Descriptor).Must(FaceRules.IsValidDescriptor!).When(x => x.Descriptor is not null)
-            .WithMessage("The face capture is invalid. Please try again.");
-        RuleFor(x => x.QrToken).MaximumLength(128);
+            .WithMessage("Ảnh khuôn mặt không hợp lệ. Vui lòng thử lại.");
+        RuleFor(x => x.QrToken).MaximumLength(128).WithMessage("Tối đa 128 ký tự.");
     }
 }
