@@ -110,6 +110,17 @@
 .pt-public-calendar th:first-child { width: 4.25rem; }
 .pt-public-calendar thead .pt-calendar-today { background: #F3E4E2; color: #7F2929; }
 .pt-public-calendar thead th span { white-space: nowrap; }
+.pt-public-calendar thead th { text-transform: uppercase; font-weight: 800; letter-spacing: .02em; }
+.pt-public-calendar thead th span { text-transform: none; font-weight: 400; }
+.pt-public-calendar .pt-calendar-today-cell { background: rgba(243, 228, 226, .45); }
+.pt-public-calendar .pt-slot-choice { background: #fff; border-radius: 8px; box-shadow: 0 1px 2px rgba(36, 36, 36, .08); }
+.pt-public-calendar .pt-slot-choice[aria-pressed="true"] { background: #B83A3A; }
+.pt-public-calendar .pt-slot-choice:disabled { background: #F3F0ED; box-shadow: none; }
+.pt-legend { display: flex; flex-wrap: wrap; gap: .25rem 1rem; font-size: .75rem; color: #6F6966; margin: 0 0 .5rem; }
+.pt-legend span { display: inline-flex; align-items: center; gap: .35rem; }
+.pt-legend-swatch { display: inline-block; width: .75rem; height: .75rem; border: 1px solid #D8D1CD; border-radius: 3px; background: #fff; }
+.pt-legend-swatch--chosen { background: #B83A3A; border-color: #B83A3A; }
+.pt-legend-swatch--blocked { background: #F3F0ED; }
 .pt-calendar-slot { display: grid; gap: .18rem; padding: .45rem; border-radius: 6px; background: #F3E4E2; color: #7F2929; }
 .pt-calendar-slot + .pt-calendar-slot { margin-top: .25rem; }
 .pt-calendar-slot[data-slot-status="Booked"], .pt-calendar-slot[data-slot-status="Past"] { background: #ECE8E4; color: #8C8581; }
