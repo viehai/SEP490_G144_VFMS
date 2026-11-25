@@ -46,38 +46,68 @@ public sealed class GeminiWorkoutPlanGenerator : IWorkoutPlanGenerator
             return null;
         }
 
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromSeconds(_settings.TimeoutSeconds));
-        try
+        var prompt = BuildPrompt(survey, catalog);
+        for (var attempt = 1; ; attempt++)
         {
-            using var request = new HttpRequestMessage(HttpMethod.Post,
-                new Uri(new Uri(_settings.BaseUrl), $"models/{Uri.EscapeDataString(_settings.Model)}:generateContent"));
-            request.Headers.Add("x-goog-api-key", _settings.ApiKey);
-            request.Content = JsonContent.Create(new
+            // Each attempt gets the full timeout; only quick "busy" replies are retried, never a timeout.
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(_settings.TimeoutSeconds));
+            try
             {
-                contents = new[] { new { role = "user", parts = new[] { new { text = BuildPrompt(survey, catalog) } } } },
-                generationConfig = new { responseMimeType = "application/json", temperature = 0.4 }
-            });
+                using var request = new HttpRequestMessage(HttpMethod.Post,
+                    new Uri(new Uri(_settings.BaseUrl), $"models/{Uri.EscapeDataString(_settings.Model)}:generateContent"));
+                request.Headers.Add("x-goog-api-key", _settings.ApiKey);
+                request.Content = JsonContent.Create(new
+                {
+                    contents = new[] { new { role = "user", parts = new[] { new { text = prompt } } } },
+                    generationConfig = new { responseMimeType = "application/json", temperature = 0.4 }
+                });
 
-            using var response = await _http.SendAsync(request, timeout.Token);
-            if (!response.IsSuccessStatusCode)
+                using var response = await _http.SendAsync(request, timeout.Token);
+                if (!response.IsSuccessStatusCode)
+                {
+                    // Google's error body says why (overloaded, quota, bad model); it never contains the key.
+                    var error = await response.Content.ReadAsStringAsync(timeout.Token);
+                    if (IsTransient((int)response.StatusCode) && attempt < MaxAttempts)
+                    {
+                        _logger.LogInformation("Gemini returned HTTP {Status} (attempt {Attempt}); retrying. {Error}",
+                            (int)response.StatusCode, attempt, Shorten(error));
+                        await Task.Delay(RetryDelay * attempt, cancellationToken);
+                        continue;
+                    }
+                    _logger.LogWarning("Gemini returned HTTP {Status} after {Attempts} attempt(s); using the fallback plan. {Error}",
+                        (int)response.StatusCode, attempt, Shorten(error));
+                    return null;
+                }
+
+                var body = await response.Content.ReadFromJsonAsync<GeminiResponse>(Json, timeout.Token);
+                var text = body?.Candidates?.FirstOrDefault()?.Content?.Parts?
+                    .FirstOrDefault(part => part.Thought != true && !string.IsNullOrWhiteSpace(part.Text))?.Text;   // skip "thinking" parts
+                var plan = string.IsNullOrWhiteSpace(text) ? null : Parse(text);
+                if (plan is null)
+                    _logger.LogWarning("Gemini replied without a usable plan; using the fallback plan.");
+                return plan;
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or NotSupportedException)
             {
-                _logger.LogWarning("Gemini returned HTTP {Status}; using the fallback plan.", (int)response.StatusCode);
+                if (cancellationToken.IsCancellationRequested)
+                    throw;
+                _logger.LogWarning(ex, "Gemini call failed (attempt {Attempt}, timeout {Timeout}s); using the fallback plan.",
+                    attempt, _settings.TimeoutSeconds);
                 return null;
             }
-
-            var body = await response.Content.ReadFromJsonAsync<GeminiResponse>(Json, timeout.Token);
-            var text = body?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text;
-            return string.IsNullOrWhiteSpace(text) ? null : Parse(text);
-        }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or NotSupportedException)
-        {
-            if (cancellationToken.IsCancellationRequested)
-                throw;
-            _logger.LogWarning(ex, "Gemini call failed; using the fallback plan.");
-            return null;
         }
     }
+
+    /// <summary>Tries per plan: Gemini often answers 503 "model overloaded" for a moment, then works.</summary>
+    public const int MaxAttempts = 3;
+
+    /// <summary>Wait before retry n is n times this. Public so tests can shorten it.</summary>
+    public TimeSpan RetryDelay { get; init; } = TimeSpan.FromSeconds(1);
+
+    private static bool IsTransient(int status) => status is 429 or 500 or 502 or 503 or 504;
+
+    private static string Shorten(string text) => text.Length <= 300 ? text : text[..300];
 
     /// <summary>Parses the model's JSON reply. Public for tests.</summary>
     public static GeneratedPlan? Parse(string text)
@@ -129,7 +159,7 @@ public sealed class GeminiWorkoutPlanGenerator : IWorkoutPlanGenerator
     private sealed record GeminiResponse(List<Candidate>? Candidates);
     private sealed record Candidate(GeminiContent? Content);
     private sealed record GeminiContent(List<GeminiPart>? Parts);
-    private sealed record GeminiPart(string? Text);
+    private sealed record GeminiPart(string? Text, bool? Thought = null);
 
     private sealed record PlanReply(string? PlanName, List<DayReply>? Days, string? NutritionTips = null);
     private sealed record DayReply(int Day, List<ExerciseReply>? Exercises);
