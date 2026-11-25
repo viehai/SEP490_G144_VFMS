@@ -42,16 +42,39 @@
             }
             else
             {
-                <ul class="space-y-3">
-                    @foreach (var b in _data.Upcoming)
+                var ordered = _data.Upcoming.OrderBy(b => b.NextDate).ThenBy(b => b.StartTime).ToList();
+                <ul class="space-y-3" aria-label="Lớp yoga sắp tới, buổi gần nhất ở trên cùng">
+                    @foreach (var b in ordered)
                     {
-                        <li @key="b.BookingId" class="@Ui.Card">
-                            <div class="flex flex-wrap items-start justify-between gap-3">
-                                <div>
-                                    <a href="@VFMS.Client.Components.Memberships.YogaClassCard.ScheduleLink(b.YogaClassId, b.NextDate)" class="text-base font-bold hover:text-[#B83A3A] hover:underline underline-offset-4">@b.ClassName</a>
-                                    <p class="text-xs text-[#6F6966]">Buổi tới: @VFMS.Client.Components.Memberships.YogaClassCard.DayName(b.NextDate) @b.NextDate.ToString("dd/MM/yyyy") · @b.StartTime.ToString("HH:mm")–@b.EndTime.ToString("HH:mm") · @b.StudioName@(b.MatNumber is { } mat ? $" · thảm {mat}" : "")</p>
+                        var first = b == ordered[0];
+                        var when = Countdown(b);
+                        <li @key="b.BookingId" class="@(first ? "rounded-xl border-2 border-[#B83A3A] bg-white p-5 shadow-sm" : Ui.Card)">
+                            @if (first)
+                            {
+                                <p class="mb-3 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[.18em] text-[#B83A3A]">
+                                    <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                                    Buổi yoga tiếp theo của bạn
+                                </p>
+                            }
+                            <div class="flex flex-wrap items-start gap-4">
+                                @* Date block: weekday, day and month at a glance. *@
+                                <div class="@($"flex w-16 shrink-0 flex-col items-center rounded-lg py-2 text-center {(first ? "bg-[#B83A3A] text-white" : "bg-[#ECE8E4] text-[#242424]")}")" aria-hidden="true">
+                                    <span class="text-[11px] font-bold uppercase">@VFMS.Client.Components.Memberships.YogaClassCard.DayName(b.NextDate)</span>
+                                    <span class="font-['Montserrat'] text-2xl font-black leading-none">@b.NextDate.Day</span>
+                                    <span class="text-[11px]">Th @b.NextDate.Month</span>
                                 </div>
-                                <StatusBadge Status="@b.Status" Label="Đã đặt" />
+                                <div class="min-w-0 flex-1 space-y-1">
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <a href="@VFMS.Client.Components.Memberships.YogaClassCard.ScheduleLink(b.YogaClassId, b.NextDate)" class="@($"font-bold hover:text-[#B83A3A] hover:underline underline-offset-4 {(first ? "text-lg" : "text-base")}")">@b.ClassName</a>
+                                        <StatusBadge Status="@b.Status" Label="Đã đặt" />
+                                    </div>
+                                    <p class="@($"font-semibold {(when.Soon ? "text-[#B45309]" : "text-[#242424]")} {(first ? "text-base" : "text-sm")}")">
+                                        @when.Text · @b.StartTime.ToString("HH:mm")–@b.EndTime.ToString("HH:mm")
+                                    </p>
+                                    <p class="text-sm text-[#6F6966]">
+                                        @VFMS.Client.Components.Memberships.YogaClassCard.DayName(b.NextDate) @b.NextDate.ToString("dd/MM/yyyy") · Phòng @b.StudioName · @(b.MatNumber is { } mat ? $"Thảm số {mat}" : "Thảm do phòng tập xếp")
+                                    </p>
+                                </div>
                             </div>
                             <div class="mt-3 flex flex-wrap items-center gap-2">
                                 @if (_confirmId == b.BookingId)
@@ -166,6 +189,19 @@
     };
 
     protected override Task OnInitializedAsync() => Load();
+
+    /// <summary>"Hôm nay · còn 3 giờ", "Ngày mai", "Còn 5 ngày", counted in gym time (UTC+7). Soon = today or tomorrow.</summary>
+    public static (string Text, bool Soon) Countdown(MyYogaBookingResponse b, DateTime? utcNow = null)
+    {
+        var now = (utcNow ?? DateTime.UtcNow).AddHours(7);
+        var days = b.NextDate.DayNumber - DateOnly.FromDateTime(now).DayNumber;
+        if (days > 1) return ($"Còn {days} ngày", false);
+        if (days == 1) return ("Ngày mai", true);
+        var left = b.NextDate.ToDateTime(b.StartTime) - now;
+        return (left <= TimeSpan.Zero ? "Đang diễn ra"
+            : left.TotalHours >= 1 ? $"Hôm nay · còn {(int)left.TotalHours} giờ"
+            : $"Hôm nay · còn {Math.Max(1, (int)left.TotalMinutes)} phút", true);
+    }
 
     private void KeepBooking()
     {
