@@ -4,9 +4,8 @@ using VFMS.Domain.Enums;
 namespace VFMS.Domain.Entities;
 
 /// <summary>
-/// Trainer review submitted by a Member (UC-67).
+/// Review or gym/package feedback submitted by a Member.
 /// All content is screened against <see cref="BannedWordList"/> (GBR-66).
-/// Manager may reply to feedback (UC-68).
 /// </summary>
 public class TrainerReview : BaseEntity
 {

@@ -12,7 +12,54 @@ namespace VFMS.IntegrationTests;
 public sealed partial class PackageCatalogApiTests
 {
     [Fact]
-    public async Task GiftRecipientCanReviewOnlyTheUsedPackageAndOnlyApprovedVisibleFeedbackIsPublic()
+    public async Task PublicFeedbackSearchFiltersBeforeFiveItemPagination()
+    {
+        await using var scope = _app.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+        await AddReviewUsers(db);
+        var gymId = await db.Gyms.Select(gym => gym.Id).SingleAsync();
+        var reviewers = Enumerable.Range(1, 6)
+            .Select(index => new ApplicationUser
+            {
+                UserId = $"reviewer-{index}",
+                FullName = $"Reviewer {index}",
+                GymId = gymId,
+                Email = $"reviewer-{index}@example.test",
+                PhoneNumber = $"090200000{index}"
+            })
+            .ToArray();
+        db.ApplicationUsers.AddRange(reviewers);
+        await db.SaveChangesAsync();
+        db.TrainerReviews.AddRange(reviewers.Select((reviewer, index) => new TrainerReview
+        {
+            MemberUserId = reviewer.UserId,
+            TrainerUserId = "staff",
+            Rating = 5,
+            Comment = $"Từ khóa tìm kiếm phản hồi {index + 1}"
+        }));
+        await db.SaveChangesAsync();
+
+        using var guest = CreateClient();
+        var search = Uri.EscapeDataString("Từ khóa");
+        var firstPage = await guest.GetFromJsonAsync<VFMS.Contracts.Common.PagedResponse<PublicFeedbackResponse>>(
+            $"/api/feedback/public?search={search}&page=1&pageSize=5");
+        var secondPage = await guest.GetFromJsonAsync<VFMS.Contracts.Common.PagedResponse<PublicFeedbackResponse>>(
+            $"/api/feedback/public?search={search}&page=2&pageSize=5");
+        var noMatches = await guest.GetFromJsonAsync<VFMS.Contracts.Common.PagedResponse<PublicFeedbackResponse>>(
+            "/api/feedback/public?search=not-found&page=1&pageSize=5");
+
+        Assert.Equal(6, firstPage!.TotalCount);
+        Assert.Equal(5, firstPage.Items.Count);
+        Assert.All(firstPage.Items, item => Assert.Contains("Từ khóa", item.Comment));
+        Assert.Equal(6, secondPage!.TotalCount);
+        Assert.Single(secondPage.Items);
+        Assert.DoesNotContain(secondPage.Items.Single().Id, firstPage.Items.Select(item => item.Id));
+        Assert.Equal(0, noMatches!.TotalCount);
+        Assert.Empty(noMatches.Items);
+    }
+
+    [Fact]
+    public async Task GiftRecipientCanReviewOnlyTheUsedPackageAndReviewsArePublicWithoutManagerApproval()
     {
         var gym = await CreatePackage("Gym sáng", ComponentType.GYM);
         var other = await CreatePackage("Gym tối", ComponentType.GYM);
@@ -25,6 +72,7 @@ public sealed partial class PackageCatalogApiTests
 
         using var guest = CreateClient();
         using var member = CreateClient("Member");
+        using var anotherMember = CreateClient("Member", "giver");
         using var giver = CreateClient("Customer", "giver");
         using var manager = CreateClient("Manager", "staff");
         var url = $"{CatalogRoute}/{gym.Id}/reviews";
@@ -40,30 +88,66 @@ public sealed partial class PackageCatalogApiTests
 
         using var saved = await member.PostAsJsonAsync("/api/feedback", review);
         Assert.Equal(HttpStatusCode.Created, saved.StatusCode);
-        var pending = (await saved.Content.ReadFromJsonAsync<FeedbackResponse>())!;
-        Assert.Equal(("Pending", gym.Name), (pending.Status, pending.PackageName));
+        var savedReview = (await saved.Content.ReadFromJsonAsync<FeedbackResponse>())!;
+        Assert.Equal(("Approved", gym.Name), (savedReview.Status, savedReview.PackageName));
         Assert.Equal(HttpStatusCode.Conflict, (await member.PostAsJsonAsync("/api/feedback", review)).StatusCode);
-        Assert.Equal("Pending", (await member.GetFromJsonAsync<PackageReviewsResponse>(url))!.MyReviewStatus);
-        var unpublished = (await guest.GetFromJsonAsync<PackageReviewsResponse>(url))!;
-        Assert.Equal(0, unpublished.TotalReviews);
-        Assert.Null(unpublished.MyReviewStatus);
-        Assert.Null(unpublished.AverageRating);
+        Assert.Equal("Approved", (await member.GetFromJsonAsync<PackageReviewsResponse>(url))!.MyReviewStatus);
+        var publicPackageReviews = (await guest.GetFromJsonAsync<PackageReviewsResponse>(url))!;
+        Assert.Equal(1, publicPackageReviews.TotalReviews);
+        Assert.Equal(4d, publicPackageReviews.AverageRating);
 
-        // Gym-wide feedback from the same author does not belong to the package.
+        // Gym-wide feedback is also immediately visible in the public feedback feed.
         using var general = await member.PostAsJsonAsync("/api/feedback", review with { Rating = 1, PackageId = null });
         var generalId = (await general.Content.ReadFromJsonAsync<FeedbackResponse>())!.Id;
-        (await manager.PostAsync($"/api/feedback/manager/{generalId}/approve", null)).EnsureSuccessStatusCode();
-        (await manager.PostAsync($"/api/feedback/manager/{pending.Id}/approve", null)).EnsureSuccessStatusCode();
-        (await manager.PostAsJsonAsync($"/api/feedback/manager/{pending.Id}/reply", new FeedbackReplyRequest("Cảm ơn bạn."))).EnsureSuccessStatusCode();
-        var published = (await guest.GetFromJsonAsync<PackageReviewsResponse>(url))!;
-        Assert.Equal(1, published.TotalReviews);
-        Assert.Equal(4d, published.AverageRating);
-        var item = Assert.Single(published.Reviews.Items);
-        Assert.Equal((review.Comment, "Cảm ơn bạn."), (item.Comment, item.ManagerReply));
+        var publicFeedback = await guest.GetFromJsonAsync<VFMS.Contracts.Common.PagedResponse<PublicFeedbackResponse>>(
+            "/api/feedback/public?page=1&pageSize=20");
+        Assert.Equal(2, publicFeedback!.TotalCount);
+        Assert.All(publicFeedback.Items, item => Assert.False(item.IsMine));
+        var firstPublicPage = await guest.GetFromJsonAsync<VFMS.Contracts.Common.PagedResponse<PublicFeedbackResponse>>(
+            "/api/feedback/public?page=1&pageSize=1");
+        var secondPublicPage = await guest.GetFromJsonAsync<VFMS.Contracts.Common.PagedResponse<PublicFeedbackResponse>>(
+            "/api/feedback/public?page=2&pageSize=1");
+        Assert.Equal(2, firstPublicPage!.TotalCount);
+        Assert.Single(firstPublicPage.Items);
+        Assert.Single(secondPublicPage!.Items);
+        Assert.NotEqual(firstPublicPage.Items.Single().Id, secondPublicPage.Items.Single().Id);
+        var memberFeedback = await member.GetFromJsonAsync<VFMS.Contracts.Common.PagedResponse<PublicFeedbackResponse>>(
+            "/api/feedback/public?page=1&pageSize=20");
+        Assert.Contains(memberFeedback!.Items, item => item.Id == generalId && item.IsMine);
+
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await manager.PostAsync($"/api/feedback/manager/{generalId}/approve", null)).StatusCode);
+        var managementList = await manager.GetFromJsonAsync<VFMS.Contracts.Common.PagedResponse<FeedbackResponse>>(
+            "/api/feedback/manager?page=1&pageSize=10&rating=1");
+        Assert.Equal(1, managementList!.TotalCount);
+        using var managerReply = await manager.PostAsJsonAsync(
+            $"/api/feedback/manager/{generalId}/reply", new FeedbackReplyRequest("Cảm ơn bạn."));
+        Assert.Equal(HttpStatusCode.OK, managerReply.StatusCode);
+        var publicAfterReply = await guest.GetFromJsonAsync<VFMS.Contracts.Common.PagedResponse<PublicFeedbackResponse>>(
+            "/api/feedback/public?page=1&pageSize=20");
+        Assert.Contains(publicAfterReply!.Items, item => item.Id == generalId && item.ManagerReply == "Cảm ơn bạn.");
+
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await anotherMember.PutAsJsonAsync($"/api/feedback/{generalId}", new FeedbackUpdateRequest(3, "Không phải của tôi."))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await member.PutAsJsonAsync($"/api/feedback/{generalId}", new FeedbackUpdateRequest(6, "Sai số sao."))).StatusCode);
+        using var updated = await member.PutAsJsonAsync(
+            $"/api/feedback/{generalId}", new FeedbackUpdateRequest(3, "Đã cập nhật."));
+        Assert.Equal(HttpStatusCode.OK, updated.StatusCode);
+        var afterUpdate = await guest.GetFromJsonAsync<VFMS.Contracts.Common.PagedResponse<PublicFeedbackResponse>>(
+            "/api/feedback/public?page=1&pageSize=20");
+        Assert.Contains(afterUpdate!.Items, item => item.Id == generalId &&
+            item.Rating == 3 && item.Comment == "Đã cập nhật.");
+
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await anotherMember.DeleteAsync($"/api/feedback/{generalId}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await member.DeleteAsync($"/api/feedback/{generalId}")).StatusCode);
+        var afterDelete = await guest.GetFromJsonAsync<VFMS.Contracts.Common.PagedResponse<PublicFeedbackResponse>>(
+            "/api/feedback/public?page=1&pageSize=20");
+        Assert.DoesNotContain(afterDelete!.Items, item => item.Id == generalId);
+
         Assert.Empty((await guest.GetFromJsonAsync<PackageReviewsResponse>($"{CatalogRoute}/{other.Id}/reviews"))!.Reviews.Items);
         Assert.Empty((await guest.GetFromJsonAsync<PackageReviewsResponse>(url + "?rating=5"))!.Reviews.Items);
-        (await manager.PatchAsync($"/api/feedback/manager/{pending.Id}/visibility?visible=false", null)).EnsureSuccessStatusCode();
-        Assert.Empty((await guest.GetFromJsonAsync<PackageReviewsResponse>(url))!.Reviews.Items);
     }
 
     [Fact]

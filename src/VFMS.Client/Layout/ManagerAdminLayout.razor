@@ -22,7 +22,7 @@
         "manager/equipment", "manager/equipment-issues", "manager/purchase-proposals",
         "manager/supplement-products", "manager/supplement-orders", "manager/promotions",
         "manager/yoga", "manager/dashboard", "admin/dashboard", "manager/competitions", "staff/competitions",
-        "manager/feedback", "manager/consultations", "staff/feedback", "staff/consultations"
+        "manager/feedback", "staff/feedback", "manager/consultations", "staff/consultations"
     ];
 
     private bool IsPreview => !LivePages.Contains(Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].TrimEnd('/'),
