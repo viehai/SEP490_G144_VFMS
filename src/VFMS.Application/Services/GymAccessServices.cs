@@ -56,7 +56,7 @@ internal static class GymAccessMessages
     public const string Denied =
         "Từ chối truy cập: không tìm thấy gói hội viên còn hiệu lực hoặc không xác thực được khuôn mặt/mã QR. Vui lòng liên hệ quầy lễ tân.";   // MSG-36
     public const string DeniedCode = "ACCESS_DENIED";
-    /// <summary>Kiosk scan matched no member (face not enrolled, QR token used, expired or replaced).</summary>
+    /// <summary>Kiosk scan matched no member (face not enrolled, QR token expired or replaced).</summary>
     public const string NotRecognisedCode = "SCAN_NOT_RECOGNISED";
 
     /// <summary>MSG-36 with the membership status, as UC "Check In" step 3 asks.</summary>

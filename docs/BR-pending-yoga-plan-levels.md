@@ -56,12 +56,12 @@ the plan reaches its end date (status Expired). C still has sessions after that 
 | TC-YEXP-01 | M opens `/yoga/my-bookings` → **Sắp tới** | Booking stays **Confirmed**, still listed with its mat | Same as today | Listed, marked "Gói đã hết hạn: gia hạn để tham gia" | Booking cancelled by the system, M notified, mat freed for the waitlist |
 | TC-YEXP-02 | Instructor opens the roster of C's next session; M shows their QR | M is **on the roster** and the QR scan marks **Có mặt** | Same as today | M listed but the scan is refused ("gói hết hạn"); marked present only after renewal | M not on the roster |
 | TC-YEXP-03 | M tries to book another class (or C again after cancelling) | Refused, `MEMBERSHIP_REQUIRED` | Same | Same | Same |
-| TC-YEXP-04 | M was on C's waitlist; a seat frees after M's plan ended | M is still **offered** the seat (notification), but taking it is refused with `MEMBERSHIP_REQUIRED`; the seat is not passed on to the next person | Skip M and offer the next person | Skip M | Remove M from the waitlist when the plan ends |
+| TC-YEXP-04 | M was on C's waitlist; a seat frees after M's plan ended | M is still **offered** the seat (notification), but taking it is refused with `MEMBERSHIP_REQUIRED` (tested). Whether the seat then goes to the next person is read from code, not in the test: it looks like it stays offered to M | Skip M and offer the next person | Skip M | Remove M from the waitlist when the plan ends |
 | TC-YEXP-05 | M renews or buys a covering plan, then the next session comes | Nothing changes (the booking never stopped); read from code, not in the test | Same | Attendance works again for the remaining sessions | M must book again (the mat may be gone) |
 | TC-YEXP-06 | No-show counting for sessions after the plan ended | M can be marked **Vắng** if absent (the roster keeps M); read from code, not in the test | Same | Don't count sessions while paused | Not applicable (no booking) |
 
 Note: under "today", a member keeps attending every session of a class after the plan has ended, so a one-month plan
-can cover a class that runs much longer. TC-YEXP-04 also shows a seat can stay idle while the offered member can't take it.
+can cover a class that runs much longer. TC-YEXP-04 suggests a seat can stay idle while the offered member can't take it (not yet covered by the test).
 
 ## Known limits
 
