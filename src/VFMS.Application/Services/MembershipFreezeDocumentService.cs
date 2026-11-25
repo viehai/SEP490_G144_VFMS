@@ -94,8 +94,14 @@ public sealed class MembershipFreezeDocumentService(
             var membership = await requests.GetOwnedMembershipAsync(memberId, membershipId, true, ct);
             var request = membership?.MembershipFreezes.SingleOrDefault(
                 item => item.Id == requestId && item.RequestedByUserId == memberId);
-            if (request is null)
+            if (membership is null || request is null)
                 return;
+            if (membership.PackageComponent.ComponentType == ComponentType.YOGA)
+            {
+                result = Result<T>.Failure(MembershipFreezeRequestService.YogaFreezeUnsupportedMessage,
+                    MembershipFreezeRequestService.YogaFreezeUnsupportedCode, 409);
+                return;
+            }
             if (request.RequestStatus != FreezeRequestStatus.Pending)
             {
                 result = Result<T>.Failure("Chỉ yêu cầu đang chờ duyệt mới được thay đổi tài liệu.", "FREEZE_REQUEST_STATE", 409);

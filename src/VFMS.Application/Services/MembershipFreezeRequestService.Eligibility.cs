@@ -8,6 +8,9 @@ namespace VFMS.Application.Services;
 
 public sealed partial class MembershipFreezeRequestService
 {
+    internal const string YogaFreezeUnsupportedCode = "FREEZE_YOGA_PACKAGE";
+    internal const string YogaFreezeUnsupportedMessage = "Gói Yoga không hỗ trợ bảo lưu.";
+
     public async Task<Result<MembershipFreezeEligibilityResponse>> GetEligibilityAsync(
         string memberId, int membershipId, int? excludeRequestId, CancellationToken ct)
     {
@@ -23,7 +26,8 @@ public sealed partial class MembershipFreezeRequestService
                 return NotFound<MembershipFreezeEligibilityResponse>();
         }
 
-        var policy = existing is null ? await policies.GetActiveGlobalAsync(false, ct) : null;
+        var policy = existing is null && membership.PackageComponent.ComponentType != ComponentType.YOGA
+            ? await policies.GetActiveGlobalAsync(false, ct) : null;
         return Result<MembershipFreezeEligibilityResponse>.Success(Evaluate(membership,
             MembershipFreezePolicyService.Configuration(policy), LocalToday(), existing));
     }
@@ -35,6 +39,11 @@ public sealed partial class MembershipFreezeRequestService
             membership.Id, membership.OrderItem.PackageId, membership.OrderItem.PackageNameSnapshot,
             membership.PackageComponent.ComponentType, membership.StartDate, membership.EndDate, membership.MembershipStatus), today);
         var paidDays = Math.Max(0, today.DayNumber - membership.StartDate.DayNumber);
+        var (committed, completed) = AccountedDays(membership);
+        if (membership.PackageComponent.ComponentType == ComponentType.YOGA)
+            return new(summary, false, YogaFreezeUnsupportedCode, YogaFreezeUnsupportedMessage, today, null, paidDays, 0, null,
+                GrantedFreezeAllowanceDays: 0, CompletedFreezeDays: completed, CommittedFreezeDays: (int)Math.Min(int.MaxValue, committed));
+
         var snapshot = existing is null ? null : ReadAppliedPolicy(existing.AppliedPolicySnapshot);
         if (existing is not null)
             policy = snapshot?.Policy;
@@ -45,7 +54,6 @@ public sealed partial class MembershipFreezeRequestService
         var pending = membership.MembershipFreezes.Count(row => row.RequestStatus == FreezeRequestStatus.Pending && row.Id != existing?.Id);
         int? remainingVisits = visitLimit.HasValue ? Math.Max(0, visitLimit.Value - membership.FreezeCount - pending) : null;
         var allowance = ApplicableAllowance(membership, snapshot);
-        var (committed, completed) = AccountedDays(membership);
         var remaining = RemainingDays(allowance, committed);
         var earliest = policy is { MinimumRequestDays: >= 0 } ? AddDaysIfSupported(today, policy.MinimumRequestDays) : null;
         var overlaps = membership.MembershipFreezes
@@ -65,8 +73,6 @@ public sealed partial class MembershipFreezeRequestService
             return Blocked(response, "FREEZE_MEMBERSHIP_INACTIVE", "Chỉ gói hội viên đang hoạt động mới có thể gửi yêu cầu bảo lưu.");
         if (membership.PackageComponent.ComponentType == ComponentType.PT)
             return Blocked(response, "FREEZE_PT_PACKAGE", "Gói huấn luyện cá nhân sử dụng quy trình bảo lưu PT.");
-        if (IsWeeklyYoga(membership))
-            return Blocked(response, "FREEZE_WEEKLY_YOGA", "Gói Yoga theo tuần không hỗ trợ bảo lưu.");
         if (remainingVisits == 0)
             return Blocked(response, "FREEZE_VISITS_EXHAUSTED", "Không còn lượt bảo lưu khả dụng cho gói này.");
         if (policy is not { MinimumFreezeDays: > 0, MinimumRequestDays: >= 0, EligibilityPaidDays: >= 0 } ||
@@ -126,11 +132,6 @@ public sealed partial class MembershipFreezeRequestService
             EarliestStartDate = DateOnly.FromDayNumber(firstAvailable!.Value), LatestStartDate = DateOnly.FromDayNumber(lastAvailable!.Value) };
     }
 
-    internal static bool IsWeeklyYoga(MemberMembership membership) =>
-        membership.PackageComponent.ComponentType == ComponentType.YOGA &&
-        MembershipPurchaseService.PurchasedDuration(membership.OrderItem.ComponentTermsSnapshot, membership.PackageComponentId,
-            membership.PackageComponent.DurationDays, membership.PackageComponent.DurationMonths).Days == 7;
-
     internal static int? ApplicableAllowance(MemberMembership membership, MembershipFreezePolicyResponse? snapshot)
     {
         // Legacy requests used the quota in the submitted policy. It applies only to that existing request.
@@ -186,7 +187,7 @@ public sealed partial class MembershipFreezeRequestService
         Result<T>.Failure(eligibility.Message!, eligibility.MessageCode!, eligibility.MessageCode switch
         {
             "FREEZE_POLICY_UNAVAILABLE" => 503,
-            "FREEZE_MEMBERSHIP_INACTIVE" or "FREEZE_PT_PACKAGE" or "FREEZE_WEEKLY_YOGA" or "FREEZE_OVERLAP" => 409,
+            "FREEZE_MEMBERSHIP_INACTIVE" or "FREEZE_PT_PACKAGE" or YogaFreezeUnsupportedCode or "FREEZE_OVERLAP" => 409,
             _ => 400
         });
 

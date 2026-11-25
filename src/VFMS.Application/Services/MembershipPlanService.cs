@@ -203,23 +203,6 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
 
         if (gym.ComponentType == ComponentType.YOGA)
             gym.YogaDifficultyLevel = CanonicalLevel(request.YogaDifficultyLevel);
-
-        if (gym.ComponentType == ComponentType.YOGA && gym.DurationDays == 7)
-        {
-            plan.FreezeAllowanceOverrideDays = null;
-            plan.FreezeAllowanceOverrideUnit = null;
-        }
-        else if (request.FreezeAllowanceOverrideValue is { } value &&
-            MembershipFreezeDuration.TryToDays(value, request.FreezeAllowanceOverrideUnit, out var days))
-        {
-            plan.FreezeAllowanceOverrideDays = days;
-            plan.FreezeAllowanceOverrideUnit = (VFMS.Domain.Enums.MembershipDurationUnit)request.FreezeAllowanceOverrideUnit;
-        }
-        else if (request.DurationValue.HasValue)
-        {
-            plan.FreezeAllowanceOverrideDays = null;
-            plan.FreezeAllowanceOverrideUnit = null;
-        }
     }
 
     private static string? CanonicalLevel(string? level) =>
@@ -243,21 +226,17 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
             MaxFreezeCount = service.MaxFreezeCount,
             MinFreezeDaysPerRequest = service.MinFreezeDaysPerRequest,
             MaxFreezeDaysPerRequest = service.MaxFreezeDaysPerRequest,
-            TargetAudience = plan.TargetAudience,
-            FreezeAllowanceOverrideDays = plan.FreezeAllowanceOverrideDays,
-            FreezeAllowanceOverrideUnit = plan.FreezeAllowanceOverrideUnit
+            TargetAudience = plan.TargetAudience
         };
 
     private static MembershipPlanResponse ToResponse(MembershipPlanReadModel plan) =>
         new(plan.Id, plan.Name, plan.Description, DisplayDays(plan.DurationDays, plan.DurationMonths), plan.Price,
             FormatStatus(plan.Status), plan.SubscriberCount, CalendarMonths(plan), plan.ServiceType.ToString(), plan.YogaDifficultyLevel)
         {
-            MaxFreezeCount = plan.MaxFreezeCount,
-            MinFreezeDaysPerRequest = plan.MinFreezeDaysPerRequest,
-            MaxFreezeDaysPerRequest = plan.MaxFreezeDaysPerRequest,
-            TargetAudience = plan.TargetAudience,
-            FreezeAllowanceOverrideDays = plan.FreezeAllowanceOverrideDays,
-            FreezeAllowanceOverrideUnit = (MembershipDurationUnit?)plan.FreezeAllowanceOverrideUnit ?? MembershipDurationUnit.Day
+            MaxFreezeCount = plan.ServiceType == ComponentType.GYM ? plan.MaxFreezeCount : null,
+            MinFreezeDaysPerRequest = plan.ServiceType == ComponentType.GYM ? plan.MinFreezeDaysPerRequest : null,
+            MaxFreezeDaysPerRequest = plan.ServiceType == ComponentType.GYM ? plan.MaxFreezeDaysPerRequest : null,
+            TargetAudience = plan.TargetAudience
         };
 
     private static MembershipPlanCatalogItemResponse ToCatalogResponse(MembershipPlanReadModel plan) =>
@@ -286,8 +265,6 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
         DurationInDays = gym.DurationDays,
         DurationInMonths = gym.DurationMonths,
         gym.YogaDifficultyLevel,
-        plan.FreezeAllowanceOverrideDays,
-        plan.FreezeAllowanceOverrideUnit,
         gym.MaxFreezeCount,
         gym.MinFreezeDaysPerRequest,
         gym.MaxFreezeDaysPerRequest,
@@ -321,7 +298,7 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
 
         var (items, total) = await repository.SearchByComponentTypeAsync(
             componentType, request.Page, request.PageSize, cancellationToken);
-        var freeze = items.Count > 0 && componentType != ComponentType.PT
+        var freeze = items.Count > 0 && componentType == ComponentType.GYM
             ? await repository.GetCatalogFreezeRulesAsync(cancellationToken) : null;
 
         return Result<PagedResponse<PackageCatalogItemResponse>>.Success(
@@ -339,7 +316,7 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
         var package = packages.SingleOrDefault(item => item.Id == id && item.ComponentType == componentType);
         if (package is null)
             return Result<PackageDetailResponse>.Failure("Không tìm thấy gói tập đang mở bán.", "PACKAGE_NOT_FOUND", 404);
-        var freeze = packages.Any(item => item.ComponentType != ComponentType.PT)
+        var freeze = packages.Any(item => item.ComponentType == ComponentType.GYM)
             ? await repository.GetCatalogFreezeRulesAsync(cancellationToken) : null;
 
         var recommendations = packages.Where(item => item.Id != id)
@@ -382,15 +359,11 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
 
     private static PackageCatalogItemResponse ToCatalogItemResponse(PackageCatalogReadModel m, CatalogMembershipFreezeRules? freeze)
     {
-        var allowance = MembershipPurchaseService.ResolveFreezeAllowance(m.ComponentType, m.DurationDays,
-            m.FreezeAllowanceOverrideDays);
-        var allowed = freeze is { MinimumDays: > 0 } && freeze.MaximumDays >= freeze.MinimumDays && allowance >= freeze.MinimumDays;
         var isGym = m.ComponentType == ComponentType.GYM;
         var count = m.MaxFreezeCount ?? freeze?.DefaultMaxFreezeCount;
         var maxDays = m.MaxFreezeDaysPerRequest ?? freeze?.MaximumDays;
         var minDays = m.MinFreezeDaysPerRequest ?? freeze?.MinimumDays;
-        if (isGym)
-            allowed = freeze is not null && count > 0 && minDays > 0 && maxDays >= minDays;
+        var allowed = isGym && freeze is not null && count > 0 && minDays > 0 && maxDays >= minDays;
         var isPt = m.ComponentType == ComponentType.PT;
         return new(
             m.Id,
@@ -407,14 +380,13 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
             m.PTFreezeMinimumDays,
             m.PTFreezeMaxTotalDays,
             isPt ? m.AllowFreeze : allowed,
-            isGym ? maxDays : isPt ? m.MaxFreezeDaysPerRequest : allowed ? Math.Min(allowance!.Value, freeze!.MaximumDays) : null,
+            isGym ? maxDays : isPt ? m.MaxFreezeDaysPerRequest : null,
             isGym ? count : isPt ? m.MaxFreezeCount : null,
             m.AccessStartTime,
             m.AccessEndTime)
         {
             IsSingleService = m.IsSingleService,
-            TargetAudience = m.TargetAudience,
-            TotalFreezeAllowanceDays = isGym ? null : allowance
+            TargetAudience = m.TargetAudience
         };
     }
 }

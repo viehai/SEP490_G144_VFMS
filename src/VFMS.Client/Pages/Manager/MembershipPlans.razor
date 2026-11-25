@@ -96,10 +96,10 @@
                         <InputTextArea id="plan-audience" class="@Field" @bind-Value="form.TargetAudience" rows="3" maxlength="4000" placeholder="Đối tượng phù hợp với gói tập..." />
                         <ValidationMessage For="@(() => form.TargetAudience)" />
                     </label>
-                    <section class="min-w-0 space-y-3 border-t border-vfms-border pt-4 sm:col-span-2" aria-labelledby="plan-freeze-benefits">
-                        <h3 id="plan-freeze-benefits" class="text-sm font-bold text-vfms-text">Quyền lợi bảo lưu</h3>
-                        @if (form.ServiceType == MembershipPlanServiceTypes.Gym)
-                        {
+                    @if (form.ServiceType == MembershipPlanServiceTypes.Gym)
+                    {
+                        <section class="min-w-0 space-y-3 border-t border-vfms-border pt-4 sm:col-span-2" aria-labelledby="plan-freeze-benefits">
+                            <h3 id="plan-freeze-benefits" class="text-sm font-bold text-vfms-text">Quyền lợi bảo lưu</h3>
                             <div class="grid gap-3 sm:grid-cols-3">
                                 <label class="block text-sm font-semibold">Số lượt bảo lưu
                                     <InputNumber @bind-Value="form.MaxFreezeCount" min="0" class="@Field" placeholder="@($"Theo chính sách: {_policy?.DefaultMaxFreezeCount}")" />
@@ -137,18 +137,8 @@
                                             : "Chưa đủ thông tin để xác định quyền lợi bảo lưu.")</p>
                                 }
                             </div>
-                        }
-                        else if (form.DurationUnit == MembershipDurationUnit.Day && form.DurationValue == 7)
-                        {
-                            <p class="text-sm">Gói Yoga theo tuần không hỗ trợ bảo lưu.</p>
-                        }
-                        else
-                        {
-                            <MembershipDurationInput Id="plan-freeze-allowance" Label="Tổng thời gian bảo lưu riêng của gói Yoga"
-                                                     @bind-Value="form.FreezeAllowanceOverrideValue" @bind-Unit="form.FreezeAllowanceOverrideUnit"
-                                                     ShowFreezeConversion HelpText="Để trống hoặc nhập 0 nếu gói không có quyền lợi bảo lưu." />
-                        }
-                    </section>
+                        </section>
+                    }
                     <div class="flex flex-wrap gap-3 sm:col-span-2 pt-2">
                         <button type="submit" class="@PrimaryButton">@(_working ? "Đang lưu..." : "Lưu gói hội viên")</button>
                         <button type="button" class="@Button" @onclick="ClosePanel">Hủy</button>
@@ -169,7 +159,10 @@
                 <div><dt class="font-semibold text-[#6F6966]">Lượt đăng ký đang hoạt động</dt><dd class="font-bold text-[#242424]">@plan.SubscriberCount</dd></div>
                 <div class="sm:col-span-2"><dt class="font-semibold text-[#6F6966]">Mô tả</dt><dd class="whitespace-pre-wrap break-words text-[#242424]">@(plan.Description ?? "—")</dd></div>
                 <div class="sm:col-span-2"><dt class="font-semibold text-[#6F6966]">Phù hợp với ai</dt><dd class="whitespace-pre-wrap break-words text-[#242424]">@(plan.TargetAudience ?? "—")</dd></div>
-                <div><dt class="font-semibold text-[#6F6966]">Quyền lợi bảo lưu</dt><dd class="text-[#242424]">@(plan.ServiceType == MembershipPlanServiceTypes.Gym ? (plan.MaxFreezeCount is { } count ? $"{count} lượt" : "Số lượt theo chính sách chung") : plan.DurationUnit == MembershipDurationUnit.Day && plan.DurationValue == 7 ? "Yoga theo tuần không hỗ trợ bảo lưu" : AllowanceLabel(plan.FreezeAllowanceOverrideDays ?? 0))</dd></div>
+                @if (!IsYoga(plan.ServiceType))
+                {
+                    <div><dt class="font-semibold text-[#6F6966]">Quyền lợi bảo lưu</dt><dd class="text-[#242424]">@(plan.MaxFreezeCount is { } count ? $"{count} lượt" : "Số lượt theo chính sách chung")</dd></div>
+                }
             </dl>
             <div class="mt-5 flex flex-wrap gap-3 pt-2">
                 <button type="button" class="@PrimaryButton" @onclick="OpenEditAsync">Chỉnh sửa</button>
@@ -387,15 +380,13 @@
             MaxFreezeCount = plan.MaxFreezeCount,
             MinFreezeDaysPerRequest = plan.MinFreezeDaysPerRequest,
             MaxFreezeDaysPerRequest = plan.MaxFreezeDaysPerRequest,
-            FreezeAllowanceOverrideValue = plan.FreezeAllowanceOverrideValue,
-            FreezeAllowanceOverrideUnit = plan.FreezeAllowanceOverrideUnit,
             Price = plan.Price,
             Status = IsActive(plan.Status) ? Active : Inactive,
             ServiceType = plan.ServiceType,
             YogaDifficultyLevel = plan.YogaDifficultyLevel
         };
         _focusPanel = true;
-        return LoadPolicyAsync();
+        return IsYoga(plan.ServiceType) ? Task.CompletedTask : LoadPolicyAsync();
     }
 
     private async Task LoadPolicyAsync()
@@ -496,12 +487,6 @@
     private static string Duration(MembershipPlanResponse plan) => Duration(plan.DurationValue, plan.DurationUnit);
     private static string Duration(int? value, MembershipDurationUnit unit) =>
         value is > 0 ? $"{value} {(unit == MembershipDurationUnit.Month ? "tháng" : "ngày")}" : "—";
-    private static string AllowanceLabel(int? days) => days switch
-    {
-        null => "Chưa xác định",
-        0 => "Không được bảo lưu",
-        _ => $"{days} ngày"
-    };
 
     public void Dispose()
     {

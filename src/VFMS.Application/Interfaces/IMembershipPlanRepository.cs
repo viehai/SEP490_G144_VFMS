@@ -19,11 +19,9 @@ public sealed record MembershipPlanReadModel(
 {
     public bool IsSingleService { get; init; } = true;
     public string? TargetAudience { get; init; }
-    public int? FreezeAllowanceOverrideDays { get; init; }
     public int? MaxFreezeCount { get; init; }
     public int? MinFreezeDaysPerRequest { get; init; }
     public int? MaxFreezeDaysPerRequest { get; init; }
-    public VFMS.Domain.Enums.MembershipDurationUnit? FreezeAllowanceOverrideUnit { get; init; }
 }
 
 /// <summary>
@@ -51,7 +49,6 @@ public sealed record PackageCatalogReadModel(
 {
     public bool IsSingleService { get; init; } = true;
     public string? TargetAudience { get; init; }
-    public int? FreezeAllowanceOverrideDays { get; init; }
     public int? MinFreezeDaysPerRequest { get; init; }
 }
 

@@ -242,6 +242,9 @@
 
     private static string? FreezeLabel(PackageCatalogItemResponse package)
     {
+        if (package.ComponentType == MembershipPlanServiceTypes.Yoga)
+            return null;
+
         if (package.ComponentType == "PT")
         {
             var minimum = package.PTFreezeMinimumDays is > 0 ? $"Tối thiểu {package.PTFreezeMinimumDays} ngày" : null;

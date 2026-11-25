@@ -18,9 +18,7 @@ internal static class MembershipDisplay
         if (package.ComponentType == "GYM" && package.MaxFreezeCount is { } count)
             return $"{count} lượt · Tối đa {package.MaxFreezeDaysPerRequest} ngày/lượt";
 
-        return package.TotalFreezeAllowanceDays is > 0
-            ? $"Tổng cộng {package.TotalFreezeAllowanceDays} ngày"
-            : "Có hỗ trợ";
+        return "Có hỗ trợ";
     }
 
     public static string Status(string status) => status switch

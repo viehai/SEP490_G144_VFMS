@@ -36,8 +36,8 @@ public sealed partial class MembershipFreezeReviewService
             return Result<int>.Success(actual);
         }
 
-        if (MembershipFreezeRequestService.IsWeeklyYoga(membership))
-            return InvalidApproval("Gói Yoga theo tuần không hỗ trợ bảo lưu.", "FREEZE_WEEKLY_YOGA");
+        if (membership.PackageComponent.ComponentType == ComponentType.YOGA)
+            return InvalidApproval(MembershipFreezeRequestService.YogaFreezeUnsupportedMessage, MembershipFreezeRequestService.YogaFreezeUnsupportedCode);
         if (freeze.AppliedExpiryExtensionDays is not null ||
             MembershipPurchaseService.GetCurrentMembershipStatus(membership.MembershipStatus, membership.EndDate, today) != MembershipStatus.Active ||
             membership.StartDate > today)

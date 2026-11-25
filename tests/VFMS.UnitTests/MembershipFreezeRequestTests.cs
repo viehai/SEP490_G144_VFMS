@@ -240,7 +240,8 @@ public sealed partial class MembershipFreezeRequestTests
     [Theory]
     [InlineData(ComponentType.PT, 180)]
     [InlineData(ComponentType.YOGA, 7)]
-    public async Task PtAndWeeklyYogaEntitlementsCannotUseMembershipFreezes(ComponentType componentType, int duration)
+    [InlineData(ComponentType.YOGA, 90)]
+    public async Task PtAndYogaEntitlementsCannotUseMembershipFreezes(ComponentType componentType, int duration)
     {
         var fixture = new FreezeFixture();
         fixture.Membership.PackageComponent.ComponentType = componentType;
@@ -668,7 +669,7 @@ public sealed partial class MembershipFreezeRequestTests
         }
 
         private MembershipFreezeReadModel ToReadModel(MembershipFreeze request) =>
-            new(request, membership.OrderItem.PackageNameSnapshot, membership.MembershipStatus);
+            new(request, membership.OrderItem.PackageNameSnapshot, membership.MembershipStatus, membership.PackageComponent.ComponentType);
 
         public void Add<TEntity>(TEntity entity) where TEntity : BaseEntity
         {

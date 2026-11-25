@@ -23,7 +23,7 @@ public sealed partial class MembershipFreezeRequestService(
             .OrderByDescending(row => row.Request.EarlyUnfreezeRequestStatus == FreezeRequestStatus.Pending ||
                 row.Request.RequestStatus is FreezeRequestStatus.Pending or FreezeRequestStatus.Active or FreezeRequestStatus.Approved)
             .ThenByDescending(row => row.Request.CreatedAt).ThenByDescending(row => row.Request.Id)
-            .Select(row => ToResponse(row.Request, row.PlanName, row.MembershipStatus, today) with
+            .Select(row => ToResponse(row.Request, row.PlanName, row.MembershipStatus, row.ComponentType, today) with
             {
                 SupportingDocument = row.Request.SupportingDocumentId is { } id ? metadata.GetValueOrDefault(id) : null
             }).ToArray());
@@ -33,7 +33,8 @@ public sealed partial class MembershipFreezeRequestService(
     {
         var row = await repository.FindOwnedRequestAsync(memberId, requestId, ct);
         return row is null ? NotFound<MembershipFreezeRequestResponse>()
-            : Result<MembershipFreezeRequestResponse>.Success(await ToResponseAsync(row.Request, row.PlanName, row.MembershipStatus, LocalToday(), ct));
+            : Result<MembershipFreezeRequestResponse>.Success(await ToResponseAsync(row.Request, row.PlanName,
+                row.MembershipStatus, row.ComponentType, LocalToday(), ct));
     }
 
     public async Task<Result<MembershipFreezeRequestResponse>> CreateAsync(
@@ -84,7 +85,7 @@ public sealed partial class MembershipFreezeRequestService(
             request.RequestStatus = FreezeRequestStatus.Cancelled;
             await repository.SaveChangesAsync(ct);
             return Result<MembershipFreezeRequestResponse>.Success(await ToResponseAsync(request,
-                membership.OrderItem.PackageNameSnapshot, membership.MembershipStatus, LocalToday(), ct));
+                membership.OrderItem.PackageNameSnapshot, membership.MembershipStatus, membership.PackageComponent.ComponentType, LocalToday(), ct));
         }, ct);
 
     public Task<Result<MembershipFreezeRequestResponse>> RequestEarlyUnfreezeAsync(
@@ -93,7 +94,7 @@ public sealed partial class MembershipFreezeRequestService(
         {
             if (request.EarlyUnfreezeRequestStatus == FreezeRequestStatus.Pending)
                 return Result<MembershipFreezeRequestResponse>.Success(await ToResponseAsync(request,
-                    membership.OrderItem.PackageNameSnapshot, membership.MembershipStatus, LocalToday(), ct));
+                    membership.OrderItem.PackageNameSnapshot, membership.MembershipStatus, membership.PackageComponent.ComponentType, LocalToday(), ct));
             if (!CanRequestEarlyUnfreeze(request, membership.MembershipStatus, LocalToday()))
                 return StateConflict();
             request.EarlyUnfreezeRequestedAt = clock.GetUtcNow().UtcDateTime;
@@ -103,14 +104,15 @@ public sealed partial class MembershipFreezeRequestService(
             request.EarlyUnfreezeReviewNote = null;
             await repository.SaveChangesAsync(ct);
             return Result<MembershipFreezeRequestResponse>.Success(await ToResponseAsync(request,
-                membership.OrderItem.PackageNameSnapshot, membership.MembershipStatus, LocalToday(), ct));
+                membership.OrderItem.PackageNameSnapshot, membership.MembershipStatus, membership.PackageComponent.ComponentType, LocalToday(), ct));
         }, ct);
 
     private async Task<Result<MembershipFreezeRequestResponse>> SaveRequestAsync(
         string memberId, MemberMembership membership, MembershipFreezeRequest input, MembershipFreeze? existing,
         MembershipFreezeDocumentContent? attachment, CancellationToken ct)
     {
-        var policy = existing is null ? await policies.GetActiveGlobalAsync(false, ct) : null;
+        var policy = existing is null && membership.PackageComponent.ComponentType != ComponentType.YOGA
+            ? await policies.GetActiveGlobalAsync(false, ct) : null;
         var eligibility = Evaluate(membership, MembershipFreezePolicyService.Configuration(policy), LocalToday(), existing);
         if (!eligibility.Eligible)
             return Ineligible<MembershipFreezeRequestResponse>(eligibility);
@@ -136,7 +138,7 @@ public sealed partial class MembershipFreezeRequestService(
         }
         await repository.SaveChangesAsync(ct);
         return Result<MembershipFreezeRequestResponse>.Success(await ToResponseAsync(request,
-            membership.OrderItem.PackageNameSnapshot, membership.MembershipStatus, eligibility.Today, ct), existing is null ? 201 : 200);
+            membership.OrderItem.PackageNameSnapshot, membership.MembershipStatus, membership.PackageComponent.ComponentType, eligibility.Today, ct), existing is null ? 201 : 200);
     }
 
     private async Task<Result<MembershipFreezeRequestResponse>> MutateExistingAsync(
@@ -162,20 +164,20 @@ public sealed partial class MembershipFreezeRequestService(
     private DateOnly LocalToday() => DateOnly.FromDateTime(clock.GetUtcNow().ToOffset(TimeSpan.FromHours(7)).DateTime);
 
     private async Task<MembershipFreezeRequestResponse> ToResponseAsync(
-        MembershipFreeze request, string planName, MembershipStatus status, DateOnly today, CancellationToken ct)
+        MembershipFreeze request, string planName, MembershipStatus status, ComponentType componentType, DateOnly today, CancellationToken ct)
     {
-        var response = ToResponse(request, planName, status, today);
+        var response = ToResponse(request, planName, status, componentType, today);
         return request.SupportingDocumentId is { } id
             ? response with { SupportingDocument = await documents.GetMetadataAsync(id, ct) } : response;
     }
 
     private static MembershipFreezeRequestResponse ToResponse(
-        MembershipFreeze request, string planName, MembershipStatus membershipStatus, DateOnly today) =>
+        MembershipFreeze request, string planName, MembershipStatus membershipStatus, ComponentType componentType, DateOnly today) =>
         new(request.Id, request.MemberMembershipId, planName, request.RequestedStartDate, request.RequestedEndDate,
             request.RequestedEndDate.DayNumber - request.RequestedStartDate.DayNumber + 1, request.Reason, Utc(request.CreatedAt),
             request.RequestStatus.ToString(), request.ReviewNote, request.ReviewedAt is { } reviewed ? Utc(reviewed) : null,
             request.EarlyUnfreezeRequestedAt is { } early ? Utc(early) : null, request.EarlyUnfreezeRequestStatus?.ToString(),
-            request.RequestStatus == FreezeRequestStatus.Pending, request.RequestStatus == FreezeRequestStatus.Pending,
+            request.RequestStatus == FreezeRequestStatus.Pending && componentType != ComponentType.YOGA, request.RequestStatus == FreezeRequestStatus.Pending,
             CanRequestEarlyUnfreeze(request, membershipStatus, today), ReadAppliedPolicy(request.AppliedPolicySnapshot),
             request.EarlyUnfreezeReviewNote,
             request.EarlyUnfreezeReviewedAt is { } earlyReviewed ? Utc(earlyReviewed) : null,

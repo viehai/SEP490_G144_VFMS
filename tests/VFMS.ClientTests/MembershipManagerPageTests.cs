@@ -48,8 +48,8 @@ public sealed partial class MembershipPlanApiClientTests
     [Theory]
     [InlineData(null)]
     [InlineData(0)]
-    [InlineData(1)]
-    public async Task ManagerPlan_CreateSendsSelectedDurationAndDistinguishesBlankFromZero(int? allowance)
+    [InlineData(2)]
+    public async Task ManagerPlan_CreateSendsSelectedDurationAndDistinguishesBlankFromZero(int? freezeCount)
     {
         using var api = CreateClient(async request =>
         {
@@ -57,18 +57,17 @@ public sealed partial class MembershipPlanApiClientTests
             var body = await request.Content!.ReadFromJsonAsync<JsonElement>();
             Assert.Equal(3, body.GetProperty("durationValue").GetInt32());
             Assert.Equal((int)MembershipDurationUnit.Month, body.GetProperty("durationUnit").GetInt32());
-            var overrideValue = body.GetProperty("freezeAllowanceOverrideValue");
-            if (allowance is { } value)
-                Assert.Equal(value, overrideValue.GetInt32());
+            var count = body.GetProperty("maxFreezeCount");
+            if (freezeCount is { } value)
+                Assert.Equal(value, count.GetInt32());
             else
-                Assert.Equal(JsonValueKind.Null, overrideValue.ValueKind);
-            Assert.Equal((int)MembershipDurationUnit.Month, body.GetProperty("freezeAllowanceOverrideUnit").GetInt32());
+                Assert.Equal(JsonValueKind.Null, count.ValueKind);
+            Assert.False(body.TryGetProperty("freezeAllowanceOverrideValue", out _));
             Assert.Equal("Tập thường xuyên", body.GetProperty("targetAudience").GetString());
             return Json(new MembershipPlanResponse(1, "Gym 3 tháng", null, null, 500000, MembershipPlanStatuses.Active,
                 0, 3)
             {
-                FreezeAllowanceOverrideDays = allowance * MembershipFreezeDuration.DaysPerMonth,
-                FreezeAllowanceOverrideUnit = MembershipDurationUnit.Month
+                MaxFreezeCount = freezeCount
             });
         });
 
@@ -78,13 +77,12 @@ public sealed partial class MembershipPlanApiClientTests
             TargetAudience = "Tập thường xuyên",
             DurationValue = 3,
             DurationUnit = MembershipDurationUnit.Month,
-            FreezeAllowanceOverrideValue = allowance,
-            FreezeAllowanceOverrideUnit = MembershipDurationUnit.Month,
+            MaxFreezeCount = freezeCount,
             Price = 500000,
             Status = MembershipPlanStatuses.Active
         });
 
-        Assert.Equal(allowance, saved.FreezeAllowanceOverrideValue);
+        Assert.Equal(freezeCount, saved.MaxFreezeCount);
         Assert.Equal(3, saved.DurationValue);
         Assert.Equal(MembershipDurationUnit.Month, saved.DurationUnit);
     }

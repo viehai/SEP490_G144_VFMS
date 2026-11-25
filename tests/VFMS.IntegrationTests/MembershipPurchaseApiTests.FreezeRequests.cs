@@ -427,13 +427,16 @@ public sealed partial class MembershipPurchaseApiTests
     }
 
     [Fact]
-    public async Task MonthlyYogaWithoutItsOwnAllowanceDoesNotInheritGymDefaultsOrTheRetiredYogaDefault()
+    public async Task MonthlyYogaCannotUseFreezeBenefitsEvenWithLegacyAllowances()
     {
         await ConfigureFreezeRequestsAsync(RequestPolicy with { EligibilityPaidDays = 0, DefaultMaxFreezeCount = 2 });
         await using (var scope = _app.Services.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
             (await db.FreezePolicies.SingleAsync()).DefaultFreezeAllowanceDays = 30;
+            var combo = await db.Packages.SingleAsync(row => row.Id == _combo);
+            combo.FreezeAllowanceOverrideDays = 30;
+            combo.FreezeAllowanceOverrideUnit = VFMS.Domain.Enums.MembershipDurationUnit.Day;
             await db.SaveChangesAsync();
         }
 
@@ -447,9 +450,42 @@ public sealed partial class MembershipPurchaseApiTests
         await ActivateMembershipAsync(member, gym.MembershipId, Today);
         var blocked = await GetFreezeEligibilityAsync(member, yoga.MembershipId);
         Assert.False(blocked.Eligible);
-        Assert.Equal("FREEZE_ALLOWANCE_DISABLED", blocked.MessageCode);
+        Assert.Equal("FREEZE_YOGA_PACKAGE", blocked.MessageCode);
         Assert.Equal(0, blocked.GrantedFreezeAllowanceDays);
         Assert.Equal(2, (await GetFreezeEligibilityAsync(member, gym.MembershipId)).RemainingFreezeCount);
+
+        int pendingId;
+        await using (var scope = _app.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+            var stored = await db.MemberMemberships.SingleAsync(row => row.Id == yoga.MembershipId);
+            Assert.Equal(0, stored.GrantedFreezeAllowanceDays);
+            stored.GrantedFreezeAllowanceDays = 30;
+            var pending = new MembershipFreeze
+            {
+                MemberMembershipId = stored.Id,
+                RequestedByUserId = stored.MemberUserId,
+                RequestedStartDate = Today.AddDays(2),
+                RequestedEndDate = Today.AddDays(4),
+                RequestStatus = FreezeRequestStatus.Pending
+            };
+            db.MembershipFreezes.Add(pending);
+            await db.SaveChangesAsync();
+            pendingId = pending.Id;
+        }
+
+        using var rejected = await PostFreezeWithDocumentAsync(member, FreezeInput(yoga.MembershipId));
+        Assert.Equal(HttpStatusCode.Conflict, rejected.StatusCode);
+        var detail = await ReadMembershipDetailAsync(member, yoga.MembershipId);
+        Assert.Equal(0, detail.Freeze.GrantedFreezeAllowanceDays);
+        Assert.Single(detail.Freeze.History);
+        var request = await ReadFreezeRequestResponseAsync(await member.GetAsync($"{FreezeRequestsRoute}/{pendingId}"));
+        Assert.False(request.CanEdit);
+        Assert.True(request.CanCancel);
+
+        using var manager = Client("manager", "Manager");
+        using var approval = await manager.PostAsync($"{FreezeReviewsRoute}/{pendingId}/approve", null);
+        Assert.Equal(HttpStatusCode.Conflict, approval.StatusCode);
     }
 
     [Theory]

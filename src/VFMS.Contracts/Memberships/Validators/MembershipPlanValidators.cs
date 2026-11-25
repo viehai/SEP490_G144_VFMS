@@ -23,10 +23,6 @@ public sealed class MembershipPlanRequestValidator : AbstractValidator<Membershi
                 value.HasValue ? request.DurationUnit : MembershipDurationUnit.Day))
             .WithMessage("Nhập thời hạn gói bằng số nguyên dương trong phạm vi ngày được hỗ trợ.");
         RuleFor(x => x.DurationUnit).IsInEnum().WithMessage("Chọn đơn vị thời hạn là ngày hoặc tháng.");
-        RuleFor(x => x.FreezeAllowanceOverrideUnit).IsInEnum().WithMessage("Chọn đơn vị bảo lưu là ngày hoặc tháng.");
-        RuleFor(x => x.FreezeAllowanceOverrideValue)
-            .Must((request, value) => value is null || MembershipFreezeDuration.TryToDays(value.Value, request.FreezeAllowanceOverrideUnit, out _))
-            .WithMessage("Nhập tổng thời gian bảo lưu từ 0 trở lên trong phạm vi ngày được hỗ trợ.");
         RuleFor(x => x.Price)
             .NotNull().WithMessage("Nhập giá gói hội viên.")
             .Must(price => price is null ||

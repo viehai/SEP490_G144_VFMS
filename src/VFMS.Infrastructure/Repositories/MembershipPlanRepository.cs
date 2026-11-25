@@ -36,12 +36,11 @@ public sealed class MembershipPlanRepository(VfmsDbContext context)
         {
             MembershipFreezeAllowanceFilter.Default => query.Where(p => p.Components.Any(c => c.ComponentType == ComponentType.GYM) &&
                 !p.Components.Any(c => c.ComponentType == ComponentType.GYM && (c.MaxFreezeCount != null || c.MinFreezeDaysPerRequest != null || c.MaxFreezeDaysPerRequest != null))),
-            MembershipFreezeAllowanceFilter.Disabled => query.Where(p => p.Components.Any(c => c.ComponentType == ComponentType.GYM)
-                ? p.Components.Any(c => c.ComponentType == ComponentType.GYM && c.MaxFreezeCount == 0) : p.FreezeAllowanceOverrideDays == null || p.FreezeAllowanceOverrideDays == 0 || p.Components.Any(c => c.ComponentType == ComponentType.YOGA && c.DurationDays == 7)),
-            MembershipFreezeAllowanceFilter.Custom => query.Where(p => p.Components.Any(c => c.ComponentType == ComponentType.GYM)
-                ? p.Components.Any(c => c.ComponentType == ComponentType.GYM && (c.MaxFreezeCount == null || c.MaxFreezeCount > 0) &&
-                    (c.MaxFreezeCount > 0 || c.MinFreezeDaysPerRequest != null || c.MaxFreezeDaysPerRequest != null))
-                : p.FreezeAllowanceOverrideDays > 0 && !p.Components.Any(c => c.ComponentType == ComponentType.YOGA && c.DurationDays == 7)),
+            MembershipFreezeAllowanceFilter.Disabled => query.Where(p => !p.Components.Any(c => c.ComponentType == ComponentType.GYM) ||
+                p.Components.Any(c => c.ComponentType == ComponentType.GYM && c.MaxFreezeCount == 0)),
+            MembershipFreezeAllowanceFilter.Custom => query.Where(p => p.Components.Any(c => c.ComponentType == ComponentType.GYM &&
+                (c.MaxFreezeCount == null || c.MaxFreezeCount > 0) &&
+                (c.MaxFreezeCount > 0 || c.MinFreezeDaysPerRequest != null || c.MaxFreezeDaysPerRequest != null))),
             _ => query
         };
 
@@ -156,8 +155,7 @@ public sealed class MembershipPlanRepository(VfmsDbContext context)
         {
             MinFreezeDaysPerRequest = component.MinFreezeDaysPerRequest,
             IsSingleService = package.Components.Count == 1,
-            TargetAudience = package.TargetAudience,
-            FreezeAllowanceOverrideDays = package.FreezeAllowanceOverrideDays
+            TargetAudience = package.TargetAudience
         };
 
     private IQueryable<Package> Plans(PackageStatus? status, DateTime? sellableAtUtc = null)
@@ -210,8 +208,6 @@ public sealed class MembershipPlanRepository(VfmsDbContext context)
                 MaxFreezeCount = plan.package.Components.Where(c => c.ComponentType == plan.Type).OrderBy(c => c.Id).Select(c => c.MaxFreezeCount).FirstOrDefault(),
                 MinFreezeDaysPerRequest = plan.package.Components.Where(c => c.ComponentType == plan.Type).OrderBy(c => c.Id).Select(c => c.MinFreezeDaysPerRequest).FirstOrDefault(),
                 MaxFreezeDaysPerRequest = plan.package.Components.Where(c => c.ComponentType == plan.Type).OrderBy(c => c.Id).Select(c => c.MaxFreezeDaysPerRequest).FirstOrDefault(),
-                TargetAudience = plan.package.TargetAudience,
-                FreezeAllowanceOverrideDays = plan.package.FreezeAllowanceOverrideDays,
-                FreezeAllowanceOverrideUnit = plan.package.FreezeAllowanceOverrideUnit
+                TargetAudience = plan.package.TargetAudience
             });
 }

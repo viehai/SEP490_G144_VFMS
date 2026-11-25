@@ -52,7 +52,6 @@ public sealed record PackageCatalogItemResponse(
 {
     public bool IsSingleService { get; init; } = true;
     public string? TargetAudience { get; init; }
-    public int? TotalFreezeAllowanceDays { get; init; }
 }
 
 public sealed record PackageDetailResponse(

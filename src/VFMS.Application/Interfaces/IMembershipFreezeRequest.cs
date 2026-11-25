@@ -29,4 +29,4 @@ public interface IMembershipFreezeRequestRepository : IAuditedRepository
 }
 
 public sealed record MembershipFreezeReadModel(
-    MembershipFreeze Request, string PlanName, MembershipStatus MembershipStatus);
+    MembershipFreeze Request, string PlanName, MembershipStatus MembershipStatus, ComponentType ComponentType);

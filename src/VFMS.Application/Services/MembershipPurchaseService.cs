@@ -245,8 +245,7 @@ public sealed partial class MembershipPurchaseService(
                     PackageComponentId = component.Id,
                     MemberUserId = item.BeneficiaryUserId,
                     MembershipStatus = MembershipStatus.AwaitingActivation,
-                    GrantedFreezeAllowanceDays = ResolveFreezeAllowance(component.Type, component.Days ?? component.DurationDays,
-                        item.Package?.FreezeAllowanceOverrideDays),
+                    GrantedFreezeAllowanceDays = component.Type == ComponentType.YOGA ? 0 : null,
                     RemainingSessionCount = component.Type == ComponentType.PT ? component.SessionCount : null
                 };
                 if (component.Type == ComponentType.GYM)
@@ -273,13 +272,6 @@ public sealed partial class MembershipPurchaseService(
         RecordPaidOrder(order, amount, transferredAt, gatewayReference, now);
         await repository.SaveChangesAsync(ct);
     }
-
-    internal static int? ResolveFreezeAllowance(ComponentType type, int? durationDays, int? planOverrideDays) =>
-        type switch
-        {
-            ComponentType.YOGA => durationDays == 7 ? 0 : planOverrideDays ?? 0,
-            _ => null
-        };
 
     public static void RecordPaidOrder(Order order, decimal amount, DateTimeOffset transferredAt,
         string? gatewayReference, DateTimeOffset now)

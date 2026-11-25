@@ -144,22 +144,18 @@ public sealed class MembershipPlanApiTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task ManagerCreatesYogaPlanWithLevelCalendarMonthsAndFreezeAllowance()
+    public async Task ManagerCreatesYogaPlanWithLevelAndDurationWithoutFreezeAllowance()
     {
         using var manager = CreateClient();
-        var request = new MembershipPlanRequest
-        {
-            Name = "Yoga ba tháng",
-            TargetAudience = "Hội viên tập Yoga",
-            DurationValue = 3,
-            DurationUnit = MembershipDurationUnit.Month,
-            FreezeAllowanceOverrideValue = 1,
-            FreezeAllowanceOverrideUnit = MembershipDurationUnit.Month,
-            Price = 600_000,
-            Status = MembershipPlanStatuses.Active,
-            ServiceType = MembershipPlanServiceTypes.Yoga,
-            YogaDifficultyLevel = "Intermediate"
-        };
+        var request = PlanRequest("Yoga ba tháng");
+        request["targetAudience"] = "Hội viên tập Yoga";
+        request["serviceType"] = MembershipPlanServiceTypes.Yoga;
+        request["yogaDifficultyLevel"] = "Intermediate";
+        request["durationValue"] = 3;
+        request["durationUnit"] = MembershipDurationUnit.Month;
+        request["freezeAllowanceOverrideValue"] = 1;
+        request["freezeAllowanceOverrideUnit"] = MembershipDurationUnit.Month;
+        request["maxFreezeCount"] = 2;
 
         var created = await ReadBodyAsync(await manager.PostAsJsonAsync(ManagementRoute, request), HttpStatusCode.Created);
         var planId = created.GetProperty("id").GetInt32();
@@ -168,19 +164,27 @@ public sealed class MembershipPlanApiTests : IAsyncLifetime
         Assert.All(new[] { created, saved }, plan =>
         {
             Assert.Equal("Intermediate", plan.GetProperty("yogaDifficultyLevel").GetString());
-            Assert.Equal(request.TargetAudience, plan.GetProperty("targetAudience").GetString());
+            Assert.Equal("Hội viên tập Yoga", plan.GetProperty("targetAudience").GetString());
             Assert.Equal(3, plan.GetProperty("durationInMonths").GetInt32());
-            Assert.Equal(30, plan.GetProperty("freezeAllowanceOverrideDays").GetInt32());
-            Assert.Equal(1, plan.GetProperty("freezeAllowanceOverrideValue").GetInt32());
-            Assert.Equal((int)MembershipDurationUnit.Month, plan.GetProperty("freezeAllowanceOverrideUnit").GetInt32());
+            Assert.False(plan.TryGetProperty("freezeAllowanceOverrideDays", out _));
+            Assert.Equal(JsonValueKind.Null, plan.GetProperty("maxFreezeCount").ValueKind);
         });
 
-        request.DurationValue = 7;
-        request.DurationUnit = MembershipDurationUnit.Day;
+        request["durationValue"] = 7;
+        request["durationUnit"] = MembershipDurationUnit.Day;
         var weekly = await ReadBodyAsync(await manager.PutAsJsonAsync($"{ManagementRoute}/{planId}", request), HttpStatusCode.OK);
         Assert.Equal("Intermediate", weekly.GetProperty("yogaDifficultyLevel").GetString());
         Assert.Equal(7, weekly.GetProperty("durationInDays").GetInt32());
-        Assert.Equal(JsonValueKind.Null, weekly.GetProperty("freezeAllowanceOverrideDays").ValueKind);
+        Assert.False(weekly.TryGetProperty("freezeAllowanceOverrideValue", out _));
+
+        await using var scope = _app.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+        Assert.Null((await db.Packages.SingleAsync(plan => plan.Id == planId)).FreezeAllowanceOverrideDays);
+
+        var catalog = await ReadBodyAsync(await manager.GetAsync("/api/packages?type=yoga"), HttpStatusCode.OK);
+        var item = Assert.Single(catalog.GetProperty("items").EnumerateArray());
+        Assert.False(item.GetProperty("allowFreeze").GetBoolean());
+        Assert.False(item.TryGetProperty("totalFreezeAllowanceDays", out _));
     }
 
     [Theory]
@@ -271,7 +275,7 @@ public sealed class MembershipPlanApiTests : IAsyncLifetime
         };
         var inherited = await ReadBodyAsync(await client.PostAsJsonAsync(ManagementRoute, request), HttpStatusCode.Created);
         var planId = inherited.GetProperty("id").GetInt32();
-        Assert.Equal(JsonValueKind.Null, inherited.GetProperty("freezeAllowanceOverrideDays").ValueKind);
+        Assert.Equal(JsonValueKind.Null, inherited.GetProperty("maxFreezeCount").ValueKind);
 
         request.Name = "Gym tháng có bảo lưu riêng";
         request.MaxFreezeCount = 2;
@@ -333,8 +337,6 @@ public sealed class MembershipPlanApiTests : IAsyncLifetime
     [InlineData("durationInDays", 3.5)]
     [InlineData("durationValue", -1)]
     [InlineData("durationUnit", 3)]
-    [InlineData("freezeAllowanceOverrideValue", -1)]
-    [InlineData("freezeAllowanceOverrideUnit", 3)]
     [InlineData("price", null)]
     [InlineData("price", -100)]
     [InlineData("status", "ARCHIVED")]

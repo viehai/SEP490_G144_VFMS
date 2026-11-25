@@ -32,8 +32,6 @@ public sealed class MembershipPlanRequest
     public int? MaxFreezeCount { get; set; }
     public int? MinFreezeDaysPerRequest { get; set; }
     public int? MaxFreezeDaysPerRequest { get; set; }
-    public int? FreezeAllowanceOverrideValue { get; set; }
-    public MembershipDurationUnit FreezeAllowanceOverrideUnit { get; set; }
     public decimal? Price { get; set; }
     public string Status { get; set; } = string.Empty;
 
@@ -80,10 +78,6 @@ public sealed record MembershipPlanResponse(
     public int? MaxFreezeCount { get; init; }
     public int? MinFreezeDaysPerRequest { get; init; }
     public int? MaxFreezeDaysPerRequest { get; init; }
-    public int? FreezeAllowanceOverrideDays { get; init; }
-    public MembershipDurationUnit FreezeAllowanceOverrideUnit { get; init; }
-    public int? FreezeAllowanceOverrideValue => FreezeAllowanceOverrideUnit == MembershipDurationUnit.Month
-        ? FreezeAllowanceOverrideDays / MembershipFreezeDuration.DaysPerMonth : FreezeAllowanceOverrideDays;
 }
 
 public sealed record MembershipPlanCatalogItemResponse(

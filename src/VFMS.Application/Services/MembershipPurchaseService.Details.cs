@@ -31,12 +31,14 @@ public sealed partial class MembershipPurchaseService
             period.SubmittedAt is { } timestamp ? Utc(timestamp) : null, period.ReviewNote)).ToArray();
         var usage = MembershipFreezeRequestService.AccountedDays(detail.TotalFrozenDays, detail.FreezeHistory.Select(period =>
             (period.ActualStartDate ?? period.RequestedStartDate, period.ActualEndDate ?? period.RequestedEndDate, period.Status)));
+        var isYoga = detail.Membership.ComponentType == ComponentType.YOGA;
+        var allowance = isYoga ? 0 : detail.GrantedFreezeAllowanceDays;
         return Result<MembershipDetailResponse>.Success(new(
             ToSummary(detail.Membership, today), detail.PurchasedAt is { } purchasedAt ? Utc(purchasedAt) : null,
-            detail.InvoiceNumber, new(detail.TotalFrozenDays, detail.FreezeCount, history, detail.GrantedFreezeAllowanceDays,
+            detail.InvoiceNumber, new(detail.TotalFrozenDays, detail.FreezeCount, history, allowance,
                 usage.Completed, (int)Math.Min(usage.Committed, int.MaxValue),
-                MembershipFreezeRequestService.RemainingDays(detail.GrantedFreezeAllowanceDays, usage.Committed),
-                detail.GrantedFreezeCount, detail.GrantedMinFreezeDays, detail.GrantedMaxFreezeDays)));
+                MembershipFreezeRequestService.RemainingDays(allowance, usage.Committed),
+                isYoga ? null : detail.GrantedFreezeCount, isYoga ? null : detail.GrantedMinFreezeDays, isYoga ? null : detail.GrantedMaxFreezeDays)));
     }
 
     internal static MembershipSummaryResponse ToSummary(OwnedMembership membership, DateOnly today)
