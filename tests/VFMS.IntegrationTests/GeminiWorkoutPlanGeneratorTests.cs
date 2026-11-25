@@ -6,7 +6,7 @@ using VFMS.Infrastructure.External;
 
 namespace VFMS.IntegrationTests;
 
-/// <summary>The Gemini client against a fake HTTP server: busy replies are retried, other errors fall back at once.</summary>
+/// <summary>The Gemini client against a fake HTTP server: busy replies are retried, then the backup model; other errors fall back at once.</summary>
 public sealed class GeminiWorkoutPlanGeneratorTests
 {
     private const string Plan = """{"planName":"Giảm mỡ","nutritionTips":"Ăn đủ đạm.","days":[{"day":1,"exercises":[{"exerciseId":1,"sets":3,"reps":12,"durationMinutes":null,"note":"chậm"}]}]}""";
@@ -17,17 +17,21 @@ public sealed class GeminiWorkoutPlanGeneratorTests
         return "{\"candidates\":[{\"content\":{\"parts\":[" + thought + "{\"text\":" + System.Text.Json.JsonSerializer.Serialize(text) + "}]}}]}";
     }
 
-    private static (GeminiWorkoutPlanGenerator Generator, List<HttpStatusCode> Calls) Generator(params (HttpStatusCode Status, string Body)[] replies)
+    // Main model "main", backup "backup". A null body makes the fake throw a timeout for that call.
+    private static (GeminiWorkoutPlanGenerator Generator, List<string> Calls) Generator(params (HttpStatusCode Status, string? Body)[] replies)
     {
-        var calls = new List<HttpStatusCode>();
-        var queue = new Queue<(HttpStatusCode, string)>(replies);
-        var http = new HttpClient(new Fake(() =>
+        var calls = new List<string>();
+        var queue = new Queue<(HttpStatusCode, string?)>(replies);
+        var http = new HttpClient(new Fake(request =>
         {
             var (status, body) = queue.Dequeue();
-            calls.Add(status);
+            var model = request.RequestUri!.AbsolutePath.Contains("backup") ? "backup" : "main";
+            calls.Add($"{model} {(body is null ? "timeout" : ((int)status).ToString())}");
+            if (body is null)
+                throw new TaskCanceledException("slow");
             return new HttpResponseMessage(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
         }));
-        var settings = new GeminiSettings { ApiKey = "test-key", Model = "m", TimeoutSeconds = 5 };
+        var settings = new GeminiSettings { ApiKey = "test-key", Model = "main", FallbackModel = "backup", TimeoutSeconds = 5 };
         return (new GeminiWorkoutPlanGenerator(http, settings, NullLogger<GeminiWorkoutPlanGenerator>.Instance) { RetryDelay = TimeSpan.Zero }, calls);
     }
 
@@ -43,32 +47,47 @@ public sealed class GeminiWorkoutPlanGeneratorTests
 
         var plan = await generator.GenerateAsync(Survey, Catalog);
 
-        Assert.Equal([HttpStatusCode.ServiceUnavailable, HttpStatusCode.OK], calls);
+        Assert.Equal(["main 503", "main 200"], calls);
         Assert.NotNull(plan);
         Assert.Equal("Giảm mỡ", plan.Name);
         Assert.Single(plan.Items);
+        Assert.Equal("main", generator.ModelName);
     }
 
     [Fact]
-    public async Task GivesUpAfterThreeBusyRepliesAndDoesNotRetryOtherErrors()
+    public async Task BackupModelAnswersWhenTheMainOneStaysBusyOrIsSlow()
     {
-        var busy = (HttpStatusCode.ServiceUnavailable, "{}");
-        var (stillBusy, busyCalls) = Generator(busy, busy, busy);
-        Assert.Null(await stillBusy.GenerateAsync(Survey, Catalog));
-        Assert.Equal(GeminiWorkoutPlanGenerator.MaxAttempts, busyCalls.Count);
+        var busy = (HttpStatusCode.ServiceUnavailable, (string?)"{}");
+        var (stillBusy, busyCalls) = Generator(busy, busy, busy, (HttpStatusCode.OK, Reply(Plan)));
+        Assert.NotNull(await stillBusy.GenerateAsync(Survey, Catalog));
+        Assert.Equal(["main 503", "main 503", "main 503", "backup 200"], busyCalls);
+        Assert.Equal("backup", stillBusy.ModelName);
+
+        var (slow, slowCalls) = Generator((HttpStatusCode.OK, null), (HttpStatusCode.OK, Reply(Plan)));
+        Assert.NotNull(await slow.GenerateAsync(Survey, Catalog));
+        Assert.Equal(["main timeout", "backup 200"], slowCalls);
+    }
+
+    [Fact]
+    public async Task GivesUpWhenBothModelsAreBusyAndDoesNotTryTheBackupForOtherErrors()
+    {
+        var busy = (HttpStatusCode.ServiceUnavailable, (string?)"{}");
+        var (allBusy, busyCalls) = Generator(busy, busy, busy, busy, busy, busy);
+        Assert.Null(await allBusy.GenerateAsync(Survey, Catalog));
+        Assert.Equal(2 * GeminiWorkoutPlanGenerator.MaxAttempts, busyCalls.Count);
 
         var (badKey, badCalls) = Generator((HttpStatusCode.Forbidden, """{"error":{"message":"API key not valid"}}"""));
         Assert.Null(await badKey.GenerateAsync(Survey, Catalog));
-        Assert.Single(badCalls);
+        Assert.Equal(["main 403"], badCalls);
 
         var (quota, quotaCalls) = Generator((HttpStatusCode.TooManyRequests, """{"error":{"code":429,"message":"Quota exceeded"}}"""));
         Assert.Null(await quota.GenerateAsync(Survey, Catalog));
-        Assert.Single(quotaCalls);
+        Assert.Equal(["main 429"], quotaCalls);
     }
 
-    private sealed class Fake(Func<HttpResponseMessage> reply) : HttpMessageHandler
+    private sealed class Fake(Func<HttpRequestMessage, HttpResponseMessage> reply) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
-            Task.FromResult(reply());
+            Task.FromResult(reply(request));
     }
 }

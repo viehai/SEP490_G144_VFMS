@@ -37,7 +37,7 @@ dotnet user-secrets set "Gemini:ApiKey" "YOUR_KEY" --project src/VFMS.API
 ```
 
 - Get a key at https://aistudio.google.com/app/apikey, then restart the API.
-- The model is `gemini-3.5-flash-lite` (`Gemini:Model` in appsettings.json). `gemini-2.0-flash` and `gemini-2.5-flash` return 404 for new keys.
+- The model is `gemini-3.5-flash-lite` (`Gemini:Model` in appsettings.json), with `gemini-3.5-flash` as the backup (`Gemini:FallbackModel`; empty turns it off). Each call may take up to 60 s (`Gemini:TimeoutSeconds`), and the member's page waits up to 130 s. `gemini-2.0-flash` and `gemini-2.5-flash` return 404 for new keys.
 - Never put the key in `appsettings*.json`; those files are committed.
 
 ## 2. Test accounts (local VfmsDb)
@@ -160,8 +160,9 @@ Then try the rest:
 
 How to tell which plan you got:
 - **AI plan:** its name follows your goal, and the header doesn't say "Giáo án tiêu chuẩn".
-- **Standard plan:** shows "Dịch vụ AI tạm thời không khả dụng…". It means there's no key, Gemini failed, or it took longer than 25 s. The API log line `Gemini returned HTTP …` now includes Google's own error message.
-- **Why AI plans kept failing (25/11/2026):** the key was fine. Google answered **HTTP 503 "This model is currently experiencing high demand"** for `gemini-3.5-flash-lite`, and the app gave up on the first error, so AI Studio counted the calls with 0 successes. Now a busy reply (500, 502, 503 or 504) is retried up to 3 times, 1 s then 2 s apart; other errors (bad key, unknown model, 429 quota) and a timeout fall back at once. Right after the fix, the first plan still fell back after 3 busy replies, and the second came from Gemini on its first attempt. So retries help only while a busy spell is short; a retry rescuing a plan is covered by `GeminiWorkoutPlanGeneratorTests` but has not yet been seen against the real API. In direct calls `gemini-3.5-flash` answered in about 5 s, and one `gemini-3.5-flash-lite` call took 22 s, close to the 25 s timeout.
+- **Standard plan:** shows "Dịch vụ AI tạm thời không khả dụng…". It means there's no key, or both models failed or took longer than 60 s each. The API log line `Gemini returned HTTP …` now includes Google's own error message.
+- **Why AI plans kept failing (25/11/2026):** the key was fine. Google answered **HTTP 503 "This model is currently experiencing high demand"** for `gemini-3.5-flash-lite`, and the app gave up on the first error, so AI Studio counted the calls with 0 successes. Now a busy reply (500, 502, 503 or 504) is retried up to 3 times, 1 s then 2 s apart; other errors (bad key, unknown model, 429 quota) and a timeout fall back at once. Right after the fix, the first plan still fell back after 3 busy replies, and the second came from Gemini on its first attempt. So retries help only while a busy spell is short; a retry rescuing a plan is covered by `GeminiWorkoutPlanGeneratorTests` but has not yet been seen against the real API. In direct calls `gemini-3.5-flash` answered in about 5 s, and one `gemini-3.5-flash-lite` call took 22 s, close to the old 25 s timeout.
+- **Backup model (25/11/2026, later):** when the main model stays busy (3 busy replies), times out, can't be reached or is unknown (404), the plan is asked once more from `gemini-3.5-flash`; a bad key, a 429 quota error or an unusable reply still falls back at once. A plan from the backup shows "gemini-3.5-flash" next to "Tạo lúc" on `/workout-plan`. Live check through the API as `member@test.vn`: lite answered 503 three times, then flash returned an AI plan in about 30 s in total. With the earlier 40 s limit, the same flow fell back because flash took longer than 40 s, so the limit is now 60 s. A plan can therefore take up to about 2 minutes before the standard plan appears. Logs: `Gemini model … is unavailable; trying gemini-3.5-flash.`
 
 ## 5. Yoga
 
@@ -317,7 +318,7 @@ Try it: book a mat someone else just took, cancel a yoga booking less than 2 hou
   Expected result now (25/11/2026, after merging main again):
   - Unit: 722 pass.
   - Client: 538 pass.
-  - Integration: 629 pass, 3 fail, 50 skipped.
+  - Integration: 630 pass, 3 fail, 50 skipped.
 - **PR #21 to main is open (25/11/2026):** https://github.com/viehai/SEP490_G144_VFMS/pull/21. Once it is merged, teammates who pull main get the migration `YogaPlanLevelReplacesClassType`. It drops `PackageComponents.YogaClassTypeId` and `YogaWaitlists.YogaClassTypeId`, so code or tests that still use `YogaClassType` on a plan no longer build, and yoga plans in test seeds need `YogaDifficultyLevel`.
 
 - **Yoga plans can't be renewed yet.** Renewal (`/my-memberships` → gia hạn) still only covers gym plans, so a yoga member buys a new yoga plan instead; it starts after the current one ends.
