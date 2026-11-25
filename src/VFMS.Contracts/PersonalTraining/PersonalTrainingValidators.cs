@@ -110,7 +110,7 @@ public sealed class PTFreezeRequestValidator : AbstractValidator<PTFreezeRequest
         RuleFor(x => x.Reason).Must(reason => !string.IsNullOrWhiteSpace(reason))
             .WithMessage("Nhập lý do bảo lưu.").MaximumLength(1000).WithMessage("Lý do không được vượt quá {MaxLength} ký tự.");
         RuleFor(x => x.ResumeDate).GreaterThan(x => x.StartDate)
-            .WithMessage("Ngày tập lại phải sau ngày bắt đầu bảo lưu.");
+            .WithMessage("Ngày kết thúc bảo lưu không được trước ngày bắt đầu.");
         RuleFor(x => x.Moves).Must(moves => moves == null ||
                 moves.All(m => m is not null) && moves.Select(m => m.SessionId).Distinct().Count() == moves.Length)
             .WithMessage("Mỗi buổi chỉ được chọn một ca sau bảo lưu.");

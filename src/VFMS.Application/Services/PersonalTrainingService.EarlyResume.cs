@@ -13,7 +13,7 @@ public sealed partial class PersonalTrainingService
     public async Task<Result<PTEarlyResumePreview>> PreviewEarlyResume(
         string actor, int id, PTEarlyResumeRequest request, CancellationToken ct)
     {
-        var result = await PlanEarlyResume(actor, id, request.ResumeDate, request.Moves ?? [], null, ct);
+        var result = await PlanEarlyResume(actor, id, request.ResumeDate, request.Moves ?? [], null, ct, request.TemplateIds);
         return result.IsSuccess
             ? Result<PTEarlyResumePreview>.Success(result.Data!.Preview)
             : Result<PTEarlyResumePreview>.Failure(result.ErrorMessage!, result.ErrorCode!, result.StatusCode);
@@ -49,7 +49,8 @@ public sealed partial class PersonalTrainingService
     }, ct);
 
     private async Task<Result<EarlyResumePlan>> PlanEarlyResume(string actor, int id, DateOnly resumeDate,
-        IReadOnlyList<PTEarlyResumeMove> moves, DateOnly? expectedResumeDate, CancellationToken ct)
+        IReadOnlyList<PTEarlyResumeMove> moves, DateOnly? expectedResumeDate, CancellationToken ct,
+        int[]? templateIds = null)
     {
         if (await Purchaser(actor, ct) is null)
             return Forbidden<EarlyResumePlan>();
@@ -101,14 +102,29 @@ public sealed partial class PersonalTrainingService
         }
 
         var templates = await Templates(purchase.PTUserId, ct);
-        var templateIds = templates.ToDictionary(t => (t.DayOfWeek!.Value, t.StartTime), t => t.Id);
+        if (templateIds is { Length: > 0 })
+        {
+            // The Member chose weekly slots: affected sessions without a hand-picked slot follow them from the new resume date.
+            var chosen = templates.Where(t => templateIds.Contains(t.Id)).ToArray();
+            if (chosen.Length != templateIds.Distinct().Count() || chosen.Select(t => t.DayOfWeek).Distinct().Count() != chosen.Length)
+                return Invalid<EarlyResumePlan>("Chọn một ca đã công bố của huấn luyện viên cho mỗi ngày tập.");
+            var recurring = chosen.Select(t => new PTAvailability { DayOfWeek = t.DayOfWeek, StartTime = t.StartTime }).ToArray();
+            var days = remaining.Where(s => !movable.ContainsKey(s.Id)).Select(s => s.SessionDate).ToHashSet();
+            using var next = PersonalTrainingRules.Occurrences(resumeDate, resumeDate.AddDays(365), recurring, int.MaxValue)
+                .Where(o => !days.Contains(o.Item1) && Utc(o.Item1, o.Item2.StartTime) > now).GetEnumerator();
+            candidates.RemoveAll(c => !explicitMoves.Contains(c.SessionId));
+            foreach (var session in movable.Values.Where(s => !explicitMoves.Contains(s.Id)).OrderBy(s => s.SessionDate).ThenBy(s => s.StartTime))
+                if (next.MoveNext())
+                    candidates.Add(new(session.Id, next.Current.Item1, next.Current.Item2.StartTime));
+        }
+        var templateIdByStart = templates.ToDictionary(t => (t.DayOfWeek!.Value, t.StartTime), t => t.Id);
         var validSlots = new Dictionary<int, PTCalendarSlot>();
         foreach (var move in candidates)
         {
             var end = move.StartTime.AddHours(movable[move.SessionId].CreditUnits);
             if (move.Date >= resumeDate && (scheduledEnd || move.Date <= expiresOn) && Utc(move.Date, move.StartTime) > now &&
                 InHours(purchase.PTUser.Gym, move.StartTime, end) &&
-                templateIds.TryGetValue((move.Date.DayOfWeek, move.StartTime), out var templateId))
+                templateIdByStart.TryGetValue((move.Date.DayOfWeek, move.StartTime), out var templateId))
                 validSlots.Add(move.SessionId, new(templateId, move.Date, move.StartTime, end, "Available"));
         }
         var busy = await ConflictingSlots(purchase.PTUserId, actor, validSlots.Values.ToArray(), now, ct,

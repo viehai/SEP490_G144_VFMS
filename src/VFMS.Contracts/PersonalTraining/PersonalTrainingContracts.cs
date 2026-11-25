@@ -134,7 +134,7 @@ public sealed record PTFreezeSlotChange(PTEarlyResumeMove[] Moves);
 public sealed record PTFreezePreview(DateOnly ExpiresOn, IReadOnlyList<PTCalendarSlot> Replacements,
     string? ReplacementTrainerName = null);
 public sealed record PTEarlyResumeMove(int SessionId, DateOnly Date, TimeOnly StartTime);
-public sealed record PTEarlyResumeRequest(DateOnly ResumeDate, PTEarlyResumeMove[]? Moves = null);
+public sealed record PTEarlyResumeRequest(DateOnly ResumeDate, PTEarlyResumeMove[]? Moves = null, int[]? TemplateIds = null);
 public sealed record PTEarlyResumeConfirmation(DateOnly ResumeDate, DateOnly CurrentResumeDate,
     PTEarlyResumeMove[] Moves);
 public sealed record PTEarlyResumePreview(DateOnly CurrentResumeDate, DateOnly ResumeDate, DateOnly ExpiresOn,

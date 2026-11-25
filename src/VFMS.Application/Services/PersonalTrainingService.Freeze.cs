@@ -76,16 +76,26 @@ public sealed partial class PersonalTrainingService
     /// current weekly pattern from the Resume Date.
     /// </summary>
     private async Task<Result<FreezePlan>> PlanSameTrainer(PTPurchase p, DateOnly start, DateOnly resume,
-        IReadOnlyList<PTEarlyResumeMove> moves, CancellationToken ct)
+        IReadOnlyList<PTEarlyResumeMove> moves, CancellationToken ct, int[]? templateIds = null)
     {
         var affected = p.Sessions.Where(s => InFreezeWindow(s, start, resume))
             .OrderBy(s => s.SessionDate).ThenBy(s => s.StartTime).ToArray();
         if (moves.Any(m => affected.All(s => s.Id != m.SessionId)))
             return Invalid<FreezePlan>("Chỉ được chọn ca mới cho các buổi nằm trong thời gian bảo lưu.");
         var templates = await Templates(p.PTUserId, ct);
-        var pattern = p.WeeklyPatternJson?.StartsWith('{') == true
-            ? JsonSerializer.Deserialize<SessionBasedPattern>(p.WeeklyPatternJson)!.Slots
-            : JsonSerializer.Deserialize<PTSlotInput[]>(p.WeeklyPatternJson ?? "[]")!;
+        PTSlotInput[] pattern;
+        if (templateIds is { Length: > 0 })
+        {
+            // The Member picked the weekly slots after the freeze from the trainer's published schedule.
+            var chosen = templates.Where(t => templateIds.Contains(t.Id)).ToArray();
+            if (chosen.Length != templateIds.Distinct().Count() || chosen.Select(t => t.DayOfWeek).Distinct().Count() != chosen.Length)
+                return Invalid<FreezePlan>("Chọn một ca đã công bố của huấn luyện viên cho mỗi ngày tập.");
+            pattern = chosen.Select(t => new PTSlotInput(t.DayOfWeek!.Value, t.StartTime)).ToArray();
+        }
+        else
+            pattern = p.WeeklyPatternJson?.StartsWith('{') == true
+                ? JsonSerializer.Deserialize<SessionBasedPattern>(p.WeeklyPatternJson)!.Slots
+                : JsonSerializer.Deserialize<PTSlotInput[]>(p.WeeklyPatternJson ?? "[]")!;
         var recurring = pattern.Select(x => new PTAvailability { DayOfWeek = x.DayOfWeek, StartTime = x.StartTime }).ToArray();
         var now = Now;
         var takenDays = p.Sessions.Where(s => !affected.Contains(s) && s.SessionDate >= resume &&
@@ -198,7 +208,7 @@ public sealed partial class PersonalTrainingService
                 "PT_FREEZE_DURATION", 409);
         return input.ReplacementTrainerId is { } trainerId
             ? await PlanTransfer(p, input.StartDate, input.ResumeDate, trainerId, input.ReplacementTemplateIds ?? [], ct)
-            : await PlanSameTrainer(p, input.StartDate, input.ResumeDate, input.Moves ?? [], ct);
+            : await PlanSameTrainer(p, input.StartDate, input.ResumeDate, input.Moves ?? [], ct, input.ReplacementTemplateIds);
     }
 
     /// <summary>UC 4.8 step 5-6: proposed schedule after the freeze, without holding anything.</summary>

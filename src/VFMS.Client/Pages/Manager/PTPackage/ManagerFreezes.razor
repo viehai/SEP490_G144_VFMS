@@ -23,11 +23,11 @@
     else if (_requests is { } requests)
     {
         <div class="trainer-panel trainer-list-card trainer-scroll"><table class="workspace-table">
-            <thead><tr><th>Hợp đồng</th><th>Hội viên</th><th>PT</th><th>Bắt đầu</th><th>Tập lại</th><th>Số ngày</th><th>Lý do</th><th>Lịch đề xuất</th><th>HLV thay thế</th><th>@(_processed ? "Kết quả" : "Thao tác")</th></tr></thead>
+            <thead><tr><th>Hợp đồng</th><th>Hội viên</th><th>PT</th><th>Bắt đầu</th><th>Kết thúc</th><th>Số ngày</th><th>Lý do</th><th>Lịch đề xuất</th><th>HLV thay thế</th><th>@(_processed ? "Kết quả" : "Thao tác")</th></tr></thead>
             <tbody>@foreach (var item in requests.Items)
             {
                 <tr @key="item.Id"><td>#@item.ContractId</td><td>@(item.MemberName ?? item.MemberId)</td><td>@(item.TrainerName ?? item.TrainerId)</td>
-                    <td>@Date(item.StartDate)</td><td>@Date(item.ResumeDate)</td><td>@(item.ResumeDate.DayNumber - item.StartDate.DayNumber)</td>
+                    <td>@Date(item.StartDate)</td><td>@Date(item.ResumeDate.AddDays(-1))</td><td>@(item.ResumeDate.DayNumber - item.StartDate.DayNumber)</td>
                     <td class="trainer-copy">@item.Reason</td>
                     <td>@(item.ProposedSlots.Count == 0 ? "—" : string.Join(", ", item.ProposedSlots.Select(x => $"{Date(x.Date)} {x.StartTime:HH:mm}")))</td>
                     <td>@(item.ReplacementTrainerName ?? "—")</td>
@@ -54,7 +54,7 @@
     {
         <section class="trainer-panel trainer-stack">
             <h2>Yêu cầu #@selected.Id · Hợp đồng #@selected.ContractId</h2>
-            <p>@Date(selected.StartDate) đến trước @Date(selected.ResumeDate) · @(selected.ResumeDate.DayNumber - selected.StartDate.DayNumber) ngày</p>
+            <p>@Date(selected.StartDate) đến @Date(selected.ResumeDate.AddDays(-1)) · @(selected.ResumeDate.DayNumber - selected.StartDate.DayNumber) ngày</p>
             <p class="trainer-muted">Chính sách bảo lưu của hợp đồng: tối thiểu @selected.MinimumDays ngày, tối đa @selected.MaximumDays ngày, một lần cho mỗi hợp đồng.</p>
             <p class="trainer-copy">@selected.Reason</p>
             @if (_preview is { } preview)

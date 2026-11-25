@@ -191,19 +191,19 @@
                 {
                     <div class="trainer-stack">
                         <p class="trainer-muted">Lịch cũ vẫn được giữ cho đến khi @(IsTrainer ? "hội viên" : "PT") chấp nhận. Các ca bận chỉ hiển thị thời gian.</p>
-                        @if (IsTrainer) { <p class="trainer-muted">Chọn một giờ tròn trong giờ mở cửa. Giờ bận của bạn và của hội viên hiện là "Bận".</p> }
+                        <p class="trainer-muted">@(IsTrainer ? "Chọn một giờ tròn trong giờ mở cửa của ngày đã chọn." : "Chọn một ca trong khung giờ PT đã công bố.") Ca bận hoặc không khả dụng không chọn được.</p>
                         <label>@(IsTrainer ? "Ngày tập mới" : "Xem lịch từ ngày")<input class="trainer-input" type="date" min="@Today.ToString("yyyy-MM-dd")"
                                @bind="_from" @bind:after="LoadOptionsAsync" disabled="@_busy" /></label>
                         @if (_options is { Length: 0 }) { <p>Không có ca trong khoảng đã chọn.</p> }
-                        <div class="pt-options">
-                            @foreach (var slot in _options)
+                        else
+                        {
+                            <RescheduleSlotCalendar Options="_options" From="_from" Selected="_requested" Disabled="_busy"
+                                                    SelectedChanged="slot => _requested = slot" />
+                            @if (_requested is { } chosen)
                             {
-                                <button type="button" class="trainer-button" disabled="@(_busy || slot.Status != "Available")"
-                                    aria-pressed="@Equals(_requested, slot)" @onclick="() => _requested = slot">
-                                    @Date(slot.Date) · @Time(slot.StartTime) · @Status(slot.Status)
-                                </button>
+                                <p>Ca mới: <strong>@Day(chosen.Date.DayOfWeek), @Date(chosen.Date) · @Time(chosen.StartTime) – @Time(chosen.EndTime)</strong></p>
                             }
-                        </div>
+                        }
                         <div class="trainer-row">
                             <button class="trainer-button trainer-primary" disabled="@(_busy || _requested is null)" @onclick="SendRescheduleAsync">Gửi yêu cầu</button>
                             <button class="trainer-button" disabled="@_busy" @onclick="CloseEditor">Đóng</button>

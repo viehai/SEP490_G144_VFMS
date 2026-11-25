@@ -21,9 +21,9 @@
             <form class="trainer-stack" @onsubmit="RequestAsync" @onsubmit:preventDefault>
                 <fieldset class="trainer-grid" disabled="@_busy">
                     <label>Ngày bắt đầu bảo lưu<input type="date" class="trainer-input" min="@Today.ToString("yyyy-MM-dd")" @bind="_start" @bind:after="ClearProposal" aria-invalid="@Invalid("StartDate")" />@FieldError("StartDate")</label>
-                    <label>Ngày tập lại<input type="date" class="trainer-input" @bind="_resume" @bind:after="ClearProposal" aria-invalid="@Invalid("ResumeDate")" />@FieldError("ResumeDate")</label>
+                    <label>Ngày kết thúc bảo lưu<input type="date" class="trainer-input" min="@_start.ToString("yyyy-MM-dd")" @bind="_end" @bind:after="ClearProposal" aria-invalid="@Invalid("ResumeDate")" />@FieldError("ResumeDate")</label>
                 </fieldset>
-                <p class="trainer-muted">Số ngày bảo lưu: @Math.Max(0, _resume.DayNumber - _start.DayNumber). Ngày tập lại không tính vào kỳ bảo lưu.</p>
+                <p class="trainer-muted">Số ngày bảo lưu: @Math.Max(0, Days). Ngày bắt đầu và ngày kết thúc đều tính vào kỳ bảo lưu.</p>
                 <label>Lý do<textarea class="trainer-input" rows="3" maxlength="1000" @bind="_reason" required disabled="@_busy" aria-invalid="@Invalid("Reason")"></textarea>@FieldError("Reason")</label>
                 <label class="trainer-row"><input type="checkbox" @bind="_changeTrainer" @bind:after="ClearProposal" disabled="@_busy" />
                     Đổi huấn luyện viên cho các buổi còn lại (không phát sinh thanh toán)</label>
@@ -31,6 +31,11 @@
                 {
                     <ReplacementTrainerPicker ContractId="Contract.Id" Disabled="_busy" Changed="TrainerChosen" />
                     @FieldError("ReplacementTrainerId")
+                }
+                else
+                {
+                    <p class="trainer-muted">Chọn ca tập sau bảo lưu (mỗi ngày một ca). Không chọn thì giữ lịch tuần hiện tại.</p>
+                    <PTWeeklyGrid Slots="_ownSlots" SelectedIds="_ownSelected.Values" SlotSelected="OwnSlotSelected" Disabled="_busy" />
                 }
                 <div class="trainer-row">
                     <button type="button" class="trainer-button" disabled="@_busy" @onclick="PreviewRequestAsync">Xem lịch sau bảo lưu</button>
@@ -43,15 +48,16 @@
                 {
                     <div class="trainer-stack">
                         <p>Hạn gói dự kiến @Date(proposal.ExpiresOn). Các ca dưới đây được giữ chỗ trong lúc chờ quản lý duyệt.</p>
+                        <PTPreviewCalendar @key="proposal" Slots="@proposal.Sessions.Select(s => new PTCalendarSlot(0, s.Date, s.StartTime, s.EndTime, "Held")).ToArray()" StartDate="Resume" />
                         @if (proposal.SessionsNeedingSlot.Count > 0)
                         {
-                            <p class="trainer-feedback trainer-error" role="alert">Có @proposal.SessionsNeedingSlot.Count buổi chưa có ca trống. Chọn ngày giờ khác cho các buổi đó@(_changeTrainer ? " hoặc chọn mẫu lịch khác" : "") rồi xem lại.</p>
+                            <p class="trainer-feedback trainer-error" role="alert">Có @proposal.SessionsNeedingSlot.Count buổi chưa có ca trống. Chọn ngày giờ khác cho các buổi đó hoặc đổi ca trong bảng rồi xem lại.</p>
                         }
                         @foreach (var (id, draft) in _moves)
                         {
                             <fieldset class="trainer-row" disabled="@(_busy || _changeTrainer)" @key="id">
                                 <legend>Buổi #@id@(proposal.SessionsNeedingSlot.Contains(id) ? " · cần chọn ca" : "")</legend>
-                                <label>Ngày<input class="trainer-input" type="date" min="@_resume.ToString("yyyy-MM-dd")" @bind="draft.Date" @bind:after="MarkEdited" /></label>
+                                <label>Ngày<input class="trainer-input" type="date" min="@Resume.ToString("yyyy-MM-dd")" @bind="draft.Date" @bind:after="MarkEdited" /></label>
                                 <label>Giờ<input class="trainer-input" type="time" step="3600" @bind="draft.Start" @bind:after="MarkEdited" /></label>
                             </fieldset>
                         }
@@ -68,7 +74,7 @@
         {
             <article class="pt-suggestion" @key="freeze.Id">
                 <div class="trainer-row trainer-between">
-                    <strong>@Date(freeze.StartDate) → @Date(freeze.ResumeDate)</strong>
+                    <strong>@Date(freeze.StartDate) → @Date(freeze.ResumeDate.AddDays(-1))</strong>
                     <TrainerStatus Status="@freeze.Status" />
                 </div>
                 <p class="trainer-copy">@freeze.Reason</p>
@@ -123,6 +129,8 @@
             <h4>Tập lại sớm</h4>
             <label>Ngày tập lại mới<input type="date" class="trainer-input" min="@Today.ToString("yyyy-MM-dd")"
                 max="@early.ResumeDate.AddDays(-1).ToString("yyyy-MM-dd")" @bind="_earlyDate" @bind:after="ClearPreview" disabled="@_busy" /></label>
+            <p class="trainer-muted">Chọn ca tập sau khi tập lại sớm (mỗi ngày một ca). Không chọn thì ưu tiên đưa các buổi về ca cũ.</p>
+            <PTWeeklyGrid Slots="_ownSlots" SelectedIds="_earlySelected.Values" SlotSelected="EarlySlotSelected" Disabled="_busy" />
             <div class="trainer-row">
                 <button class="trainer-button" disabled="@_busy">Xem lịch điều chỉnh</button>
                 <button type="button" class="trainer-button" disabled="@_busy" @onclick="CloseEarlyResume">Đóng</button>
@@ -132,7 +140,7 @@
         {
             <p>Hạn gói dự kiến @Date(preview.ExpiresOn) · Đã bảo lưu @preview.ActualFrozenDays ngày</p>
             @if (preview.UnavailableOriginalSlots.Count > 0) { <p>Có ca cũ không còn trống. Kiểm tra các buổi cần chọn ca mới.</p> }
-            <SlotList Slots="@preview.Sessions.Select(s => new PTCalendarSlot(0, s.Date, s.StartTime, s.EndTime, s.Status)).ToArray()" />
+            <PTPreviewCalendar @key="preview" Slots="@preview.Sessions.Select(s => new PTCalendarSlot(0, s.Date, s.StartTime, s.EndTime, s.Status)).ToArray()" StartDate="_earlyDate" />
             @foreach (var id in preview.SessionsNeedingNewSlot)
             {
                 var session = preview.Sessions.FirstOrDefault(s => s.Id == id);
@@ -166,7 +174,27 @@
     private PTFreezeResponse? _early;
     private PTEarlyResumePreview? _preview;
     private readonly Dictionary<int, MoveDraft> _drafts = [];
-    private DateOnly _start = Today, _resume = Today.AddDays(1), _earlyDate = Today;
+    private DateOnly _start = Today, _end = Today, _earlyDate = Today;
+    private DateOnly Resume => _end.AddDays(1);
+    private int Days => Resume.DayNumber - _start.DayNumber;
+    private PTWeeklySlot[] _ownSlots = [];
+    private readonly Dictionary<DayOfWeek, int> _ownSelected = [];
+
+    private readonly Dictionary<DayOfWeek, int> _earlySelected = [];
+
+    private void EarlySlotSelected(PTWeeklySlot slot)
+    {
+        if (_earlySelected.GetValueOrDefault(slot.DayOfWeek) == slot.TemplateId) _earlySelected.Remove(slot.DayOfWeek);
+        else _earlySelected[slot.DayOfWeek] = slot.TemplateId;
+        ClearPreview();
+    }
+
+    private void OwnSlotSelected(PTWeeklySlot slot)
+    {
+        if (_ownSelected.GetValueOrDefault(slot.DayOfWeek) == slot.TemplateId) _ownSelected.Remove(slot.DayOfWeek);
+        else _ownSelected[slot.DayOfWeek] = slot.TemplateId;
+        ClearProposal();
+    }
     private bool _busy, _showRequest;
     private string _reason = "";
     private string? _error;
@@ -177,7 +205,12 @@
     private bool CanRequest => Contract.Status == "Active" && Contract.RemainingFreezeDays >= Contract.FreezeMinimumDays &&
         Contract.FreezeMinimumDays > 0 && _freezes is not null && !_hasLiveRequest && !Contract.HasPendingOrApprovedFreeze;
 
-    protected override Task OnInitializedAsync() => LoadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        try { _ownSlots = await Api.WeeklyTemplateAsync(Contract.TrainerId); }
+        catch (AuthApiException) { _ownSlots = []; }
+    }
     private Task LoadAsync() => RunAsync(LoadHistoryAsync);
     private Task LoadHistoryAsync() => ReadPageAsync(1);
     private Task LoadPageAsync(int page) => RunAsync(() => ReadPageAsync(page));
@@ -200,7 +233,7 @@
     private bool Validate()
     {
         _fieldErrors = [];
-        var days = _resume.DayNumber - _start.DayNumber;
+        var days = Days;
         var first = Today > Contract.StartDate ? Today : Contract.StartDate;
         if (_start < first || _start > Contract.EndDate)
             _fieldErrors["StartDate"] = $"Chọn ngày bắt đầu từ {Date(first)} đến {Date(Contract.EndDate)}.";
@@ -220,18 +253,19 @@
         : null;
 
     private PTFreezeRequest BuildRequest() => _changeTrainer
-        ? new(_start, _resume, _reason.Trim(), null, _replacement.TrainerId, _replacement.TemplateIds)
-        : new(_start, _resume, _reason.Trim(), _moves.Where(m => m.Value.Date is not null && m.Value.Start is not null)
-            .Select(m => new PTEarlyResumeMove(m.Key, m.Value.Date!.Value, m.Value.Start!.Value)).ToArray());
+        ? new(_start, Resume, _reason.Trim(), null, _replacement.TrainerId, _replacement.TemplateIds)
+        : new(_start, Resume, _reason.Trim(), _moves.Where(m => m.Value.Date is not null && m.Value.Start is not null)
+            .Select(m => new PTEarlyResumeMove(m.Key, m.Value.Date!.Value, m.Value.Start!.Value)).ToArray(),
+            null, _ownSelected.Count > 0 ? _ownSelected.Values.ToArray() : null);
 
     private Task PreviewRequestAsync() => RunAsync(async () =>
     {
         if (!Validate()) return;
         _proposal = await Api.PreviewFreezeRequestAsync(Contract.Id, BuildRequest());
         _edited = false;
-        _moves.Clear();
-        foreach (var planned in _proposal.Sessions)
-            _moves[planned.OriginalSessionId] = new() { Date = planned.Date, Start = planned.StartTime };
+        // Only sessions the Member placed by hand are kept as explicit moves; the rest follow the chosen weekly slots.
+        foreach (var id in _moves.Where(m => m.Value.Date is null || m.Value.Start is null).Select(m => m.Key).ToArray())
+            _moves.Remove(id);
         if (!_changeTrainer)
             foreach (var id in _proposal.SessionsNeedingSlot)
                 _moves.TryAdd(id, new());
@@ -294,6 +328,7 @@
     {
         _early = freeze;
         _earlyDate = Today;
+        _earlySelected.Clear();
         ClearPreview();
         _error = null;
     }
@@ -317,7 +352,7 @@
     private Task PreviewAsync(PTEarlyResumeMove[] moves) => _early is { } early
         ? RunAsync(async () =>
         {
-            _preview = await Api.PreviewResumeAsync(early.Id, new(_earlyDate, moves));
+            _preview = await Api.PreviewResumeAsync(early.Id, new(_earlyDate, moves, _earlySelected.Count > 0 ? _earlySelected.Values.ToArray() : null));
             foreach (var id in _preview.SessionsNeedingNewSlot)
                 _drafts.TryAdd(id, new());
         })

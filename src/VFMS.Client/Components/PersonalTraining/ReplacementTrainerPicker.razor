@@ -20,20 +20,8 @@
         @if (_slots.Count > 0)
         {
             <p class="trainer-muted">Chọn ca cho từng ngày muốn tập (mỗi ngày tối đa một ca).</p>
-            <div class="trainer-grid">
-                @foreach (var day in _slots.Keys.OrderBy(DayIndex))
-                {
-                    <label @key="day">@Day(day)
-                        <select class="trainer-input" value="@(_chosen.GetValueOrDefault(day)?.ToString() ?? "")" @onchange="e => ChooseAsync(day, e)">
-                            <option value="">Không tập</option>
-                            @foreach (var slot in _slots[day])
-                            {
-                                <option value="@slot.TemplateId">@Time(slot.StartTime) – @Time(slot.EndTime)</option>
-                            }
-                        </select>
-                    </label>
-                }
-            </div>
+            <PTWeeklyGrid Slots="_slots.Values.SelectMany(s => s).ToArray()" SelectedIds="_chosen.Values.OfType<int>().ToArray()"
+                          SlotSelected="ChooseAsync" Disabled="Disabled" />
         }
         else if (_trainerId.Length > 0) { <p class="trainer-muted">Huấn luyện viên này chưa công bố lịch tuần.</p> }
     }
@@ -74,9 +62,9 @@
         await NotifyAsync();
     }
 
-    private Task ChooseAsync(DayOfWeek day, ChangeEventArgs e)
+    private Task ChooseAsync(PTWeeklySlot slot)
     {
-        _chosen[day] = int.TryParse(e.Value?.ToString(), out var id) ? id : null;
+        _chosen[slot.DayOfWeek] = _chosen.GetValueOrDefault(slot.DayOfWeek) == slot.TemplateId ? null : slot.TemplateId;
         return NotifyAsync();
     }
 
