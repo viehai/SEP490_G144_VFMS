@@ -15,7 +15,7 @@ public class EquipmentIssueReport : BaseEntity
     public IncidentType IncidentType { get; set; }
     public string Description { get; set; } = string.Empty;
     public string? ImageUrl { get; set; }
-    public EquipmentIssueStatus IssueStatus { get; set; } = EquipmentIssueStatus.Reported;
+    public EquipmentIssueStatus IssueStatus { get; set; } = EquipmentIssueStatus.InProgress;
     public DateTime ReportedAt { get; set; }
     public DateTime? ResolvedAt { get; set; }
     public string? ResolutionNote { get; set; }

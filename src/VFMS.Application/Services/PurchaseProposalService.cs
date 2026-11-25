@@ -60,7 +60,7 @@ public sealed class PurchaseProposalService : IPurchaseProposalService
             Items = BuildItems(request).ToList()
         };
         var audit = AuditedWriter.Audit(staffUserId, AuditActionType.Create, Entity, ipAddress,
-            newValue: $"Number={proposal.ProposalNumber}; Status={proposal.ProposalStatus}; Items={proposal.Items.Count}; Total={Total(proposal)}");
+            newValue: $"Number={proposal.ProposalNumber}; Status={proposal.ProposalStatus}; Items={Describe(proposal.Items)}");
         var notifications = request.Submit ? await NotifyManagersAsync(proposal, staffUserId, cancellationToken) : null;
 
         await AuditedWriter.SaveNewAsync(_repository, proposal, audit, notifications, cancellationToken);
@@ -79,7 +79,7 @@ public sealed class PurchaseProposalService : IPurchaseProposalService
         if (check is not null)
             return check;
 
-        var before = $"Status={proposal.ProposalStatus}; Items={proposal.Items.Count}; Total={Total(proposal)}";
+        var before = $"Status={proposal.ProposalStatus}; Items={Describe(proposal.Items.Where(i => !i.IsDeleted))}";
         foreach (var item in proposal.Items)
             item.IsDeleted = true; // soft delete; replaced by the new item list
         foreach (var item in BuildItems(request))
@@ -97,9 +97,8 @@ public sealed class PurchaseProposalService : IPurchaseProposalService
             notifications = await NotifyManagersAsync(proposal, staffUserId, cancellationToken);
         }
 
-        var newItems = request.Items;
         var audit = AuditedWriter.Audit(staffUserId, AuditActionType.Update, Entity, ipAddress, before,
-            $"Status={proposal.ProposalStatus}; Items={newItems.Count}; Total={newItems.Sum(i => i.Quantity * i.EstimatedUnitPrice)}");
+            $"Status={proposal.ProposalStatus}; Items={Describe(BuildItems(request))}");
         await AuditedWriter.SaveChangedAsync(_repository, proposal, audit, notifications, cancellationToken);
         return await Reload(proposal.Id, 200, cancellationToken);
     }
@@ -160,7 +159,8 @@ public sealed class PurchaseProposalService : IPurchaseProposalService
             managerUserId, ipAddress, cancellationToken);
 
     public async Task<Result<PurchaseProposalResponse>> CompleteAsync(
-        int id, string managerUserId, string? ipAddress, CancellationToken cancellationToken = default)
+        int id, PurchaseProposalCompleteRequest request, string managerUserId, string? ipAddress,
+        CancellationToken cancellationToken = default)
     {
         var proposal = await _repository.GetAsync(id, cancellationToken);
         if (proposal is null || proposal.ProposalStatus == PurchaseProposalStatus.Draft && !proposal.Reviews.Any())
@@ -168,9 +168,19 @@ public sealed class PurchaseProposalService : IPurchaseProposalService
         if (proposal.ProposalStatus != PurchaseProposalStatus.Approved)
             return InvalidState(proposal, "Only Approved proposals can be marked completed.");
 
+        // The Manager prices what was actually bought: every item of the proposal, and nothing else.
+        var items = proposal.Items.Where(i => !i.IsDeleted).ToList();
+        var prices = request.Items.ToDictionary(i => i.ItemId, i => i.UnitPrice);
+        if (prices.Count != items.Count || items.Any(i => !prices.ContainsKey(i.Id)))
+            return Result<PurchaseProposalResponse>.Failure(
+                "Enter the price paid for every item of this proposal.", "PROPOSAL_PRICES_REQUIRED");
+        foreach (var item in items)
+            item.UnitPrice = prices[item.Id];
+
         proposal.ProposalStatus = PurchaseProposalStatus.Completed;
         var audit = AuditedWriter.Audit(managerUserId, AuditActionType.Update, Entity, ipAddress,
-            $"Status={PurchaseProposalStatus.Approved}", $"Status={proposal.ProposalStatus}");
+            $"Status={PurchaseProposalStatus.Approved}",
+            $"Status={proposal.ProposalStatus}; Items={Describe(items)}; Total={items.Sum(i => i.Quantity * i.UnitPrice!.Value)}");
         await AuditedWriter.SaveChangedAsync(_repository, proposal, audit, null, cancellationToken);
         return await Reload(proposal.Id, 200, cancellationToken);
     }
@@ -264,7 +274,6 @@ public sealed class PurchaseProposalService : IPurchaseProposalService
             ItemName = i.ItemName.Trim(),
             EquipmentId = i.EquipmentId,
             Quantity = i.Quantity,
-            EstimatedUnitPrice = i.EstimatedUnitPrice,
             Reason = EquipmentService.Clean(i.Reason)
         });
 
@@ -286,12 +295,13 @@ public sealed class PurchaseProposalService : IPurchaseProposalService
         return managers
             .Where(id => id != staffUserId)
             .Select(id => AuditedWriter.Notify(id, staffUserId, "New purchase proposal",
-                $"{proposal.ProposalNumber}: {Total(proposal):N0} VND", Entity, NotificationType.SystemAlert))
+                $"{proposal.ProposalNumber}: {proposal.Items.Count(i => !i.IsDeleted)} item(s)", Entity, NotificationType.SystemAlert))
             .ToArray();
     }
 
-    private static decimal Total(PurchaseProposal proposal) =>
-        proposal.Items.Where(i => !i.IsDeleted).Sum(i => i.Quantity * i.EstimatedUnitPrice);
+    /// <summary>Audit text for the items, e.g. "Máy chạy bộ x2, Dây kháng lực x10"; the price is added once it is known.</summary>
+    private static string Describe(IEnumerable<PurchaseProposalItem> items) =>
+        string.Join(", ", items.Select(i => $"{i.ItemName} x{i.Quantity}" + (i.UnitPrice is { } price ? $" @ {price:0.##}" : "")));
 
     private async Task<Result<PurchaseProposalResponse>> Reload(int id, int statusCode, CancellationToken cancellationToken)
     {

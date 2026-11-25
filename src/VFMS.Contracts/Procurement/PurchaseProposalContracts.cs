@@ -1,9 +1,9 @@
 namespace VFMS.Contracts.Procurement;
 
+/// <summary>What to buy and how many. Staff do not enter a price; the Manager records it when the purchase is done.</summary>
 public sealed record PurchaseProposalItemRequest(
     string ItemName,
     int Quantity,
-    decimal EstimatedUnitPrice,
     int? EquipmentId = null,
     string? Reason = null
 );
@@ -29,14 +29,20 @@ public sealed record PurchaseProposalListRequest(
 /// <summary>Review note. Required to reject or request a revision, optional to approve.</summary>
 public sealed record PurchaseProposalReviewRequest(string? Note = null);
 
+/// <summary>The price actually paid per unit for one item of the proposal.</summary>
+public sealed record PurchaseProposalItemPriceRequest(int ItemId, decimal UnitPrice);
+
+/// <summary>Marks an approved proposal as purchased, with the real unit price of every item.</summary>
+public sealed record PurchaseProposalCompleteRequest(IReadOnlyList<PurchaseProposalItemPriceRequest> Items);
+
 public sealed record PurchaseProposalItemResponse(
     int Id,
     string ItemName,
     int? EquipmentId,
     string? EquipmentName,
     int Quantity,
-    decimal EstimatedUnitPrice,
-    decimal LineTotal,
+    decimal? UnitPrice,
+    decimal? LineTotal,
     string? Reason
 );
 
@@ -58,7 +64,8 @@ public sealed record PurchaseProposalResponse(
     DateTime? SubmittedAt,
     string ProposedByUserId,
     string? ProposedByName,
-    decimal TotalBudget,
+    /// <summary>What the purchase cost, once the Manager has entered the real prices; null before that.</summary>
+    decimal? TotalCost,
     IReadOnlyCollection<PurchaseProposalItemResponse> Items,
     IReadOnlyCollection<PurchaseProposalReviewResponse> Reviews
 );
