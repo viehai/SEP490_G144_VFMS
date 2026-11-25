@@ -1,0 +1,29 @@
+@using VFMS.Client.Components.Memberships
+@if (Rows.Count == 0)
+{
+    <p class="dash-message">@Empty</p>
+}
+else
+{
+    <div class="dash-scroll"><table aria-label="@Label"><thead><tr><th>Mã đơn hàng</th><th>Khách hàng</th><th>Sản phẩm / gói tập</th><th>Giá trị</th>@if (ShowMethod) { <th>Thanh toán</th> }<th>Trạng thái</th></tr></thead>
+        <tbody>@foreach (var row in Rows)
+        {
+            <tr><td>@if (StaffLinks) { <a href="@($"/staff/membership-cash-receipt?order={Uri.EscapeDataString(row.Number)}")">@row.Number</a> } else { @row.Number }</td>
+                <td>@row.Customer</td><td>@row.Product</td><td class="dash-number">@(row.Amount is { } amount ? Vnd.Format(amount) : "—")</td>
+                @if (ShowMethod) { <td>@(row.Method is null ? "—" : TransactionDisplay.Method(row.Method))</td> }
+                <td><span class="dash-badge @Tone(row.Status)">@Status(row.Status)</span></td></tr>
+        }</tbody></table></div>
+}
+@code {
+    [Parameter] public IReadOnlyList<DashboardOrder> Rows { get; set; } = [];
+    [Parameter] public string Empty { get; set; } = "Chưa có đơn hàng.";
+    [Parameter] public string Label { get; set; } = "Đơn hàng";
+    [Parameter] public bool ShowMethod { get; set; }
+    [Parameter] public bool StaffLinks { get; set; }
+    private static string Status(string value) => value switch {
+        "SupplementPending" => "Chờ xử lý",
+        "Processing" or "ReadyForPickup" or "OutForDelivery" or "Completed" => OperationsText.Label(value),
+        _ => TransactionDisplay.Status(value)
+    };
+    private static string Tone(string value) => value switch { "Paid" or "Completed" => "positive", "Pending" or "SupplementPending" => "pending", _ => "" };
+}

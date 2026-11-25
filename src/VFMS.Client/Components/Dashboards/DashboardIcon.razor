@@ -1,0 +1,26 @@
+<svg class="dash-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+    <path d="@Path" />
+</svg>
+@code {
+    [Parameter] public string Name { get; set; } = "";
+    private string Path => Name switch
+    {
+        "people" => "M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2 M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0 M16 3a4 4 0 0 1 0 8 M21 21v-2a4 4 0 0 0-3-3.9",
+        "person" => "M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0 M4 21v-2a5 5 0 0 1 5-5h6a5 5 0 0 1 5 5v2",
+        "calendar" => "M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z M7 3v4m10-4v4M3 10h18",
+        "chart" => "M3 21h18M5 17v-6h3v6z M11 17V3h3v14z M17 17V7h3v10z",
+        "bell" => "M18 8a6 6 0 0 0-12 0c0 7-3 8-3 10h18c0-2-3-3-3-10z M10 21a3 3 0 0 0 4 0",
+        "shield" => "m12 2 8 3v6c0 5-4 8-8 11-4-3-8-6-8-11V5zM12 7v5m0 3v.2",
+        "orders" => "M3 3h3l2.5 12h10L21 7H7 M10 20a1 1 0 1 1-2 0 1 1 0 0 1 2 0 M19 20a1 1 0 1 1-2 0 1 1 0 0 1 2 0",
+        "money" => "M20 6c0 2-3.5 3-8 3S4 8 4 6s3.5-3 8-3 8 1 8 3zM4 6v5c0 2 3.5 3 8 3s8-1 8-3V6M4 11v5c0 2 3.5 3 8 3s8-1 8-3v-5",
+        "check" => "M8 3H5a2 2 0 0 0-2 2v3m13-5h3a2 2 0 0 1 2 2v3M3 16v3a2 2 0 0 0 2 2h3m8 0h3a2 2 0 0 0 2-2v-3 M7 12l3 3 7-7",
+        "chat" => "M21 11a8 8 0 0 1-8 8H8l-5 3v-6a8 8 0 0 1-1-5 9 9 0 0 1 19 0z",
+        "training" => "m3 10 7-7m4 18 7-7M2 7l5-5m10 20 5-5M7 7l10 10m-9-2 7-7",
+        "tag" => "M3 3h8l10 10-8 8L3 11z M7 7h.1",
+        "yoga" => "M12 19c-5-3-5-8 0-15 5 7 5 12 0 15zM11 20c-5 1-9-4-9-10 3 0 5 1 7 3 M13 20c5 1 9-4 9-10-3 0-5 1-7 3",
+        "grid" => "M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z",
+        "tool" => "M15 4a6 6 0 0 0-7 8l-5 5a2.5 2.5 0 0 0 4 4l6-6a6 6 0 0 0 7-8l-4 4-3-3 4-4z",
+        "arrow" => "M4 12h15m-6-6 6 6-6 6",
+        _ => "M8 4H5v17h14V4h-3M9 2h6v4H9zM8 10h8m-8 4h8m-8 4h5"
+    };
+}

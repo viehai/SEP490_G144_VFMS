@@ -68,8 +68,9 @@ public sealed partial class MembershipPurchaseRepository
         if (filter.BeforeUtc is { } before) query = query.Where(row => row.Order.CreatedAt < before);
 
         var total = await query.CountAsync(ct);
-        var page = await query.OrderByDescending(row => row.Status == OrderStatus.Pending)
-            .ThenByDescending(row => row.Order.CreatedAt).ThenByDescending(row => row.Order.Id)
+        var sorted = filter.NewestFirst ? query.OrderByDescending(row => row.Order.CreatedAt)
+            : query.OrderByDescending(row => row.Status == OrderStatus.Pending).ThenByDescending(row => row.Order.CreatedAt);
+        var page = await sorted.ThenByDescending(row => row.Order.Id)
             .Skip((filter.Page - 1) * filter.PageSize).Take(filter.PageSize)
             .Select(row => new
             {

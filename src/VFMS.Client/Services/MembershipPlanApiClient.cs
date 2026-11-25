@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.JSInterop;
 using VFMS.Client.Auth;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Feedback;
@@ -12,7 +13,7 @@ using VFMS.Contracts.Promotions;
 
 namespace VFMS.Client.Services;
 
-public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session) : IDisposable
+public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session, IJSRuntime? js = null) : IDisposable
 {
     private const string BasePath = "api/manager/membership-plans";
     private const string PurchasesPath = "api/membership-purchases";
@@ -103,10 +104,10 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
             (rating is int stars ? FormattableString.Invariant($"&rating={stars}") : ""), cancellationToken, allowAnonymous: true);
 
     public Task<MembershipPurchaseResponse> PurchaseAsync(MembershipPurchaseRequest request, CancellationToken cancellationToken = default) =>
-        SendAsync<MembershipPurchaseResponse>(HttpMethod.Post, PurchasesPath, cancellationToken, JsonContent.Create(request), ReadPurchaseAsync);
+        SendAsync<MembershipPurchaseResponse>(HttpMethod.Post, PurchasesPath, cancellationToken, JsonContent.Create(request), ReadBuyerPurchaseAsync);
 
     public Task<MembershipPurchaseResponse> GetPurchaseAsync(string orderNumber, CancellationToken cancellationToken = default) =>
-        SendAsync<MembershipPurchaseResponse>(HttpMethod.Get, $"{PurchasesPath}/{Uri.EscapeDataString(orderNumber)}", cancellationToken, readResponse: ReadPurchaseAsync);
+        SendAsync<MembershipPurchaseResponse>(HttpMethod.Get, $"{PurchasesPath}/{Uri.EscapeDataString(orderNumber)}", cancellationToken, readResponse: ReadBuyerPurchaseAsync);
 
     public Task<MembershipPurchaseResponse> ApplyMembershipVoucherAsync(string orderNumber,
         ApplyMembershipVoucherRequest request, CancellationToken cancellationToken = default) =>
@@ -119,7 +120,7 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
 
     public Task<MembershipPurchaseResponse> CompleteNoChargeMembershipPurchaseAsync(string orderNumber, CancellationToken cancellationToken = default) =>
         SendAsync<MembershipPurchaseResponse>(HttpMethod.Post,
-            $"{PurchasesPath}/{Uri.EscapeDataString(orderNumber)}/complete-no-charge", cancellationToken, readResponse: ReadPurchaseAsync);
+            $"{PurchasesPath}/{Uri.EscapeDataString(orderNumber)}/complete-no-charge", cancellationToken, readResponse: ReadBuyerPurchaseAsync);
 
     public Task<IReadOnlyList<MembershipSummaryResponse>> GetMyMembershipsAsync(CancellationToken cancellationToken = default) =>
         SendAsync<IReadOnlyList<MembershipSummaryResponse>>(HttpMethod.Get, $"{MembershipsPath}/me", cancellationToken);
@@ -301,6 +302,21 @@ public sealed class MembershipPlanApiClient(HttpClient http, AuthSession session
     }
 
     private static readonly JsonSerializerOptions PurchaseJsonOptions = new(JsonSerializerDefaults.Web);
+
+    private async Task<MembershipPurchaseResponse> ReadBuyerPurchaseAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        var purchase = await ReadPurchaseAsync(response, ct);
+        if (purchase.OrderStatus == MembershipPurchaseStatuses.Paid && purchase.Items.Any(item => item.IsForPurchaser))
+        {
+            await session.RefreshMemberRoleAsync(null, ct);
+            if (js is not null)
+            {
+                try { await js.InvokeVoidAsync("vfmsMembershipUpdates.publish"); }
+                catch (JSException) { /* Browser messaging is optional for an already settled order. */ }
+            }
+        }
+        return purchase;
+    }
 
     private static async Task<MembershipPurchaseResponse> ReadPurchaseAsync(HttpResponseMessage response, CancellationToken ct)
     {

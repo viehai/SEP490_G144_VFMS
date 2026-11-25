@@ -1,0 +1,6 @@
+<a class="dash-action" href="@Href"><span class="dash-icon-tile"><DashboardIcon Name="@Icon" /></span><span>@ChildContent</span></a>
+@code {
+    [Parameter] public string Href { get; set; } = "";
+    [Parameter] public string Icon { get; set; } = "";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

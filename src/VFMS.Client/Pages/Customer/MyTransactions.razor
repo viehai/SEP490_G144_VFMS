@@ -15,7 +15,7 @@
 <section class="mx-auto min-w-0 max-w-5xl space-y-6 px-[20px] pb-16 pt-28 font-body" aria-labelledby="transactions-title" aria-busy="@_loading.ToString().ToLowerInvariant()">
     <header class="space-y-2 border-b border-vfms-border pb-5">
         <h1 id="transactions-title" class="font-heading text-3xl font-extrabold text-vfms-text">Lịch sử giao dịch</h1>
-        <p class="text-sm text-vfms-text-secondary">Xem các giao dịch gói hội viên, thanh toán và hóa đơn của bạn.</p>
+        <p class="text-sm text-vfms-text-secondary">Giao dịch mới nhất hiển thị trước, tối đa @PageSize giao dịch mỗi trang.</p>
     </header>
 
     @if (_loading)
@@ -46,6 +46,10 @@
     else
     {
         <div class="min-w-0 overflow-hidden rounded-xl border border-vfms-border bg-vfms-surface">
+            @if (_history.TotalCount > PageSize)
+            {
+                <Pager Page="@_history.Page" PageSize="@_history.PageSize" TotalCount="@_history.TotalCount" Noun="giao dịch" AriaLabel="Phân trang lịch sử giao dịch" OnPage="LoadAsync" />
+            }
             <ul class="m-0 list-none divide-y divide-vfms-border p-0" aria-label="Các giao dịch gói hội viên">
                 @foreach (var transaction in _history.Items)
                 {
@@ -86,6 +90,7 @@
 </section>
 
 @code {
+    private const int PageSize = 10;
     private const string ActionClass = "inline-flex min-h-[44px] items-center rounded-lg border border-vfms-primary px-4 py-2 text-sm font-semibold text-vfms-primary hover:bg-vfms-primary-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary";
     private readonly CancellationTokenSource _lifetime = new();
     private PagedResponse<MembershipTransactionSummaryResponse>? _history;
@@ -107,7 +112,7 @@
         _page = page;
         try
         {
-            var history = await Plans.ListTransactionsAsync(page, cancellationToken: ct);
+            var history = await Plans.ListTransactionsAsync(page, PageSize, ct);
             if (!ct.IsCancellationRequested)
                 _history = history;
         }

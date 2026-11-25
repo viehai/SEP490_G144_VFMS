@@ -1,155 +1,80 @@
 @page "/manager/dashboard"
 @layout ManagerAdminLayout
 @using Microsoft.AspNetCore.Authorization
-@using System.Globalization
-@using VFMS.Contracts.Feedback
-@using VFMS.Contracts.Memberships
-@using VFMS.Contracts.Procurement
-@using VFMS.Contracts.SystemAdministration
+@using VFMS.Client.Components.Dashboards
+@using VFMS.Contracts.Dashboards
 @attribute [Authorize(Roles = "Manager")]
-@inject VfmsApiClient Api
-@implements IDisposable
 
-<PageTitle>Manager Dashboard | Victor Fitness</PageTitle>
-
-<div class="workspace-page space-y-8 font-['Inter',sans-serif] text-[#242424]">
-    <header class="flex flex-col justify-between gap-5 border-b border-[#D8D1CD] pb-6 md:flex-row md:items-end">
-        <div>
-            <p class="workspace-heading mb-2 text-[10px] font-bold tracking-[.18em] text-[#B83A3A]">VFMS / OPERATIONS OVERVIEW</p>
-            <h1 class="workspace-heading text-3xl font-extrabold uppercase tracking-tight text-[#242424] sm:text-4xl">Manager Dashboard<span class="text-[#B83A3A]">.</span></h1>
-            <p class="mt-2 max-w-2xl text-sm leading-6 text-[#6F6966]">Theo dõi hiệu quả kinh doanh, hội viên và các yêu cầu cần xử lý.</p>
+<PageTitle>Tổng quan quản lý | Victor Fitness</PageTitle>
+<DashboardView T="ManagerOverview" Path="@_path" Title="Tổng quan quản lý" Description="Theo dõi hoạt động kinh doanh, hội viên và vận hành phòng tập.">
+    <HeaderControl><span class="dash-date"><DashboardIcon Name="calendar" />Hôm nay, @PTDisplay.Today.ToString("dd/MM/yyyy")</span></HeaderControl>
+    <ChildContent Context="data">
+        <div class="dash-stats">
+            <DashboardStat Icon="money" Label="Doanh thu hôm nay" Value="@Vnd.Format(data.RevenueToday)" Note="@($"Hôm qua {Vnd.Format(data.RevenueYesterday)}")" />
+            <DashboardStat Icon="people" Label="Hội viên đang hoạt động" Value="@data.ActiveMembers.ToString()" Note="Có ít nhất một gói đang hiệu lực" />
+            <DashboardStat Icon="orders" Label="Đơn gói chờ thanh toán" Value="@data.PendingOrders.ToString()" Note="Gym, Yoga và PT" />
+            <DashboardStat Icon="calendar" Label="Lịch PT trong ngày" Value="@($"{data.PTSessions} buổi")" />
         </div>
-    </header>
-
-    <section class="grid gap-4 lg:grid-cols-3" aria-label="Thống kê hoạt động kinh doanh">
-        <StatCard Index="01" Label="DOANH THU" Href="/manager/business-reports"
-                  Value="@(Metric("TotalRevenue") is { } revenue ? Vnd.Format(revenue) : null)" Note="@ReportNote" />
-        <StatCard Index="02" Label="GÓI HỘI VIÊN ĐANG HOẠT ĐỘNG" Href="/manager/business-reports"
-                  Value="@Metric("ActiveMemberships")?.ToString("N0", VietnameseNumbers)" Note="@ReportNote" />
-        <StatCard Index="03" Label="YÊU CẦU CHỜ DUYỆT" Href="/manager/membership-freeze-requests"
-                  Value="@(_freezeRequests is { } f && _proposals is { } p ? (f + p).ToString("00") : null)"
-                  Note="@($"{_freezeRequests?.ToString() ?? "—"} bảo lưu · {_proposals?.ToString() ?? "—"} đề xuất mua sắm")" />
-    </section>
-
-    @if (_errors.Count > 0)
-    {
-        <p role="alert" class="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">Không tải được: @string.Join("; ", _errors)</p>
-    }
-
-    <section id="quick-actions" aria-labelledby="manager-actions-title">
-        <h2 id="manager-actions-title" class="workspace-heading mb-4 text-sm font-extrabold uppercase tracking-wider text-[#242424]">Truy cập nhanh</h2>
-        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            @foreach (var action in Actions)
+        <div class="dash-grid">
+            <section class="dash-panel"><header><h2>Doanh thu</h2><div class="dash-tabs" role="group" aria-label="Khoảng thời gian doanh thu">
+                @foreach (var days in Ranges) { <button type="button" aria-pressed="@(_range == days && !_custom ? "true" : "false")" @onclick="() => SetRange(days, data.Today)">@days ngày</button> }
+                <button type="button" aria-pressed="@(_custom ? "true" : "false")" @onclick="() => _custom = true">Tùy chọn</button>
+            </div></header>
+            @if (_custom)
             {
-                <a href="@action.Href" class="flex min-h-24 items-center justify-between gap-5 border border-[#D8D1CD] bg-[#F8F5F2] p-5 text-left text-[#242424] transition-all hover:border-[#B83A3A] hover:bg-[#F3EDEA] rounded-xl">
-                    <span><span class="workspace-heading block text-xs font-extrabold uppercase tracking-wider">@action.Title</span><span class="mt-1.5 block text-xs text-[#6F6966]">@action.Description</span></span>
-                    <span class="text-xl text-[#B83A3A]" aria-hidden="true">↗</span>
-                </a>
+                <form class="dash-dates" @onsubmit="ApplyDates" @onsubmit:preventDefault>
+                    <label>Từ ngày<input type="date" @bind="_from" max="@Iso(data.Today)" required /></label>
+                    <label>Đến ngày<input type="date" @bind="_to" min="@Iso(_from)" max="@Iso(data.Today)" required /></label>
+                    <button type="submit">Áp dụng</button>
+                </form>
+                @if (_validation is not null) { <p class="dash-error" role="alert">@_validation</p> }
             }
+            <DashboardTrend Points="data.Revenue" Bars="true" Unit="Doanh thu (₫)" /></section>
+            <section class="dash-panel"><header><h2>Tình hình hội viên</h2></header>
+                <DashboardDonut Items="data.Memberships" Center="data.ActiveMembers" Caption="hội viên đang hoạt động" Label="MemberLabel" /></section>
+            <section class="dash-panel"><header><h2>Đơn hàng gần đây</h2></header><DashboardOrders Rows="data.Recent" ShowMethod="true" /></section>
+            <section class="dash-panel"><header><h2>Chờ thu tiền tại quầy</h2><DashboardIcon Name="money" /></header>
+                @if (data.Counter.Count == 0) { <p class="dash-message">Không có đơn gói chờ thu tiền mặt.</p> }
+                else { <ul class="dash-list">@foreach (var order in data.Counter) {
+                    <li><div><strong>@order.Number</strong><small>@order.Customer · @order.Product</small></div><b>@(order.Amount is { } amount ? Vnd.Format(amount) : "—")</b></li>
+                }</ul> }
+                <div id="quick-actions" class="dash-inset-actions"><h2>Truy cập nhanh</h2><div class="dash-actions">
+                <DashboardLink Href="/manager/business-reports" Icon="chart">Báo cáo kinh doanh</DashboardLink>
+                <DashboardLink Href="/manager/membership-plans" Icon="list">Gói hội viên</DashboardLink>
+                <DashboardLink Href="/manager/promotions" Icon="tag">Khuyến mãi &amp; Voucher</DashboardLink>
+                <DashboardLink Href="/manager/membership-freeze-requests" Icon="calendar">Duyệt bảo lưu</DashboardLink>
+                <DashboardLink Href="/manager/purchase-proposals" Icon="orders">Đề xuất mua sắm</DashboardLink>
+                <DashboardLink Href="/manager/feedback" Icon="chat">Phản hồi khách hàng</DashboardLink>
+                </div></div>
+            </section>
         </div>
-    </section>
-
-    <section class="overflow-hidden border border-[#D8D1CD] bg-[#F8F5F2] rounded-xl shadow-sm" aria-labelledby="manager-feedback-title">
-        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[#D8D1CD] px-6 py-4">
-            <h2 id="manager-feedback-title" class="workspace-heading text-sm font-extrabold uppercase tracking-wider text-[#242424]">Phản hồi chờ duyệt</h2>
-            <a href="/manager/feedback" class="text-xs font-bold text-[#B83A3A] underline">Xem tất cả</a>
-        </div>
-        @if (_feedback is null)
-        {
-            <p role="status" class="px-6 py-8 text-sm text-[#6F6966]">@(_loading ? "Đang tải..." : "Không có dữ liệu phản hồi.")</p>
-        }
-        else if (_feedback.Count == 0)
-        {
-            <p role="status" class="px-6 py-8 text-sm text-[#6F6966]">Không có phản hồi nào chờ duyệt.</p>
-        }
-        else
-        {
-            <div class="divide-y divide-[#ECE8E4]">
-                @foreach (var feedback in _feedback)
-                {
-                    <article @key="feedback.Id" class="flex flex-col justify-between gap-4 px-6 py-4 sm:flex-row hover:bg-[#F3EDEA]">
-                        <div>
-                            <p class="text-sm font-semibold text-[#242424]">@feedback.MemberName <span class="ml-2 text-xs font-normal text-[#8C8581]">HLV @feedback.TrainerName · @feedback.Rating/5</span></p>
-                            <p class="mt-1.5 max-w-2xl text-sm leading-6 text-[#6F6966]">@(string.IsNullOrWhiteSpace(feedback.Comment) ? "(Không có nhận xét)" : feedback.Comment)</p>
-                        </div>
-                        <span class="h-fit whitespace-nowrap text-xs text-[#6F6966]">@DateTime.SpecifyKind(feedback.CreatedAt, DateTimeKind.Utc).AddHours(7).ToString("dd/MM/yyyy")</span>
-                    </article>
-                }
-            </div>
-        }
-    </section>
-</div>
-
+    </ChildContent>
+</DashboardView>
 @code {
-    private static readonly NumberFormatInfo VietnameseNumbers = new() { NumberGroupSeparator = ".", NumberDecimalSeparator = "," };
-    private static readonly ActionItem[] Actions =
-    [
-        new("/manager/business-reports", "Báo cáo kinh doanh", "Tạo và xem báo cáo doanh thu"),
-        new("/manager/membership-plans", "Membership Plans", "Quản lý danh mục gói hội viên"),
-        new("/manager/promotions", "Marketing / Khuyến mãi", "Quản lý mã giảm giá và chiến dịch"),
-        new("/manager/membership-freeze-requests", "Duyệt bảo lưu", "Yêu cầu bảo lưu gói hội viên"),
-        new("/manager/purchase-proposals", "Đề xuất mua sắm", "Duyệt đề xuất của nhân viên"),
-        new("/manager/feedback", "Feedback Management", "Lắng nghe phản hồi hội viên")
-    ];
-
-    private readonly CancellationTokenSource _lifetime = new();
-    private readonly List<string> _errors = [];
-    private BusinessReportResponse? _report;
-    private bool _noReport;
-    private int? _freezeRequests;
-    private int? _proposals;
-    private IReadOnlyCollection<FeedbackResponse>? _feedback;
-    private bool _loading = true;
-
-    // Business figures come from the latest generated report (UC-86); the dashboard does not compute its own.
-    private string ReportNote => _report is not null
-        ? _report.PeriodStart == _report.PeriodEnd
-            ? $"Báo cáo ngày {_report.PeriodStart:dd/MM/yyyy}"
-            : $"Báo cáo {_report.PeriodStart:dd/MM} – {_report.PeriodEnd:dd/MM/yyyy}"
-        : _noReport ? "Chưa có báo cáo nào. Tạo báo cáo để xem." : "";
-
-    private decimal? Metric(string type) => _report?.Metrics.FirstOrDefault(m => m.MetricType == type)?.Value;
-
-    protected override async Task OnInitializedAsync()
+    private static readonly int[] Ranges = [7,30,90];
+    private int _range = 7;
+    private bool _custom;
+    private DateOnly _from = PTDisplay.Today.AddDays(-6), _to = PTDisplay.Today;
+    private string _path = "api/dashboards/manager";
+    private string? _validation;
+    private static string Iso(DateOnly d) => d.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+    private static string MemberLabel(string category) => category switch {
+        "Active" => "Đang hoạt động (> 7 ngày)", "Expiring" => "Sắp hết hạn (≤ 7 ngày)", "Frozen" => "Đang bảo lưu",
+        "Scheduled" => "Chờ kích hoạt", "Suspended" => "Tạm ngưng", _ => "Đã hết hạn"
+    };
+    private void SetRange(int days, DateOnly today)
     {
-        // Each figure loads on its own, so one failing module does not blank the others.
-        await Task.WhenAll(
-            Load("báo cáo", async ct =>
-            {
-                var latest = (await Api.GetAsync<PagedResponse<BusinessReportSummaryResponse>>("api/business-reports?page=1&pageSize=1", ct)).Items.FirstOrDefault();
-                if (latest is null) _noReport = true;
-                else _report = await Api.GetAsync<BusinessReportResponse>($"api/business-reports/{latest.Id}", ct);
-            }),
-            Load("bảo lưu", async ct => _freezeRequests = (await Api.GetAsync<PagedResponse<MembershipFreezeReviewSummaryResponse>>(
-                "api/manager/membership-freeze-requests?page=1&pageSize=1", ct)).TotalCount),
-            Load("đề xuất mua sắm", async ct => _proposals = (await Api.GetAsync<PagedResponse<PurchaseProposalResponse>>(
-                "api/purchase-proposals?status=Submitted&page=1&pageSize=1", ct)).TotalCount),
-            Load("phản hồi", async ct => _feedback = (await Api.GetAsync<PagedResponse<FeedbackResponse>>(
-                "api/feedback/manager?status=Pending&page=1&pageSize=5", ct)).Items));
-        _loading = false;
+        if (!_custom && days == _range && _to == today) return;
+        _range = days;
+        _custom = false;
+        _to = today;
+        _from = today.AddDays(1-days);
+        ApplyDates();
     }
-
-    private async Task Load(string what, Func<CancellationToken, Task> load)
+    private void ApplyDates()
     {
-        try
-        {
-            await load(_lifetime.Token);
-        }
-        catch (ApiException ex)
-        {
-            _errors.Add($"{what} ({ex.Message})");
-        }
-        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
-        {
-            // The user left the page.
-        }
+        _validation = _to < _from || _to.DayNumber - _from.DayNumber >= 93 || _to > PTDisplay.Today
+            ? "Chọn tối đa 93 ngày, kết thúc không muộn hơn hôm nay." : null;
+        if (_validation is null) _path = $"api/dashboards/manager?from={Iso(_from)}&to={Iso(_to)}";
     }
-
-    public void Dispose()
-    {
-        _lifetime.Cancel();
-        _lifetime.Dispose();
-    }
-
-    private sealed record ActionItem(string Href, string Title, string Description);
 }

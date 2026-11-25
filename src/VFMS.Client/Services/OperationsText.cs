@@ -13,6 +13,30 @@ public static class OperationsText
     public static readonly string[] OrderStatuses = ["Pending", "Processing", "ReadyForPickup", "OutForDelivery", "Completed", "Cancelled"];
     public static readonly string[] FulfillmentTypes = ["GymPickup", "HomeDelivery"];
 
+    public static string RoleLabel(string role) => role switch {
+        "Member" => "Hội viên", "Customer" => "Khách hàng", "PT" => "Huấn luyện viên PT", "YogaInstructor" => "Giáo viên Yoga",
+        "Staff" => "Nhân viên", "Admin" => "Quản trị viên", "Manager" => "Quản lý", "Unassigned" => "Chưa có vai trò", _ => "Vai trò khác"
+    };
+
+    public static string AuditAction(string type) => type switch
+    {
+        "Create" => "Tạo mới",
+        "Update" => "Cập nhật",
+        "Delete" => "Xóa",
+        "Login" => "Đăng nhập",
+        "Logout" => "Đăng xuất",
+        "RoleChange" => "Đổi vai trò",
+        "AccountLock" => "Khóa tài khoản",
+        "AccountUnlock" => "Mở khóa tài khoản",
+        "PasswordChange" => "Đổi mật khẩu",
+        "CreateMembershipPlan" => "Tạo gói hội viên",
+        "UpdateMembershipPlan" => "Sửa gói hội viên",
+        "ActivateMembershipPlan" => "Mở bán gói hội viên",
+        "DeactivateMembershipPlan" => "Ngừng bán gói hội viên",
+        "DeleteMembershipPlan" => "Xóa gói hội viên",
+        _ => type
+    };
+
     public static string Money(decimal value) => Vnd.Format(value);
     public static string Local(DateTime value) => value.ToLocalTime().ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture);
 

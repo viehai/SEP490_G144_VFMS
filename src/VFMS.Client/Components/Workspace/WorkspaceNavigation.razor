@@ -1,0 +1,133 @@
+@using System.Security.Claims
+@using VFMS.Client.Components.Dashboards
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<button type="button" class="workspace-nav-toggle" aria-controls="workspace-role-navigation"
+        aria-expanded="@(_open ? "true" : "false")" @ref="_toggle" @onclick="() => _open = !_open" @onkeydown="OnKeyDown">
+    Menu điều hướng
+</button>
+<nav id="workspace-role-navigation" class="workspace-nav workspace-nav--grouped @(_open ? "workspace-nav--open" : null)"
+     aria-label="Điều hướng không gian làm việc" @onkeydown="OnKeyDown">
+    @foreach (var group in _groups)
+    {
+        <section class="workspace-nav-group" @key="group.Title">
+            @{ var folded = Variant == "manager" && !_expanded.Contains(group.Title); }
+            <h2 class="workspace-nav-group-title">
+                @if (Variant == "manager")
+                {
+                    <button type="button" class="dash-nav-fold" aria-expanded="@(folded ? "false" : "true")" @onclick="() => ToggleGroup(group.Title)">
+                        <DashboardIcon Name="@NavIcon(group.Links[0].Href)" />@group.Title
+                    </button>
+                }
+                else { @group.Title }
+            </h2>
+            <ul class="workspace-nav-links @(folded ? "dash-folded" : null)">
+                @foreach (var item in group.Links)
+                {
+                    var current = CurrentLocation(item);
+                    <li @key="item.Href">
+                        <a href="@item.Href" class="workspace-nav-link @(current is null ? null : "workspace-nav-link--active")"
+                           aria-current="@current" @onclick="(MouseEventArgs e) => OnLinkClick(e, item.Href)"><DashboardIcon Name="@NavIcon(item.Href)" />@item.Label</a>
+                    </li>
+                }
+            </ul>
+        </section>
+    }
+</nav>
+
+@code {
+    [Parameter, EditorRequired] public string Variant { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public ClaimsPrincipal User { get; set; } = default!;
+    private Group[] _groups = [];
+    private bool _open;
+    private readonly HashSet<string> _expanded = [];
+    private ElementReference _toggle;
+
+    protected override void OnInitialized() => Navigation.LocationChanged += OnLocationChanged;
+
+    protected override void OnParametersSet()
+    {
+        var groups = Variant switch
+        {
+            "manager" => ManagerGroups,
+            "admin" => AdminGroups,
+            "pt" when User.IsInRole("PT") => TrainerGroups,
+            "pt" => YogaInstructorGroups,
+            _ => StaffGroups
+        };
+        _groups = groups.Select(group => new Group(group.Title,
+                group.Links.Where(link => link.Role is null || User.IsInRole(link.Role)).ToArray()))
+            .Where(group => group.Links.Length > 0).ToArray();
+        ExpandCurrent();
+    }
+
+    private void ToggleGroup(string title)
+    {
+        if (!_expanded.Remove(title)) _expanded.Add(title);
+    }
+
+    private void ExpandCurrent()
+    {
+        if (Variant == "manager" && _groups.FirstOrDefault(g => g.Links.Any(l => CurrentLocation(l) != null)) is { } group)
+            _expanded.Add(group.Title);
+    }
+
+    private static string NavIcon(string href) => href.Split('/')[^1] switch
+    {
+        "dashboard" or "dashboard#quick-actions" => "grid",
+        "check-ins" or "kiosk" => "check",
+        "assigned-members" or "trainer-applications" or "create" => "people",
+        "equipment" or "equipment-issues" or "purchase-proposals" => "tool",
+        "trainer-profile" or "profile" => "person",
+        "yoga" => "yoga",
+        "availability" or "teaching-schedule" => "calendar",
+        "pt-packages" => "training",
+        "supplement-orders" or "supplement-products" or "membership-cash-receipt" => "orders",
+        "feedback" or "consultations" => "chat",
+        "business-reports" => "chart",
+        "promotions" => "tag",
+        "banned-words" => "shield",
+        _ => "list"
+    };
+
+    private string? CurrentLocation(Link link)
+    {
+        if (link.Alias) return null;
+        var current = new Uri(Navigation.Uri);
+        var target = Navigation.ToAbsoluteUri(link.Href);
+        var path = current.AbsolutePath.TrimEnd('/');
+        var targetPath = target.AbsolutePath.TrimEnd('/');
+        if (!string.Equals(path, targetPath, StringComparison.OrdinalIgnoreCase))
+            return targetPath.Length > 0 && path.StartsWith(targetPath + "/", StringComparison.OrdinalIgnoreCase)
+                ? "location" : null;
+        if (target.Fragment.Length > 0) return current.Fragment == target.Fragment ? "location" : null;
+        if (current.Fragment == "#quick-actions" && (Variant is "admin" or "staff") && targetPath.EndsWith("/dashboard"))
+            return null;
+        return "page";
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (!_open || e.Key != "Escape") return;
+        _open = false;
+        await _toggle.FocusAsync(preventScroll: true);
+    }
+
+    private async Task OnLinkClick(MouseEventArgs e, string href)
+    {
+        if (!_open || e.CtrlKey || e.ShiftKey || e.MetaKey || e.AltKey) return;
+        _open = false;
+        if (Navigation.ToAbsoluteUri(href).AbsoluteUri == Navigation.Uri)
+            await _toggle.FocusAsync(preventScroll: true);
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e) => _ = InvokeAsync(() =>
+    {
+        _open = false;
+        ExpandCurrent();
+        StateHasChanged();
+    });
+
+    public void Dispose() => Navigation.LocationChanged -= OnLocationChanged;
+}
