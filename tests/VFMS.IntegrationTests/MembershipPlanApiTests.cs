@@ -111,6 +111,7 @@ public sealed class MembershipPlanApiTests : IAsyncLifetime
         var gymId = (await CreatePlanAsync(manager, "Gym Monthly")).GetProperty("id").GetInt32();
         var request = PlanRequest("Yoga Monthly");
         request["serviceType"] = "YOGA";
+        request["yogaDifficultyLevel"] = "Advanced";   // yoga plans need a level
         var yoga = await ReadBodyAsync(await manager.PostAsJsonAsync(ManagementRoute, request), HttpStatusCode.Created);
         var yogaId = yoga.GetProperty("id").GetInt32();
         Assert.Equal("YOGA", yoga.GetProperty("serviceType").GetString());
@@ -142,6 +143,46 @@ public sealed class MembershipPlanApiTests : IAsyncLifetime
         Assert.Equal(30, component.DurationDays);
     }
 
+    [Fact]
+    public async Task ManagerCreatesYogaPlanWithLevelCalendarMonthsAndFreezeAllowance()
+    {
+        using var manager = CreateClient();
+        var request = new MembershipPlanRequest
+        {
+            Name = "Yoga ba tháng",
+            TargetAudience = "Hội viên tập Yoga",
+            DurationValue = 3,
+            DurationUnit = MembershipDurationUnit.Month,
+            FreezeAllowanceOverrideValue = 1,
+            FreezeAllowanceOverrideUnit = MembershipDurationUnit.Month,
+            Price = 600_000,
+            Status = MembershipPlanStatuses.Active,
+            ServiceType = MembershipPlanServiceTypes.Yoga,
+            YogaDifficultyLevel = "Intermediate"
+        };
+
+        var created = await ReadBodyAsync(await manager.PostAsJsonAsync(ManagementRoute, request), HttpStatusCode.Created);
+        var planId = created.GetProperty("id").GetInt32();
+        var saved = await ReadBodyAsync(await manager.GetAsync($"{ManagementRoute}/{planId}"), HttpStatusCode.OK);
+
+        Assert.All(new[] { created, saved }, plan =>
+        {
+            Assert.Equal("Intermediate", plan.GetProperty("yogaDifficultyLevel").GetString());
+            Assert.Equal(request.TargetAudience, plan.GetProperty("targetAudience").GetString());
+            Assert.Equal(3, plan.GetProperty("durationInMonths").GetInt32());
+            Assert.Equal(30, plan.GetProperty("freezeAllowanceOverrideDays").GetInt32());
+            Assert.Equal(1, plan.GetProperty("freezeAllowanceOverrideValue").GetInt32());
+            Assert.Equal((int)MembershipDurationUnit.Month, plan.GetProperty("freezeAllowanceOverrideUnit").GetInt32());
+        });
+
+        request.DurationValue = 7;
+        request.DurationUnit = MembershipDurationUnit.Day;
+        var weekly = await ReadBodyAsync(await manager.PutAsJsonAsync($"{ManagementRoute}/{planId}", request), HttpStatusCode.OK);
+        Assert.Equal("Intermediate", weekly.GetProperty("yogaDifficultyLevel").GetString());
+        Assert.Equal(7, weekly.GetProperty("durationInDays").GetInt32());
+        Assert.Equal(JsonValueKind.Null, weekly.GetProperty("freezeAllowanceOverrideDays").ValueKind);
+    }
+
     [Theory]
     [InlineData(null, 7)]                           // no yoga class at all
     [InlineData(YogaClassStatus.Draft, 7)]          // not published
@@ -157,6 +198,7 @@ public sealed class MembershipPlanApiTests : IAsyncLifetime
         var gymId = (await CreatePlanAsync(manager, "Gym Monthly")).GetProperty("id").GetInt32();
         var request = PlanRequest("Yoga Monthly");
         request["serviceType"] = "YOGA";
+        request["yogaDifficultyLevel"] = "Advanced";   // yoga plans need a level
         var yogaId = (await ReadBodyAsync(await manager.PostAsJsonAsync(ManagementRoute, request), HttpStatusCode.Created))
             .GetProperty("id").GetInt32();
 

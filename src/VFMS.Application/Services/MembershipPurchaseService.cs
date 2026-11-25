@@ -38,9 +38,11 @@ public sealed partial class MembershipPurchaseService(
 
             var planIds = request.Items.Select(item => item.PlanId).Distinct().ToArray();
             var plans = (await repository.LoadPlansAsync(planIds, ct)).ToDictionary(plan => plan.Id);
-            // A yoga-only plan is sold only while a yoga class can be booked, as in the public catalog.
-            var yogaOpen = !plans.Values.Any(IsYogaOnly) ||
-                await repository.AnyBookableYogaClassAsync(clock.GetUtcNow().UtcDateTime, ct);
+            // A yoga-only plan is sold only with a level and while a class it covers can be booked, as in the public catalog.
+            var yogaOpen = new Dictionary<int, bool>();
+            foreach (var yoga in plans.Values.Where(IsYogaOnly))
+                yogaOpen[yoga.Id] = YogaLevel(yoga) is { } level &&
+                    await repository.AnyBookableYogaClassAsync(clock.GetUtcNow().UtcDateTime, level, ct);
             var byEmail = users.ToLookup(user => NormalizeEmail(user.Email));
             var order = NewOrder(purchaserId, today,
                 request.PaymentMethod == MembershipPaymentMethods.Cash ? OrderChannel.Counter : OrderChannel.Online);
@@ -54,7 +56,7 @@ public sealed partial class MembershipPurchaseService(
                         "Người thụ hưởng phải có tài khoản Khách hàng hoặc Hội viên đang hoạt động.", "BENEFICIARY_NOT_ELIGIBLE");
 
                 if (!plans.TryGetValue(item.PlanId, out var plan) || !IsPurchasable(plan, latestStart) ||
-                    (IsYogaOnly(plan) && !yogaOpen))
+                    (IsYogaOnly(plan) && !yogaOpen[plan.Id]))
                     return Result<MembershipPurchaseResponse>.Failure(
                         "Một hoặc nhiều gói tập không còn mở bán hoặc chưa có cấu hình thanh toán hợp lệ.", "PLAN_NOT_PURCHASABLE");
 
@@ -345,6 +347,9 @@ public sealed partial class MembershipPurchaseService(
 
     private static bool IsYogaOnly(Package plan) =>
         plan.Components.All(component => component.ComponentType != ComponentType.GYM);
+
+    private static string? YogaLevel(Package plan) =>
+        plan.Components.FirstOrDefault(component => component.ComponentType == ComponentType.YOGA)?.YogaDifficultyLevel;
 
     private static bool IsPurchasable(Package plan, DateOnly latestStart) =>
         plan.PackageStatus == PackageStatus.Active && plan.Price > 0 && decimal.Truncate(plan.Price) == plan.Price &&

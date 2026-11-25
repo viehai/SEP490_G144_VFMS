@@ -1,0 +1,82 @@
+@* Photo for equipment or a supplement product: preview, upload from the computer, download and remove.
+   The value is the record's image field: an uploaded image ("/api/images/{key}") or an outside link typed on the form. *@
+@using VFMS.Contracts.Common
+@inject OperationsApiClient Api
+
+<div class="flex flex-col items-center gap-2 @Class" aria-busy="@(_uploading ? "true" : "false")">
+    @if (!string.IsNullOrWhiteSpace(Value) && _broken != Value)
+    {
+        <img src="@Api.ImageSrc(Value)" alt="@Alt" class="h-36 w-36 rounded-lg border border-vfms-border bg-white object-contain" @onerror="() => _broken = Value" />
+    }
+    else
+    {
+        <div class="flex h-36 w-36 items-center justify-center rounded-lg border border-dashed border-vfms-border px-3 text-center text-xs text-vfms-text-muted">
+            @(string.IsNullOrWhiteSpace(Value) ? "Chưa có ảnh" : "Không tải được ảnh này")
+        </div>
+    }
+
+    @* The file box is hidden; its label is the visible button, and the box itself stays reachable with Tab. *@
+    <label for="@Id" class="@Ui.Button cursor-pointer text-center @(_uploading ? "pointer-events-none opacity-60" : "")">
+        @(_uploading ? "Đang tải lên..." : string.IsNullOrWhiteSpace(Value) ? "Tải ảnh lên" : "Đổi ảnh")@if (Required) { <span class="text-vfms-primary" aria-hidden="true"> *</span> }
+    </label>
+    <InputFile id="@Id" class="sr-only" accept="image/png,image/jpeg,image/webp" OnChange="UploadAsync" disabled="@_uploading"
+               aria-describedby="@($"{Id}-hint")" />
+    <p id="@($"{Id}-hint")" class="text-center text-[11px] text-vfms-text-muted">PNG, JPG hoặc WebP, tối đa 5 MB.</p>
+
+    @if (!string.IsNullOrWhiteSpace(Value))
+    {
+        <div class="flex gap-3 text-xs font-semibold">
+            <a href="@Api.ImageDownloadHref(Value)" target="_blank" rel="noopener noreferrer" download class="text-vfms-primary underline underline-offset-4">Tải ảnh xuống</a>
+            <button type="button" class="text-vfms-text-secondary underline underline-offset-4 hover:text-[#DC2626]" @onclick="RemoveAsync">Xóa ảnh</button>
+        </div>
+    }
+    @if (_error is not null)
+    {
+        <p role="alert" class="text-center text-xs font-semibold text-vfms-error">@_error</p>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Id { get; set; } = "";
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public string Alt { get; set; } = "Ảnh xem trước";
+    [Parameter] public string? Class { get; set; }
+
+    private bool _uploading;
+    private string? _error, _broken;
+
+    private async Task UploadAsync(InputFileChangeEventArgs args)
+    {
+        _error = null;
+        var file = args.File;
+        // Checked here first so a wrong file is refused at once; the API checks the file's own bytes again.
+        if (!UploadedImages.ContentTypes.Contains(file.ContentType))
+        {
+            _error = "Chỉ nhận ảnh PNG, JPG hoặc WebP.";
+            return;
+        }
+        if (file.Size > UploadedImages.MaximumBytes)
+        {
+            _error = "Ảnh tối đa 5 MB.";
+            return;
+        }
+        _uploading = true;
+        try
+        {
+            var uploaded = await Api.UploadImageAsync(file);
+            _broken = null;
+            await ValueChanged.InvokeAsync(uploaded.Url);
+        }
+        catch (AuthApiException error) { _error = error.Message; }
+        catch (IOException) { _error = "Ảnh tối đa 5 MB."; }
+        finally { _uploading = false; }
+    }
+
+    private Task RemoveAsync()
+    {
+        _error = null;
+        return ValueChanged.InvokeAsync(string.Empty);
+    }
+}

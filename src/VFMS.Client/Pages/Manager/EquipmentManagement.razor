@@ -64,6 +64,15 @@
                     <label class="@Ui.Label" for="eq-url">Đường dẫn tài liệu
                         <InputText id="eq-url" class="@Ui.Field" @bind-Value="_form.DescriptionUrl" placeholder="https://..." />
                     </label>
+                    <div class="flex flex-wrap items-start gap-4 sm:col-span-2 lg:col-span-3">
+                        <div>
+                            <p class="@Ui.Label mb-2">Ảnh thiết bị</p>
+                            <ImageUpload Id="eq-image-file" Alt="Ảnh thiết bị" Value="@_form.ImageUrl" ValueChanged="(string? url) => _form.ImageUrl = url" />
+                        </div>
+                        <label class="@Ui.Label min-w-[240px] flex-1" for="eq-image">Hoặc dán link ảnh
+                            <InputText id="eq-image" class="@Ui.Field" @bind-Value="_form.ImageLink" placeholder="https://... (để trống nếu đã tải ảnh lên)" />
+                        </label>
+                    </div>
                     <label class="@Ui.Label sm:col-span-2 lg:col-span-3" for="eq-note">Ghi chú
                         <InputTextArea id="eq-note" class="@Ui.Field" rows="2" @bind-Value="_form.Note" maxlength="1000" />
                     </label>
@@ -162,7 +171,7 @@
                         @foreach (var row in list.Items)
                         {
                             <tr @key="row.Id">
-                                <th scope="row" class="font-semibold">@row.Name<span class="block text-xs font-normal text-vfms-text-muted">@(row.Code ?? "Chưa có mã")</span>@if (row.RecentIssueCount > 0) { <span class="@RecentIssuesBadge(row.RecentIssueCount)" title="Số lần báo sự cố trong @EquipmentIssueSummaryResponse.RecentDays ngày qua">@row.RecentIssueCount sự cố / @EquipmentIssueSummaryResponse.RecentDays ngày</span> }</th>
+                                <th scope="row" class="font-semibold"><span class="flex items-start gap-2">@if (row.ImageUrl is { } photo) { <img src="@Api.ImageSrc(photo)" alt="" class="h-10 w-10 flex-none rounded-md border border-vfms-border bg-white object-contain" loading="lazy" /> }<span>@row.Name<span class="block text-xs font-normal text-vfms-text-muted">@(row.Code ?? "Chưa có mã")</span>@if (row.RecentIssueCount > 0) { <span class="@RecentIssuesBadge(row.RecentIssueCount)" title="Số lần báo sự cố trong @EquipmentIssueSummaryResponse.RecentDays ngày qua">@row.RecentIssueCount sự cố / @EquipmentIssueSummaryResponse.RecentDays ngày</span> }</span></span></th>
                                 <td>@(row.CategoryName ?? "—")</td>
                                 <td>@(string.Join(" · ", new[] { row.Brand, row.Model }.Where(v => !string.IsNullOrWhiteSpace(v))) is { Length: > 0 } brand ? brand : "—")</td>
                                 <td class="whitespace-nowrap">@(row.PurchaseDate?.ToString("dd/MM/yyyy") ?? "—")</td>
@@ -240,7 +249,7 @@
 </div>
 
 @code {
-    private const int PageSize = 20;
+    private const int PageSize = 10;
     private readonly CancellationTokenSource _lifetime = new();
     private EquipmentModel _form = new();
     private readonly CategoryModel _categoryForm = new();
@@ -292,7 +301,7 @@
     }
 
     private EquipmentRequest CreateRequest() => new(_form.Name.Trim(), _form.CategoryId, Blank(_form.Code), Blank(_form.Brand),
-        Blank(_form.Model), _form.PurchaseDate, _form.PurchasePrice, Blank(_form.DescriptionUrl), Blank(_form.Note));
+        Blank(_form.Model), _form.PurchaseDate, _form.PurchasePrice, Blank(_form.DescriptionUrl), Blank(_form.Note), Blank(_form.ImageUrl));
 
     private EquipmentCategoryRequest CreateCategoryRequest() =>
         new(_categoryForm.Name.Trim(), Blank(_categoryForm.Description), Blank(_categoryForm.CodePrefix)?.ToUpperInvariant());
@@ -388,7 +397,8 @@
             PurchaseDate = row.PurchaseDate,
             PurchasePrice = row.PurchasePrice,
             DescriptionUrl = row.DescriptionUrl,
-            Note = row.Note
+            Note = row.Note,
+            ImageUrl = row.ImageUrl
         };
         _statusTarget = null;
         _formOpen = true;
@@ -504,6 +514,13 @@
         public decimal? PurchasePrice { get; set; }
         public string? DescriptionUrl { get; set; }
         public string? Note { get; set; }
+        public string? ImageUrl { get; set; }
+        /// <summary>The link box shows only outside links; an uploaded image is shown by the upload area instead.</summary>
+        public string? ImageLink
+        {
+            get => VFMS.Contracts.Common.UploadedImages.IsUploadedPath(ImageUrl) ? "" : ImageUrl;
+            set => ImageUrl = value;
+        }
     }
 
     private sealed class CategoryModel

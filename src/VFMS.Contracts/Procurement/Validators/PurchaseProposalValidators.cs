@@ -11,14 +11,12 @@ public sealed class PurchaseProposalItemRequestValidator : AbstractValidator<Pur
             .MaximumLength(256);
         RuleFor(x => x.Quantity).InclusiveBetween(1, 10_000)
             .WithMessage("Quantity must be between 1 and 10000.");
-        RuleFor(x => x.EstimatedUnitPrice).InclusiveBetween(1m, 1_000_000_000_000m)
-            .WithMessage("Estimated unit price must be at least 1 VND.");
         RuleFor(x => x.EquipmentId).GreaterThan(0).When(x => x.EquipmentId.HasValue);
         RuleFor(x => x.Reason).MaximumLength(500);
     }
 }
 
-/// <summary>GBR-62: description, at least one item, each with name, quantity and estimated unit price.</summary>
+/// <summary>GBR-62: description and at least one item, each with a name and quantity.</summary>
 public sealed class PurchaseProposalRequestValidator : AbstractValidator<PurchaseProposalRequest>
 {
     public PurchaseProposalRequestValidator()
@@ -46,6 +44,24 @@ public sealed class PurchaseProposalListRequestValidator : AbstractValidator<Pur
         RuleFor(x => x.Search).MaximumLength(100);
         RuleFor(x => x.Page).InclusiveBetween(1, 1_000_000);
         RuleFor(x => x.PageSize).InclusiveBetween(1, 100);
+    }
+}
+
+/// <summary>Every item gets a real unit price of at least 1 VND, once each.</summary>
+public sealed class PurchaseProposalCompleteRequestValidator : AbstractValidator<PurchaseProposalCompleteRequest>
+{
+    public PurchaseProposalCompleteRequestValidator()
+    {
+        RuleFor(x => x.Items)
+            .Must(items => items is { Count: > 0 }).WithMessage("Enter the price paid for every item.")
+            .Must(items => items is null || items.Select(i => i.ItemId).Distinct().Count() == items.Count)
+            .WithMessage("Each item can be priced only once.");
+        RuleForEach(x => x.Items).ChildRules(item =>
+        {
+            item.RuleFor(i => i.ItemId).GreaterThan(0);
+            item.RuleFor(i => i.UnitPrice).InclusiveBetween(1m, 1_000_000_000_000m)
+                .WithMessage("Purchase price must be at least 1 VND.");
+        });
     }
 }
 

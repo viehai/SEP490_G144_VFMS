@@ -26,7 +26,7 @@ public sealed partial class MembershipPlanApiClientTests
         string type, bool signedIn, bool eligible, string? myStatus, string expected)
     {
         var package = new PackageCatalogItemResponse(7, "Gói tập", "Mô tả", 300_000, "ACTIVE", type,
-            30, null, null, null, null, null, null, null, false, null, null, null, null);
+            30, null, null, null, null, null, null, false, null, null, null, null);   // yoga level instead of the removed class-type pair
         var reviews = new PackageReviewsResponse(1, 4, new(1, 5, 1,
             [new(9, "Mai", 4, "Khung giờ thuận tiện.", new(2026, 11, 20), null)]))
             { CanReview = eligible, MyReviewStatus = myStatus };

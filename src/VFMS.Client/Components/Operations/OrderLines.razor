@@ -1,3 +1,4 @@
+@inject OperationsApiClient Api
 @using VFMS.Contracts.Supplements
 
 @* Product lines and total of a supplement order. *@
@@ -8,7 +9,7 @@
             <li @key="item.Id" class="flex items-center gap-3 p-3">
                 @if (item.ImageUrl is { } image && !_brokenImages.Contains(item.Id))
                 {
-                    <img src="@image" alt="" class="h-12 w-12 flex-none rounded-md border border-vfms-border object-cover" loading="lazy" @onerror="() => _brokenImages.Add(item.Id)" />
+                    <img src="@Api.ImageSrc(image)" alt="" class="h-12 w-12 flex-none rounded-md border border-vfms-border object-cover" loading="lazy" @onerror="() => _brokenImages.Add(item.Id)" />
                 }
                 else
                 {

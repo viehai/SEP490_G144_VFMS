@@ -12,7 +12,7 @@
 
 <div class="workspace-page space-y-6">
     <PageHeader Overline="VFMS / PROCUREMENT" Title="Duyệt đề xuất mua sắm"
-                Description="Xem đề xuất của nhân viên, duyệt, từ chối hoặc yêu cầu sửa; đánh dấu hoàn tất khi đã mua." />
+                Description="Xem đề xuất của nhân viên, duyệt, từ chối hoặc yêu cầu sửa; khi đã mua xong, nhập giá thực tế để hoàn tất." />
 
     <Alerts Notice="@_notice" Error="@_error" />
 
@@ -47,9 +47,30 @@
             }
             else if (selected.Status == "Approved")
             {
-                <div class="mt-5 border-t border-vfms-border pt-5">
-                    <button type="button" class="@Ui.PrimaryButton" disabled="@_working" @onclick='() => ActAsync(selected, "complete")'>Đánh dấu đã mua xong</button>
-                </div>
+                @* After buying, the Manager records what each item really cost; that completes the proposal. *@
+                <EditForm Model="_prices" OnSubmit="() => CompleteAsync(selected)" class="mt-5 space-y-3 border-t border-vfms-border pt-5" novalidate>
+                    <fieldset disabled="@_working" class="space-y-3">
+                        <legend class="text-sm font-bold text-vfms-text">Đã mua xong: nhập giá thực tế</legend>
+                        <div class="overflow-x-auto rounded-lg border border-vfms-border">
+                            <table class="workspace-table min-w-[560px]">
+                                <thead><tr><th scope="col">Hạng mục</th><th scope="col" class="text-right">SL</th><th scope="col">Giá mua / đơn vị (₫) <span class="text-vfms-primary" aria-hidden="true">*</span></th><th scope="col" class="text-right">Thành tiền</th></tr></thead>
+                                <tbody>
+                                    @foreach (var line in _prices.Lines)
+                                    {
+                                        <tr @key="line.ItemId">
+                                            <th scope="row" class="font-semibold">@line.Name</th>
+                                            <td class="text-right">@line.Quantity</td>
+                                            <td><InputVnd id="@($"price-{line.ItemId}")" aria-required="true" aria-label="@($"Giá mua {line.Name}")" class="@Ui.Field" @bind-Value="line.UnitPrice" ParsingErrorMessage="Nhập giá mua hợp lệ." /></td>
+                                            <td class="text-right whitespace-nowrap">@(line.UnitPrice >= 1 ? OperationsText.Money(line.UnitPrice * line.Quantity) : "—")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                        <p class="text-right text-sm">Tổng chi phí: <span class="text-lg font-extrabold text-vfms-primary">@(_prices.Lines.All(l => l.UnitPrice >= 1) ? OperationsText.Money(_prices.Lines.Sum(l => l.UnitPrice * l.Quantity)) : "—")</span></p>
+                        <button type="submit" class="@Ui.PrimaryButton">Xác nhận đã mua</button>
+                    </fieldset>
+                </EditForm>
             }
         </section>
     }
@@ -80,7 +101,7 @@
             <div class="overflow-x-auto">
                 <table class="workspace-table min-w-[820px]">
                     <thead>
-                        <tr><th scope="col">Mã</th><th scope="col">Người đề xuất</th><th scope="col">Mô tả</th><th scope="col" class="text-right">Ngân sách</th><th scope="col">Trạng thái</th><th scope="col">Chi tiết</th></tr>
+                        <tr><th scope="col">Mã</th><th scope="col">Người đề xuất</th><th scope="col">Mô tả</th><th scope="col" class="text-right">Chi phí</th><th scope="col">Trạng thái</th><th scope="col">Chi tiết</th></tr>
                     </thead>
                     <tbody>
                         @foreach (var row in list.Items)
@@ -89,7 +110,7 @@
                                 <th scope="row" class="whitespace-nowrap font-semibold">@row.ProposalNumber<span class="block text-xs font-normal text-vfms-text-muted">@(row.SubmittedAt is { } sent ? OperationsText.Local(sent) : "—")</span></th>
                                 <td>@(row.ProposedByName ?? "—")</td>
                                 <td class="max-w-72 truncate">@(row.Description ?? "—")</td>
-                                <td class="text-right whitespace-nowrap">@OperationsText.Money(row.TotalBudget)</td>
+                                <td class="text-right whitespace-nowrap">@(row.TotalCost is { } cost ? OperationsText.Money(cost) : "—")</td>
                                 <td><span class="@OperationsText.Badge(row.Status)">@OperationsText.Label(row.Status)</span></td>
                                 <td><button type="button" class="@Ui.Button" disabled="@Busy" @onclick="() => Select(row)">@(row.Status is "Submitted" or "Approved" ? "Xử lý" : "Xem")</button></td>
                             </tr>
@@ -107,11 +128,12 @@
 </div>
 
 @code {
-    private const int PageSize = 20;
+    private const int PageSize = 10;
     private readonly CancellationTokenSource _lifetime = new();
     private PagedResponse<PurchaseProposalResponse>? _page;
     private VFMS.Contracts.Operations.StatusCountsResponse? _counts;
     private PurchaseProposalResponse? _selected;
+    private PriceForm _prices = new();
     private string _search = "", _status = "Submitted", _note = "";
     private string? _notice, _error;
     private bool _loading, _working;
@@ -145,6 +167,44 @@
         _selected = proposal;
         _note = "";
         _notice = _error = null;
+        _prices = new() { Lines = proposal.Items.Select(i => new PriceLine { ItemId = i.Id, Name = i.ItemName, Quantity = i.Quantity }).ToList() };
+    }
+
+    private async Task CompleteAsync(PurchaseProposalResponse proposal)
+    {
+        if (Busy) return;
+        if (_prices.Lines.FirstOrDefault(l => l.UnitPrice < 1) is { } missing)
+        {
+            _error = $"Vui lòng nhập giá mua cho \"{missing.Name}\" (tối thiểu 1 ₫).";
+            return;
+        }
+        _working = true;
+        _notice = _error = null;
+        try
+        {
+            var saved = await Api.CompleteProposalAsync(proposal.Id,
+                new PurchaseProposalCompleteRequest(_prices.Lines.Select(l => new PurchaseProposalItemPriceRequest(l.ItemId, l.UnitPrice)).ToList()),
+                _lifetime.Token);
+            _notice = $"{saved.ProposalNumber} đã hoàn tất, tổng chi phí {OperationsText.Money(saved.TotalCost ?? 0m)}.";
+            _selected = null;
+            await LoadAsync(_page?.Page ?? 1);
+        }
+        catch (AuthApiException error) { _error = error.Message; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        finally { _working = false; }
+    }
+
+    private sealed class PriceForm
+    {
+        public List<PriceLine> Lines { get; set; } = [];
+    }
+
+    private sealed class PriceLine
+    {
+        public int ItemId { get; set; }
+        public string Name { get; set; } = "";
+        public int Quantity { get; set; }
+        public decimal UnitPrice { get; set; }
     }
 
     private async Task ActAsync(PurchaseProposalResponse proposal, string action)
@@ -165,7 +225,7 @@
                 "approve" => $"Đã duyệt {saved.ProposalNumber}.",
                 "reject" => $"Đã từ chối {saved.ProposalNumber}.",
                 "request-revision" => $"Đã trả {saved.ProposalNumber} về nhân viên để sửa.",
-                _ => $"{saved.ProposalNumber} đã hoàn tất."
+                _ => $"{saved.ProposalNumber} đã cập nhật."
             };
             _selected = saved.Status == "Approved" ? saved : null;
             _note = "";

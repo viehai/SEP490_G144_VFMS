@@ -3,6 +3,7 @@ using VFMS.Application.Interfaces;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.Memberships;
 using VFMS.Contracts.Packages;
+using VFMS.Contracts.Yoga.Validators;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
 using MembershipDurationUnit = VFMS.Contracts.Memberships.MembershipDurationUnit;
@@ -58,6 +59,8 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
         var service = new PackageComponent { ComponentType = ParseServiceType(request.ServiceType) ?? ComponentType.GYM };
         if (await InvalidFreezeRangeAsync(service.ComponentType, request, cancellationToken))
             return InvalidFreezeRange();
+        if (service.ComponentType == ComponentType.YOGA && !YogaRules.IsDifficulty(request.YogaDifficultyLevel))
+            return YogaLevelRequired();
         var plan = new Package { Components = [service] };
         Apply(plan, service, request);
 
@@ -74,6 +77,16 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
             var gym = PrimaryComponent(plan);   // the type never changes on update
             if (await InvalidFreezeRangeAsync(gym.ComponentType, request, cancellationToken))
                 return InvalidFreezeRange();
+            if (gym.ComponentType == ComponentType.YOGA)
+            {
+                // Buyers keep the level they bought until their membership ends, so a bought plan's level is fixed.
+                var used = await repository.HasUsageAsync(id, cancellationToken);
+                if (used && CanonicalLevel(request.YogaDifficultyLevel) != gym.YogaDifficultyLevel)
+                    return Result<MembershipPlanResponse>.Failure(
+                        "Gói đã có người mua nên không đổi được cấp độ. Hãy tạo gói mới với cấp độ khác.", "YOGA_LEVEL_LOCKED", 409);
+                if (!used && !YogaRules.IsDifficulty(request.YogaDifficultyLevel))
+                    return YogaLevelRequired();
+            }
             var oldStatus = plan.PackageStatus;
             var before = Snapshot(plan, gym);
             Apply(plan, gym, request);
@@ -185,9 +198,11 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
             gym.DurationDays = request.DurationInDays;
             gym.DurationMonths = null;
         }
-
         if (request.DurationValue.HasValue || request.TargetAudience is not null)
             plan.TargetAudience = Clean(request.TargetAudience);
+
+        if (gym.ComponentType == ComponentType.YOGA)
+            gym.YogaDifficultyLevel = CanonicalLevel(request.YogaDifficultyLevel);
 
         if (gym.ComponentType == ComponentType.YOGA && gym.DurationDays == 7)
         {
@@ -207,6 +222,12 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
         }
     }
 
+    private static string? CanonicalLevel(string? level) =>
+        YogaRules.DifficultyLevels.FirstOrDefault(code => code.Equals(level?.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    private static Result<MembershipPlanResponse> YogaLevelRequired() => Result<MembershipPlanResponse>.Failure(
+        "Hãy chọn cấp độ yoga: Cơ bản, Trung bình hoặc Nâng cao.", "YOGA_LEVEL_REQUIRED", 400);
+
     /// <summary>The plan's main part: its GYM component, or for a yoga plan its YOGA component.</summary>
     private static PackageComponent PrimaryComponent(Package plan)
     {
@@ -217,7 +238,7 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
 
     private static MembershipPlanReadModel ReadCreatedPlan(Package plan, PackageComponent service) =>
         new(plan.Id, plan.Name, plan.Description, service.DurationDays, service.DurationMonths, plan.Price,
-            plan.PackageStatus, SubscriberCount: 0, service.ComponentType)
+            plan.PackageStatus, SubscriberCount: 0, service.ComponentType, service.YogaDifficultyLevel)
         {
             MaxFreezeCount = service.MaxFreezeCount,
             MinFreezeDaysPerRequest = service.MinFreezeDaysPerRequest,
@@ -229,7 +250,7 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
 
     private static MembershipPlanResponse ToResponse(MembershipPlanReadModel plan) =>
         new(plan.Id, plan.Name, plan.Description, DisplayDays(plan.DurationDays, plan.DurationMonths), plan.Price,
-            FormatStatus(plan.Status), plan.SubscriberCount, CalendarMonths(plan), plan.ServiceType.ToString())
+            FormatStatus(plan.Status), plan.SubscriberCount, CalendarMonths(plan), plan.ServiceType.ToString(), plan.YogaDifficultyLevel)
         {
             MaxFreezeCount = plan.MaxFreezeCount,
             MinFreezeDaysPerRequest = plan.MinFreezeDaysPerRequest,
@@ -241,7 +262,7 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
 
     private static MembershipPlanCatalogItemResponse ToCatalogResponse(MembershipPlanReadModel plan) =>
         new(plan.Id, plan.Name, plan.Description, DisplayDays(plan.DurationDays, plan.DurationMonths), plan.Price,
-            FormatStatus(plan.Status), CalendarMonths(plan), plan.ServiceType.ToString())
+            FormatStatus(plan.Status), CalendarMonths(plan), plan.ServiceType.ToString(), plan.YogaDifficultyLevel)
         {
             IsSingleService = plan.IsSingleService,
             TargetAudience = plan.TargetAudience
@@ -264,6 +285,7 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
         plan.TargetAudience,
         DurationInDays = gym.DurationDays,
         DurationInMonths = gym.DurationMonths,
+        gym.YogaDifficultyLevel,
         plan.FreezeAllowanceOverrideDays,
         plan.FreezeAllowanceOverrideUnit,
         gym.MaxFreezeCount,
@@ -380,8 +402,7 @@ public sealed class MembershipPlanService(IMembershipPlanRepository repository, 
             m.DurationDays,
             m.DurationMonths,
             m.SessionCount,
-            m.YogaClassTypeId,
-            m.YogaClassTypeName,
+            m.YogaDifficultyLevel,
             m.ApplicableTrainerLevel,
             m.PTFreezeMinimumDays,
             m.PTFreezeMaxTotalDays,

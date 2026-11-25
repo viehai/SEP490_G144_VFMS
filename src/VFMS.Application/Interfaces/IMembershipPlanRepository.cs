@@ -14,7 +14,8 @@ public sealed record MembershipPlanReadModel(
     decimal Price,
     PackageStatus Status,
     int SubscriberCount,
-    ComponentType ServiceType = ComponentType.GYM)
+    ComponentType ServiceType = ComponentType.GYM,
+    string? YogaDifficultyLevel = null)
 {
     public bool IsSingleService { get; init; } = true;
     public string? TargetAudience { get; init; }
@@ -38,8 +39,7 @@ public sealed record PackageCatalogReadModel(
     int? DurationDays,
     int? DurationMonths,
     int? SessionCount,
-    int? YogaClassTypeId,
-    string? YogaClassTypeName,
+    string? YogaDifficultyLevel,
     string? ApplicableTrainerLevel,
     int? PTFreezeMinimumDays,
     int? PTFreezeMaxTotalDays,

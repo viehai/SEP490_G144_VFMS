@@ -44,6 +44,8 @@ public interface IMembershipPurchaseRepository
     Task<FreezePolicy?> GetPurchaseFreezePolicyAsync(CancellationToken ct);
     /// <summary>Whether any yoga class can be booked now (YogaClassRules.Bookable): yoga-only plans are sold only then.</summary>
     Task<bool> AnyBookableYogaClassAsync(DateTime nowUtc, CancellationToken ct);
+    /// <summary>Whether a class a plan of this level covers can be booked now. The default ignores the level so existing test fakes still compile.</summary>
+    Task<bool> AnyBookableYogaClassAsync(DateTime nowUtc, string maxLevel, CancellationToken ct) => AnyBookableYogaClassAsync(nowUtc, ct);
     Task<List<ApplicationUser>> LoadCheckoutUsersAsync(string purchaserId, string[] emails, CancellationToken ct);
     Task<List<ApplicationUser>> LockUsersAsync(string[] userIds, CancellationToken ct);
     Task<ApplicationRole?> GetMemberRoleAsync(CancellationToken ct);

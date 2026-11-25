@@ -1,3 +1,4 @@
+using VFMS.Contracts.Yoga.Validators;
 using System.Data;
 using Microsoft.EntityFrameworkCore;
 using VFMS.Application.Interfaces;
@@ -28,6 +29,13 @@ public sealed partial class MembershipPurchaseRepository(VfmsDbContext context) 
 
     public Task<bool> AnyBookableYogaClassAsync(DateTime nowUtc, CancellationToken ct) =>
         context.YogaClasses.AnyAsync(YogaClassRules.Bookable(nowUtc), ct);
+
+    public Task<bool> AnyBookableYogaClassAsync(DateTime nowUtc, string maxLevel, CancellationToken ct)
+    {
+        var covered = YogaRules.DifficultyLevels.Take(YogaRules.LevelRank(maxLevel)).ToArray();
+        return context.YogaClasses.Where(YogaClassRules.Bookable(nowUtc))
+            .AnyAsync(yogaClass => covered.Contains(yogaClass.DifficultyLevel), ct);
+    }
 
     public Task<List<ApplicationUser>> LoadCheckoutUsersAsync(string purchaserId, string[] emails, CancellationToken ct)
     {

@@ -175,7 +175,7 @@
                 _survey.Weight, _survey.Height, _survey.Goal, _survey.Level, _survey.Frequency,
                 string.IsNullOrEmpty(_survey.Gender) ? null : _survey.Gender, _survey.Dob, _survey.Health));
             _surveyComplete = saved.IsComplete;
-            Show("Fitness survey updated successfully.", false);
+            Show("Cập nhật khảo sát thể lực thành công.", false);
             // With consent ticked, saving the survey also builds a new plan from it (the API archives the old one).
             if (_consent && _surveyComplete)
                 await GeneratePlan();
@@ -203,7 +203,7 @@
             new UpdatePlanItemRequest(_swapExerciseId, item.Sets, item.Reps, item.DurationMinutes ?? (item.Reps is null ? 10 : null), item.Note));
         _swapItemId = null;
         _plan = await Api.GetAsync<WorkoutPlanResponse>($"api/workout/plans/{_plan.Id}");
-        Show("Workout plan updated successfully.", false);
+        Show("Cập nhật giáo án thành công.", false);
     });
 
     private async Task Busy(Func<Task> work)

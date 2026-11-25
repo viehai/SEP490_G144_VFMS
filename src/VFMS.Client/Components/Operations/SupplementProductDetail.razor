@@ -1,3 +1,4 @@
+@inject OperationsApiClient Api
 @using VFMS.Contracts.Supplements
 
 @* UC-77: full product details in a side panel, opened from a store card. Esc, × or the backdrop closes it. *@
@@ -13,7 +14,7 @@
         <div class="aspect-square bg-white">
             @if (Product.ImageUrl is { } image && !_imageBroken)
             {
-                <img src="@image" alt="@Product.Name" class="h-full w-full object-contain p-6" @onerror="() => _imageBroken = true" />
+                <img src="@Api.ImageSrc(image)" alt="@Product.Name" class="h-full w-full object-contain p-6" @onerror="() => _imageBroken = true" />
             }
             else
             {

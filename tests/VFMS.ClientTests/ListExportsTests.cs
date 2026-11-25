@@ -52,7 +52,8 @@ public sealed class ListExportsTests
 
         var cells = Lines(ListExports.AuditLogs([log], type => type == "Update" ? "Cập nhật" : type))[1];
 
-        Assert.Contains(",Admin,u1,Cập nhật,Gym,1,\"Name=\"\"Old\"\"\",'=cmd(),127.0.0.1", cells);
+        Assert.EndsWith(",Admin,u1,Cập nhật,Gym,1,\"Name=\"\"Old\"\"\",'=cmd()", cells);
+        Assert.DoesNotContain("127.0.0.1", cells);
     }
 
     [Fact]

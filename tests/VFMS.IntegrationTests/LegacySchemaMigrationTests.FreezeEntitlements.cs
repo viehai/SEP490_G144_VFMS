@@ -48,10 +48,21 @@ public sealed partial class LegacySchemaMigrationTests
         var plan = await context.Packages.AsNoTracking().SingleAsync();
         Assert.Equal(10, plan.FreezeAllowanceOverrideDays);
         Assert.Equal(MembershipDurationUnit.Day, plan.FreezeAllowanceOverrideUnit);
-        var component = await context.PackageComponents.AsNoTracking().SingleAsync();
+        var component = await context.PackageComponents
+            .Select(row => new { row.DurationDays, row.DurationMonths }).SingleAsync();
         Assert.Equal(90, component.DurationDays);
         Assert.Equal(3, component.DurationMonths);
-        var memberships = await context.MemberMemberships.AsNoTracking().OrderBy(row => row.Id).ToListAsync();
+        var memberships = await context.MemberMemberships.OrderBy(row => row.Id)
+            .Select(row => new
+            {
+                row.GrantedFreezeAllowanceDays,
+                row.EndDate,
+                row.TotalFrozenDays,
+                row.FreezeCount,
+                row.MembershipStatus,
+                row.StartDate
+            })
+            .ToListAsync();
         Assert.All(memberships, row => Assert.Equal(20, row.GrantedFreezeAllowanceDays));
         Assert.Equal(original.MembershipEnd, memberships[0].EndDate);
         Assert.Equal(7, memberships[0].TotalFrozenDays);

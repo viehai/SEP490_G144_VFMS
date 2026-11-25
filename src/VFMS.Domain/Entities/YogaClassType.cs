@@ -13,7 +13,5 @@ public class YogaClassType : BaseEntity
 
     // ── Navigation Properties ──────────────────────────────────
     public ICollection<YogaClass> YogaClasses { get; set; } = [];
-    public ICollection<PackageComponent> PackageComponents { get; set; } = [];
-    public ICollection<YogaWaitlist> YogaWaitlists { get; set; } = [];
 }
 

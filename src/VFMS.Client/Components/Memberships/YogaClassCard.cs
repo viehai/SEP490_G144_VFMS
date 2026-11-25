@@ -8,7 +8,7 @@ public sealed record YogaClassSlot(TimeOnly Start, TimeOnly End, IReadOnlyList<s
 /// <summary>A yoga class as the home page card shows it, built from its published sessions.</summary>
 public sealed record YogaClassCard(
     int ClassId, string Name, string TypeName, string Difficulty, string Studio, string Instructor,
-    IReadOnlyList<YogaClassSlot> Slots, int MaxParticipants, int FreeSeats, string ClassStatus, DateTime? RegistrationDeadline)
+    IReadOnlyList<YogaClassSlot> Slots, int MaxParticipants, int FreeSeats, string ClassStatus, DateTime? RegistrationDeadline, DateOnly FirstDate)
 {
     /// <summary>Groups sessions by class, earliest class first. Seats are counted per class, so they come from one session.</summary>
     public static IReadOnlyList<YogaClassCard> FromSessions(IEnumerable<YogaSessionResponse> sessions) =>
@@ -26,9 +26,14 @@ public sealed record YogaClassCard(
                 return (Start: (first.ScheduledDate, first.StartTime), Card: new YogaClassCard(
                     first.YogaClassId, first.ClassName, first.TypeName, first.DifficultyLevel,
                     first.FloorNumber > 0 ? $"{first.StudioName} (Tầng {first.FloorNumber})" : first.StudioName,
-                    first.InstructorName, slots, first.MaxParticipants, first.FreeSeats, first.ClassStatus, first.RegistrationDeadline));
+                    first.InstructorName, slots, first.MaxParticipants, first.FreeSeats, first.ClassStatus, first.RegistrationDeadline, first.ScheduledDate));
             })
             .OrderBy(x => x.Start).Select(x => x.Card).ToArray();
+
+    /// <summary>The timetable opened on the week of this class's first session, with the class highlighted.</summary>
+    public string ScheduleHref => ScheduleLink(ClassId, FirstDate);
+
+    public static string ScheduleLink(int classId, DateOnly date) => $"/yoga/schedule?date={date:yyyy-MM-dd}&classId={classId}";
 
     /// <summary>
     /// The status pill: registration closed; full (new bookings go on the waitlist);
@@ -61,12 +66,28 @@ public sealed record YogaClassCard(
 
     public int Minutes => Slots.Count == 0 ? 0 : (int)(Slots[0].End - Slots[0].Start).TotalMinutes;
 
-    public string DifficultyName => Difficulty switch
+    public string DifficultyName => LevelName(Difficulty);
+
+    public static string LevelName(string level) => level switch
     {
         "Beginner" => "Cơ bản",
         "Intermediate" => "Trung bình",
         "Advanced" => "Nâng cao",
-        _ => Difficulty,
+        _ => level,
+    };
+
+    /// <summary>Vietnamese label for a yoga class, session, booking or studio status code.</summary>
+    public static string StatusName(string status) => status switch
+    {
+        "Draft" => "Nháp", "Open" => "Đang mở", "Full" => "Hết chỗ", "Cancelled" => "Đã hủy", "Completed" => "Đã kết thúc",
+        "Scheduled" => "Theo lịch", "Confirmed" => "Đã đặt", "Waitlisted" => "Đang chờ", "Active" => "Hoạt động", "Inactive" => "Ngừng",
+        _ => status,
+    };
+
+    public static string DayName(DateOnly d) => d.DayOfWeek switch
+    {
+        DayOfWeek.Monday => "Thứ 2", DayOfWeek.Tuesday => "Thứ 3", DayOfWeek.Wednesday => "Thứ 4", DayOfWeek.Thursday => "Thứ 5",
+        DayOfWeek.Friday => "Thứ 6", DayOfWeek.Saturday => "Thứ 7", _ => "Chủ nhật"
     };
 
     private static string Day(DayOfWeek day) => day == DayOfWeek.Sunday ? "CN" : $"T{(int)day + 1}";
