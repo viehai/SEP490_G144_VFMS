@@ -219,6 +219,26 @@ public sealed class PersonalTrainingController(IPersonalTrainingService service)
     public Task<IActionResult> ChangeTrainer(int id, PTTrainerChangeRequest request, CancellationToken ct) =>
         AsUser(actor => service.ChangeTrainer(actor, id, request, ct));
 
+    [HttpPost("contracts/{id:int}/freeze-slot-options")]
+    [Authorize(Roles = "Customer,Member")]
+    public Task<IActionResult> FreezeSlotOptions(int id, PTFreezeSlotOptionsRequest request, CancellationToken ct) =>
+        AsUser(actor => service.FreezeSlotOptions(actor, id, request, ct));
+
+    [HttpGet("freezes/{id:int}/withdraw-preview")]
+    [Authorize(Roles = "Customer,Member")]
+    public Task<IActionResult> PreviewWithdraw(int id, CancellationToken ct) =>
+        AsUser(actor => service.PreviewWithdraw(actor, id, ct));
+
+    [HttpGet("manager/freezes/{id:int}/change-preview")]
+    [Authorize(Roles = "Manager")]
+    public Task<IActionResult> PreviewFreezeChange(int id, CancellationToken ct) =>
+        AsUser(actor => service.PreviewFreezeChange(actor, id, ct));
+
+    [HttpPost("manager/freezes/{id:int}/change-decision")]
+    [Authorize(Roles = "Manager")]
+    public Task<IActionResult> DecideFreezeChange(int id, PTFreezeDecision request, CancellationToken ct) =>
+        AsUser(actor => service.DecideFreezeChange(actor, id, request, ct));
+
     [HttpPost("freezes/{id:int}/early-resume/preview")]
     [Authorize(Roles = "Customer,Member")]
     public Task<IActionResult> PreviewEarlyResume(int id, PTEarlyResumeRequest request, CancellationToken ct) =>

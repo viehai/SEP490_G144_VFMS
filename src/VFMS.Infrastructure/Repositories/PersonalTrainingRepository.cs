@@ -303,7 +303,8 @@ public sealed class PersonalTrainingRepository(VfmsDbContext db) : AuditedReposi
         int page, int pageSize, CancellationToken cancellationToken = default)
     {
         var query = Context.PTFreezes.AsNoTracking().Where(f => gymId != null
-            ? f.PTPurchase.PTUser.GymId == gymId && (f.RequestStatus != PTFreezeRequestStatus.Pending) == processed
+            ? f.PTPurchase.PTUser.GymId == gymId &&
+                (f.RequestStatus != PTFreezeRequestStatus.Pending && f.ChangeRequestStatus != PTFreezeChangeStatuses.Pending) == processed
             : f.PTPurchase.MemberUserId == memberId && f.PTPurchaseId == contractId);
         var rows = await PageAsync(query.OrderByDescending(f => f.Id).Select(f => new
         {

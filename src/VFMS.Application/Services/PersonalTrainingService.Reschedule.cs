@@ -22,39 +22,56 @@ public sealed partial class PersonalTrainingService
             session.SessionStatus == PTSessionStatus.PendingFreeze || Utc(session.SessionDate, session.StartTime) <= now)
             return Conflict<IReadOnlyList<PTRescheduleSlot>>("Chỉ có thể xem lịch đổi ca cho buổi tập sắp tới.");
 
-        var start = from ?? Today;
-        if (start < Today || start.DayNumber > DateOnly.MaxValue.DayNumber - 13)
-            return Invalid<IReadOnlyList<PTRescheduleSlot>>("Ngày xem lịch không hợp lệ.");
+        // 'from' is kept for API compatibility; the window is always the session's week and the next one.
+        var (start, through) = RescheduleWindow(session);
         var duration = session.EndTime - session.StartTime;
-        // UC 4.7: the Member picks the trainer's published slots over two weeks; the PT may use any whole hour
-        // of the chosen day within gym hours, and sees the Member's busy times too.
-        var through = asTrainer ? start : start.AddDays(13);
-        var candidates = asTrainer
-            ? WholeHours(contract.PTUser.Gym, start, duration)
-            : PersonalTrainingRules.Occurrences(start, through,
-                    await Templates(contract.PTUserId, ct), int.MaxValue)
-                .Select(x => new PTCalendarSlot(x.Slot.Id, x.Date, x.Slot.StartTime, x.Slot.StartTime.Add(duration), "Available"))
-                .Where(s => s.EndTime > s.StartTime).ToArray();
+        // UC 4.7: the Member and the PT both pick the trainer's published slots; the PT also sees the Member's busy times.
+        var candidates = PersonalTrainingRules.Occurrences(start, through,
+                await Templates(contract.PTUserId, ct), int.MaxValue)
+            .Select(x => new PTCalendarSlot(x.Slot.Id, x.Date, x.Slot.StartTime, x.Slot.StartTime.Add(duration), "Available"))
+            .Where(s => s.EndTime > s.StartTime).ToArray();
         var conflicts = await ConflictingSlots(contract.PTUserId, contract.MemberUserId, candidates, now, ct,
             ignoreSession: id);
-        var bookings = (await repo.GetOccupyingSessionsAsync(now, start, through, contract.PTUserId,
-                asTrainer ? contract.MemberUserId : null, cancellationToken: ct))
-            .Select(s => new PTRescheduleSlot(s.SessionDate, s.StartTime, s.EndTime, "Busy")).ToList();
-        bookings.AddRange((await repo.GetYogaSessionsAsync(contract.PTUserId, asTrainer ? contract.MemberUserId : null,
-                start, through, ct))
-            .Select(s => new PTRescheduleSlot(s.ScheduledDate, s.StartTime, s.EndTime, "Busy")));
+        var occupying = await repo.GetOccupyingSessionsAsync(now, start, through, contract.PTUserId,
+            asTrainer ? contract.MemberUserId : null, cancellationToken: ct);
+        var yoga = await repo.GetYogaSessionsAsync(contract.PTUserId, asTrainer ? contract.MemberUserId : null,
+            start, through, ct);
+        // The PT may see the names of the Members they teach; a Member never learns who else the PT teaches.
+        var names = new Dictionary<string, string>();
+        if (asTrainer)
+            foreach (var memberId in occupying.Where(s => s.PTUserId == contract.PTUserId && s.MemberUserId != contract.MemberUserId)
+                .Select(s => s.MemberUserId).Distinct())
+                names[memberId] = await repo.GetUserNameAsync(memberId, ct) ?? "hội viên";
+        string BusyReason(PTSession s) =>
+            s.Id == id ? "Lịch hiện tại của buổi này" :
+            s.PTUserId != contract.PTUserId ? (asTrainer ? "Hội viên tập với PT khác" : "Bạn tập với PT khác") :
+            s.MemberUserId == contract.MemberUserId ? (asTrainer ? "Hội viên đã có buổi tập khác" : "Bạn đã có buổi tập khác") :
+            asTrainer ? $"Bạn dạy {names[s.MemberUserId]}" : "PT đã có lịch dạy";
+        var bookings = occupying.Select(s => new PTRescheduleSlot(s.SessionDate, s.StartTime, s.EndTime, "Busy", BusyReason(s))).ToList();
+        bookings.AddRange(yoga.Select(s => new PTRescheduleSlot(s.ScheduledDate, s.StartTime, s.EndTime, "Busy",
+            asTrainer ? "Lớp Yoga" : "PT dạy lớp Yoga")));
 
         var slots = candidates.Select(slot =>
         {
             var busy = conflicts.Contains(slot) || IsOriginalTime(session, slot.Date, slot.StartTime);
-            var status = busy ? "Busy" :
-                RescheduleTimeEligible(contract, slot.Date, slot.StartTime, slot.EndTime, now)
-                    ? "Available"
-                    : "Unavailable";
-            return new PTRescheduleSlot(slot.Date, slot.StartTime, slot.EndTime, status);
+            if (busy)
+                return new PTRescheduleSlot(slot.Date, slot.StartTime, slot.EndTime, "Busy", bookings.FirstOrDefault(b =>
+                    b.Date == slot.Date && PersonalTrainingRules.Overlaps(b.StartTime, b.EndTime, slot.StartTime, slot.EndTime))?.Reason ?? "Bận");
+            var blocked = RescheduleBlockReason(contract, slot.Date, slot.StartTime, slot.EndTime, now);
+            return new PTRescheduleSlot(slot.Date, slot.StartTime, slot.EndTime, blocked is null ? "Available" : "Unavailable", blocked);
         }).Union(bookings).OrderBy(s => s.Date).ThenBy(s => s.StartTime).ThenBy(s => s.EndTime).ToArray();
         return Result<IReadOnlyList<PTRescheduleSlot>>.Success(slots);
     }
+
+    /// <summary>A session can move only within its own week (Monday to Sunday) or the week after.</summary>
+    private static (DateOnly Start, DateOnly End) RescheduleWindow(PTSession session)
+    {
+        var monday = session.SessionDate.AddDays(-(((int)session.SessionDate.DayOfWeek + 6) % 7));
+        return (monday, monday.AddDays(13));
+    }
+
+    private static bool InRescheduleWindow(PTSession session, DateOnly date) =>
+        RescheduleWindow(session) is var (start, end) && date >= start && date <= end;
 
     public Task<Result<PTSessionResponse>> RequestReschedule(
         string actor, int id, PTRescheduleRequest request, CancellationToken ct) => Write(async () =>
@@ -75,6 +92,8 @@ public sealed partial class PersonalTrainingService
             return late;
         if (IsOriginalTime(session, request.Date, request.StartTime))
             return Invalid<PTSessionResponse>("Chọn lịch khác với lịch hiện tại.");
+        if (!InRescheduleWindow(session, request.Date))
+            return Invalid<PTSessionResponse>("Chỉ được đổi sang ca trong tuần của buổi tập hoặc tuần kế tiếp.");
 
         var end = request.StartTime.Add(session.EndTime - session.StartTime);
         if (await FindRescheduleTemplate(contract, session, request.Date, request.StartTime, end, now, ct) is null)
@@ -160,24 +179,21 @@ public sealed partial class PersonalTrainingService
         Notify(session.MemberUserId, "Yêu cầu đổi lịch PT", message, nameof(PTSession), session.Id);
     }
 
-    private static PTCalendarSlot[] WholeHours(Gym gym, DateOnly date, TimeSpan duration)
-    {
-        if (gym.OpenTime is not { } open || gym.CloseTime is not { } close)
-            return [];
-        var first = open.Minute == 0 && open.Second == 0 ? open.Hour : open.Hour + 1;
-        return Enumerable.Range(first, Math.Max(0, 24 - first)).Select(hour => new TimeOnly(hour, 0))
-            .Where(start => start.ToTimeSpan() + duration <= close.ToTimeSpan())
-            .Select(start => new PTCalendarSlot(0, date, start, start.Add(duration), "Available")).ToArray();
-    }
-
     private static bool IsOriginalTime(PTSession session, DateOnly date, TimeOnly start) =>
         date == session.SessionDate && start == session.StartTime;
 
     private bool RescheduleTimeEligible(PTPurchase contract, DateOnly date, TimeOnly start, TimeOnly end, DateTime now) =>
-        date >= Today && date >= contract.StartDate && date <= contract.EndDate &&
-        Utc(date, start) > now && InHours(contract.PTUser.Gym, start, end) &&
-        !contract.PTFreezes.Any(f => (Approved(f) || f.RequestStatus == PTFreezeRequestStatus.Pending) &&
-            f.RequestedStartDate <= date && date < (f.ActualEndDate ?? f.RequestedEndDate));
+        RescheduleBlockReason(contract, date, start, end, now) is null;
+
+    /// <summary>Why a published slot cannot take the moved session, or null when it can.</summary>
+    private string? RescheduleBlockReason(PTPurchase contract, DateOnly date, TimeOnly start, TimeOnly end, DateTime now) =>
+        date < contract.StartDate || date > contract.EndDate
+            ? $"Ngoài thời hạn hợp đồng ({contract.StartDate:dd/MM}–{contract.EndDate:dd/MM})"
+        : date < Today || Utc(date, start) <= now ? "Đã qua giờ"
+        : !InHours(contract.PTUser.Gym, start, end) ? "Ngoài giờ mở cửa"
+        : contract.PTFreezes.Any(f => (Approved(f) || f.RequestStatus == PTFreezeRequestStatus.Pending) &&
+            f.RequestedStartDate <= date && date < (f.ActualEndDate ?? f.RequestedEndDate)) ? "Trong thời gian bảo lưu"
+        : null;
 
     private async Task<int?> FindRescheduleTemplate(PTPurchase contract, PTSession session, DateOnly date,
         TimeOnly start, TimeOnly end, DateTime now, CancellationToken ct)

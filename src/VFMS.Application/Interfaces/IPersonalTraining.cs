@@ -140,7 +140,12 @@ public interface IPersonalTrainingService
     Task<Result<PTFreezeResponse>> RequestFreeze(string actor, int id, PTFreezeRequest input, CancellationToken ct);
     Task<Result<PTFreezePreview>> PreviewFreeze(string actor, int id, CancellationToken ct);
     Task<Result<PTFreezeResponse>> DecideFreeze(string actor, int id, PTFreezeDecision input, CancellationToken ct);
+    /// <summary>Sends a withdraw request; the Manager decides (see NewScope.txt).</summary>
     Task<Result<PTFreezeResponse>> WithdrawFreeze(string actor, int id, CancellationToken ct);
+    Task<Result<IReadOnlyList<PTRescheduleSlot>>> FreezeSlotOptions(string actor, int contractId, PTFreezeSlotOptionsRequest input, CancellationToken ct);
+    Task<Result<PTWithdrawPreview>> PreviewWithdraw(string actor, int id, CancellationToken ct);
+    Task<Result<PTFreezeChangePreview>> PreviewFreezeChange(string actor, int id, CancellationToken ct);
+    Task<Result<PTFreezeResponse>> DecideFreezeChange(string actor, int id, PTFreezeDecision input, CancellationToken ct);
     Task<Result<PTFreezeProposal>> FreezeSlots(string actor, int id, CancellationToken ct);
     Task<Result<PTFreezeResponse>> ChangeFreezeSlots(string actor, int id, PTFreezeSlotChange input, CancellationToken ct);
     Task<Result<IReadOnlyList<PTRescheduleSlot>>> RescheduleOptions(string actor, int id, DateOnly? from, CancellationToken ct);

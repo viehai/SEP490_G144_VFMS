@@ -24,6 +24,16 @@ internal static class PTDisplay
         _ => value
     };
 
+    internal static string StatusTone(string value) => value switch
+    {
+        "Scheduled" => "blue",
+        "Completed" or "AutoCompleted" => "green",
+        "ReschedulePending" or "RescheduleRequested" or "PendingFreeze" or "MakeUpPending" or "MakeUpRequested" => "amber",
+        "Cancelled" or "NoShow" => "red",
+        "Disputed" or "TrainerAbsentReported" => "purple",
+        _ => "gray"
+    };
+
     internal static string Status(string value) => value switch
     {
         "Active" => "Đang hoạt động",
@@ -49,7 +59,7 @@ internal static class PTDisplay
         "MakeUpPending" => "Chờ hội viên duyệt buổi bù",
         "MakeUpRequested" => "Chờ PT duyệt buổi bù",
         "CheckoutHold" => "Đang giữ chỗ",
-        "FreezeHold" => "Giữ chỗ sau bảo lưu",
+        "FreezeHold" or "Held" => "Giữ chỗ sau bảo lưu",
         "AutoCompleted" => "Hoàn thành (tự động)",
         "Disputed" => "Đang tranh chấp",
         "Withdrawn" => "Đã rút",

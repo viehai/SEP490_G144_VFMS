@@ -90,8 +90,19 @@ public sealed partial class MembershipPurchaseApiTests
             new PTFreezeDecision(true, null));
         Assert.True(approved.StatusCode == HttpStatusCode.OK, await approved.Content.ReadAsStringAsync());
 
+        // The Member sees which sessions would go back before sending the request.
+        var outcome = (await member.GetFromJsonAsync<PTWithdrawPreview>($"/api/pt/freezes/{freeze.Id}/withdraw-preview"))!;
+        Assert.NotEmpty(outcome.Items);
+        Assert.NotEmpty(outcome.Schedule);
+
         using var withdrawn = await member.PostAsync($"/api/pt/freezes/{freeze.Id}/withdraw", null);
         Assert.True(withdrawn.StatusCode == HttpStatusCode.OK, await withdrawn.Content.ReadAsStringAsync());
+        // Still frozen until the Manager approves the withdrawal.
+        Assert.Equal("Cancelled", (await ContractOf(member, id)).Sessions.Single(s => s.Id == first.Id).Status);
+        using var approvedWithdraw = await manager.PostAsJsonAsync($"/api/pt/manager/freezes/{freeze.Id}/change-decision",
+            new PTFreezeDecision(true, null));
+        Assert.True(approvedWithdraw.IsSuccessStatusCode, await approvedWithdraw.Content.ReadAsStringAsync());
+        Assert.Contains("khôi phục", (await approvedWithdraw.Content.ReadFromJsonAsync<PTFreezeResponse>())!.ChangeOutcome);
         var after = await ContractOf(member, id);
         Assert.Equal("Scheduled", after.Sessions.Single(s => s.Id == makeUp.Id).Status);
         Assert.Equal("Cancelled", after.Sessions.Single(s => s.Id == first.Id).Status);

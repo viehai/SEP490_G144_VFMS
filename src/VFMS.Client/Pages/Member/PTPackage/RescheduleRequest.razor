@@ -14,12 +14,13 @@
     @if (_loading) { <p role="status">Đang tải lịch…</p> }
     else if (_contract is { } contract)
     {
-        <ContractPanel Contract="contract" TrainerName="@contract.TrainerName" IsReschedulePage="true" Changed="LoadAsync" />
+        <ContractPanel Contract="contract" TrainerName="@contract.TrainerName" IsReschedulePage="true" InitialSessionId="SessionId" Changed="LoadAsync" />
     }
 </section>
 
 @code {
     [Parameter] public int ContractId { get; set; }
+    [SupplyParameterFromQuery(Name = "session")] public int? SessionId { get; set; }
     private PTContractResponse? _contract;
     private bool _loading;
     private string? _error;

@@ -52,7 +52,7 @@ public sealed partial class PersonalTrainingService
         if (pattern.Length != request.TemplateIds.Length || pattern.Select(x => x.DayOfWeek).Distinct().Count() != pattern.Length)
             return Invalid<Booking>("Chọn một ca đã công bố cho mỗi ngày tập.");
         var count = terms.SessionCount.GetValueOrDefault();
-        var candidates = Candidates(request.StartDate, pattern, count);
+        var candidates = Candidates(request.StartDate, pattern, count, now);
         var (dates, skipped) = Schedule(candidates, await ConflictingSlots(request.TrainerId, actor, candidates, now, ct), count);
         // Busy in the start week (or too often to move): keep the plain schedule so the hold reports the conflict (MSG-30).
         if (dates.Length == 0)
@@ -62,14 +62,18 @@ public sealed partial class PersonalTrainingService
         if (!PersonalTrainingRules.HasBookingNotice(dates[0].Date, dates[0].StartTime, now))
             return Invalid<Booking>("Cần đăng ký trước buổi tập đầu tiên ít nhất 24 giờ.");
         return Result<Booking>.Success(new(new(package.Id, request.TrainerId, dates[^1].Date, package.Price, dates)
-        { Skipped = skipped }, package, profile, trainer, pattern));
+        { Skipped = skipped, Deferred = ProposedDates(request.StartDate, pattern, pattern.Length)
+            .Where(slot => !PersonalTrainingRules.HasBookingNotice(slot.Date, slot.StartTime, now)).ToArray() },
+            package, profile, trainer, pattern));
     }
 
     // UC 4.2 / GBR-12: a slot busy in the start week cannot be used (another schedule holds it). A later busy date is
     // skipped and the session moves to the next free occurrence of the pattern after the last session.
     // shortcut: looks ahead at most twice the session count; a pattern busy more often than that cannot be booked.
-    private static PTCalendarSlot[] Candidates(DateOnly start, PTAvailability[] pattern, int count) =>
-        count <= 0 ? [] : ProposedDates(start, pattern, count * 2);
+    // A date that is less than 24 hours away is not offered: that day's first session moves to the next week's occurrence.
+    private static PTCalendarSlot[] Candidates(DateOnly start, PTAvailability[] pattern, int count, DateTime now) =>
+        count <= 0 ? [] : ProposedDates(start, pattern, count * 2 + pattern.Length)
+            .Where(slot => PersonalTrainingRules.HasBookingNotice(slot.Date, slot.StartTime, now)).Take(count * 2).ToArray();
 
     private static (PTCalendarSlot[] Dates, PTCalendarSlot[] Skipped) Schedule(PTCalendarSlot[] candidates,
         IReadOnlySet<PTCalendarSlot> busy, int count)
@@ -154,9 +158,9 @@ public sealed partial class PersonalTrainingService
         var selected = templates.Where(s => request.TemplateIds.Contains(s.Id))
             .DistinctBy(s => s.DayOfWeek).ToArray();
         var count = component.SessionCount.GetValueOrDefault();
-        var candidates = templates.ToDictionary(s => s.Id, s => Candidates(request.StartDate,
-            selected.Where(item => item.DayOfWeek != s.DayOfWeek).Append(s).ToArray(), count));
         var now = Now;
+        var candidates = templates.ToDictionary(s => s.Id, s => Candidates(request.StartDate,
+            selected.Where(item => item.DayOfWeek != s.DayOfWeek).Append(s).ToArray(), count, now));
         var conflicts = await ConflictingSlots(request.TrainerId, actor,
             candidates.Values.SelectMany(slots => slots).Distinct().ToArray(), now, ct);
         // GBR-12: busy dates move to the end, so a slot is blocked only when the schedule cannot be completed.

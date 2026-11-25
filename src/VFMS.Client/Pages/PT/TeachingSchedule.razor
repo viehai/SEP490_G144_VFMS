@@ -32,15 +32,34 @@
         }
         else
         {
+            <p class="pt-legend" aria-label="Chú thích trạng thái">
+                <span><i class="pt-legend-swatch" data-tone="blue"></i>Đã lên lịch</span>
+                <span><i class="pt-legend-swatch" data-tone="amber"></i>Đang chờ phản hồi / bảo lưu</span>
+                <span><i class="pt-legend-swatch" data-tone="green"></i>Hoàn thành</span>
+                <span><i class="pt-legend-swatch" data-tone="red"></i>Vắng mặt</span>
+                <span><i class="pt-legend-swatch" data-tone="purple"></i>Tranh chấp / báo PT vắng</span>
+            </p>
             <PTWeeklyGrid Slots="_slots" WeekMonday="_monday">
                 <SlotContent Context="slot">
-                    @{ var session = _sessions[slot.TemplateId]; }
+                    @{ var session = _sessions[Math.Abs(slot.TemplateId)]; }
+                    @if (slot.TemplateId < 0)
+                    {
+                        <div class="pt-calendar-slot pt-teaching-slot pt-proposed-slot">
+                            <strong>@session.MemberName</strong>
+                            <span>@Time(slot.StartTime) – @Time(slot.EndTime)</span>
+                            <span class="pt-pills"><span class="pt-status-pill" data-tone="amber">Xin chuyển sang</span></span>
+                            <a class="trainer-link" href="@($"/pt/contracts/{session.ContractId}/sessions/{session.Id}")">Chi tiết ca</a>
+                        </div>
+                    }
+                    else
+                    {
                     <div class="pt-calendar-slot pt-teaching-slot">
                         <strong>@session.MemberName</strong>
                         <span>@Time(slot.StartTime) – @Time(slot.EndTime)</span>
-                        <span>@Status(session.Status)</span>
+                        <span class="pt-pills"><span class="pt-status-pill" data-tone="@StatusTone(session.Status)">@Status(session.Status)</span></span>
                         <a class="trainer-link" href="@($"/pt/contracts/{session.ContractId}/sessions/{session.Id}")">Chi tiết ca</a>
                     </div>
+                    }
                 </SlotContent>
             </PTWeeklyGrid>
         }
@@ -74,7 +93,11 @@
         {
             var schedule = await Api.TeachingScheduleAsync(monday);
             _sessions = schedule.ToDictionary(s => s.Id);
-            _slots = schedule.Select(s => new PTWeeklySlot(s.Id, s.Date.DayOfWeek, s.StartTime, s.EndTime)).ToArray();
+            var end = monday.AddDays(6);
+            _slots = schedule.Select(s => new PTWeeklySlot(s.Id, s.Date.DayOfWeek, s.StartTime, s.EndTime))
+                .Concat(schedule.Where(s => s.ProposedDate is { } d && d >= monday && d <= end)
+                    .Select(s => new PTWeeklySlot(-s.Id, s.ProposedDate!.Value.DayOfWeek, s.ProposedStartTime!.Value, s.ProposedEndTime!.Value)))
+                .ToArray();
         }
         catch (AuthApiException ex) { _error = ex.Message; }
         finally { _loading = false; }

@@ -428,7 +428,7 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Equal(HttpStatusCode.OK, options.StatusCode);
         using var calendarJson = System.Text.Json.JsonDocument.Parse(await options.Content.ReadAsStringAsync());
         Assert.All(calendarJson.RootElement.EnumerateArray(), slot =>
-            Assert.Equal(new[] { "date", "endTime", "startTime", "status" },
+            Assert.Equal(new[] { "date", "endTime", "reason", "startTime", "status" },
                 slot.EnumerateObject().Select(property => property.Name).OrderBy(name => name)));
         var calendar = (await options.Content.ReadFromJsonAsync<PTRescheduleSlot[]>())!;
         Assert.Contains(calendar, slot => slot.Date == session.Date && slot.StartTime == busyTime && slot.Status == "Busy");
@@ -658,7 +658,18 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.True(confirm.IsSuccessStatusCode, await confirm.Content.ReadAsStringAsync());
         using var repeated = await member.PostAsJsonAsync($"{path}/confirm", confirmation);
         Assert.Equal(HttpStatusCode.Conflict, repeated.StatusCode);
-        var updated = (await confirm.Content.ReadFromJsonAsync<PTContractResponse>())!;
+
+        // The request waits for the Manager: the freeze and the schedule stay as approved until then.
+        var waiting = (await member.GetFromJsonAsync<PTContractResponse[]>(contractPath))!.Single();
+        Assert.Equal(approvedContract.EndDate, waiting.EndDate);
+        var change = await manager.GetFromJsonAsync<PTFreezeChangePreview>($"/api/pt/manager/freezes/{freeze.Id}/change-preview");
+        Assert.Equal("EarlyResume", change!.Type);
+        Assert.NotNull(change.EarlyResume);
+        using var approvedChange = await manager.PostAsJsonAsync($"/api/pt/manager/freezes/{freeze.Id}/change-decision",
+            new PTFreezeDecision(true, null));
+        Assert.True(approvedChange.IsSuccessStatusCode, await approvedChange.Content.ReadAsStringAsync());
+        Assert.Equal("Approved", (await approvedChange.Content.ReadFromJsonAsync<PTFreezeResponse>())!.ChangeRequestStatus);
+        var updated = (await member.GetFromJsonAsync<PTContractResponse[]>(contractPath))!.Single();
         Assert.Equal("Frozen", updated.Status);
         Assert.Equal(updated.Sessions.Where(s => s.Status == "Scheduled").Max(s => s.Date), updated.EndDate);
         Assert.Equal(0, updated.RemainingFreezeDays); // an early unfreeze gives no new freeze

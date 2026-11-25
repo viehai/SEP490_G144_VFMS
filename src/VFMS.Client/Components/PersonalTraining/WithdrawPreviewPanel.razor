@@ -1,0 +1,50 @@
+@* What a withdrawn freeze would do: which sessions go back to their original slot, which cannot, and the resulting calendar. *@
+<div class="pt-change">
+    <p class="trainer-muted">Nếu yêu cầu rút được duyệt, hạn gói dự kiến là <strong>@Date(Preview.ExpiresOn)</strong>.</p>
+    @if (Preview.Items.Count == 0)
+    {
+        <p>Các buổi đang chờ bảo lưu trở lại lịch bình thường và các ca giữ chỗ sau bảo lưu được giải phóng.</p>
+    }
+    else
+    {
+        <ul class="trainer-stack">
+            @foreach (var item in Preview.Items)
+            {
+                <li>
+                    @if (item.Restored)
+                    {
+                        <span class="pt-status-pill" data-tone="green">Khôi phục</span>
+                        <span>Buổi @Date(item.OriginalDate) · @Time(item.OriginalStart) được trả về ca gốc.</span>
+                    }
+                    else
+                    {
+                        <span class="pt-status-pill" data-tone="amber">Không khôi phục được</span>
+                        <span>Buổi @Date(item.OriginalDate) · @Time(item.OriginalStart) vì @item.Reason. Buổi này giữ ở @Date(item.CurrentDate) · @Time(item.CurrentStart).</span>
+                    }
+                </li>
+            }
+        </ul>
+    }
+    <PTPreviewCalendar @key="Preview" Slots="Slots" StartDate="StartDate">
+        <SlotContent Context="slot">
+            @{
+                var (label, tone) = slot.TemplateId switch { 1 => ("Khôi phục", "green"), 2 => ("Giữ ở lịch mới", "amber"), _ => ("Đã lên lịch", "blue") };
+            }
+            <div class="pt-calendar-slot pt-teaching-slot pt-slot-choice">
+                <strong>@(TrainerName ?? "Huấn luyện viên")</strong>
+                <span>@Time(slot.StartTime) – @Time(slot.EndTime)</span>
+                <span class="pt-pills"><span class="pt-status-pill" data-tone="@tone">@label</span></span>
+            </div>
+        </SlotContent>
+    </PTPreviewCalendar>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public PTWithdrawPreview Preview { get; set; } = default!;
+    [Parameter, EditorRequired] public DateOnly StartDate { get; set; }
+    [Parameter] public string? TrainerName { get; set; }
+
+    // The cell kind is carried in TemplateId: 1 = restored, 2 = kept at the new slot, 3 = unchanged.
+    private PTCalendarSlot[] Slots =>
+        Preview.Schedule.Select(s => s with { TemplateId = s.Status switch { "Restored" => 1, "Kept" => 2, _ => 3 } }).ToArray();
+}

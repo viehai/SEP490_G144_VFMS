@@ -47,7 +47,7 @@
                             <p class="trainer-muted">Gói PT đã chọn hiện không thể đặt với huấn luyện viên này.</p>
                         }
                     }
-                    else if (IsPT && detail.Profile.IsAcceptingNewMembers)
+                    else if (IsPT && detail.Profile.IsAcceptingNewMembers && !detail.HasActivePTContract)
                     {
                         <a class="trainer-button trainer-primary" href="@($"/trainers/{Id}/packages")">Khám phá gói PT</a>
                     }

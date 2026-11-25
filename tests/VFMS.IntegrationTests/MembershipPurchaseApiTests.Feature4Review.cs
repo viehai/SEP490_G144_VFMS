@@ -104,7 +104,7 @@ public sealed partial class MembershipPurchaseApiTests
     }
 
     [Fact]
-    public async Task PTCanProposeAnyFreeWholeHourAndConflictsNameTheBusyParty()
+    public async Task PTCanProposeAFreePublishedSlotAndConflictsNameTheBusyParty()
     {
         using var member = Client("member", "Member");
         using var trainer = Client("buyer", "PT");
@@ -112,14 +112,13 @@ public sealed partial class MembershipPurchaseApiTests
         var session = contract.Sessions[0];
         await using var scope = _app.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
-        var published = await db.PTAvailabilities.Where(a => a.PTUserId == "buyer" && a.DayOfWeek == session.Date.DayOfWeek)
-            .Select(a => a.StartTime).ToListAsync();
         var optionsPath = $"/api/pt/sessions/{session.Id}/reschedule-options?from={session.Date:yyyy-MM-dd}";
 
-        // UC 4.7 step 3: the PT sees every whole hour of the day within gym hours, not only published slots.
+        // UC 4.7 step 3: the PT sees the same published slots as the Member, not every whole hour.
         var options = (await trainer.GetFromJsonAsync<PTRescheduleSlot[]>(optionsPath))!;
-        var free = options.Where(s => s.Status == "Available" && !published.Contains(s.StartTime))
-            .Select(s => s.StartTime).ToArray();
+        var published = await db.PTAvailabilities.Where(a => a.PTUserId == "buyer").Select(a => a.StartTime).ToListAsync();
+        Assert.All(options.Where(s => s.Status == "Available"), s => Assert.Contains(s.StartTime, published));
+        var free = options.Where(s => s.Status == "Available" && s.Date == session.Date).Select(s => s.StartTime).ToArray();
         Assert.True(free.Length >= 2);
 
         // The Member trains with another PT at the first free hour: MSG-32, and the PT sees it as Busy.
@@ -144,7 +143,7 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Contains((await trainer.GetFromJsonAsync<PTRescheduleSlot[]>(optionsPath))!,
             slot => slot.StartTime == free[0] && slot.Status == "Busy");
 
-        // An unpublished free hour: the Member accepts and the session moves without using a credit.
+        // A free published slot: the Member accepts and the session moves without using a credit.
         using var proposed = await trainer.PostAsJsonAsync(proposalPath, new PTProposalRequest(session.Date, free[1], "Reschedule"));
         Assert.True(proposed.StatusCode == HttpStatusCode.OK, await proposed.Content.ReadAsStringAsync());
         var pending = (await proposed.Content.ReadFromJsonAsync<PTSessionResponse>())!;
@@ -155,6 +154,25 @@ public sealed partial class MembershipPurchaseApiTests
         var moved = Assert.Single(after.Sessions, s => s.Id == session.Id);
         Assert.Equal((free[1], "Scheduled"), (moved.StartTime, moved.Status));
         Assert.Equal(0, after.UsedCredits);
+    }
+
+    [Fact]
+    public async Task RescheduleOptionsAndRequestsStayInTheSessionWeekAndTheNext()
+    {
+        using var member = Client("member", "Member");
+        var (_, contract) = await ActivatedPTContract(member);
+        var session = contract.Sessions[0];
+        var monday = session.Date.AddDays(-(((int)session.Date.DayOfWeek + 6) % 7));
+        var path = $"/api/pt/sessions/{session.Id}";
+
+        var options = (await member.GetFromJsonAsync<PTRescheduleSlot[]>($"{path}/reschedule-options?from={session.Date:yyyy-MM-dd}"))!;
+        Assert.All(options, slot => Assert.InRange(slot.Date, monday, monday.AddDays(13)));
+        // Every slot that cannot be picked says why (busy, outside the contract, past ...).
+        Assert.All(options.Where(slot => slot.Status != "Available"), slot => Assert.False(string.IsNullOrEmpty(slot.Reason)));
+
+        using var tooFar = await member.PostAsJsonAsync($"{path}/reschedule-request",
+            new PTRescheduleRequest(monday.AddDays(14), session.StartTime));
+        Assert.Equal(HttpStatusCode.BadRequest, tooFar.StatusCode);
     }
 
     [Fact]

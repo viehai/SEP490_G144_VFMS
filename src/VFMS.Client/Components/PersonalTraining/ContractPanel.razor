@@ -108,13 +108,27 @@
     {
         <PTPreviewCalendar Slots="CalendarSlots" StartDate="Contract.StartDate" StartCurrentWeek="true">
             <SlotContent Context="slot">
+                @if (slot.TemplateId < 0)
+                {
+                    @* The slot a pending reschedule would move this session to (negative id = proposal of session -id). *@
+                    <div class="pt-calendar-slot pt-teaching-slot pt-proposed-slot">
+                        <strong>@(TrainerName ?? "Huấn luyện viên")</strong>
+                        <span>@Time(slot.StartTime) – @Time(slot.EndTime)</span>
+                        <span class="pt-pills"><span class="pt-status-pill" data-tone="amber">Xin chuyển sang</span></span>
+                    </div>
+                    return;
+                }
                 @{ var session = Contract.Sessions.First(s => s.Id == slot.TemplateId); }
                 <button type="button" class="pt-calendar-slot pt-teaching-slot pt-slot-choice pt-contract-calendar-slot"
                         aria-pressed="@(_selectedCalendarSession == session.Id)"
                         @onclick="() => SelectCalendarSession(slot)">
                     <strong>@(TrainerName ?? "Huấn luyện viên")</strong>
                     <span>@Time(slot.StartTime) – @Time(slot.EndTime)</span>
-                    <span>@(session.IsMakeUpUnit ? "Lượt bù" : Status(session.Status))</span>
+                    <span class="pt-pills">
+                        @if (session.Proposal is { Type: "Reschedule" }) { <span class="pt-status-pill" data-tone="gray">Buổi ban đầu</span> }
+                        <span class="pt-status-pill" data-tone="@StatusTone(session.Status)">@Status(session.Status)</span>
+                        @if (session.IsMakeUpUnit) { <span class="pt-status-pill" data-tone="purple">Lượt bù</span> }
+                    </span>
                     <span>Chi tiết ca</span>
                 </button>
             </SlotContent>
@@ -138,14 +152,29 @@
                 @if (item.CompletedByCheckIn) { <p class="trainer-muted">Ghi có mặt nhờ hội viên ghi nhận vào phòng tập.</p> }
                 @if (IsTrainer)
                 {
-                    <a class="trainer-link" href="@($"/pt/contracts/{Contract.Id}/sessions/{item.Id}")">Mở chi tiết ca học</a>
+                    <div class="trainer-row">
+                        <a class="trainer-link" href="@($"/pt/contracts/{Contract.Id}/sessions/{item.Id}")">Mở chi tiết ca học</a>
+                        <button type="button" class="trainer-button" aria-expanded="@(_calendarSession == item.Id)"
+                                @onclick="() => ToggleCalendarAsync(item)">@(_calendarSession == item.Id ? "Ẩn lịch" : "Xem lịch")</button>
+                    </div>
                 }
                 @if (!string.IsNullOrWhiteSpace(item.Note)) { <p class="trainer-copy">@item.Note</p> }
                 @if (item.NoteUpdatedAt is { } noteTime) { <p class="trainer-muted">Ghi chú cập nhật @LocalTime(noteTime)</p> }
 
                 @if (item.Proposal is { } proposal && proposal.ExpiresAt > DateTime.UtcNow)
                 {
-                    <p>@ProposalText(proposal) · Hạn phản hồi @LocalTime(proposal.ExpiresAt)</p>
+                    @if (proposal.Type == "Reschedule")
+                    {
+                        <div class="pt-change">
+                            <p><span class="pt-status-pill" data-tone="gray">Buổi ban đầu</span> @Day(item.Date.DayOfWeek), @Date(item.Date) · @Time(item.StartTime) – @Time(item.EndTime)</p>
+                            <p><span class="pt-status-pill" data-tone="amber">Buổi xin chuyển sang</span> @Day(proposal.Date.DayOfWeek), @Date(proposal.Date) · @Time(proposal.StartTime) – @Time(proposal.EndTime)</p>
+                            <p class="trainer-muted">Hạn phản hồi @LocalTime(proposal.ExpiresAt)</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <p>@ProposalText(proposal) · Hạn phản hồi @LocalTime(proposal.ExpiresAt)</p>
+                    }
                     @if (IDecide(item))
                     {
                         <div class="trainer-row">
@@ -191,9 +220,7 @@
                 {
                     <div class="trainer-stack">
                         <p class="trainer-muted">Lịch cũ vẫn được giữ cho đến khi @(IsTrainer ? "hội viên" : "PT") chấp nhận. Các ca bận chỉ hiển thị thời gian.</p>
-                        <p class="trainer-muted">@(IsTrainer ? "Chọn một giờ tròn trong giờ mở cửa của ngày đã chọn." : "Chọn một ca trong khung giờ PT đã công bố.") Ca bận hoặc không khả dụng không chọn được.</p>
-                        <label>@(IsTrainer ? "Ngày tập mới" : "Xem lịch từ ngày")<input class="trainer-input" type="date" min="@Today.ToString("yyyy-MM-dd")"
-                               @bind="_from" @bind:after="LoadOptionsAsync" disabled="@_busy" /></label>
+                        <p class="trainer-muted">Chọn một ca trong lịch tuần PT đã công bố, trong tuần của buổi tập hoặc tuần kế tiếp. Ca bận hoặc không khả dụng không chọn được.</p>
                         @if (_options is { Length: 0 }) { <p>Không có ca trong khoảng đã chọn.</p> }
                         else
                         {
@@ -242,6 +269,37 @@
                     <p class="trainer-muted">Báo PT vắng mặt: @AbsenceOutcome(item)</p>
                     @if (!string.IsNullOrWhiteSpace(item.TrainerAbsenceReviewNote)) { <p class="trainer-copy">Quản lý: @item.TrainerAbsenceReviewNote</p> }
                 }
+                @if (_calendarSession == item.Id)
+                {
+                    @* Original slot and, when a reschedule is pending, the slot it would move to. *@
+                    @if (_calendarOptions is { Length: > 0 } all)
+                    {
+                        <RescheduleSlotCalendar Options="all" From="item.Date" Disabled="true"
+                                                Original="OriginalMark(item)" Proposed="ProposedMark(item)" />
+                    }
+                    else if (_calendarOptions is null && _busy) { <p role="status">Đang tải lịch…</p> }
+                    else
+                    {
+                    <PTPreviewCalendar Slots="SessionCalendar(item)" StartDate="item.Date">
+                        <SlotContent Context="slot">
+                            @if (slot.TemplateId < 0)
+                            {
+                                <div class="pt-calendar-slot pt-teaching-slot pt-proposed-slot">
+                                    <strong>@Time(slot.StartTime) – @Time(slot.EndTime)</strong>
+                                    <span class="pt-pills"><span class="pt-status-pill" data-tone="amber">Buổi xin chuyển sang</span></span>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="pt-calendar-slot pt-teaching-slot">
+                                    <strong>@Time(slot.StartTime) – @Time(slot.EndTime)</strong>
+                                    <span class="pt-pills"><span class="pt-status-pill" data-tone="gray">@(item.Proposal is { Type: "Reschedule" } ? "Buổi ban đầu" : "Buổi tập")</span></span>
+                                </div>
+                            }
+                        </SlotContent>
+                    </PTPreviewCalendar>
+                    }
+                }
             </article>
         }
     </div>
@@ -262,6 +320,7 @@
     [Parameter] public string? TrainerName { get; set; }
     [Parameter] public EventCallback Changed { get; set; }
     [Parameter] public bool IsReschedulePage { get; set; }
+    [Parameter] public int? InitialSessionId { get; set; }
     /// <summary>UC 4.10: open the review modal at once (the contract was opened from 'Completed Contracts').</summary>
     [Parameter] public bool OpenReview { get; set; }
     private const string Reschedule = "reschedule", MakeUp = "makeup", Absence = "absence";
@@ -269,7 +328,27 @@
     private PTRescheduleSlot? _requested;
     private DateOnly _from = Today, _makeUpDate = Today.AddDays(1);
     private int _makeUpHour = 9;
-    private int? _sessionId, _selectedCalendarSession;
+    private int? _sessionId, _selectedCalendarSession, _calendarSession;
+    private PTRescheduleSlot[]? _calendarOptions;
+    private static bool CanLoadOptions(PTSessionResponse item) =>
+        item.Status is "Scheduled" or "ReschedulePending" or "RescheduleRequested" && IsFuture(item.Date, item.StartTime);
+    private static (DateOnly, TimeOnly)? OriginalMark(PTSessionResponse item) => (item.Date, item.StartTime);
+    private static (DateOnly, TimeOnly)? ProposedMark(PTSessionResponse item) =>
+        item.Proposal is { Type: "Reschedule" } p ? (p.Date, p.StartTime) : null;
+
+    // "Xem lịch": the trainer's whole week table (free, busy and unusable slots) with this session's slots marked.
+    private async Task ToggleCalendarAsync(PTSessionResponse item)
+    {
+        if (_calendarSession == item.Id) { _calendarSession = null; return; }
+        _calendarSession = item.Id;
+        _calendarOptions = null;
+        if (CanLoadOptions(item))
+            await RunAsync(async () => _calendarOptions = await Api.RescheduleOptionsAsync(item.Id, item.Date));
+    }
+
+    private static PTCalendarSlot[] SessionCalendar(PTSessionResponse item) =>
+        [new(item.Id, item.Date, item.StartTime, item.EndTime, item.Status),
+            .. item.Proposal is { Type: "Reschedule" } p ? new[] { new PTCalendarSlot(-item.Id, p.Date, p.StartTime, p.EndTime, "Proposed") } : []];
     private string? _editor, _error, _message;
     private string _comment = "", _absenceReason = "";
     private IReadOnlyList<string> _bannedWords = [];
@@ -291,9 +370,11 @@
     private static readonly string[] Taught = ["Completed", "AutoCompleted", "NoShow", "Disputed"];
     private IEnumerable<PTSessionResponse> Visible => Contract.Sessions.Where(s => _history
         ? !IsFuture(s.Date, s.EndTime) && (Taught.Contains(s.Status) || s.Status == "Cancelled" && s.TrainerAbsenceReportedAt is not null)
-        : s.Status != "Cancelled" || s.IsMakeUpUnit || s.TrainerAbsenceReportedAt is not null)
+        : true)
         .Where(s => _history || !IsTrainer || IsFuture(s.Date, s.EndTime) || s.IsMakeUpUnit);
-    private PTCalendarSlot[] CalendarSlots => Visible.Select(s => new PTCalendarSlot(s.Id, s.Date, s.StartTime, s.EndTime, s.Status)).ToArray();
+    private PTCalendarSlot[] CalendarSlots => Visible.Select(s => new PTCalendarSlot(s.Id, s.Date, s.StartTime, s.EndTime, s.Status))
+        .Concat(Visible.Where(s => s.Proposal is { Type: "Reschedule" } p && p.ExpiresAt > DateTime.UtcNow)
+            .Select(s => new PTCalendarSlot(-s.Id, s.Proposal!.Date, s.Proposal.StartTime, s.Proposal.EndTime, "Proposed"))).ToArray();
     // UC 4.7: a 60-minute make-up starts on a whole hour and ends by gym closing time.
     private IEnumerable<int> MakeUpHours => MakeUpStartHours(Contract);
     public static IEnumerable<int> MakeUpStartHours(PTContractResponse? contract) =>
@@ -309,6 +390,18 @@
             : null;
 
     protected override void OnInitialized() => _reviewOpen = OpenReview && CanOfferReview;
+
+    // "Xin đổi lịch" links here with ?session=: open that session's free-slot picker straight away.
+    protected override async Task OnInitializedAsync()
+    {
+        if (IsReschedulePage && !IsTrainer && InitialSessionId is { } id &&
+            Contract.Sessions.FirstOrDefault(s => s.Id == id) is { Status: "Scheduled" } item &&
+            IsFuture(item.Date, item.StartTime) && CanRequestChange(item))
+        {
+            _selectedCalendarSession = id;
+            await OpenOptionsAsync(item);
+        }
+    }
     private static DateTime LocalNow => DateTime.UtcNow.AddHours(7);
     private static bool IsFuture(DateOnly date, TimeOnly time) => date.ToDateTime(time) > LocalNow;
     // GBR-14: changes are requested at least 12 hours before the start.
@@ -377,7 +470,7 @@
     private async Task OpenOptionsAsync(PTSessionResponse item)
     {
         OpenEditor(item, Reschedule);
-        _from = Today;
+        _from = item.Date;
         await LoadOptionsAsync();
     }
 

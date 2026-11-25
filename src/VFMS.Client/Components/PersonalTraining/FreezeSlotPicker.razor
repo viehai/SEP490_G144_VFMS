@@ -1,0 +1,45 @@
+@* The trainer's weekly table with free, busy and unusable slots; a free slot is picked by clicking it (same table as the reschedule). *@
+@inject PersonalTrainingApiClient Api
+@if (_error is not null) { <p class="trainer-feedback trainer-error" role="alert">@_error</p> }
+else if (_options is null) { <p role="status">Đang tải lịch của huấn luyện viên…</p> }
+else if (_options.Length == 0) { <p class="trainer-muted">Huấn luyện viên chưa công bố ca nào trong khoảng này.</p> }
+else
+{
+    <RescheduleSlotCalendar Options="_options" From="From" Selected="_selected" Disabled="Disabled" SelectedChanged="PickAsync" />
+}
+
+@code {
+    [Parameter, EditorRequired] public int ContractId { get; set; }
+    [Parameter, EditorRequired] public DateOnly From { get; set; }
+    /// <summary>A replacement trainer whose published schedule is shown instead of the contract trainer's.</summary>
+    [Parameter] public string? TrainerId { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    /// <summary>The slot already chosen for this session, highlighted in the table.</summary>
+    [Parameter] public (DateOnly Date, TimeOnly Start)? Current { get; set; }
+    [Parameter] public EventCallback<(DateOnly Date, TimeOnly Start)> Picked { get; set; }
+
+    private PTRescheduleSlot[]? _options;
+    private PTRescheduleSlot? _selected;
+    private string? _error;
+    private (int, DateOnly, string?) _loadedFor;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = (ContractId, From, TrainerId);
+        if (_loadedFor != key)
+        {
+            _loadedFor = key;
+            _options = null;
+            _error = null;
+            try { _options = await Api.FreezeSlotOptionsAsync(ContractId, new(From, TrainerId)); }
+            catch (AuthApiException ex) { _error = ex.Message; }
+        }
+        _selected = Current is { } c ? _options?.FirstOrDefault(o => o.Date == c.Date && o.StartTime == c.Start) : null;
+    }
+
+    private Task PickAsync(PTRescheduleSlot slot)
+    {
+        _selected = slot;
+        return Picked.InvokeAsync((slot.Date, slot.StartTime));
+    }
+}

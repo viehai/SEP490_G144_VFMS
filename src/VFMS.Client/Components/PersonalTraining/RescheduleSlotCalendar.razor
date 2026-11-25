@@ -2,7 +2,17 @@
 <PTPreviewCalendar @key="Options" Slots="_slots" StartDate="From">
     <SlotContent Context="slot">
         @{ var option = Options[slot.TemplateId]; }
-        @if (option.Status == "Available")
+        @if (Is(option, Proposed))
+        {
+            <div class="pt-calendar-slot pt-proposed-slot"><strong>@Time(option.StartTime) – @Time(option.EndTime)</strong>
+                <span class="pt-pills"><span class="pt-status-pill" data-tone="amber">Buổi xin chuyển sang</span></span></div>
+        }
+        else if (Is(option, Original))
+        {
+            <div class="pt-calendar-slot"><strong>@Time(option.StartTime) – @Time(option.EndTime)</strong>
+                <span class="pt-pills"><span class="pt-status-pill" data-tone="gray">Buổi ban đầu</span></span></div>
+        }
+        else if (option.Status == "Available")
         {
             <button type="button" class="trainer-button pt-slot-choice" disabled="@Disabled"
                     aria-pressed="@(Equals(Selected, option) ? "true" : "false")"
@@ -14,7 +24,7 @@
         else
         {
             <div class="pt-calendar-slot"><strong>@Time(option.StartTime) – @Time(option.EndTime)</strong>
-                <small class="block trainer-muted">@Status(option.Status)</small></div>
+                <small class="block trainer-muted">@(option.Reason ?? Status(option.Status))</small></div>
         }
     </SlotContent>
 </PTPreviewCalendar>
@@ -25,6 +35,12 @@
     [Parameter] public PTRescheduleSlot? Selected { get; set; }
     [Parameter] public EventCallback<PTRescheduleSlot> SelectedChanged { get; set; }
     [Parameter] public bool Disabled { get; set; }
+    /// <summary>Read-only views mark the session's current slot and the slot a pending reschedule would move it to.</summary>
+    [Parameter] public (DateOnly Date, TimeOnly Start)? Original { get; set; }
+    [Parameter] public (DateOnly Date, TimeOnly Start)? Proposed { get; set; }
+
+    private static bool Is(PTRescheduleSlot o, (DateOnly Date, TimeOnly Start)? mark) =>
+        mark is { } m && o.Date == m.Date && o.StartTime == m.Start;
 
     private PTCalendarSlot[] _slots = [];
 

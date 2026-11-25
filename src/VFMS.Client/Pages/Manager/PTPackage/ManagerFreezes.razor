@@ -23,13 +23,12 @@
     else if (_requests is { } requests)
     {
         <div class="trainer-panel trainer-list-card trainer-scroll"><table class="workspace-table">
-            <thead><tr><th>Hợp đồng</th><th>Hội viên</th><th>PT</th><th>Bắt đầu</th><th>Kết thúc</th><th>Số ngày</th><th>Lý do</th><th>Lịch đề xuất</th><th>HLV thay thế</th><th>@(_processed ? "Kết quả" : "Thao tác")</th></tr></thead>
+            <thead><tr><th>Hợp đồng</th><th>Hội viên</th><th>PT</th><th>Yêu cầu</th><th>Bắt đầu</th><th>Kết thúc</th><th>Số ngày</th><th class="pt-reason-col">Lý do</th><th>HLV thay thế</th><th>@(_processed ? "Kết quả" : "Thao tác")</th></tr></thead>
             <tbody>@foreach (var item in requests.Items)
             {
-                <tr @key="item.Id"><td>#@item.ContractId</td><td>@(item.MemberName ?? item.MemberId)</td><td>@(item.TrainerName ?? item.TrainerId)</td>
+                <tr @key="item.Id"><td>#@item.ContractId</td><td>@(item.MemberName ?? item.MemberId)</td><td>@(item.TrainerName ?? item.TrainerId)</td><td>@RequestLabel(item)</td>
                     <td>@Date(item.StartDate)</td><td>@Date(item.ResumeDate.AddDays(-1))</td><td>@(item.ResumeDate.DayNumber - item.StartDate.DayNumber)</td>
-                    <td class="trainer-copy">@item.Reason</td>
-                    <td>@(item.ProposedSlots.Count == 0 ? "—" : string.Join(", ", item.ProposedSlots.Select(x => $"{Date(x.Date)} {x.StartTime:HH:mm}")))</td>
+                    <td class="trainer-copy pt-reason-col">@item.Reason</td>
                     <td>@(item.ReplacementTrainerName ?? "—")</td>
                     <td>
                         @if (_processed)
@@ -57,19 +56,56 @@
             <p>@Date(selected.StartDate) đến @Date(selected.ResumeDate.AddDays(-1)) · @(selected.ResumeDate.DayNumber - selected.StartDate.DayNumber) ngày</p>
             <p class="trainer-muted">Chính sách bảo lưu của hợp đồng: tối thiểu @selected.MinimumDays ngày, tối đa @selected.MaximumDays ngày, một lần cho mỗi hợp đồng.</p>
             <p class="trainer-copy">@selected.Reason</p>
-            @if (_preview is { } preview)
+            @if (selected.ChangeRequestStatus == "Pending")
+            {
+                <p class="trainer-feedback" role="status">Hội viên xin <strong>@RequestLabel(selected)</strong>. Bảo lưu giữ nguyên cho đến khi bạn duyệt.</p>
+            }
+            @if (_change is { } change)
+            {
+                <p>Hạn hợp đồng sau khi duyệt: <strong>@Date(change.ExpiresOn)</strong></p>
+                @if (change.Withdraw is { } withdraw)
+                {
+                    <WithdrawPreviewPanel Preview="withdraw" StartDate="selected.StartDate" TrainerName="@selected.TrainerName" />
+                }
+                else if (change.EarlyResume is { } early)
+                {
+                    <p>Ngày tập lại hiện tại <strong>@Date(early.CurrentResumeDate)</strong> → ngày xin tập lại <strong>@Date(early.ResumeDate)</strong> · đã bảo lưu @early.ActualFrozenDays ngày.</p>
+                    @if (early.UnavailableOriginalSlots.Count > 0) { <p class="trainer-muted">Có @early.UnavailableOriginalSlots.Count buổi không về được ca gốc nên được xếp ca khác.</p> }
+                    <PTPreviewCalendar @key="early" Slots="@early.Sessions.Select(s => new PTCalendarSlot(0, s.Date, s.StartTime, s.EndTime, s.Status)).ToArray()" StartDate="early.ResumeDate" />
+                }
+            }
+            else if (_preview is { } preview)
             {
                 <p>Hạn hợp đồng sau khi duyệt: <strong>@Date(preview.ExpiresOn)</strong></p>
                 @if (preview.ReplacementTrainerName is { } replacement)
                 {
                     <p>Huấn luyện viên thay thế cho các buổi còn lại: <strong>@replacement</strong></p>
                 }
+                <h3>Lịch tổng quan</h3>
+                <p class="trainer-muted">Ca <strong>giữ nguyên</strong>: buổi ngoài thời gian bảo lưu. Ca <strong>ban đầu</strong>: buổi trong thời gian bảo lưu sẽ bị dời. Ca <strong>dời đến</strong>: lịch được giữ chỗ sau bảo lưu.</p>
+                <PTPreviewCalendar @key="preview" Slots="OverviewSlots(preview)" StartDate="selected.StartDate">
+                    <SlotContent Context="slot">
+                        @{ var (label, tone, dashed) = slot.TemplateId switch
+                           {
+                               1 => ("Dời đến", "amber", true),
+                               2 => ("Buổi ban đầu", "gray", false),
+                               _ => ("Giữ nguyên", "blue", false)
+                           }; }
+                        <div class="@(dashed ? "pt-calendar-slot pt-teaching-slot pt-slot-choice pt-proposed-slot" : "pt-calendar-slot pt-teaching-slot pt-slot-choice")">
+                            <strong>@(selected.TrainerName ?? "Huấn luyện viên")</strong>
+                            <span>@Time(slot.StartTime) – @Time(slot.EndTime)</span>
+                            <span class="pt-pills"><span class="pt-status-pill" data-tone="@tone">@label</span></span>
+                        </div>
+                    </SlotContent>
+                </PTPreviewCalendar>
+                <h3>Lịch ban đầu trong thời gian bảo lưu</h3>
+                <SlotList Slots="preview.Original" />
                 <h3>Lịch đang được giữ sau bảo lưu</h3>
                 <SlotList Slots="preview.Replacements" />
             }
             <label>Lý do từ chối<textarea class="trainer-input" rows="3" maxlength="1000" @bind="_reason" @bind:event="oninput" disabled="@_busy"></textarea></label>
             <div class="trainer-row">
-                <button class="trainer-button trainer-primary" disabled="@(_busy || _preview is null)" @onclick="() => DecideAsync(true)">Duyệt bảo lưu</button>
+                <button class="trainer-button trainer-primary" disabled="@(_busy || _preview is null && _change is null)" @onclick="() => DecideAsync(true)">@(_selected.ChangeRequestStatus == "Pending" ? "Duyệt yêu cầu" : "Duyệt bảo lưu")</button>
                 <button class="trainer-button" disabled="@(_busy || string.IsNullOrWhiteSpace(_reason))" @onclick="() => DecideAsync(false)">Từ chối</button>
                 <button class="trainer-button" disabled="@_busy" @onclick="() => _selected = null">Đóng</button>
             </div>
@@ -81,11 +117,24 @@
     private PagedResponse<PTFreezeResponse>? _requests;
     private PTFreezeResponse? _selected;
     private PTFreezePreview? _preview;
+    private PTFreezeChangePreview? _change;
+
+    private static string RequestLabel(PTFreezeResponse f) => f.ChangeRequestStatus == "Pending"
+        ? f.ChangeRequestType == "Withdraw" ? "Rút bảo lưu" : $"Tập lại sớm từ {Date(f.ChangeResumeDate ?? f.ResumeDate)}"
+        : "Bảo lưu mới";
     private string _reason = "";
     private string? _error;
     private bool _busy, _processed;
 
     protected override Task OnInitializedAsync() => LoadAsync();
+
+    // The calendar cell kind is carried in TemplateId: 1 = held after the freeze, 2 = original (frozen), 3 = unchanged.
+    private static PTCalendarSlot[] OverviewSlots(PTFreezePreview p) =>
+    [
+        .. p.Replacements.Select(s => s with { TemplateId = 1 }),
+        .. p.Original.Select(s => s with { TemplateId = 2 }),
+        .. p.Kept.Select(s => s with { TemplateId = 3 })
+    ];
 
     private Task SwitchTabAsync(bool processed)
     {
@@ -109,17 +158,22 @@
     {
         _selected = request;
         _preview = null;
+        _change = null;
         _reason = "";
-        _preview = await Api.PreviewFreezeAsync(request.Id);
+        if (request.ChangeRequestStatus == "Pending") _change = await Api.PreviewFreezeChangeAsync(request.Id);
+        else _preview = await Api.PreviewFreezeAsync(request.Id);
     });
 
-    private Task DecideAsync(bool approve) => _selected is { } request && (approve ? _preview is not null : !string.IsNullOrWhiteSpace(_reason))
+    private Task DecideAsync(bool approve) => _selected is { } request && (approve ? _preview is not null || _change is not null : !string.IsNullOrWhiteSpace(_reason))
         ? RunAsync(async () =>
         {
-            await Api.DecideFreezeAsync(request.Id, new(approve, approve ? null : _reason.Trim()));
+            var decision = new PTFreezeDecision(approve, approve ? null : _reason.Trim());
+            if (request.ChangeRequestStatus == "Pending") await Api.DecideFreezeChangeAsync(request.Id, decision);
+            else await Api.DecideFreezeAsync(request.Id, decision);
             _selected = null;
             _preview = null;
-            Toasts.Show(approve ? "Đã duyệt bảo lưu PT." : "Đã từ chối bảo lưu PT.");
+            _change = null;
+            Toasts.Show(approve ? "Đã duyệt yêu cầu PT." : "Đã từ chối yêu cầu PT.");
             var page = _requests?.Page ?? 1;
             _requests = null;
             _requests = await Api.ManagerFreezePageAsync(false, page);

@@ -144,7 +144,24 @@
 .pt-slot-choice[aria-pressed="true"] { background: #B83A3A; border-color: #B83A3A; color: #fff; }
 .pt-public-calendar .pt-calendar-slot { white-space: nowrap; }
 .pt-public-calendar .pt-teaching-slot { white-space: normal; overflow-wrap: anywhere; }
+.pt-teaching-slot { box-sizing: border-box; min-width: 0; overflow: hidden; align-content: start; }
 .pt-teaching-slot span { white-space: nowrap; }
+.pt-public-calendar .pt-calendar-slot small { white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
+.pt-teaching-slot .pt-pills { display: flex; flex-wrap: wrap; gap: .25rem; }
+/* Session status pills (same palette as .trainer-status): colour + label, never colour alone */
+.pt-status-pill, .pt-calendar-slot .pt-status-pill { --t-bg: #f3f4f6; --t-fg: #4b5563; --t-bd: #6B7280; display: inline-block; max-width: 100%; padding: .1rem .5rem;
+    border-radius: 999px; font-size: .66rem; font-weight: 700; text-transform: uppercase; letter-spacing: .02em; line-height: 1.3;
+    white-space: normal; background: var(--t-bg); color: var(--t-fg); box-shadow: inset 0 0 0 1px var(--t-bd); }
+.pt-status-pill[data-tone="blue"], .pt-legend-swatch[data-tone="blue"] { --t-bg: #eff6ff; --t-fg: #1d4ed8; --t-bd: #3B82F6; }
+.pt-status-pill[data-tone="green"], .pt-legend-swatch[data-tone="green"] { --t-bg: #f0fdf4; --t-fg: #15803d; --t-bd: #16A34A; }
+.pt-status-pill[data-tone="amber"], .pt-legend-swatch[data-tone="amber"] { --t-bg: #fffbeb; --t-fg: #92400e; --t-bd: #D97706; }
+.pt-status-pill[data-tone="red"], .pt-legend-swatch[data-tone="red"] { --t-bg: #fef2f2; --t-fg: #b91c1c; --t-bd: #DC2626; }
+.pt-status-pill[data-tone="purple"], .pt-legend-swatch[data-tone="purple"] { --t-bg: #f5f3ff; --t-fg: #6d28d9; --t-bd: #8B5CF6; }
+.pt-calendar-slot.pt-proposed-slot { background: #fffbeb; color: #92400e; box-shadow: inset 0 0 0 1px #D97706; border: 1px dashed #D97706; }
+.pt-reason-col { min-width: 16rem; width: 30%; }
+.pt-change { display: grid; gap: .35rem; padding: .65rem .75rem; border: 1px dashed #D97706; border-radius: 8px; background: #fffbeb; }
+.pt-change p { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.pt-legend-swatch[data-tone] { background: var(--t-bg); border-color: var(--t-bd); }
 .pt-contract-calendar-slot { display: grid; width: 100%; text-align: left; border: 1px solid transparent; cursor: pointer; }
 .pt-contract-calendar-slot:focus-visible { outline: 2px solid #B83A3A; outline-offset: 2px; }
 .pt-wide-choice { width: 100%; text-align: left; }

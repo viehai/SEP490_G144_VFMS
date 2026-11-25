@@ -1,0 +1,7 @@
+@inherits LayoutComponentBase
+
+@* Members see the member workspace menu around their profile; every other role keeps the public layout. *@
+<AuthorizeView Roles="Customer,Member">
+    <Authorized><WorkspaceShell Variant="member" IsPreview="false">@Body</WorkspaceShell></Authorized>
+    <NotAuthorized><PublicLayout Body="@Body" /></NotAuthorized>
+</AuthorizeView>

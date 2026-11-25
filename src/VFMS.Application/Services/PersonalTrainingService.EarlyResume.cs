@@ -19,6 +19,7 @@ public sealed partial class PersonalTrainingService
             : Result<PTEarlyResumePreview>.Failure(result.ErrorMessage!, result.ErrorCode!, result.StatusCode);
     }
 
+    /// <summary>UC 4.8 step 8.3: the Member confirms the revision; it becomes a request the Manager approves.</summary>
     public Task<Result<PTContractResponse>> ConfirmEarlyResume(
         string actor, int id, PTEarlyResumeConfirmation request, CancellationToken ct) => Write(async () =>
     {
@@ -29,28 +30,26 @@ public sealed partial class PersonalTrainingService
         var plan = result.Data!;
         if (plan.Preview.SessionsNeedingNewSlot.Count != 0)
             return Conflict<PTContractResponse>("Cần chọn ca mới cho các buổi nằm ngoài thời hạn đã điều chỉnh.");
+        if (ChangePending(plan.Freeze))
+            return Result<PTContractResponse>.Failure("Yêu cầu của bạn đang chờ Quản lý duyệt.", "PT_FREEZE_CHANGE_PENDING", 409);
 
-        foreach (var (session, slot) in plan.Replacements)
-        {
-            session.SessionDate = slot.Date;
-            session.StartTime = slot.StartTime;
-            session.EndTime = slot.EndTime;
-            session.PTAvailabilityId = slot.TemplateId;
-        }
-        plan.Freeze.ActualEndDate = request.ResumeDate;
-        plan.Purchase.EndDate = plan.Preview.ExpiresOn;
+        // The freeze and the schedule stay in effect until the Manager approves (step 8.4).
+        StartChangeRequest(plan.Freeze, PTFreezeChangeTypes.EarlyResume, request.ResumeDate,
+            System.Text.Json.JsonSerializer.Serialize(request));
         Audit(actor, nameof(PTFreeze), id,
-            FormattableString.Invariant($"EarlyResume:{plan.Preview.CurrentResumeDate:yyyy-MM-dd}->{request.ResumeDate:yyyy-MM-dd}"));
-        var message = $"Ngày tập lại đã đổi thành {request.ResumeDate:dd/MM/yyyy}. Hãy kiểm tra lịch PT đã cập nhật.";
-        Notify(actor, "Tập lại PT sớm", message, nameof(PTFreeze), id);
-        Notify(plan.Purchase.PTUserId, "Tập lại PT sớm", message, nameof(PTFreeze), id);
+            FormattableString.Invariant($"EarlyResumeRequested:{plan.Preview.CurrentResumeDate:yyyy-MM-dd}->{request.ResumeDate:yyyy-MM-dd}"));
+        Notify(actor, "Đã gửi yêu cầu tập lại sớm",
+            $"Bảo lưu vẫn giữ nguyên cho đến khi Quản lý duyệt ngày tập lại {request.ResumeDate:dd/MM/yyyy}.", nameof(PTFreeze), id);
+        foreach (var manager in await ManagerIds(plan.Purchase.PTUserId, ct))
+            Notify(manager, "Yêu cầu tập lại sớm PT",
+                $"Hội viên xin tập lại sớm từ {request.ResumeDate:dd/MM/yyyy}.", nameof(PTFreeze), id);
         await repo.SaveChangesAsync(ct);
         return Result<PTContractResponse>.Success(ContractResponse(plan.Purchase));
     }, ct);
 
     private async Task<Result<EarlyResumePlan>> PlanEarlyResume(string actor, int id, DateOnly resumeDate,
         IReadOnlyList<PTEarlyResumeMove> moves, DateOnly? expectedResumeDate, CancellationToken ct,
-        int[]? templateIds = null)
+        int[]? templateIds = null, bool atApproval = false)
     {
         if (await Purchaser(actor, ct) is null)
             return Forbidden<EarlyResumePlan>();
@@ -66,7 +65,9 @@ public sealed partial class PersonalTrainingService
             return Conflict<EarlyResumePlan>("Chỉ có thể tập lại sớm khi gói PT đang bảo lưu.");
         if (expectedResumeDate is { } expected && currentResume != expected)
             return Conflict<EarlyResumePlan>("Ngày tập lại hiện tại đã thay đổi. Vui lòng xem lại lịch dự kiến.");
-        if (resumeDate < today || resumeDate >= currentResume)
+        // The date rule: today <= new Resume Date < ActualEndDate. It is checked when the Member sends the request; a Manager
+        // who approves later is not blocked because that date has meanwhile become today or earlier.
+        if ((!atApproval && resumeDate < today) || resumeDate >= currentResume)
             return Invalid<EarlyResumePlan>("Chọn ngày tập lại từ hôm nay và trước ngày đã duyệt.");
         if (moves.Any(m => m is null) || moves.Select(m => m.SessionId).Distinct().Count() != moves.Count)
             return Invalid<EarlyResumePlan>("Mỗi buổi chỉ được chọn một ca thay thế.");

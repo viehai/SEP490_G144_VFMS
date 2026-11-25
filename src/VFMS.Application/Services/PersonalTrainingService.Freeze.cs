@@ -27,7 +27,13 @@ public sealed partial class PersonalTrainingService
         {
             // UC 4.9: the freeze policy snapshot the Manager reviews against.
             MinimumDays = f.MinimumDaysSnapshot ?? p.FreezeMinimumDaysSnapshot,
-            MaximumDays = f.MaxDaysSnapshot ?? p.FreezeMaxTotalDaysSnapshot
+            MaximumDays = f.MaxDaysSnapshot ?? p.FreezeMaxTotalDaysSnapshot,
+            ChangeRequestType = f.ChangeRequestType,
+            ChangeRequestStatus = f.ChangeRequestStatus,
+            ChangeRequestedAt = f.ChangeRequestedAt is { } at ? DateTime.SpecifyKind(at, DateTimeKind.Utc) : null,
+            ChangeResumeDate = f.ChangeResumeDate,
+            ChangeReviewNote = f.ChangeReviewNote,
+            ChangeOutcome = f.ChangeOutcome
         };
     }
 
@@ -332,7 +338,15 @@ public sealed partial class PersonalTrainingService
         var replacementName = f.ReplacementTrainerId is { } trainerId
             ? await repo.GetUserNameAsync(trainerId, ct)
             : null;
-        return Result<PTFreezePreview>.Success(new(end, slots, replacementName));
+        PTCalendarSlot Slot(PTSession s) => new(s.PTAvailabilityId ?? 0, s.SessionDate, s.StartTime, s.EndTime, s.SessionStatus.ToString());
+        return Result<PTFreezePreview>.Success(new(end, slots, replacementName)
+        {
+            Original = purchase.Sessions.Where(s => InFreezeWindow(s, f.RequestedStartDate, f.RequestedEndDate))
+                .OrderBy(s => s.SessionDate).ThenBy(s => s.StartTime).Select(Slot).ToArray(),
+            Kept = purchase.Sessions.Where(s => PersonalTrainingRules.Reserved(s.SessionStatus) &&
+                    s.SessionStatus != PTSessionStatus.PendingFreeze && !InFreezeWindow(s, f.RequestedStartDate, f.RequestedEndDate))
+                .OrderBy(s => s.SessionDate).ThenBy(s => s.StartTime).Select(Slot).ToArray()
+        });
     }
 
     /// <summary>UC 4.9: approve (cancel the frozen sessions, confirm the held slots, optional trainer change) or reject.</summary>
@@ -345,6 +359,8 @@ public sealed partial class PersonalTrainingService
             var f = purchase.PTFreezes.Single(x => x.Id == id);
             if (f.RequestStatus != PTFreezeRequestStatus.Pending)
                 return Conflict<PTFreezeResponse>("Yêu cầu đã được xử lý.");
+            if (ChangePending(f))
+                return Conflict<PTFreezeResponse>("Hội viên đã gửi yêu cầu rút bảo lưu. Hãy xử lý yêu cầu rút trước.");
             var now = Now;
             var previousTrainer = purchase.PTUserId;
             if (input.Approve)
@@ -480,54 +496,6 @@ public sealed partial class PersonalTrainingService
                 session.SessionStatus = PTSessionStatus.Scheduled;
         }
     }
-
-    /// <summary>UC 4.8: withdraw a Pending freeze, or an Approved one before it starts; the freeze is not counted as used.</summary>
-    public Task<Result<PTFreezeResponse>> WithdrawFreeze(string actor, int id, CancellationToken ct) => Write(async () =>
-    {
-        if (await Purchaser(actor, ct) is null)
-            return Forbidden<PTFreezeResponse>();
-        var p = await MemberFreeze(actor, id, ct);
-        if (p is null)
-            return Missing<PTFreezeResponse>();
-        var f = p.PTFreezes.Single(x => x.Id == id);
-        var now = Now;
-        // UC 4.8 step 8.2 / GBR-15: a request can be withdrawn only before the freeze starts.
-        if (f.RequestStatus == PTFreezeRequestStatus.Pending && f.RequestedStartDate > Today)
-            ReleaseFreeze(p, f, now);
-        else if (f.RequestStatus == PTFreezeRequestStatus.Approved && f.ActualStartDate > Today)
-        {
-            if (f.ReplacementTrainerId is not null)
-                return Conflict<PTFreezeResponse>("Bảo lưu đã kèm đổi huấn luyện viên nên không thể rút. Vui lòng liên hệ quầy lễ tân.");
-            // Restore each original slot where it is still free; otherwise keep the rescheduled session.
-            // Only sessions this freeze created move back: make-up and trainer-change sessions stay.
-            foreach (var replacement in p.Sessions.Where(s => s.SessionStatus == PTSessionStatus.Scheduled &&
-                s.PTFreezeId == f.Id && s.ReplacementForSessionId != null).ToArray())
-            {
-                var original = p.Sessions.FirstOrDefault(s => s.Id == replacement.ReplacementForSessionId);
-                if (original is null || original.SessionStatus != PTSessionStatus.Cancelled ||
-                    original.SessionDate < f.RequestedStartDate || original.SessionDate >= f.RequestedEndDate ||
-                    Utc(original.SessionDate, original.StartTime) <= now ||
-                    await HasConflict(p.PTUserId, p.MemberUserId,
-                        [new(0, original.SessionDate, original.StartTime, original.EndTime, "Available")], now, ct,
-                        ignoreSession: replacement.Id))
-                    continue;
-                original.SessionStatus = PTSessionStatus.Scheduled;
-                original.CancelledAt = null;
-                p.Sessions.Remove(replacement);
-                repo.Remove(replacement);
-            }
-            p.EndDate = LastSessionDate(p);
-            f.ActualStartDate = null;
-            f.ActualEndDate = null;
-        }
-        else
-            return Conflict<PTFreezeResponse>("Chỉ rút được yêu cầu đang chờ hoặc đã duyệt trước ngày bắt đầu bảo lưu.");
-        f.RequestStatus = PTFreezeRequestStatus.Withdrawn;
-        Audit(actor, nameof(PTFreeze), id, "Withdrawn");
-        Notify(p.PTUserId, "Hội viên rút yêu cầu bảo lưu", "Lịch tập được khôi phục theo khả năng còn trống.", nameof(PTFreeze), id);
-        await repo.SaveChangesAsync(ct);
-        return Result<PTFreezeResponse>.Success(FreezeResponse(f, p));
-    }, ct);
 
     private async Task<PTPurchase?> MemberFreeze(string actor, int freezeId, CancellationToken ct) =>
         await repo.GetContractForFreezeAsync(freezeId, ct) is { } contract && contract.MemberUserId == actor ? contract : null;

@@ -36,7 +36,7 @@
                         }
                     </label>
                 </fieldset>
-                <p class="trainer-muted">Chọn ngày bắt đầu bất kỳ và đăng ký trước buổi tập đầu tiên ít nhất 24 giờ. Ca bận trong 7 ngày đầu không chọn được; ngày bận ở các tuần sau được dời ra sau buổi cuối. Mua và tập PT không yêu cầu gói Gym.</p>
+                <p class="trainer-muted">Chọn ngày bắt đầu bất kỳ. Cần đăng ký trước buổi tập đầu tiên tối thiểu 24 giờ; ca nào trong 24 giờ tới sẽ được xếp sang tuần sau. Ca bận trong 7 ngày đầu không chọn được; ngày bận ở các tuần sau được dời ra sau buổi cuối. Mua và tập PT không yêu cầu gói Gym.</p>
                 <PTWeeklyGrid Slots="_slots" SelectedIds="_selected.Values" SlotSelected="SelectSlot" Disabled="@(_busy || !ValidStart)" />
                 <div class="trainer-row">
                     <span>@_selected.Count ngày lặp đã chọn</span>
@@ -50,6 +50,10 @@
                 <h2>Lịch dự kiến</h2>
                 <strong>@trainer.Profile.FullName</strong>
                 <p>@preview.Sessions.Count buổi · Buổi cuối @Date(preview.ExpiresOn) · @Money(preview.Price)</p>
+                @if (preview.Deferred.Count > 0)
+                {
+                    <p class="trainer-feedback" role="status">Ca @string.Join(", ", preview.Deferred.Select(s => $"{Day(s.Date.DayOfWeek)} {Date(s.Date)} {s.StartTime:HH:mm}")) cách thời điểm hiện tại chưa đến 24 giờ. Buổi tập đầu tiên phải được đăng ký trước tối thiểu 24 giờ nên ca này được xếp sang tuần sau.</p>
+                }
                 @if (preview.Skipped.Count > 0)
                 {
                     <p class="trainer-feedback" role="status">Huấn luyện viên hoặc bạn đã có lịch vào @string.Join(", ", preview.Skipped.Select(s => $"{Date(s.Date)} {s.StartTime:HH:mm}")); các buổi này được dời ra sau buổi cuối.</p>

@@ -18,9 +18,14 @@ public sealed partial class PersonalTrainingService
         var through = from.AddDays(6);
         var sessions = await repo.GetTeachingSessionsAsync(actor, from, through, ct);
         var now = Now;
-        return Result<IReadOnlyList<PTTeachingSlot>>.Success(sessions.Select(s => new PTTeachingSlot(
-            s.Id, s.SessionDate, s.StartTime, s.EndTime,
-            s.Member.FullName, SessionResponse(s, now).Status, s.PTPurchaseId)).ToArray());
+        return Result<IReadOnlyList<PTTeachingSlot>>.Success(sessions.Select(s =>
+        {
+            var response = SessionResponse(s, now);
+            // A pending reschedule also shows the slot it would move to (cancellation and make-up proposals keep the original slot).
+            var move = response.Proposal is { Type: nameof(PTAdjustmentType.Reschedule) } p ? p : null;
+            return new PTTeachingSlot(s.Id, s.SessionDate, s.StartTime, s.EndTime, s.Member.FullName, response.Status,
+                s.PTPurchaseId, move?.Date, move?.StartTime, move?.EndTime);
+        }).ToArray());
     }
 
     private PTPurchaseStatus EffectiveStatus(PTPurchase p)
@@ -287,6 +292,8 @@ public sealed partial class PersonalTrainingService
             return Invalid<PTSessionResponse>("Loại đề xuất không hợp lệ.");
         if (IsOriginalTime(s, request.Date, request.StartTime) || !IsWholeHour(request.StartTime))
             return Invalid<PTSessionResponse>("Chọn giờ bắt đầu tròn giờ, khác lịch hiện tại.");
+        if (!InRescheduleWindow(s, request.Date))
+            return Invalid<PTSessionResponse>("Chỉ được đổi sang ca trong tuần của buổi tập hoặc tuần kế tiếp.");
         var end = request.StartTime.Add(s.EndTime - s.StartTime);
         if (await AdjustError<PTSessionResponse>(p, s, request.Date, request.StartTime, end, now, ct) is { } error)
             return error;

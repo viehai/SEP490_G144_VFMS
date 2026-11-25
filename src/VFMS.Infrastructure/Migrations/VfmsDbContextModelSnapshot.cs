@@ -1939,6 +1939,33 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<DateOnly?>("ActualStartDate")
                         .HasColumnType("date");
 
+                    b.Property<string>("ChangeOutcome")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ChangePayloadJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ChangeRequestStatus")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ChangeRequestType")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("ChangeRequestedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateOnly?>("ChangeResumeDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("ChangeReviewNote")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("ChangeReviewedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ChangeReviewedByUserId")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
