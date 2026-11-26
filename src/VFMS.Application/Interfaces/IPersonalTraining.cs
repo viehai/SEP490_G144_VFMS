@@ -87,10 +87,8 @@ public interface IPersonalTrainingRepository : IAuditedRepository
     // ── Sessions ─────────────────────────────────────────────────
     /// <summary>Change requests and make-up proposals past their answer deadline.</summary>
     Task<IReadOnlyList<PTSession>> GetExpiredProposalsAsync(DateTime now, int take, CancellationToken cancellationToken = default);
-    /// <summary>GBR-103: earlier sessions nobody recorded, with their contract's sessions loaded.</summary>
-    Task<IReadOnlyList<PTSession>> GetUnrecordedPastSessionsAsync(DateOnly today, int take, CancellationToken cancellationToken = default);
     /// <summary>The session with its contract's sessions and freezes loaded.</summary>
-    Task<PTSession?> GetSessionWithContractAsync(int id, CancellationToken cancellationToken = default);
+    Task<PTSession?> GetSessionWithContractAsync(int id, CancellationToken cancellationToken = default, string? trainerId = null);
     /// <summary>A session the Member reported as 'PT Absent' (read only).</summary>
     Task<PTSession?> GetReportedSessionAsync(int id, CancellationToken cancellationToken = default);
     Task<PTSession?> GetTrainerSessionAsync(int id, string trainerUserId, CancellationToken cancellationToken = default);
@@ -160,6 +158,7 @@ public interface IPersonalTrainingService
     Task<Result<PTSessionResponse>> RequestCancellation(string actor, int id, CancellationToken ct);
     Task<Result<PTSessionResponse>> DecideProposal(string actor, int id, PTProposalDecision request, CancellationToken ct);
     Task<Result<PTSessionResponse>> DecideMakeUpRequest(string actor, int id, PTProposalDecision request, CancellationToken ct);
+    Task<Result<PTSessionResponse>> TeachingSession(string actor, int contractId, int sessionId, CancellationToken ct);
     Task<Result<PTSessionResponse>> RecordAttendance(string actor, int id, bool attended, CancellationToken ct);
     Task<Result<PTSessionResponse>> ReportTrainerAbsence(string actor, int id, PTTrainerAbsenceReportRequest request, CancellationToken ct);
     Task<Result<PagedResponse<PTAttendanceDispute>>> AttendanceDisputes(string actor, bool processed, int page, CancellationToken ct);
@@ -173,7 +172,6 @@ public interface IPersonalTrainingService
 
     // Background jobs (PersonalTrainingWorker)
     Task<Result<int>> RemindPendingFreezes(CancellationToken ct);
-    Task<Result<int>> ProcessAttendance(CancellationToken ct);
     Task ExpireInactiveTrainers(DateOnly today, CancellationToken ct);
     Task ExpirePending(CancellationToken ct);
 }

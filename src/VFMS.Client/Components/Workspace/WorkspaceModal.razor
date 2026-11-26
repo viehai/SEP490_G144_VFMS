@@ -33,13 +33,14 @@
     private string TitleId => $"workspace-modal-title-{_id}";
     private readonly string _id = Guid.NewGuid().ToString("N")[..8];
     private bool _escBound;
+    private DotNetObjectReference<WorkspaceModal>? _reference;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (Open && !_escBound)
         {
             _escBound = true;
-            try { await JS.InvokeVoidAsync("vfmsModal.registerEscape", _id, DotNetObjectReference.Create(this)); }
+            try { await JS.InvokeVoidAsync("vfmsModal.registerEscape", _id, _reference ??= DotNetObjectReference.Create(this)); }
             catch (Exception) { /* trình duyệt không hỗ trợ - bỏ qua */ }
         }
         else if (!Open && _escBound)
@@ -63,8 +64,11 @@
 
     public async ValueTask DisposeAsync()
     {
-        if (!_escBound) return;
-        try { await JS.InvokeVoidAsync("vfmsModal.unregisterEscape", _id); }
-        catch (Exception) { /* trình duyệt không hỗ trợ - bỏ qua */ }
+        try
+        {
+            if (_escBound) await JS.InvokeVoidAsync("vfmsModal.unregisterEscape", _id);
+        }
+        catch (JSException) { }
+        finally { _reference?.Dispose(); }
     }
 }

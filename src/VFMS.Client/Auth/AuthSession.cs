@@ -92,20 +92,24 @@ public sealed class AuthSession(IJSRuntime js, AuthApiClient api, MembershipCart
         catch (AuthApiException) { /* A temporary profile failure can be retried on the next check. */ }
     }
 
+    public Task RefreshRolesAsync(string expectedUserId) => RefreshRolesAsync(expectedUserId, false, default);
+
+    private Task RefreshRolesAsync(string? expectedUserId, bool promotionOnly, CancellationToken cancellationToken) =>
+        WithSessionAsync(async () =>
+        {
+            if (_session is not { } session || (promotionOnly && !CanPromote(session)) ||
+                (expectedUserId is not null && expectedUserId != session.User.UserId)) return false;
+
+            var user = await api.RefreshAsync(session.User.RefreshToken);
+            await SaveAsync(new(user, DateTimeOffset.UtcNow.AddSeconds(user.ExpiresIn), session.RememberMe));
+            return true;
+        }, cancellationToken);
+
     public async Task RefreshMemberRoleAsync(string? expectedUserId, CancellationToken cancellationToken)
     {
         try
         {
-            await WithSessionAsync(async () =>
-            {
-                if (_session is not { } session || !CanPromote(session) ||
-                    (expectedUserId is not null && expectedUserId != session.User.UserId)) return false;
-
-                // Once rotation starts, persist the result even if checkout is closed.
-                var user = await api.RefreshAsync(session.User.RefreshToken);
-                await SaveAsync(new(user, DateTimeOffset.UtcNow.AddSeconds(user.ExpiresIn), session.RememberMe));
-                return true;
-            }, cancellationToken);
+            await RefreshRolesAsync(expectedUserId, true, cancellationToken);
         }
         catch (AuthApiException) { /* Payment or activation succeeded. The profile check will retry. */ }
     }

@@ -59,13 +59,10 @@ public sealed class MemberQrController : ControllerBase
         User.GetUserId() is { } userId ? this.ToActionResult(await _service.IssueAsync(userId, cancellationToken)) : Unauthorized();
 }
 
-/// <summary>
-/// UC-44/UC-45 entrance and exit kiosk. Staff and Manager can check anyone in or out. A Customer or Member
-/// can only scan themselves: an open face-match would let anyone probe biometrics or check other people in.
-/// </summary>
+/// <summary>Entrance and exit kiosk operated by Staff or Manager.</summary>
 [ApiController]
 [Route("api/kiosk")]
-[Authorize(Roles = "Staff,Manager,Customer,Member")]
+[Authorize(Roles = "Staff,Manager")]
 [Produces("application/json")]
 public sealed class KioskController : ControllerBase
 {
@@ -76,29 +73,19 @@ public sealed class KioskController : ControllerBase
     [HttpPost("check-in")]
     [RequestSizeLimit(16 * 1024)]
     public async Task<IActionResult> CheckIn([FromBody] KioskScanRequest request, CancellationToken cancellationToken) =>
-        Scope() is var (ok, self) && ok
-            ? this.ToActionResult(await _service.KioskCheckInAsync(request, self, cancellationToken))
-            : Unauthorized();
+        this.ToActionResult(await _service.KioskCheckInAsync(request, cancellationToken));
 
     [HttpPost("check-out")]
     [RequestSizeLimit(16 * 1024)]
     public async Task<IActionResult> CheckOut([FromBody] KioskScanRequest request, CancellationToken cancellationToken) =>
-        Scope() is var (ok, self) && ok
-            ? this.ToActionResult(await _service.KioskCheckOutAsync(request, self, cancellationToken))
-            : Unauthorized();
+        this.ToActionResult(await _service.KioskCheckOutAsync(request, cancellationToken));
 
     /// <summary>One scan: checks out when the member is inside, otherwise checks in.</summary>
     [HttpPost("scan")]
     [RequestSizeLimit(16 * 1024)]
     public async Task<IActionResult> Scan([FromBody] KioskScanRequest request, CancellationToken cancellationToken) =>
-        Scope() is var (ok, self) && ok
-            ? this.ToActionResult(await _service.KioskScanAsync(request, self, cancellationToken))
-            : Unauthorized();
+        this.ToActionResult(await _service.KioskScanAsync(request, cancellationToken));
 
-    /// <summary>Staff/Manager: no restriction. Others: limited to their own user ID, which must exist.</summary>
-    private (bool Ok, string? Self) Scope() =>
-        User.IsInRole("Staff") || User.IsInRole("Manager") ? (true, null)
-        : User.GetUserId() is { } id ? (true, id) : (false, null);
 }
 
 /// <summary>UC-48/UC-57 View Active Check-ins (Staff, Manager).</summary>

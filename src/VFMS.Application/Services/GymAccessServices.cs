@@ -9,7 +9,7 @@ using VFMS.Domain.Enums;
 namespace VFMS.Application.Services;
 
 /// <summary>Which membership lets a member in today. Shared by gym check-in and yoga booking.</summary>
-internal static class MembershipRules
+public static class MembershipRules
 {
     /// <summary>
     /// The usable membership with the latest end date. Scheduled counts once its start date has come, because the
@@ -17,8 +17,7 @@ internal static class MembershipRules
     /// </summary>
     public static MemberMembership? Usable(IEnumerable<MemberMembership> memberships, DateOnly today, ComponentType? type = null) =>
         memberships
-            .Where(m => m.MembershipStatus is MembershipStatus.Active or MembershipStatus.Scheduled &&
-                        m.StartDate <= today && m.EndDate >= today &&
+            .Where(m => StatusOn(m.MembershipStatus, m.StartDate, m.EndDate, today) == MembershipStatus.Active &&
                         (type is null || m.PackageComponent.ComponentType == type))
             .OrderByDescending(m => m.EndDate)
             .FirstOrDefault();
@@ -31,30 +30,11 @@ internal static class MembershipRules
         Usable(memberships.Where(m => VFMS.Contracts.Yoga.Validators.YogaRules.PlanCovers(m.PackageComponent.YogaDifficultyLevel, classLevel)),
             day, ComponentType.YOGA) is not null;
 
-    /// <summary>Only GYM memberships open the gym: a yoga-only plan books yoga classes but never passes check-in.</summary>
-    public static List<MemberMembership> Gym(IEnumerable<MemberMembership> memberships) =>
-        memberships.Where(m => m.PackageComponent.ComponentType == ComponentType.GYM).ToList();
-
-    /// <summary>
-    /// Status of the member's gym plans; "No gym plan" when they have none but another plan (e.g. yoga only) is usable,
-    /// so the kiosk and the front desk don't say "None" to someone who did buy a plan.
-    /// </summary>
-    public static string GymStatus(IReadOnlyCollection<MemberMembership> all, DateOnly today)
+    public static MembershipStatus StatusOn(MembershipStatus status, DateOnly start, DateOnly end, DateOnly today)
     {
-        var status = Status(Gym(all), today);
-        return status == "None" && Usable(all, today) is not null ? NoGymPlan : status;
-    }
-
-    public const string NoGymPlan = "No gym plan";
-
-    /// <summary>Active, None, Expired, or the status of the latest membership (Frozen, Suspended, ...).</summary>
-    public static string Status(IReadOnlyCollection<MemberMembership> memberships, DateOnly today)
-    {
-        var latest = memberships.MaxBy(m => m.EndDate);
-        return Usable(memberships, today) is not null ? "Active"
-            : latest is null ? "None"
-            : latest.MembershipStatus == MembershipStatus.Active && latest.EndDate < today ? "Expired"
-            : latest.MembershipStatus.ToString();
+        if (status is not (MembershipStatus.Active or MembershipStatus.Scheduled)) return status;
+        if (start > today) return MembershipStatus.Scheduled;
+        return end < today ? MembershipStatus.Expired : MembershipStatus.Active;
     }
 }
 
@@ -63,6 +43,9 @@ internal static class GymAccessMessages
 {
     public const string Denied =
         "Từ chối truy cập: không tìm thấy gói hội viên còn hiệu lực hoặc không xác thực được khuôn mặt/mã QR. Vui lòng liên hệ quầy lễ tân.";   // MSG-36
+    public const string NoOpenVisit = "Hội viên chưa có lượt check-in đang mở để check-out.";
+    public const string AccountLocked = "Tài khoản hội viên đang bị khóa. Vui lòng liên hệ lễ tân.";
+    public const string AccountLockedCode = "MEMBER_ACCOUNT_LOCKED";
     public const string DeniedCode = "ACCESS_DENIED";
     /// <summary>Kiosk scan matched no member (face not enrolled, QR token expired or replaced).</summary>
     public const string NotRecognisedCode = "SCAN_NOT_RECOGNISED";
@@ -80,7 +63,9 @@ internal static class GymAccessMessages
         "Suspended" => "Tạm ngưng",
         "Cancelled" => "Đã hủy",
         "None" => "Chưa có gói",
-        MembershipRules.NoGymPlan => "Chưa có gói Gym",
+        "AwaitingActivation" => "Chờ kích hoạt",
+        "PendingPayment" => "Chờ thanh toán",
+        "Completed" => "Đã hoàn thành",
         _ => status
     };
 
@@ -139,7 +124,7 @@ public sealed class MemberQrService : IMemberQrService
 
 /// <summary>
 /// UC-44 Self Check-In (kiosk, FaceID or QR) and the shared entry rules: Active membership (GBR-89),
-/// one open visit at a time, and PT auto-completion (GBR-92).
+/// one open visit at a time (GBR-91).
 /// </summary>
 public sealed class CheckInService : ICheckInService
 {
@@ -152,21 +137,24 @@ public sealed class CheckInService : ICheckInService
     private readonly IFaceTemplateProtector _protector;
     private readonly IMemberQrService _qr;
     private readonly TimeProvider _clock;
+    private readonly IMembershipAccessRepository _access;
 
-    public CheckInService(ICheckInRepository repository, IFaceTemplateProtector protector, IMemberQrService qr, TimeProvider clock)
+    public CheckInService(ICheckInRepository repository, IMembershipAccessRepository access, IFaceTemplateProtector protector,
+        IMemberQrService qr, TimeProvider clock)
     {
+        _access = access;
         _repository = repository;
         _protector = protector;
         _qr = qr;
         _clock = clock;
     }
 
-    public async Task<Result<CheckInResultResponse>> KioskCheckInAsync(KioskScanRequest request, string? selfUserId = null, CancellationToken cancellationToken = default)
+    public async Task<Result<CheckInResultResponse>> KioskCheckInAsync(KioskScanRequest request, CancellationToken cancellationToken = default)
     {
         var (userId, method) = await IdentifyAsync(request, cancellationToken);
-        if (userId is null || (selfUserId is not null && userId != selfUserId))
+        if (userId is null)
             return Result<CheckInResultResponse>.Failure(GymAccessMessages.Denied, GymAccessMessages.DeniedCode, 403);
-        return await CheckInMemberAsync(userId, method, null, cancellationToken);
+        return await WithUnlockedMemberAsync(userId, member => CheckInMemberAsync(member, method, null, cancellationToken), cancellationToken);
     }
 
     public async Task<Result<IReadOnlyList<FrontDeskMemberResponse>>> SearchMembersAsync(string? search, CancellationToken cancellationToken = default)
@@ -174,49 +162,60 @@ public sealed class CheckInService : ICheckInService
         var term = search?.Trim();
         if (string.IsNullOrEmpty(term))
             return Result<IReadOnlyList<FrontDeskMemberResponse>>.Success([]);
-        var today = YogaTime.Today(_clock);
         var rows = await _repository.SearchMembersAsync(term, cancellationToken);
         if (rows.Count == 0)
             return Result<IReadOnlyList<FrontDeskMemberResponse>>.Failure("Không tìm thấy kết quả phù hợp.", "NOT_FOUND", 404);   // MSG-01
+        var now = _clock.GetUtcNow().UtcDateTime;
+        var today = DateOnly.FromDateTime(now + YogaTime.GymOffset);
+        var plans = (await _access.GetEntryPlansAsync(rows.Select(r => r.User.UserId).ToList(), today, now, cancellationToken))
+            .ToLookup(plan => plan.MemberUserId);
         return Result<IReadOnlyList<FrontDeskMemberResponse>>.Success(rows.Select(r =>
         {
-            var gym = MembershipRules.Gym(r.Memberships);
-            var usable = MembershipRules.Usable(gym, today);
+            var plan = EntryPlan.Best(plans[r.User.UserId]);
             return new FrontDeskMemberResponse(r.User.UserId, r.User.FullName, r.User.PhoneNumber,
-                MembershipRules.GymStatus(r.Memberships, today), (usable ?? gym.MaxBy(m => m.EndDate))?.EndDate, r.IsCheckedIn);
+                plan?.Status ?? "None", plan?.ValidThrough, r.IsCheckedIn, r.User.AccountStatus == AccountStatus.Locked);
         }).ToList());
     }
 
-    /// <summary>UC-46: same entry rules as the kiosk, recorded as Manual with the staff member's ID; no PT auto-complete.</summary>
+    /// <summary>UC-46: same entry rules as the kiosk, recorded as Manual with the staff member's ID.</summary>
     public Task<Result<CheckInResultResponse>> ManualCheckInAsync(string memberUserId, string staffUserId, CancellationToken cancellationToken = default) =>
-        CheckInMemberAsync(memberUserId, CheckInMethod.ManualStaff, staffUserId, cancellationToken);
+        WithUnlockedMemberAsync(memberUserId,
+            member => CheckInMemberAsync(member, CheckInMethod.ManualStaff, staffUserId, cancellationToken), cancellationToken);
 
-    public async Task<Result<CheckOutResultResponse>> KioskCheckOutAsync(KioskScanRequest request, string? selfUserId = null, CancellationToken cancellationToken = default)
+    public async Task<Result<CheckOutResultResponse>> KioskCheckOutAsync(KioskScanRequest request, CancellationToken cancellationToken = default)
     {
         var (userId, method) = await IdentifyAsync(request, cancellationToken);
-        if (userId is null || (selfUserId is not null && userId != selfUserId))
+        if (userId is null)
             return Result<CheckOutResultResponse>.Failure(GymAccessMessages.Denied, GymAccessMessages.DeniedCode, 403);
-        var open = await _repository.GetOpenCheckInAsync(userId, cancellationToken);
-        return open is null   // GBR-91: the member goes to the front desk (UC-47)
-            ? Result<CheckOutResultResponse>.Failure(GymAccessMessages.Denied, GymAccessMessages.DeniedCode, 403)
-            : await CheckOutAsync(open, method, null, cancellationToken);
+        return await WithUnlockedMemberAsync(userId, async member =>
+        {
+            var open = await _repository.GetOpenCheckInAsync(userId, cancellationToken);
+            return open is null
+                ? Result<CheckOutResultResponse>.Failure(GymAccessMessages.NoOpenVisit, GymAccessMessages.DeniedCode, 403)
+                : await CheckOutAsync(open, member.FullName, method, null, cancellationToken);
+        }, cancellationToken);
     }
 
-    public async Task<Result<KioskScanResultResponse>> KioskScanAsync(KioskScanRequest request, string? selfUserId = null, CancellationToken cancellationToken = default)
+    public async Task<Result<KioskScanResultResponse>> KioskScanAsync(KioskScanRequest request, CancellationToken cancellationToken = default)
     {
         // Identify once, then decide in or out.
         var (userId, method) = await IdentifyAsync(request, cancellationToken);
-        if (userId is null || (selfUserId is not null && userId != selfUserId))
+        if (userId is null)
             return Result<KioskScanResultResponse>.Failure(GymAccessMessages.Denied, GymAccessMessages.NotRecognisedCode, 403);
 
-        if (await _repository.GetOpenCheckInAsync(userId, cancellationToken) is { } open)
+        return await WithUnlockedMemberAsync(userId, member => ScanMemberAsync(member, method, cancellationToken), cancellationToken);
+    }
+
+    private async Task<Result<KioskScanResultResponse>> ScanMemberAsync(ApplicationUser member, CheckInMethod method, CancellationToken cancellationToken)
+    {
+        if (await _repository.GetOpenCheckInAsync(member.UserId, cancellationToken) is { } open)
         {
-            var outcome = await CheckOutAsync(open, method, null, cancellationToken);
+            var outcome = await CheckOutAsync(open, member.FullName, method, null, cancellationToken);
             return outcome.IsSuccess
                 ? Result<KioskScanResultResponse>.Success(new KioskScanResultResponse("CheckOut", null, outcome.Data))
                 : Result<KioskScanResultResponse>.Failure(outcome.ErrorMessage!, outcome.ErrorCode!, outcome.StatusCode);
         }
-        var entry = await CheckInMemberAsync(userId, method, null, cancellationToken);
+        var entry = await CheckInMemberAsync(member, method, null, cancellationToken);
         return entry.IsSuccess
             ? Result<KioskScanResultResponse>.Success(new KioskScanResultResponse("CheckIn", entry.Data, null), entry.StatusCode)
             : Result<KioskScanResultResponse>.Failure(entry.ErrorMessage!, entry.ErrorCode!, entry.StatusCode);
@@ -225,15 +224,34 @@ public sealed class CheckInService : ICheckInService
     /// <summary>UC-47: Staff close an open visit from Active Check-ins, recorded as Manual with their ID.</summary>
     public async Task<Result<CheckOutResultResponse>> ManualCheckOutAsync(int checkInId, string staffUserId, CancellationToken cancellationToken = default)
     {
-        var open = await _repository.GetCheckInAsync(checkInId, cancellationToken);
-        return open is not { Status: CheckInStatus.Active }   // GBR-91
-            ? Result<CheckOutResultResponse>.Failure(GymAccessMessages.Denied, "NO_OPEN_CHECKIN", 404)
-            : await CheckOutAsync(open, CheckInMethod.ManualStaff, staffUserId, cancellationToken);
+        var visit = await _repository.GetCheckInAsync(checkInId, cancellationToken);
+        if (visit is not { Status: CheckInStatus.Active }) return NoOpenVisit();
+        return await WithUnlockedMemberAsync(visit.MemberUserId, async member =>
+        {
+            var open = await _repository.GetOpenCheckInAsync(member.UserId, cancellationToken);
+            return open is not null && open.Id == checkInId
+                ? await CheckOutAsync(open, member.FullName, CheckInMethod.ManualStaff, staffUserId, cancellationToken)
+                : NoOpenVisit();
+        }, cancellationToken);
+    }
+
+    private static Result<CheckOutResultResponse> NoOpenVisit() =>
+        Result<CheckOutResultResponse>.Failure(GymAccessMessages.NoOpenVisit, "NO_OPEN_CHECKIN", 404);
+
+    private Task<Result<T>> WithUnlockedMemberAsync<T>(string userId, Func<ApplicationUser, Task<Result<T>>> action, CancellationToken ct)
+    {
+        return _repository.WithMemberVisitAsync(userId, member => member switch
+        {
+            null => Task.FromResult(Result<T>.Failure(GymAccessMessages.Denied, GymAccessMessages.DeniedCode, 403)),
+            { AccountStatus: AccountStatus.Locked } => Task.FromResult(Result<T>.Failure(
+                GymAccessMessages.AccountLocked, GymAccessMessages.AccountLockedCode, 403)),
+            _ => action(member)
+        }, ct);
     }
 
     /// <summary>Closes an open visit and saves (GBR-91). Occupancy is the count of open visits, so it drops here.</summary>
     private async Task<Result<CheckOutResultResponse>> CheckOutAsync(
-        CheckIn open, CheckInMethod method, string? staffUserId, CancellationToken cancellationToken)
+        CheckIn open, string name, CheckInMethod method, string? staffUserId, CancellationToken cancellationToken)
     {
         var now = _clock.GetUtcNow().UtcDateTime;
         open.CheckoutTime = now;
@@ -241,7 +259,6 @@ public sealed class CheckInService : ICheckInService
         open.CheckedOutByUserId = staffUserId;
         open.Status = CheckInStatus.CheckedOut;
         await _repository.SaveChangesAsync(cancellationToken);
-        var name = (await _repository.GetUserAsync(open.MemberUserId, cancellationToken))?.FullName ?? string.Empty;
         return Result<CheckOutResultResponse>.Success(new CheckOutResultResponse(
             open.Id, open.MemberUserId, name, open.CheckinTime, now, (int)(now - open.CheckinTime).TotalMinutes));
     }
@@ -268,22 +285,16 @@ public sealed class CheckInService : ICheckInService
         return (best.UserId, CheckInMethod.FaceRecognition);
     }
 
-    internal async Task<Result<CheckInResultResponse>> CheckInMemberAsync(
-        string userId, CheckInMethod method, string? staffUserId, CancellationToken cancellationToken)
+    private async Task<Result<CheckInResultResponse>> CheckInMemberAsync(
+        ApplicationUser user, CheckInMethod method, string? staffUserId, CancellationToken cancellationToken)
     {
         var now = _clock.GetUtcNow().UtcDateTime;
-        var localNow = YogaTime.LocalNow(_clock);
-        var today = DateOnly.FromDateTime(localNow);
-        var user = await _repository.GetUserAsync(userId, cancellationToken);
-        var all = await _repository.GetMembershipsAsync(userId, cancellationToken);
-        var membership = MembershipRules.Usable(MembershipRules.Gym(all), today);
-        if (user is null)
-            return Result<CheckInResultResponse>.Failure(GymAccessMessages.Denied, GymAccessMessages.DeniedCode, 403);
-        if (membership is null)
+        var today = DateOnly.FromDateTime(now + YogaTime.GymOffset);
+        var userId = user.UserId;
+        var plan = EntryPlan.Best(await _access.GetEntryPlansAsync([userId], today, now, cancellationToken));
+        if (plan is not { IsActive: true, ValidThrough: { } validThrough })
             return Result<CheckInResultResponse>.Failure(
-                GymAccessMessages.DeniedWithStatus(MembershipRules.GymStatus(all, today)), GymAccessMessages.DeniedCode, 403);
-        if (!InAccessWindow(membership.PackageComponent, TimeOnly.FromDateTime(localNow)))
-            return Result<CheckInResultResponse>.Failure(GymAccessMessages.Denied, GymAccessMessages.DeniedCode, 403);
+                GymAccessMessages.DeniedWithStatus(plan?.Status ?? "None"), GymAccessMessages.DeniedCode, 403);
 
         if (await _repository.GetOpenCheckInAsync(userId, cancellationToken) is { } open)
         {
@@ -298,7 +309,7 @@ public sealed class CheckInService : ICheckInService
         var checkIn = new CheckIn
         {
             MemberUserId = userId,
-            MemberMembershipId = membership.Id,
+            MemberMembershipId = plan.MemberMembershipId,
             CheckinTime = now,
             CheckinMethod = method,
             HandledByUserId = staffUserId,
@@ -306,29 +317,11 @@ public sealed class CheckInService : ICheckInService
         };
         _repository.Add(checkIn);
 
-        int? ptSessionId = null;
-        if (staffUserId is null)   // GBR-92 only for self check-in
-        {
-            var due = (await _repository.GetScheduledPtSessionsAsync(userId, today, now, cancellationToken))
-                .FirstOrDefault(s => now >= YogaTime.ToUtc(s.SessionDate, s.StartTime) - TimeSpan.FromMinutes(30) &&
-                                     now <= YogaTime.ToUtc(s.SessionDate, s.StartTime) + TimeSpan.FromMinutes(15));
-            // UC 4.6 step 7: 'Present' set by check-in; the PT has not recorded anything (GBR-103).
-            // shortcut: this update is saved before the visit below, so a failed visit save leaves the session 'Present'; wrap both in one transaction if that is ever seen.
-            if (due is not null && await _repository.CompletePtSessionByCheckInAsync(due, now, cancellationToken))
-            {
-                PersonalTrainingRules.Settle(due.PTPurchase);   // the final session also completes the contract
-                ptSessionId = due.Id;
-            }
-        }
-
-        await _repository.SaveChangesAsync(cancellationToken);   // one save: check-in, stale close, PT contract, QR use, face LastUsedAt
+        await _repository.SaveChangesAsync(cancellationToken);   // Persist the visit and any stale visit closure together.
         return Result<CheckInResultResponse>.Success(new CheckInResultResponse(
-            checkIn.Id, userId, user.FullName, membership.EndDate, now,
-            GymAccessMessages.Welcome(user.FullName, membership.EndDate), ptSessionId), 201);
+            checkIn.Id, userId, user.FullName, validThrough, now,
+            GymAccessMessages.Welcome(user.FullName, validThrough)), 201);
     }
-
-    private static bool InAccessWindow(PackageComponent component, TimeOnly time) =>
-        component.AccessStartTime is not { } start || component.AccessEndTime is not { } end || (time >= start && time <= end);
 
     private static double Distance(IReadOnlyList<float> a, IReadOnlyList<float> b)
     {

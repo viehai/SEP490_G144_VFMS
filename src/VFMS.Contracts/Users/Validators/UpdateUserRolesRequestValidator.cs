@@ -7,13 +7,10 @@ public sealed class UpdateUserRolesRequestValidator : AbstractValidator<UpdateUs
     public UpdateUserRolesRequestValidator()
     {
         RuleFor(x => x.Roles)
-            .NotNull()
-            .Must(roles => roles is { Count: > 0 })
-            .WithMessage("At least one role is required.")
-            .Must(roles => roles is not null && roles.All(role =>
-                UserAccountRules.StaffRoles.Contains(role, StringComparer.OrdinalIgnoreCase)))
-            .WithMessage("Roles may only contain PT, YogaInstructor, Staff, or Manager.")
-            .Must(roles => roles is not null && roles.Distinct(StringComparer.OrdinalIgnoreCase).Count() == roles.Count)
-            .WithMessage("Roles must not contain duplicates.");
+            .Cascade(CascadeMode.Stop)
+            .Must(roles => roles is { Count: 1 })
+            .WithMessage("Vui lòng chọn đúng một vai trò.")
+            .Must(roles => UpdateUserRolesRequest.Assignable.Contains(roles.Single(), StringComparer.OrdinalIgnoreCase))
+            .WithMessage("Vai trò được chọn không hợp lệ.");
     }
 }

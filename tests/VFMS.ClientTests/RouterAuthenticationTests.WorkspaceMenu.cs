@@ -39,7 +39,7 @@ public sealed partial class RouterAuthenticationTests
             [
                 "Tổng quan", "/admin/dashboard", "/admin/dashboard#quick-actions",
                 "Hoạt động & báo cáo", "/admin/business-reports",
-                "Quản trị hệ thống", "/admin/banned-words", "/admin/audit-logs"
+                "Quản trị hệ thống", "/admin/dashboard/accounts", "/admin/banned-words", "/admin/audit-logs"
             ]
         },
         {

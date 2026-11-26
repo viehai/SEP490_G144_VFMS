@@ -65,6 +65,8 @@ public sealed class PersonalTrainingApiClient(HttpClient http, AuthSession sessi
         Send<PTSessionResponse>(HttpMethod.Post, $"sessions/{id}/cancellation-request");
     public Task<PTSessionResponse> DecideProposalAsync(int id, PTProposalDecision request) =>
         Send<PTSessionResponse>(HttpMethod.Post, $"sessions/{id}/proposal/decision", request);
+    public Task<PTSessionResponse> TeachingSessionAsync(int contractId, int sessionId) =>
+        Send<PTSessionResponse>(HttpMethod.Get, $"contracts/{contractId}/teaching-sessions/{sessionId}");
     public Task<PTSessionResponse> AttendanceAsync(int id, bool attended) =>
         Send<PTSessionResponse>(HttpMethod.Post, $"sessions/{id}/attendance", attended);
     public Task<PTSessionResponse> ReportTrainerAbsenceAsync(int id, PTTrainerAbsenceReportRequest request) =>

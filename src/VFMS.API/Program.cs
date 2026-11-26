@@ -121,11 +121,18 @@ builder.Services.AddAuthentication(options =>
                 return;
             }
 
+            var version = context.Principal?.FindFirst("access_version")?.Value ?? "0";
+            if (!int.TryParse(version, out var accessVersion))
+            {
+                context.Fail("Invalid access version.");
+                return;
+            }
+
             var dbContext = context.HttpContext.RequestServices.GetRequiredService<VfmsDbContext>();
             var isActive = await dbContext.ApplicationUsers
                 .AsNoTracking()
                 .AnyAsync(user =>
-                    user.UserId == userId && user.AccountStatus == AccountStatus.Active,
+                    user.UserId == userId && user.AccountStatus == AccountStatus.Active && user.AccessVersion == accessVersion,
                     context.HttpContext.RequestAborted);
 
             if (!isActive)

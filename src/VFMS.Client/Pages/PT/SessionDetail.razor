@@ -8,25 +8,32 @@
 
 <PageTitle>Chi tiết ca học PT | Victor Fitness</PageTitle>
 <section class="workspace-page trainer-page trainer-stack">
-    <a class="trainer-back" href="@($"/pt/assigned-members/{ContractId}")">← Lịch và tiến độ tập</a>
+    @if (_session is not null && _contract is null)
+    {
+        <a class="trainer-back" href="/pt/teaching-schedule">← Lịch dạy PT</a>
+    }
+    else
+    {
+        <a class="trainer-back" href="@($"/pt/assigned-members/{ContractId}")">← Lịch và tiến độ tập</a>
+    }
     <PageHeader Overline="VFMS / PT" Title="Chi tiết ca học"
-                Description="Điểm danh trong ngày, ghi chú buổi tập và đề xuất buổi bù." />
+                Description="Điểm danh sau buổi tập, ghi chú và đề xuất buổi bù." />
     <TrainerFeedback Error="@_error" Message="@_message" />
     @if (_loading) { <p role="status">Đang tải ca học…</p> }
     else if (_session is { } session)
     {
         <article class="trainer-panel trainer-stack">
-            <h2>@_contract?.MemberName</h2>
+            @if (_contract is not null) { <h2>@_contract.MemberName</h2> }
             <p>@Day(session.Date.DayOfWeek), @Date(session.Date) · @Time(session.StartTime) – @Time(session.EndTime)</p>
-            <div class="trainer-row"><TrainerStatus Status="@session.Status" /><span class="trainer-muted">Tính @session.CreditUnits buổi</span></div>
-            @if (CanRecord(session))
+            <div class="trainer-row"><TrainerStatus Status="@(session.IsAwaitingAttendance ? "AwaitingAttendance" : session.Status)" /><span class="trainer-muted">@(session.IsAwaitingAttendance ? "Chưa trừ buổi" : $"Tính {session.CreditUnits} buổi")</span></div>
+            @if (session.CanRecordAttendance)
             {
                 <p class="trainer-muted">@(AwaitingMyResponse(session)
                     ? $"Hội viên báo bạn vắng mặt. Nếu bạn đã dạy, hãy điểm danh trước hết ngày {Date(session.Date.AddDays(1))}: buổi sẽ chuyển quản lý xem xét."
-                    : session.CompletedByCheckIn ? "Hội viên đã ghi nhận vào phòng tập nên buổi được ghi có mặt. Bạn có thể sửa đến hết hôm nay."
+                    : session.CompletedByCheckIn ? "Buổi này có ghi nhận từ kiosk theo quy tắc cũ."
                     : session.Status is "Completed" or "NoShow" ? "Có thể sửa điểm danh đến hết hôm nay."
                     : session.Status == "PendingFreeze" ? "Buổi đang chờ duyệt bảo lưu: ghi vắng mặt không bị trừ buổi."
-                    : "Điểm danh trong hôm nay.")</p>
+                    : "Chọn kết quả điểm danh của buổi tập.")</p>
                 <div class="trainer-row">
                     <button class="trainer-button trainer-primary" disabled="@(_busy || session.Status == "Completed" && !session.CompletedByCheckIn)" @onclick="() => AttendanceAsync(true)">Hội viên có mặt</button>
                     @if (session.Status != "PendingFreeze")
@@ -86,11 +93,6 @@
 
     protected override Task OnParametersSetAsync() => LoadAsync();
 
-    // GBR-103: attendance is recorded after the session ends, on the session day, and can be edited that day;
-    // a session the Member reported as 'PT Absent' can still be recorded until the end of the next day.
-    private static bool CanRecord(PTSessionResponse s) => AwaitingMyResponse(s) || s.Date == Today &&
-        s.Date.ToDateTime(s.EndTime) <= DateTime.UtcNow.AddHours(7) &&
-        s.Status is "Scheduled" or "ReschedulePending" or "RescheduleRequested" or "Completed" or "NoShow" or "PendingFreeze";
     private static bool AwaitingMyResponse(PTSessionResponse s) => s.Status == "Cancelled" && s.MakeUpAvailableAt > DateTime.UtcNow;
 
     private async Task LoadAsync()
@@ -98,8 +100,19 @@
         _loading = true;
         try
         {
-            _contract = (await Api.ContractsAsync(ContractId)).SingleOrDefault();
-            _session = _contract?.Sessions.SingleOrDefault(s => s.Id == SessionId);
+            _error = null;
+            _contract = null;
+            _session = null;
+            try
+            {
+                _contract = (await Api.ContractsAsync(ContractId)).SingleOrDefault();
+                _session = _contract?.Sessions.SingleOrDefault(s => s.Id == SessionId);
+            }
+            catch (AuthApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                // After a trainer change the original PT can still record their own session from the teaching schedule.
+                _session = await Api.TeachingSessionAsync(ContractId, SessionId);
+            }
             _note = _session?.Note ?? "";
             if (_session is null) _error = "Không tìm thấy ca học trong hợp đồng này.";
         }

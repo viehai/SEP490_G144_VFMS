@@ -19,7 +19,10 @@ public sealed class MembershipAccessTests
     [InlineData(MembershipStatus.Suspended, false)]
     public async Task GymEntryAndClassBookingRequireTheCanonicalActiveStatus(MembershipStatus status, bool expected)
     {
-        var repository = new AccessRepositoryStub { Membership = Membership(ComponentType.GYM) with { Status = status } };
+        var repository = new AccessRepositoryStub { Membership = Membership(ComponentType.GYM) with
+        {
+            Status = status, StartDate = status == MembershipStatus.Scheduled ? Today.AddDays(1) : Today
+        } };
         var service = new MembershipAccessService(repository, new TestClock());
 
         var gym = await service.CheckGymEntryAsync(MemberId, 1, default);
@@ -69,22 +72,18 @@ public sealed class MembershipAccessTests
     }
 
     [Theory]
-    [InlineData(ComponentType.GYM, true)]
-    [InlineData(ComponentType.YOGA, false)]
-    [InlineData(ComponentType.PT, false)]
-    [InlineData(ComponentType.PT, true)]
-    public async Task AccessDoesNotUseAnEntitlementForAnotherService(ComponentType component, bool classBooking)
+    [InlineData(ComponentType.GYM)]
+    [InlineData(ComponentType.YOGA)]
+    [InlineData(ComponentType.PT)]
+    public async Task AllThreeEntitlementsPermitGymEntryAndOnlyYogaPermitsClassBooking(ComponentType component)
     {
         var repository = new AccessRepositoryStub { Membership = Membership(component) };
         var service = new MembershipAccessService(repository, new TestClock());
 
-        var result = classBooking
-            ? await service.CheckClassBookingAsync(MemberId, 1, default)
-            : await service.CheckGymEntryAsync(MemberId, 1, default);
-
-        Assert.False(result.IsSuccess);
-        Assert.Equal(403, result.StatusCode);
-        Assert.Equal(classBooking ? "MSG-31" : "MSG-36", result.ErrorCode);
+        Assert.True((await service.CheckGymEntryAsync(MemberId, 1, default)).IsSuccess);
+        var booking = await service.CheckClassBookingAsync(MemberId, 1, default);
+        Assert.Equal(component == ComponentType.YOGA, booking.IsSuccess);
+        if (!booking.IsSuccess) Assert.Equal("MSG-31", booking.ErrorCode);
     }
 
     [Theory]
@@ -143,6 +142,17 @@ public sealed class MembershipAccessTests
     {
         public required OwnedMembershipAccess Membership { get; set; }
         public CancellationToken LastToken { get; private set; }
+
+        public Task<IReadOnlyList<EntryPlan>> GetEntryPlansAsync(IReadOnlyList<string> userIds, DateOnly today, DateTime nowUtc,
+            CancellationToken ct = default)
+        {
+            ct.ThrowIfCancellationRequested();
+            LastToken = ct;
+            var status = MembershipRules.StatusOn(Membership.Status, Membership.StartDate, Membership.EndDate, today);
+            return Task.FromResult<IReadOnlyList<EntryPlan>>(userIds.Contains(MemberId)
+                ? [new EntryPlan(MemberId, Membership.MembershipId, status.ToString(), Membership.EndDate)]
+                : []);
+        }
 
         public Task<OwnedMembershipAccess?> FindOwnedAsync(string memberId, int membershipId, CancellationToken ct)
         {

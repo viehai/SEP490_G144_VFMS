@@ -1,4 +1,5 @@
 using Mapster;
+using VFMS.Contracts.Users;
 using MapsterMapper;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -67,9 +68,16 @@ public sealed class UserAccountLifecycleTests : IAsyncLifetime
         }
         await db.SaveChangesAsync();
 
-        var locked = await Service(db).LockUserAsync(CustomerId, ActorId, "127.0.0.1");
+        var locked = await Service(db).LockUserAsync(CustomerId, new LockUserRequest("Kiểm tra tài khoản"), ActorId, "127.0.0.1");
 
+        if (originalStatus != AccountStatus.Active)
+        {
+            Assert.Equal("USER_NOT_ACTIVE", locked.ErrorCode);
+            Assert.Empty(await db.AuditLogs.ToListAsync());
+            return;
+        }
         Assert.True(locked.IsSuccess);
+        Assert.Equal("Kiểm tra tài khoản", locked.Data!.LockReason);
         Assert.Equal(nameof(AccountStatus.Locked), locked.Data!.AccountStatus);
         var savedLock = await db.ApplicationUsers.AsNoTracking().SingleAsync(user => user.UserId == CustomerId);
         Assert.Equal(AccountStatus.Locked, savedLock.AccountStatus);
@@ -86,13 +94,15 @@ public sealed class UserAccountLifecycleTests : IAsyncLifetime
         var savedUnlock = await unlockDb.ApplicationUsers.AsNoTracking().SingleAsync(user => user.UserId == CustomerId);
         Assert.Equal(originalStatus, savedUnlock.AccountStatus);
         Assert.Null(savedUnlock.AccountStatusBeforeLock);
+        Assert.Null(savedUnlock.LockReason);
+        Assert.Equal(2, savedUnlock.AccessVersion);
         var audit = await unlockDb.AuditLogs.OrderBy(log => log.Id).ToListAsync();
         Assert.Collection(audit,
             lockedLog =>
             {
                 Assert.Equal(AuditActionType.AccountLock, lockedLog.ActionType);
                 Assert.Equal(originalStatus.ToString(), lockedLog.OldValue);
-                Assert.Equal(nameof(AccountStatus.Locked), lockedLog.NewValue);
+                Assert.Equal("Locked\nKiểm tra tài khoản", lockedLog.NewValue);
             },
             unlockedLog =>
             {
@@ -137,16 +147,17 @@ public sealed class UserAccountLifecycleTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task StaleLockCannotOverwriteCompletedOnboarding()
+    public async Task StaleLockCannotOverwriteAnotherAccountChange()
     {
         await using var lockDb = CreateContext();
+        await lockDb.ApplicationUsers.Where(user => user.UserId == CustomerId)
+            .ExecuteUpdateAsync(update => update.SetProperty(user => user.AccountStatus, AccountStatus.Active));
         var tracked = await lockDb.ApplicationUsers.SingleAsync(user => user.UserId == CustomerId);
-        Assert.Equal(AccountStatus.PendingVerification, tracked.AccountStatus);
         await using var setupDb = CreateContext();
         await setupDb.ApplicationUsers.Where(user => user.UserId == CustomerId)
-            .ExecuteUpdateAsync(update => update.SetProperty(user => user.AccountStatus, AccountStatus.Active));
+            .ExecuteUpdateAsync(update => update.SetProperty(user => user.AccessVersion, user => user.AccessVersion + 1));
 
-        var result = await Service(lockDb).LockUserAsync(CustomerId, ActorId, null);
+        var result = await Service(lockDb).LockUserAsync(CustomerId, new LockUserRequest("Kiểm tra"), ActorId, null);
 
         Assert.Equal("USER_ACCOUNT_STATUS_CHANGED", result.ErrorCode);
         Assert.Equal(AccountStatus.Active, await setupDb.ApplicationUsers.Where(user => user.UserId == CustomerId)

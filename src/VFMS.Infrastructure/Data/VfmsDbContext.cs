@@ -172,6 +172,7 @@ public class VfmsDbContext : DbContext
             entity.Property(e => e.ResetTokenHash).HasMaxLength(64);
             entity.HasIndex(e => e.ResetTokenHash).IsUnique();
             entity.Property(e => e.AccountStatus).HasConversion<string>().HasMaxLength(50);
+            entity.Property(e => e.LockReason).HasMaxLength(500);
             entity.Property(e => e.AccountStatusBeforeLock).HasConversion<string>().HasMaxLength(50);
 
             if (Database.IsSqlServer())

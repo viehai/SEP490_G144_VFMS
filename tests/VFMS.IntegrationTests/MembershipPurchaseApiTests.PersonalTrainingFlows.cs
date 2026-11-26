@@ -84,7 +84,7 @@ public sealed partial class MembershipPurchaseApiTests
     }
 
     [Fact]
-    public async Task AttendanceIsSameDayOnlyAndUnrecordedSessionsAutoCompleteNextDay()
+    public async Task UnrecordedAttendanceWaitsAcrossDaysUntilTheAssignedTrainerRecordsIt()
     {
         using var member = Client("member", "Member");
         using var trainer = Client("buyer", "PT");
@@ -95,14 +95,30 @@ public sealed partial class MembershipPurchaseApiTests
         using var early = await trainer.PostAsJsonAsync($"/api/pt/sessions/{session.Id}/attendance", true);
         Assert.Equal(HttpStatusCode.Conflict, early.StatusCode);
 
-        _clock.Now = LocalTime(session.Date.AddDays(1), new TimeOnly(1, 0));
+        _clock.Now = LocalTime(session.Date.AddDays(2), new TimeOnly(1, 0));
         await using (var scope = _app.Services.CreateAsyncScope())
-            await scope.ServiceProvider.GetRequiredService<VFMS.Application.Interfaces.IPersonalTrainingService>().ProcessAttendance(CancellationToken.None);
-        using var late = await trainer.PostAsJsonAsync($"/api/pt/sessions/{session.Id}/attendance", false);
-        Assert.Equal(HttpStatusCode.Conflict, late.StatusCode);
+            await scope.ServiceProvider.GetRequiredService<VFMS.Application.Interfaces.IPersonalTrainingService>().ExpirePending(CancellationToken.None);
+        var waiting = await ContractOf(member, id);
+        var pending = waiting.Sessions.Single(s => s.Id == session.Id);
+        Assert.True(pending.IsAwaitingAttendance);
+        Assert.False(pending.CanRecordAttendance);   // member view
+        Assert.True((await ContractOf(trainer, id)).Sessions.Single(s => s.Id == session.Id).CanRecordAttendance);
+        Assert.Equal((contract.UsedCredits, contract.RemainingCredits), (waiting.UsedCredits, waiting.RemainingCredits));
+
+        var route = $"/api/pt/sessions/{session.Id}/attendance";
+        using var staff = Client("staff", "Staff");
+        using var forbidden = await staff.PostAsJsonAsync(route, true);
+        Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+        using var absent = await trainer.PostAsJsonAsync(route, false);
+        Assert.Equal("NoShow", (await absent.Content.ReadFromJsonAsync<PTSessionResponse>())!.Status);
+        using var corrected = await trainer.PostAsJsonAsync(route, true);
+        Assert.Equal("Completed", (await corrected.Content.ReadFromJsonAsync<PTSessionResponse>())!.Status);
         var after = await ContractOf(member, id);
-        Assert.Equal("AutoCompleted", after.Sessions.Single(s => s.Id == session.Id).Status);
-        Assert.Equal(1, after.UsedCredits);
+        Assert.False(after.Sessions.Single(s => s.Id == session.Id).IsAwaitingAttendance);
+        Assert.Equal((1, contract.RemainingCredits - 1), (after.UsedCredits, after.RemainingCredits));
+        _clock.Now = _clock.Now.AddDays(1);
+        using var tooLateToEdit = await trainer.PostAsJsonAsync(route, false);
+        Assert.Equal(HttpStatusCode.Conflict, tooLateToEdit.StatusCode);
 
         // UC 4.6 step 9: the coaching note keeps its time and its author.
         using var noted = await trainer.PutAsJsonAsync($"/api/pt/sessions/{session.Id}/note", new PTNoteRequest("Giữ nhịp thở tốt."));

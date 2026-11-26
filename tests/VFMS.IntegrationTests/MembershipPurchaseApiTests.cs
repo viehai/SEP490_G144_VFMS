@@ -10,6 +10,7 @@ using FluentValidation;
 using FluentValidation.AspNetCore;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Data.Sqlite;
@@ -73,6 +74,8 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
         builder.Services.AddSystemAdministrationModule();
         builder.Services.AddSingleton<MapsterMapper.IMapper>(new MapsterMapper.Mapper());
         builder.Services.AddPersonalTrainingModule();
+        builder.Services.AddCheckInModule(builder.Configuration, builder.Environment);
+        builder.Services.AddDataProtection().UseEphemeralDataProtectionProvider();
         builder.Services.AddLockerModule();
         builder.Services.Remove(builder.Services.Single(service =>
             service.ImplementationType == typeof(VFMS.Infrastructure.Workers.LockerWorker)));

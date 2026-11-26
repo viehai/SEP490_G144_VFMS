@@ -8,7 +8,10 @@ public sealed record PTWeeklySlot(int TemplateId, DayOfWeek DayOfWeek, TimeOnly 
     string? BlockedReason = null);
 public sealed record PTTeachingSlot(int Id, DateOnly Date, TimeOnly StartTime, TimeOnly EndTime,
     string MemberName, string Status, int ContractId = 0,
-    DateOnly? ProposedDate = null, TimeOnly? ProposedStartTime = null, TimeOnly? ProposedEndTime = null);
+    DateOnly? ProposedDate = null, TimeOnly? ProposedStartTime = null, TimeOnly? ProposedEndTime = null)
+{
+    public bool IsAwaitingAttendance { get; init; }
+}
 public sealed record PTPublishRequest(PTSlotInput[] Slots);
 public sealed record PTOperatingHours(TimeOnly? OpenTime, TimeOnly? CloseTime);
 public sealed record PTCalendarSlot(int TemplateId, DateOnly Date, TimeOnly StartTime, TimeOnly EndTime, string Status);
@@ -73,7 +76,9 @@ public sealed record PTSessionResponse(int Id, DateOnly Date, TimeOnly StartTime
 {
     /// <summary>Cancelled without penalty and not rebooked yet: a make-up can be proposed from it (GBR-14).</summary>
     public bool IsMakeUpUnit { get; init; }
-    /// <summary>'Present' set by the Member's self check-in; the PT has not recorded attendance (UC 4.6 step 7).</summary>
+    public bool CanRecordAttendance { get; init; }
+    public bool IsAwaitingAttendance { get; init; }
+    /// <summary>Historical record created by a kiosk before attendance became trainer-only.</summary>
     public bool CompletedByCheckIn { get; init; }
     /// <summary>A make-up unit from a 'PT Absent' report that waits for the PT: usable from this time (UTC, GBR-103).</summary>
     public DateTime? MakeUpAvailableAt { get; init; }

@@ -42,21 +42,12 @@ public sealed class UserAdministrationRepository : IUserAdministrationRepository
         _context.ApplicationRoles.FirstOrDefaultAsync(
             role => role.RoleName == roleName, cancellationToken);
 
-    public async Task<IReadOnlyList<ApplicationRole>> GetRolesByNamesAsync(
-        IReadOnlyCollection<string> roleNames,
-        CancellationToken cancellationToken = default)
-    {
-        var normalizedNames = roleNames.ToArray();
-        return await _context.ApplicationRoles
-            .Where(role => normalizedNames.Contains(role.RoleName))
-            .ToListAsync(cancellationToken);
-    }
-
     public Task<ApplicationUser?> GetUserByIdAsync(string userId, CancellationToken cancellationToken = default) =>
         _context.ApplicationUsers
             .Include(user => user.UserRoles)
             .ThenInclude(userRole => userRole.Role)
             .Include(user => user.PhysicalProfile)
+            .Include(user => user.TrainerProfile).ThenInclude(profile => profile!.TrainerRole)
             .FirstOrDefaultAsync(user => user.UserId == userId, cancellationToken);
 
     public Task<ApplicationUser?> GetUserByPasswordSetupTokenHashAsync(
@@ -353,24 +344,40 @@ public sealed class UserAdministrationRepository : IUserAdministrationRepository
         _context.YogaClasses.AnyAsync(c => !c.IsDeleted && c.InstructorUserId == userId &&
             (c.ClassStatus == YogaClassStatus.Draft || c.ClassStatus == YogaClassStatus.Published), cancellationToken);
 
-    public async Task ReplaceUserRolesAsync(
+    public async Task<bool> SetUserRoleAsync(
         ApplicationUser user,
-        IReadOnlyCollection<int> roleIds,
+        int roleId,
         AuditLog auditLog,
         CancellationToken cancellationToken = default)
     {
-        _context.ApplicationUserRoles.RemoveRange(user.UserRoles);
-        foreach (var roleId in roleIds)
+        await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+        var updated = await _context.ApplicationUsers
+            .Where(u => u.UserId == user.UserId && u.AccessVersion == user.AccessVersion)
+            .ExecuteUpdateAsync(set => set.SetProperty(u => u.AccessVersion, u => u.AccessVersion + 1), cancellationToken);
+        if (updated == 0)
+            return false;
+
+        _context.ApplicationUserRoles.RemoveRange(user.UserRoles.Where(assignment => assignment.RoleId != roleId).ToArray());
+        if (!user.UserRoles.Any(assignment => assignment.RoleId == roleId))
         {
-            _context.ApplicationUserRoles.Add(new ApplicationUserRole
+            var previous = await _context.ApplicationUserRoles.IgnoreQueryFilters()
+                .SingleOrDefaultAsync(assignment => assignment.UserId == user.UserId && assignment.RoleId == roleId, cancellationToken);
+            if (previous is null)
             {
-                UserId = user.UserId,
-                RoleId = roleId
-            });
+                _context.ApplicationUserRoles.Add(new ApplicationUserRole { UserId = user.UserId, RoleId = roleId });
+            }
+            else
+            {
+                previous.IsDeleted = false;
+            }
         }
 
         _context.AuditLogs.Add(auditLog);
         await _context.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        var version = _context.Entry(user).Property(u => u.AccessVersion);
+        version.OriginalValue = version.CurrentValue = user.AccessVersion + 1;
+        return true;
     }
 
     public async Task<AccountStatus?> GetStatusBeforeLatestLockAsync(
@@ -396,6 +403,7 @@ public sealed class UserAdministrationRepository : IUserAdministrationRepository
     public async Task<bool> TryUpdateAccountStatusAsync(
         ApplicationUser user,
         AccountStatus status,
+        string? lockReason,
         bool revokeActiveRefreshTokens,
         AuditLog auditLog,
         CancellationToken cancellationToken = default)
@@ -405,10 +413,12 @@ public sealed class UserAdministrationRepository : IUserAdministrationRepository
         await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
         var updated = await _context.ApplicationUsers
             .Where(candidate => candidate.UserId == user.UserId && candidate.AccountStatus == user.AccountStatus &&
-                candidate.AccountStatusBeforeLock == user.AccountStatusBeforeLock)
+                candidate.AccountStatusBeforeLock == user.AccountStatusBeforeLock && candidate.AccessVersion == user.AccessVersion)
             .ExecuteUpdateAsync(update => update
                 .SetProperty(candidate => candidate.AccountStatus, status)
                 .SetProperty(candidate => candidate.AccountStatusBeforeLock, previousStatus)
+                .SetProperty(candidate => candidate.LockReason, lockReason)
+                .SetProperty(candidate => candidate.AccessVersion, candidate => candidate.AccessVersion + 1)
                 .SetProperty(candidate => candidate.UpdatedAt, now), cancellationToken);
         if (updated != 1)
             return false;
@@ -429,6 +439,10 @@ public sealed class UserAdministrationRepository : IUserAdministrationRepository
         await transaction.CommitAsync(cancellationToken);
 
         var entry = _context.Entry(user);
+        entry.Property(candidate => candidate.LockReason).CurrentValue = lockReason;
+        entry.Property(candidate => candidate.LockReason).OriginalValue = lockReason;
+        entry.Property(candidate => candidate.AccessVersion).CurrentValue++;
+        entry.Property(candidate => candidate.AccessVersion).OriginalValue = user.AccessVersion;
         entry.Property(candidate => candidate.AccountStatus).CurrentValue = status;
         entry.Property(candidate => candidate.AccountStatus).OriginalValue = status;
         entry.Property(candidate => candidate.AccountStatusBeforeLock).CurrentValue = previousStatus;

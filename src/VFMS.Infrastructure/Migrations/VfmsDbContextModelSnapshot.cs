@@ -58,6 +58,9 @@ namespace VFMS.Infrastructure.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("nvarchar(128)");
 
+                    b.Property<int>("AccessVersion")
+                        .HasColumnType("int");
+
                     b.Property<string>("AccountStatus")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -98,6 +101,10 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.Property<DateTime?>("LastLoginAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("LockReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
 
                     b.Property<string>("PasswordHash")
                         .IsRequired()

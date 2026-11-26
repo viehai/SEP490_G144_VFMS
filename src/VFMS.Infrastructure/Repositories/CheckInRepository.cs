@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 using VFMS.Application.Interfaces;
-using VFMS.Application.Services;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
 using VFMS.Infrastructure.Data;
@@ -34,56 +33,37 @@ public sealed class CheckInRepository : AuditedRepositoryBase, ICheckInRepositor
             .Where(q => q.IsActive && (userId == null || q.UserId == userId) && (token == null || q.QRToken == token))
             .ToListAsync(cancellationToken);
 
-    public Task<ApplicationUser?> GetUserAsync(string userId, CancellationToken cancellationToken = default) =>
-        Context.ApplicationUsers.AsNoTracking().FirstOrDefaultAsync(u => u.UserId == userId, cancellationToken);
-
-    public async Task<IReadOnlyList<MemberMembership>> GetMembershipsAsync(string userId, CancellationToken cancellationToken = default) =>
-        await Context.MemberMemberships.AsNoTracking().Include(m => m.PackageComponent)
-            .Where(m => m.MemberUserId == userId).ToListAsync(cancellationToken);
-
-    public Task<CheckIn?> GetOpenCheckInAsync(string userId, CancellationToken cancellationToken = default) =>
-        Context.CheckIns.FirstOrDefaultAsync(c => c.MemberUserId == userId && c.Status == CheckInStatus.Active, cancellationToken);
-
-    public Task<CheckIn?> GetCheckInAsync(int id, CancellationToken cancellationToken = default) =>
-        Context.CheckIns.FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
-
-    public async Task<IReadOnlyList<PTSession>> GetScheduledPtSessionsAsync(string userId, DateOnly date, DateTime now,
-        CancellationToken cancellationToken = default) =>
-        await Context.PTSessions.Include(s => s.PTPurchase).ThenInclude(p => p.Sessions)
-            .Where(s => s.MemberUserId == userId && s.SessionDate == date)
-            .Where(PersonalTrainingRules.CheckInCanComplete(now))
-            .ToListAsync(cancellationToken);
-
-    public async Task<bool> CompletePtSessionByCheckInAsync(PTSession session, DateTime now, CancellationToken cancellationToken = default)
+    public async Task<T> WithMemberVisitAsync<T>(string userId, Func<ApplicationUser?, Task<T>> action, CancellationToken cancellationToken)
     {
-        var done = await Context.PTSessions.Where(s => s.Id == session.Id).Where(PersonalTrainingRules.CheckInCanComplete(now))
-            .ExecuteUpdateAsync(u => u
-                .SetProperty(s => s.SessionStatus, PTSessionStatus.Completed)
-                .SetProperty(s => s.CheckInCompletedAt, now)
-                .SetProperty(s => s.ProposedDate, (DateOnly?)null)
-                .SetProperty(s => s.ProposedStartTime, (TimeOnly?)null)
-                .SetProperty(s => s.ProposedEndTime, (TimeOnly?)null)
-                .SetProperty(s => s.ProposedAdjustmentType, (PTAdjustmentType?)null)
-                .SetProperty(s => s.ProposalExpiresAt, (DateTime?)null), cancellationToken) == 1;
-        await Context.Entry(session).ReloadAsync(cancellationToken);
-        return done;
+        await using var transaction = await Context.Database.BeginTransactionAsync(cancellationToken);
+        // Hold the member row until the visit is committed.
+        var users = Context.Database.IsSqlServer()
+            ? Context.ApplicationUsers.FromSqlInterpolated($"SELECT * FROM [ApplicationUsers] WITH (UPDLOCK) WHERE [UserId] = {userId}")
+            : Context.ApplicationUsers.Where(user => user.UserId == userId);
+        var result = await action(await users.AsNoTracking().SingleOrDefaultAsync(cancellationToken));
+        await transaction.CommitAsync(cancellationToken);
+        return result;
     }
 
-    public async Task<IReadOnlyList<(ApplicationUser User, IReadOnlyList<MemberMembership> Memberships, bool IsCheckedIn)>> SearchMembersAsync(
+    public Task<CheckIn?> GetOpenCheckInAsync(string userId, CancellationToken cancellationToken = default) =>
+        Context.CheckIns.FirstOrDefaultAsync(c => c.MemberUserId == userId && c.Status == CheckInStatus.Active && c.CheckoutTime == null, cancellationToken);
+
+    public Task<CheckIn?> GetCheckInAsync(int id, CancellationToken cancellationToken = default) =>
+        Context.CheckIns.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
+
+    public async Task<IReadOnlyList<(ApplicationUser User, bool IsCheckedIn)>> SearchMembersAsync(
         string term, CancellationToken cancellationToken = default)
     {
         var users = await Context.ApplicationUsers.AsNoTracking()
             .Where(u => u.UserRoles.Any(r => r.Role.RoleName == "Member" || r.Role.RoleName == "Customer"))
             .Where(u => u.FullName.Contains(term) || u.PhoneNumber.Contains(term) ||
-                        Context.MemberMemberships.Any(m => m.MemberUserId == u.UserId && m.OrderItem.Order.OrderNumber == term))
+                        Context.MemberMemberships.Any(m => m.MemberUserId == u.UserId && m.OrderItem.Order.OrderNumber == term) ||
+                        Context.PTPurchases.Any(p => p.MemberUserId == u.UserId && p.Order != null && p.Order.OrderNumber == term))
             .OrderBy(u => u.FullName).Take(20)
             .ToListAsync(cancellationToken);
         var ids = users.Select(u => u.UserId).ToList();
-        var memberships = await Context.MemberMemberships.AsNoTracking().Include(m => m.PackageComponent)
-            .Where(m => ids.Contains(m.MemberUserId)).ToListAsync(cancellationToken);
-        var inside = await Context.CheckIns.Where(c => ids.Contains(c.MemberUserId) && c.Status == CheckInStatus.Active)
+        var inside = await Context.CheckIns.Where(c => ids.Contains(c.MemberUserId) && c.Status == CheckInStatus.Active && c.CheckoutTime == null)
             .Select(c => c.MemberUserId).ToListAsync(cancellationToken);
-        return users.Select(u => (u, (IReadOnlyList<MemberMembership>)memberships.Where(m => m.MemberUserId == u.UserId).ToList(),
-            inside.Contains(u.UserId))).ToList();
+        return users.Select(u => (u, inside.Contains(u.UserId))).ToList();
     }
 }

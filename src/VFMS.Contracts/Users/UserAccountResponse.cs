@@ -6,5 +6,6 @@ public sealed record UserAccountResponse(
     string? Email,
     string PhoneNumber,
     string AccountStatus,
-    IReadOnlyCollection<string> Roles
+    IReadOnlyCollection<string> Roles,
+    string? LockReason = null
 );

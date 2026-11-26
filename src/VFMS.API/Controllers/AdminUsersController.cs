@@ -68,13 +68,13 @@ public sealed class AdminUsersController : ControllerBase
     [ProducesResponseType(typeof(UserAccountResponse), 200)]
     [ProducesResponseType(404)]
     [ProducesResponseType(409)]
-    public async Task<IActionResult> LockUser(string userId, CancellationToken cancellationToken)
+    public async Task<IActionResult> LockUser(string userId, [FromBody] LockUserRequest request, CancellationToken cancellationToken)
     {
         if (!TryGetActorUserId(out var actorUserId))
             return Unauthorized();
 
         var result = await _userAdministrationService.LockUserAsync(
-            userId, actorUserId, HttpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken);
+            userId, request, actorUserId, HttpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken);
         return this.ToActionResult(result);
     }
 

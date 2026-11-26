@@ -392,25 +392,32 @@ public sealed class UserAdministrationService : IUserAdministrationService
         if (user is null)
             return UserNotFound();
 
-        var requestedRoleNames = request.Roles
-            .Select(role => AssignableRoles.FirstOrDefault(
-                name => string.Equals(name, role, StringComparison.OrdinalIgnoreCase)))
-            .ToArray();
-        if (requestedRoleNames.Any(role => role is null))
-            return Result<UserAccountResponse>.Failure("Roles may only contain PT, YogaInstructor, Staff, or Manager.", "USER_INVALID_ROLE");
+        if (request.Roles is not { Count: 1 })
+            return Result<UserAccountResponse>.Failure("Vui lòng chọn đúng một vai trò.", "USER_INVALID_ROLE");
+        var requestedRole = request.Roles.Single();
+        var roleName = UpdateUserRolesRequest.Assignable.FirstOrDefault(
+            name => string.Equals(name, requestedRole, StringComparison.OrdinalIgnoreCase));
+        if (roleName is null)
+            return Result<UserAccountResponse>.Failure("Vai trò được chọn không hợp lệ.", "USER_INVALID_ROLE");
 
-        var requestedRoles = requestedRoleNames.Cast<string>().ToArray();
-        if (requestedRoles.Contains(nameof(UserRole.PT)) &&
-            await _repository.HasActiveYogaAssignmentsAsync(userId, cancellationToken))
-            return Result<UserAccountResponse>.Failure("A Yoga instructor with active classes cannot be assigned the PT role.",
+        if (roleName != "YogaInstructor" && await _repository.HasActiveYogaAssignmentsAsync(userId, cancellationToken))
+            return Result<UserAccountResponse>.Failure("Giáo viên còn lớp Yoga đang phụ trách. Vui lòng kiểm tra lịch dạy.",
                 "TRAINER_TEACHING_ROLE_CONFLICT", 409);
-        var roles = await _repository.GetRolesByNamesAsync(requestedRoles, cancellationToken);
-        if (roles.Count != requestedRoles.Length)
-            return Result<UserAccountResponse>.Failure("One or more roles are not configured.", "USER_ROLE_NOT_FOUND", 500);
+        var role = await _repository.GetRoleByNameAsync(roleName, cancellationToken);
+        if (role is null)
+            return Result<UserAccountResponse>.Failure("Vai trò chưa được cấu hình.", "USER_ROLE_NOT_FOUND", 500);
+
+        if (user.TrainerProfile?.TrainerRole is { } specialty && role.Id != specialty.RoleId)
+            return Result<UserAccountResponse>.Failure("Cần giữ chuyên môn đã xác nhận khi tuyển huấn luyện viên.", "TRAINER_ROLE_FIXED", 409);
 
         var oldRoles = user.UserRoles.Select(userRole => userRole.Role.RoleName).Order().ToArray();
-        var newRoles = roles.Select(role => role.RoleName).Order().ToArray();
-        if (oldRoles.SequenceEqual(newRoles, StringComparer.OrdinalIgnoreCase))
+        if (request.PreviousRoles is not null && !oldRoles.ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(request.PreviousRoles))
+            return Result<UserAccountResponse>.Failure("Vai trò đã thay đổi. Vui lòng tải lại danh sách.", "USER_ROLES_CHANGED", 409);
+
+        if (string.Equals(userId, actorUserId, StringComparison.OrdinalIgnoreCase) && roleName != "Admin")
+            return Result<UserAccountResponse>.Failure("Bạn cần giữ vai trò quản trị viên cho tài khoản đang sử dụng.", "USER_SELF_DEMOTION", 403);
+
+        if (oldRoles.Length == 1 && string.Equals(oldRoles[0], roleName, StringComparison.OrdinalIgnoreCase))
             return Result<UserAccountResponse>.Success(MapUser(user));
 
         var auditLog = CreateAudit(
@@ -418,22 +425,18 @@ public sealed class UserAdministrationService : IUserAdministrationService
             AuditActionType.RoleChange,
             string.Join(",", oldRoles),
             ipAddress,
-            string.Join(",", newRoles),
+            roleName,
             _clock.GetUtcNow().UtcDateTime);
         auditLog.AuditEntity = $"ApplicationUser:{user.UserId}";
 
-        await _repository.ReplaceUserRolesAsync(user, roles.Select(role => role.Id).ToArray(), auditLog, cancellationToken);
-        user.UserRoles = roles.Select(role => new ApplicationUserRole
-        {
-            UserId = user.UserId,
-            RoleId = role.Id,
-            Role = role
-        }).ToList();
-        return Result<UserAccountResponse>.Success(MapUser(user));
+        if (!await _repository.SetUserRoleAsync(user, role.Id, auditLog, cancellationToken))
+            return Result<UserAccountResponse>.Failure("Tài khoản đã thay đổi. Vui lòng tải lại danh sách.", "USER_ROLES_CHANGED", 409);
+        return Result<UserAccountResponse>.Success(MapUser(user) with { Roles = [roleName] });
     }
 
     public Task<Result<UserAccountResponse>> LockUserAsync(
         string userId,
+        LockUserRequest request,
         string actorUserId,
         string? ipAddress,
         CancellationToken cancellationToken = default)
@@ -444,8 +447,12 @@ public sealed class UserAdministrationService : IUserAdministrationService
                 "Administrators cannot lock their own account.", "USER_SELF_LOCK_DENIED", 403));
         }
 
-        return SetAccountStatusAsync(
-            userId, lockAccount: true, actorUserId, ipAddress, cancellationToken);
+        var reason = request.Reason?.Trim();
+        if (string.IsNullOrWhiteSpace(reason) || reason.Length > LockUserRequest.MaxReasonLength)
+            return Task.FromResult(Result<UserAccountResponse>.Failure(
+                "Vui lòng nhập lý do khóa (tối đa 500 ký tự).", "USER_LOCK_REASON_INVALID", 400));
+
+        return SetAccountStatusAsync(userId, true, reason, actorUserId, ipAddress, cancellationToken);
     }
 
     public Task<Result<UserAccountResponse>> UnlockUserAsync(
@@ -453,7 +460,7 @@ public sealed class UserAdministrationService : IUserAdministrationService
         string actorUserId,
         string? ipAddress,
         CancellationToken cancellationToken = default) =>
-        SetAccountStatusAsync(userId, lockAccount: false, actorUserId, ipAddress, cancellationToken);
+        SetAccountStatusAsync(userId, false, null, actorUserId, ipAddress, cancellationToken);
 
     private Task<Result<ApplicationUser>> CreateUserAsync(
         string fullName,
@@ -522,6 +529,7 @@ public sealed class UserAdministrationService : IUserAdministrationService
     private async Task<Result<UserAccountResponse>> SetAccountStatusAsync(
         string userId,
         bool lockAccount,
+        string? reason,
         string actorUserId,
         string? ipAddress,
         CancellationToken cancellationToken)
@@ -533,6 +541,9 @@ public sealed class UserAdministrationService : IUserAdministrationService
         if (lockAccount && user.AccountStatus == AccountStatus.Locked)
             return Result<UserAccountResponse>.Failure("Account is already locked.", "USER_ALREADY_LOCKED", 409);
 
+        if (lockAccount && user.AccountStatus != AccountStatus.Active)
+            return Result<UserAccountResponse>.Failure("Chỉ có thể khóa tài khoản đang hoạt động.", "USER_NOT_ACTIVE", 409);
+
         if (!lockAccount && user.AccountStatus != AccountStatus.Locked)
             return Result<UserAccountResponse>.Failure("Only locked accounts can be unlocked.", "USER_NOT_LOCKED", 409);
 
@@ -543,11 +554,11 @@ public sealed class UserAdministrationService : IUserAdministrationService
             action,
             user.AccountStatus.ToString(),
             ipAddress,
-            status.ToString(),
+            lockAccount ? $"{status}\n{reason}" : status.ToString(),
             _clock.GetUtcNow().UtcDateTime);
         auditLog.AuditEntity = $"ApplicationUser:{user.UserId}";
 
-        if (!await _repository.TryUpdateAccountStatusAsync(user, status, lockAccount, auditLog, cancellationToken))
+        if (!await _repository.TryUpdateAccountStatusAsync(user, status, reason, lockAccount, auditLog, cancellationToken))
             return Result<UserAccountResponse>.Failure("Account status changed. Refresh and try again.", "USER_ACCOUNT_STATUS_CHANGED", 409);
 
         return Result<UserAccountResponse>.Success(MapUser(user) with { AccountStatus = status.ToString() });

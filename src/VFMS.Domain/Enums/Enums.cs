@@ -179,7 +179,7 @@ public enum PTSessionStatus
     MakeUpPending,
     RescheduleRequested,
     TrainerAbsentReported,
-    /// <summary>Nobody recorded attendance by the end of the session day; counts as used (GBR-103).</summary>
+    /// <summary>Historical automatic completion. New sessions awaiting PT attendance stay scheduled.</summary>
     AutoCompleted,
     /// <summary>PT recorded Present but the Member reported PT Absent; the Manager decides (UC 4.11).</summary>
     Disputed,

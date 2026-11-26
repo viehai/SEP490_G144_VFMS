@@ -37,7 +37,7 @@ public sealed class CheckInPersistenceTests : IAsyncLifetime
     {
         var repository = new CheckInRepository(db);
         var qr = new MemberQrService(repository, TimeProvider.System);
-        return (new CheckInService(repository, new NoFaces(), qr, TimeProvider.System), qr);
+        return (new CheckInService(repository, new MembershipAccessRepository(db), new NoFaces(), qr, TimeProvider.System), qr);
     }
 
     [Fact]
@@ -112,6 +112,105 @@ public sealed class CheckInPersistenceTests : IAsyncLifetime
         Assert.True(checkedOut.IsSuccess, checkedOut.ErrorMessage);
         var closed = await db.CheckIns.AsNoTracking().SingleAsync();
         Assert.Equal((CheckInStatus.CheckedOut, CheckInMethod.ManualStaff, "staff"), (closed.Status, closed.CheckoutMethod!.Value, closed.CheckedOutByUserId));
+    }
+
+    [Fact]
+    public async Task StandalonePtContractPermitsEntryAtEitherChannelAndExitAfterExpiry()
+    {
+        await using var db = new SqliteTestContext(_options);
+        var gym = await db.MemberMemberships.SingleAsync();
+        gym.IsDeleted = true;
+        var contract = new PTPurchase
+        {
+            MemberUserId = "m1", PTUserId = "staff", Status = PTPurchaseStatus.Active,
+            StartDate = gym.StartDate, EndDate = gym.EndDate, TotalSessions = 4, RemainingSessions = 4,
+            Order = new Order { PurchaserUserId = "m1", OrderNumber = "PT-ONLY", OrderStatus = OrderStatus.Paid }
+        };
+        db.PTPurchases.Add(contract);
+        await db.SaveChangesAsync();
+        var (service, qr) = Services(db);
+        var scan = new KioskScanRequest(null, (await qr.GetOrIssueAsync("m1")).Data!.Token);
+        var member = Assert.Single((await service.SearchMembersAsync("PT-ONLY")).Data!);
+        Assert.Equal(("m1", "Active", contract.EndDate), (member.MemberUserId, member.MembershipStatus, member.ValidThrough));
+
+        var kiosk = await service.KioskScanAsync(scan);
+        Assert.Equal("CheckIn", kiosk.Data!.Action);
+        Assert.Equal(contract.EndDate, kiosk.Data.CheckIn!.ValidThrough);
+        Assert.Null((await db.CheckIns.AsNoTracking().SingleAsync()).MemberMembershipId);
+        Assert.True((await service.ManualCheckOutAsync(kiosk.Data.CheckIn.CheckInId, "staff")).IsSuccess);
+        Assert.True((await service.ManualCheckInAsync("m1", "staff")).IsSuccess);
+
+        contract.EndDate = contract.StartDate;
+        await db.SaveChangesAsync();
+        Assert.Equal("CheckOut", (await service.KioskScanAsync(scan)).Data!.Action);
+        Assert.Equal("Expired", Assert.Single((await service.SearchMembersAsync("PT-ONLY")).Data!).MembershipStatus);
+        Assert.Equal("ACCESS_DENIED", (await service.KioskScanAsync(scan)).ErrorCode);
+        Assert.Equal("ACCESS_DENIED", (await service.ManualCheckInAsync("m1", "staff")).ErrorCode);
+    }
+
+    [Fact]
+    public async Task PtMakeUpKeepsEntryActiveOnlyWhileTheContractStillHasACredit()
+    {
+        await using var db = new SqliteTestContext(_options);
+        var gym = await db.MemberMemberships.SingleAsync();
+        gym.MembershipStatus = MembershipStatus.Expired;
+        var cancelled = new PTSession
+        {
+            MemberUserId = "m1", PTUserId = "staff", SessionDate = gym.StartDate, SessionStatus = PTSessionStatus.Cancelled,
+            CancelledAt = DateTime.UtcNow.AddDays(-6)
+        };
+        var pt = new PTPurchase
+        {
+            MemberUserId = "m1", PTUserId = "staff", StartDate = gym.StartDate.AddDays(-10), EndDate = gym.StartDate,
+            TotalSessions = 1, RemainingSessions = 1, Sessions = [cancelled]
+        };
+        db.PTPurchases.Add(pt);
+        await db.SaveChangesAsync();
+
+        var (service, _) = Services(db);
+        var entry = await service.ManualCheckInAsync("m1", "staff");
+        Assert.Equal(PersonalTrainingRules.MakeUpDeadline(pt.EndDate), entry.Data!.ValidThrough);
+        cancelled.IsCreditForfeited = true;
+        await db.SaveChangesAsync();
+        Assert.True((await service.ManualCheckOutAsync(entry.Data.CheckInId, "staff")).IsSuccess);
+        Assert.Equal("ACCESS_DENIED", (await service.ManualCheckInAsync("m1", "staff")).ErrorCode);
+    }
+
+    [Theory]
+    [InlineData(PTPurchaseStatus.PendingPayment, false, false, false, "PendingPayment")]
+    [InlineData(PTPurchaseStatus.Completed, false, false, false, "Completed")]
+    [InlineData(PTPurchaseStatus.Frozen, false, false, false, "Frozen")]
+    [InlineData(PTPurchaseStatus.Active, true, false, false, "Frozen")]
+    [InlineData(PTPurchaseStatus.Active, false, true, false, "Scheduled")]
+    [InlineData(PTPurchaseStatus.Active, false, false, true, "Completed")]
+    public async Task LinkedPtComponentUsesItsContractsCurrentStatus(PTPurchaseStatus status, bool frozenToday,
+        bool future, bool completed, string expected)
+    {
+        await using var db = new SqliteTestContext(_options);
+        var plan = await db.MemberMemberships.Include(m => m.PackageComponent).SingleAsync();
+        plan.PackageComponent.ComponentType = ComponentType.PT;
+        var contract = new PTPurchase
+        {
+            MemberUserId = "m1", PTUserId = "staff", MemberMembershipId = plan.Id, Status = status,
+            StartDate = future ? plan.EndDate : plan.StartDate, EndDate = plan.EndDate, IsCompleted = completed
+        };
+        if (frozenToday)
+            contract.PTFreezes.Add(new PTFreeze { RequestedByUserId = "m1", ActualStartDate = plan.StartDate,
+                ActualEndDate = plan.EndDate, RequestStatus = PTFreezeRequestStatus.Approved });
+        db.PTPurchases.Add(contract);
+        await db.SaveChangesAsync();
+
+        var (service, qr) = Services(db);
+        Assert.Equal(expected, Assert.Single((await service.SearchMembersAsync("0901")).Data!).MembershipStatus);
+        var scan = new KioskScanRequest(null, (await qr.GetOrIssueAsync("m1")).Data!.Token);
+        Assert.Equal("ACCESS_DENIED", (await service.KioskScanAsync(scan)).ErrorCode);
+        Assert.Equal("ACCESS_DENIED", (await service.ManualCheckInAsync("m1", "staff")).ErrorCode);
+        Assert.False(await db.CheckIns.AnyAsync());
+
+        db.MemberMemberships.Add(TestSeed.Membership("m1", ComponentType.YOGA));
+        await db.SaveChangesAsync();
+        Assert.Equal("Active", Assert.Single((await service.SearchMembersAsync("0901")).Data!).MembershipStatus);
+        Assert.True((await service.ManualCheckInAsync("m1", "staff")).IsSuccess);
     }
 
     [Fact]

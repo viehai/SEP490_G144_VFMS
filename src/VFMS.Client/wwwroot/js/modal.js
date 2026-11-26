@@ -1,25 +1,39 @@
-// Hỗ trợ đóng modal workspace bằng phím Esc.
-window.vfmsModal = (function () {
-    const handlers = new Map();
+// Keep keyboard navigation in the topmost workspace dialog.
+window.vfmsModal = (() => {
+    const dialogs = new Map();
+    const controls = 'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex="0"]';
 
-    function onKeyDown(event) {
-        if (event.key !== 'Escape') return;
-        const entries = Array.from(handlers.entries());
-        if (entries.length === 0) return;
-        // Chỉ đóng modal đang mở gần nhất.
-        const [id, dotNetRef] = entries[entries.length - 1];
-        handlers.delete(id);
-        dotNetRef.invokeMethodAsync('CloseFromEscape').catch(() => { });
-    }
-
-    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('keydown', event => {
+        const current = Array.from(dialogs.values()).at(-1);
+        if (!current) return;
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            current.reference.invokeMethodAsync('CloseFromEscape').catch(() => {});
+            return;
+        }
+        if (event.key !== 'Tab') return;
+        const items = Array.from(current.panel.querySelectorAll(controls)).filter(item => item.getClientRects().length);
+        const first = items[0], last = items.at(-1);
+        if (!first) return;
+        if (!current.panel.contains(document.activeElement) ||
+            (event.shiftKey ? document.activeElement === first : document.activeElement === last)) {
+            event.preventDefault();
+            (event.shiftKey ? last : first).focus();
+        }
+    });
 
     return {
-        registerEscape(id, dotNetRef) {
-            handlers.set(id, dotNetRef);
+        registerEscape(id, reference) {
+            const panel = document.getElementById('workspace-modal-title-' + id)?.closest('[role="dialog"]');
+            if (!panel) return;
+            const opener = document.activeElement;
+            dialogs.set(id, { panel, reference, opener });
+            (panel.querySelector('[autofocus]') || panel.querySelector(controls))?.focus();
         },
         unregisterEscape(id) {
-            handlers.delete(id);
+            const dialog = dialogs.get(id);
+            dialogs.delete(id);
+            if (dialog?.opener?.isConnected) dialog.opener.focus();
         }
     };
 })();

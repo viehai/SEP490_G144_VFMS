@@ -261,17 +261,10 @@ public sealed class PersonalTrainingRepository(VfmsDbContext db) : AuditedReposi
                 s.ProposalExpiresAt <= now)
             .OrderBy(s => s.Id).Take(take).ToListAsync(cancellationToken);
 
-    public async Task<IReadOnlyList<PTSession>> GetUnrecordedPastSessionsAsync(DateOnly today, int take,
-        CancellationToken cancellationToken = default) =>
-        await Context.PTSessions.Include(s => s.PTPurchase).ThenInclude(p => p.Sessions)
-            .Where(s => s.SessionDate < today && (s.SessionStatus == PTSessionStatus.Scheduled ||
-                s.SessionStatus == PTSessionStatus.ReschedulePending || s.SessionStatus == PTSessionStatus.RescheduleRequested))
-            .OrderBy(s => s.Id).Take(take).ToListAsync(cancellationToken);
-
-    public Task<PTSession?> GetSessionWithContractAsync(int id, CancellationToken cancellationToken = default) =>
+    public Task<PTSession?> GetSessionWithContractAsync(int id, CancellationToken cancellationToken = default, string? trainerId = null) =>
         Context.PTSessions.Include(s => s.PTPurchase).ThenInclude(p => p.Sessions)
             .Include(s => s.PTPurchase).ThenInclude(p => p.PTFreezes)
-            .AsSplitQuery().SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
+            .AsSplitQuery().SingleOrDefaultAsync(s => s.Id == id && (trainerId == null || s.PTUserId == trainerId), cancellationToken);
 
     public Task<PTSession?> GetReportedSessionAsync(int id, CancellationToken cancellationToken = default) =>
         Context.PTSessions.AsNoTracking().SingleOrDefaultAsync(s => s.Id == id && s.TrainerAbsenceReportedAt != null, cancellationToken);

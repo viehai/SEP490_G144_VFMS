@@ -112,7 +112,8 @@ public sealed class ActiveCheckInService : IActiveCheckInService
             .OrderBy(c => c.CheckinTime)
             .Select(c => new ActiveCheckInResponse(
                 c.Id, c.MemberUserId, c.Member.FullName, c.Member.PhoneNumber, c.Member.AvatarUrl, c.CheckinTime,
-                (int)Math.Max(0, (now - c.CheckinTime).TotalMinutes), c.CheckinMethod.ToString(), c.HandledByUser?.FullName))
+                (int)Math.Max(0, (now - c.CheckinTime).TotalMinutes), c.CheckinMethod.ToString(), c.HandledByUser?.FullName,
+                c.Member.AccountStatus == AccountStatus.Locked))
             .ToArray();
         return Result<ActiveCheckInsResponse>.Success(
             new ActiveCheckInsResponse(active.Count, today, items, _peakThreshold, active.Count >= _peakThreshold));

@@ -15,10 +15,10 @@ public sealed record FaceProfileResponse(bool IsRegistered, DateTime? Registered
 /// <summary>A kiosk scan: either the 128-number face descriptor computed in the kiosk browser, or a member's QR token.</summary>
 public sealed record KioskScanRequest(IReadOnlyList<float>? Descriptor, string? QrToken);
 
-/// <summary>MSG-35 data. CompletedPtSessionId is set when the entry auto-completed a PT session (GBR-92, MSG-38).</summary>
+/// <summary>MSG-35 visit data. CompletedPtSessionId is retained for older clients and is always null for new visits.</summary>
 public sealed record CheckInResultResponse(
     int CheckInId, string MemberUserId, string MemberName, DateOnly ValidThrough, DateTime CheckinTime,
-    string Message, int? CompletedPtSessionId);
+    string Message, int? CompletedPtSessionId = null);
 
 public sealed record CheckOutResultResponse(
     int CheckInId, string MemberUserId, string MemberName, DateTime CheckinTime, DateTime CheckoutTime, int MinutesInside);
@@ -30,7 +30,7 @@ public sealed record KioskScanResultResponse(string Action, CheckInResultRespons
 
 /// <summary>A member found at the front desk. MembershipStatus is "Active" when they may enter today.</summary>
 public sealed record FrontDeskMemberResponse(
-    string MemberUserId, string FullName, string? PhoneNumber, string MembershipStatus, DateOnly? ValidThrough, bool IsCheckedIn);
+    string MemberUserId, string FullName, string? PhoneNumber, string MembershipStatus, DateOnly? ValidThrough, bool IsCheckedIn, bool IsAccountLocked = false);
 
 public sealed record ManualCheckInRequest(string MemberUserId);
 
@@ -48,7 +48,8 @@ public sealed record ActiveCheckInResponse(
     DateTime CheckinTime,
     int MinutesInside,
     string Method,
-    string? HandledByName
+    string? HandledByName,
+    bool IsAccountLocked = false
 );
 
 /// <summary>IsPeak: current occupancy reached the configured peak-hour threshold (feature list UC-48).</summary>

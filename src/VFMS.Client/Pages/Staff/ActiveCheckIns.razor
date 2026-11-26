@@ -64,7 +64,11 @@
                         </div>
                         <div class="flex items-center gap-3">
                             <StatusBadge Status="@m.MembershipStatus" Label="@MembershipLabel(m.MembershipStatus)" />
-                            @if (m.IsCheckedIn)
+                            @if (m.IsAccountLocked)
+                            {
+                                <StatusBadge Status="Locked" Label="Tài khoản bị khóa" />
+                            }
+                            else if (m.IsCheckedIn)
                             {
                                 <span class="text-xs font-semibold text-[#6F6966]">Đang trong phòng tập</span>
                             }
@@ -113,7 +117,11 @@
                                 <td class="px-5 py-4">@(c.MinutesInside / 60)h @(c.MinutesInside % 60)m</td>
                                 <td class="px-5 py-4">@MethodLabel(c.Method)@(c.HandledByName is null ? "" : $" · {c.HandledByName}")</td>
                                 <td class="px-5 py-4 text-right">
-                                    @if (_confirmOutId == c.CheckInId)
+                                    @if (c.IsAccountLocked)
+                                    {
+                                        <StatusBadge Status="Locked" Label="Tài khoản bị khóa" />
+                                    }
+                                    else if (_confirmOutId == c.CheckInId)
                                     {
                                         <span class="mr-2 text-xs text-[#6F6966]">Check-out @c.MemberName?</span>
                                         <button type="button" class="@Ui.PrimaryButton" disabled="@_working" @onclick="() => CheckOut(c)">Xác nhận</button>
@@ -246,7 +254,11 @@
         "Expired" => "Hết hạn",
         "Scheduled" => "Chưa bắt đầu",
         "None" => "Chưa có gói",
-        "No gym plan" => "Chưa có gói Gym",   // e.g. a yoga-only member: no gym entry
+        "Suspended" => "Tạm ngưng",
+        "Cancelled" => "Đã hủy",
+        "AwaitingActivation" => "Chờ kích hoạt",
+        "PendingPayment" => "Chờ thanh toán",
+        "Completed" => "Đã hoàn thành",
         _ => status
     };
 

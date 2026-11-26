@@ -34,7 +34,7 @@
         {
             <p class="pt-legend" aria-label="Chú thích trạng thái">
                 <span><i class="pt-legend-swatch" data-tone="blue"></i>Đã lên lịch</span>
-                <span><i class="pt-legend-swatch" data-tone="amber"></i>Đang chờ phản hồi / bảo lưu</span>
+                <span><i class="pt-legend-swatch" data-tone="amber"></i>Chờ điểm danh / phản hồi / bảo lưu</span>
                 <span><i class="pt-legend-swatch" data-tone="green"></i>Hoàn thành</span>
                 <span><i class="pt-legend-swatch" data-tone="red"></i>Vắng mặt</span>
                 <span><i class="pt-legend-swatch" data-tone="purple"></i>Tranh chấp / báo PT vắng</span>
@@ -56,7 +56,7 @@
                     <div class="pt-calendar-slot pt-teaching-slot">
                         <strong>@session.MemberName</strong>
                         <span>@Time(slot.StartTime) – @Time(slot.EndTime)</span>
-                        <span class="pt-pills"><span class="pt-status-pill" data-tone="@StatusTone(session.Status)">@Status(session.Status)</span></span>
+                        <span class="pt-pills"><span class="pt-status-pill" data-tone="@StatusTone(session.IsAwaitingAttendance ? "AwaitingAttendance" : session.Status)">@Status(session.IsAwaitingAttendance ? "AwaitingAttendance" : session.Status)</span></span>
                         <a class="trainer-link" href="@($"/pt/contracts/{session.ContractId}/sessions/{session.Id}")">Chi tiết ca</a>
                     </div>
                     }

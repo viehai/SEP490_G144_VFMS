@@ -20,7 +20,6 @@ public sealed class PersonalTrainingWorker(IServiceScopeFactory scopes, ILogger<
                 await using var scope = scopes.CreateAsyncScope();
                 var service = scope.ServiceProvider.GetRequiredService<IPersonalTrainingService>();
                 await service.ExpirePending(ct);
-                await service.ProcessAttendance(ct);
                 await service.RemindPendingFreezes(ct);
                 var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7));
                 if (lastTrainerSweep != today)

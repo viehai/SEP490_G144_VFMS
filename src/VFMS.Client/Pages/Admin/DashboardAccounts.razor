@@ -4,12 +4,19 @@
 @using VFMS.Client.Components.Dashboards
 @using VFMS.Client.Components.Operations
 @using VFMS.Contracts.Users
+@using System.Security.Claims
+@inject AuthSession Auth
+@inject VfmsApiClient Api
 @attribute [Authorize(Roles = "Admin")]
 
-<PageTitle>Tra cứu tài khoản | Victor Fitness</PageTitle>
-<DashboardView T="PagedUsersResponse" Path="@Path" Title="Tra cứu tài khoản" Description="Xem vai trò và trạng thái tài khoản trong hệ thống.">
+<PageTitle>Quản lý tài khoản | Victor Fitness</PageTitle>
+<DashboardView @key="_revision" T="PagedUsersResponse" Path="@Path" Title="Quản lý tài khoản" Description="Tìm tài khoản để quản lý vai trò và quyền truy cập.">
     <HeaderControl><a class="dash-date" href="/admin/dashboard">← Tổng quan quản trị</a></HeaderControl>
     <ChildContent Context="data">
+        @if (_notice is not null)
+        {
+            <p role="status" class="@Ui.Notice">@_notice</p>
+        }
         <section class="dash-panel">
             <form class="dash-dates dash-account-filters" @onsubmit="Search" @onsubmit:preventDefault>
                 <label>Tên, email hoặc số điện thoại<input type="search" maxlength="256" @bind="_search" /></label>
@@ -20,15 +27,155 @@
                 <button type="submit">Tìm tài khoản</button>
             </form>
             @if (data.Items.Count == 0) { <p class="dash-message">Không tìm thấy tài khoản phù hợp.</p> }
-            else { <div class="dash-scroll"><table aria-label="Danh sách tài khoản"><thead><tr><th>Họ tên</th><th>Email</th><th>Vai trò</th><th>Trạng thái</th></tr></thead>
+            else { <div class="dash-scroll"><table aria-label="Danh sách tài khoản"><thead><tr><th>Họ tên</th><th>Email</th><th>Vai trò</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
                 <tbody>@foreach (var account in data.Items) { <tr @key="account.UserId"><td>@account.FullName</td><td>@(account.Email ?? "—")</td>
-                    <td>@string.Join(", ", account.Roles.Select(OperationsText.RoleLabel))</td><td>@StatusLabel(account.AccountStatus)</td></tr> }</tbody>
+                    <td>@string.Join(", ", account.Roles.Select(OperationsText.RoleLabel))</td><td><StatusBadge Status="@account.AccountStatus" Label="@StatusLabel(account.AccountStatus)" /></td>
+                    <td><div class="account-actions">
+                        <button type="button" class="@Ui.Button" aria-label="@($"Chỉnh vai trò của {account.FullName}")" @onclick="() => Edit(account, AccountAction.Roles)">Chỉnh vai trò</button>
+                        @if (account.AccountStatus == "Active" && account.UserId != _actorId)
+                        {
+                            <button type="button" class="@Ui.DangerButton" aria-label="@($"Khóa tài khoản {account.FullName}")" @onclick="() => Edit(account, AccountAction.Lock)">Khóa</button>
+                        }
+                        else if (account.AccountStatus == "Locked")
+                        {
+                            <button type="button" class="@Ui.Button" aria-label="@($"Mở khóa tài khoản {account.FullName}")" @onclick="() => Edit(account, AccountAction.Unlock)">Mở khóa</button>
+                        }
+                    </div></td></tr> }</tbody>
                 </table></div> }
             <Pager Page="data.Page" PageSize="data.PageSize" TotalCount="data.TotalCount" Noun="tài khoản" OnPage="Navigate" />
         </section>
     </ChildContent>
 </DashboardView>
+@if (_selected is { } target)
+{
+    <WorkspaceModal Open="true" Title="@ActionTitle" OnClose="Close">
+        <form class="account-editor" @onsubmit="Save" @onsubmit:preventDefault>
+            <div>
+                <strong>@target.FullName</strong>
+                <p>@(target.Email ?? target.PhoneNumber)</p>
+            </div>
+            @if (_action == AccountAction.Lock)
+            {
+                <p>Khóa tài khoản sẽ kết thúc các phiên đăng nhập và chặn check-in, check-out của hội viên.</p>
+                <label class="@Ui.Label">Lý do khóa (bắt buộc)
+                    <textarea class="@Ui.Field" rows="3" required autofocus maxlength="@LockUserRequest.MaxReasonLength" @bind="_reason" @bind:event="oninput"></textarea>
+                </label>
+            }
+            else if (_action == AccountAction.Unlock)
+            {
+                <div><strong>Lý do khóa trước đó</strong><p class="lock-reason">@(target.LockReason ?? "Không có lý do trong hồ sơ cũ.")</p></div>
+                <p>Xác nhận mở khóa cho tài khoản này?</p>
+            }
+            else
+            {
+                <fieldset disabled="@_saving">
+                    <legend>Chọn một vai trò</legend>
+                    <p>Hiện tại: @string.Join(", ", target.Roles.Select(OperationsText.RoleLabel))</p>
+                    @if (target.Roles.Count > 1)
+                    {
+                        <p>Sau khi lưu, tài khoản chỉ còn vai trò bạn chọn.</p>
+                    }
+                    @foreach (var role in UpdateUserRolesRequest.Assignable)
+                    {
+                        <label class="role-option">
+                            <input type="radio" name="account-role" value="@role" required checked="@(_selectedRole == role)"
+                                disabled="@(role != "Admin" && target.UserId == _actorId)" @onchange="() => _selectedRole = role" />
+                            @OperationsText.RoleLabel(role)
+                        </label>
+                    }
+                </fieldset>
+            }
+            @if (_error is not null) { <p class="@Ui.Error" role="alert">@_error</p> }
+            <div class="account-actions">
+                <button class="@Ui.Button" type="button" disabled="@_saving" @onclick="Close">Hủy</button>
+                <button class="@Ui.PrimaryButton" type="submit" disabled="@(_saving || !CanSave)">@(_saving ? "Đang lưu…" : ConfirmText)</button>
+            </div>
+        </form>
+    </WorkspaceModal>
+}
 @code {
+    private enum AccountAction { Lock, Unlock, Roles }
+    private AccountAction _action;
+    private UserAccountResponse? _selected;
+    private string? _selectedRole;
+    private string? _actorId, _error, _notice;
+    private string _reason = "";
+    private bool _saving;
+    private int _revision;
+    private string ActionTitle => _action switch {
+        AccountAction.Lock => "Khóa tài khoản", AccountAction.Unlock => "Mở khóa tài khoản", _ => "Chỉnh vai trò"
+    };
+    private string ConfirmText => _action switch {
+        AccountAction.Lock => "Xác nhận khóa", AccountAction.Unlock => "Xác nhận mở khóa", _ => "Lưu vai trò"
+    };
+    private bool CanSave => _action switch {
+        AccountAction.Lock => !string.IsNullOrWhiteSpace(_reason),
+        AccountAction.Roles => _selectedRole is not null && _selected is not null &&
+            (_selected.Roles.Count != 1 || !_selected.Roles.Contains(_selectedRole, StringComparer.OrdinalIgnoreCase)),
+        _ => true
+    };
+
+    protected override async Task OnInitializedAsync() =>
+        _actorId = (await Auth.GetAuthenticationStateAsync()).User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+    private void Edit(UserAccountResponse account, AccountAction action)
+    {
+        _selected = account;
+        _action = action;
+        _reason = "";
+        _error = _notice = null;
+        _selectedRole = account.Roles.Count == 1
+            ? UpdateUserRolesRequest.Assignable.FirstOrDefault(role => account.Roles.Contains(role, StringComparer.OrdinalIgnoreCase))
+            : null;
+    }
+
+    private void Close()
+    {
+        if (!_saving) _selected = null;
+    }
+
+    private async Task Save()
+    {
+        if (_saving || !CanSave || _selected is not { } target) return;
+        _saving = true;
+        _error = null;
+        var path = $"api/admin/users/{Uri.EscapeDataString(target.UserId)}";
+        try
+        {
+            var updated = _action switch
+            {
+                AccountAction.Lock => await Api.PatchAsync<UserAccountResponse>($"{path}/lock", new LockUserRequest(_reason.Trim())),
+                AccountAction.Unlock => await Api.PatchAsync<UserAccountResponse>($"{path}/unlock", new { }),
+                _ => await Api.PutAsync<UserAccountResponse>($"{path}/roles", new UpdateUserRolesRequest([_selectedRole!], target.Roles))
+            };
+            _notice = _action switch {
+                AccountAction.Lock => $"Đã khóa tài khoản {updated.FullName}.",
+                AccountAction.Unlock => $"Đã mở khóa tài khoản {updated.FullName}.",
+                _ => $"Đã cập nhật vai trò của {updated.FullName}."
+            };
+            _selected = null;
+            if (_action == AccountAction.Roles && updated.UserId == _actorId)
+            {
+                try { await Auth.RefreshRolesAsync(updated.UserId); }
+                catch (AuthApiException) { _notice += " Vui lòng đăng nhập lại để cập nhật quyền."; }
+            }
+            _revision++;
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.ErrorCode switch {
+                "USER_ALREADY_LOCKED" => "Tài khoản này đã bị khóa.",
+                "USER_NOT_LOCKED" => "Tài khoản này đã được mở khóa.",
+                "USER_ACCOUNT_STATUS_CHANGED" => "Trạng thái tài khoản đã thay đổi. Hãy kiểm tra lại danh sách.",
+                "TRAINER_TEACHING_ROLE_CONFLICT" => "Giáo viên còn lớp Yoga đang phụ trách. Vui lòng kiểm tra lịch dạy.",
+                "USER_SELF_LOCK_DENIED" => "Bạn không thể tự khóa tài khoản đang sử dụng.",
+                _ => ex.Message
+            };
+            if (ex.StatusCode == System.Net.HttpStatusCode.Conflict) _revision++;
+        }
+        finally { _saving = false; }
+    }
+
     [Inject] private NavigationManager Navigation { get; set; } = default!;
     [SupplyParameterFromQuery] public string? Role { get; set; }
     [SupplyParameterFromQuery] public string? Status { get; set; }

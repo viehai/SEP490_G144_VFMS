@@ -62,6 +62,19 @@ public static class PersonalTrainingRules
         return cached.Check(p);
     }
 
+    /// <summary>Contract status shared by PT scheduling and gym entry. The caller can supply StillRunning from its database query.</summary>
+    public static PTPurchaseStatus EffectiveStatus(PTPurchase p, DateOnly today, DateTime nowUtc, bool? stillRunning = null)
+    {
+        if (p.IsCompleted || p.Status == PTPurchaseStatus.Completed) return PTPurchaseStatus.Completed;
+        if (p.Status == PTPurchaseStatus.PendingPayment)
+            return p.HoldExpiresAt <= nowUtc ? PTPurchaseStatus.Expired : p.Status;
+        if (p.Status == PTPurchaseStatus.Expired) return p.Status;
+        if (p.PTFreezes.Any(f => f.RequestStatus is PTFreezeRequestStatus.Approved or PTFreezeRequestStatus.Active or PTFreezeRequestStatus.Completed
+            && f.ActualStartDate <= today && today < f.ActualEndDate))
+            return PTPurchaseStatus.Frozen;
+        return (stillRunning ?? IsStillRunning(p, today)) ? PTPurchaseStatus.Active : PTPurchaseStatus.Expired;
+    }
+
     public static Expression<Func<T, bool>> Not<T>(Expression<Func<T, bool>> predicate) =>
         Expression.Lambda<Func<T, bool>>(Expression.Not(predicate.Body), predicate.Parameters);
 
@@ -83,7 +96,7 @@ public static class PersonalTrainingRules
             session.PTPurchase.HoldExpiresAt > now);
 
     /// <summary>Recounts the remaining sessions and completes the contract once nothing is left; needs p.Sessions loaded.
-    /// Shared by PT attendance and the check-in kiosk (GBR-92).</summary>
+    /// Unrecorded sessions keep their reserved credit.</summary>
     public static void Settle(PTPurchase p)
     {
         var (used, reserved) = Credits(p.Sessions);
@@ -94,13 +107,6 @@ public static class PersonalTrainingRules
             p.IsCompleted = true;
         }
     }
-
-    /// <summary>GBR-92 / UC 4.6 step 7: a confirmed session a self check-in may mark 'Present'. A change request past its
-    /// answer deadline is no longer pending even though its status is cleared only later; 'Pending Freeze' never qualifies.</summary>
-    public static Expression<Func<PTSession, bool>> CheckInCanComplete(DateTime now) => s =>
-        s.SessionStatus == PTSessionStatus.Scheduled ||
-        (s.SessionStatus == PTSessionStatus.ReschedulePending || s.SessionStatus == PTSessionStatus.RescheduleRequested) &&
-        s.ProposalExpiresAt <= now;
 
     /// <summary>GBR-103: after a 'PT Absent' report the PT can still record attendance until the end of the next day;
     /// the make-up unit becomes usable after that day.</summary>

@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using VFMS.Contracts.CheckIn;
 using VFMS.Contracts.Common;
 using VFMS.Contracts.PersonalTraining;
 using VFMS.Domain.Entities;
@@ -10,7 +11,7 @@ using VFMS.Infrastructure.Data;
 
 namespace VFMS.IntegrationTests;
 
-// UC 4.6 / UC 4.11 / GBR-103 after GBR-92: check-in 'Present', the PT's response period and the dispute check-in view.
+// PT attendance, facility visits and the trainer's response to a member report.
 public sealed partial class MembershipPurchaseApiTests
 {
     [Fact]
@@ -41,37 +42,67 @@ public sealed partial class MembershipPurchaseApiTests
             "/api/pt/manager/attendance-disputes?processed=false&page=1"))!.Items).TrainerRecordedPresent);
     }
 
-    [Fact]
-    public async Task CheckInCompletesAnExpiredRequestSessionButNeverOverwritesAReportSavedFirst()   // UC 4.6 step 7 / GBR-92
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task FacilityEntryAndExitDuringPtAppointmentLeaveAttendanceAndCreditsUntouched(bool kiosk)
     {
         using var member = Client("member", "Member");
-        var (_, contract) = await ActivatedPTContract(member);
-        var (expired, reported) = (contract.Sessions[0], contract.Sessions[1]);
-        var now = LocalTime(expired.Date, expired.StartTime).UtcDateTime;
+        using var staff = Client("staff", "Staff");
+        var (id, contract) = await ActivatedPTContract(member);
+        var session = contract.Sessions[0];
+        _clock.Now = LocalTime(session.Date, session.StartTime);
+        var qr = await member.GetFromJsonAsync<MemberQrResponse>("/api/my-qr");
+        var scan = new KioskScanRequest(null, qr!.Token);
+        using var entered = kiosk
+            ? await staff.PostAsJsonAsync("/api/kiosk/check-in", scan)
+            : await staff.PostAsJsonAsync("/api/check-ins/manual", new ManualCheckInRequest("member"));
+        Assert.True(entered.StatusCode == HttpStatusCode.Created, await entered.Content.ReadAsStringAsync());
+        var entry = (await entered.Content.ReadFromJsonAsync<CheckInResultResponse>())!;
+        Assert.Null(entry.CompletedPtSessionId);
+        using var exited = kiosk
+            ? await staff.PostAsJsonAsync("/api/kiosk/check-out", scan)
+            : await staff.PostAsync($"/api/check-ins/{entry.CheckInId}/check-out", null);
+        Assert.Equal(HttpStatusCode.OK, exited.StatusCode);
+
+        var after = await ContractOf(member, id);
+        Assert.Equal("Scheduled", after.Sessions.Single(s => s.Id == session.Id).Status);
+        Assert.Equal((contract.UsedCredits, contract.RemainingCredits), (after.UsedCredits, after.RemainingCredits));
         await using var scope = _app.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
-        var repository = new VFMS.Infrastructure.Repositories.CheckInRepository(db);
+        var stored = await db.PTSessions.SingleAsync(s => s.Id == session.Id);
+        Assert.Null(stored.CheckInCompletedAt);
+        Assert.Null(stored.AttendanceRecordedAt);
+        Assert.Equal(CheckInStatus.CheckedOut, (await db.CheckIns.SingleAsync(c => c.Id == entry.CheckInId)).Status);
+    }
 
-        // A request whose answer deadline passed is no longer pending: the check-in completes the session and clears it.
-        var withRequest = await db.PTSessions.SingleAsync(s => s.Id == expired.Id);
-        withRequest.SessionStatus = PTSessionStatus.RescheduleRequested;
-        withRequest.ProposedAdjustmentType = PTAdjustmentType.Reschedule;
-        withRequest.ProposalExpiresAt = now.AddHours(-4);
-        await db.SaveChangesAsync();
-        var due = Assert.Single(await repository.GetScheduledPtSessionsAsync("member", expired.Date, now), s => s.Id == expired.Id);
-        Assert.True(await repository.CompletePtSessionByCheckInAsync(due, now));
-        Assert.Equal((PTSessionStatus.Completed, (DateTime?)now, (DateTime?)null), (due.SessionStatus, due.CheckInCompletedAt, due.ProposalExpiresAt));
-
-        // The kiosk loaded the session, then a 'PT Absent' report was saved first: the check-in leaves it alone.
-        var loaded = await db.PTSessions.SingleAsync(s => s.Id == reported.Id);
-        await using (var other = _app.Services.CreateAsyncScope())
+    [Fact]
+    public async Task OnlyTheTrainerAssignedToTheSessionCanRecordLateAttendanceAfterAContractTransfer()
+    {
+        using var member = Client("member", "Member");
+        using var original = Client("buyer", "PT");
+        using var successor = Client("gift", "PT");
+        var (id, contract) = await ActivatedPTContract(member);
+        var session = contract.Sessions[0];
+        await using (var scope = _app.Services.CreateAsyncScope())
         {
-            var otherDb = other.ServiceProvider.GetRequiredService<VfmsDbContext>();
-            await otherDb.PTSessions.Where(s => s.Id == reported.Id)
-                .ExecuteUpdateAsync(u => u.SetProperty(s => s.SessionStatus, PTSessionStatus.Cancelled));
+            var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+            db.ApplicationUserRoles.Add(new ApplicationUserRole
+            {
+                UserId = "gift", Role = await db.ApplicationRoles.SingleAsync(r => r.RoleName == "PT")
+            });
+            (await db.PTPurchases.SingleAsync(p => p.Id == id)).PTUserId = "gift";
+            await db.SaveChangesAsync();
         }
-        Assert.False(await repository.CompletePtSessionByCheckInAsync(loaded, now));
-        Assert.Equal((PTSessionStatus.Cancelled, (DateTime?)null), (loaded.SessionStatus, loaded.CheckInCompletedAt));
+        _clock.Now = LocalTime(session.Date.AddDays(2), new TimeOnly(10, 0));
+        var detail = $"/api/pt/contracts/{id}/teaching-sessions/{session.Id}";
+        var attendance = $"/api/pt/sessions/{session.Id}/attendance";
+        Assert.Equal(HttpStatusCode.NotFound, (await original.GetAsync($"/api/pt/contracts/{id}")).StatusCode);
+        Assert.True((await original.GetFromJsonAsync<PTSessionResponse>(detail))!.CanRecordAttendance);
+        Assert.Equal(HttpStatusCode.NotFound, (await successor.GetAsync(detail)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await successor.PostAsJsonAsync(attendance, true)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await original.PostAsJsonAsync(attendance, true)).StatusCode);
+        Assert.Equal(1, (await ContractOf(member, id)).UsedCredits);
     }
 
     [Fact]
@@ -103,7 +134,7 @@ public sealed partial class MembershipPurchaseApiTests
     }
 
     [Fact]
-    public async Task ACheckInPresentIsNotAPTRecordAndTheManagerSeesTheMembersVisits()
+    public async Task HistoricalKioskAttendanceIsNotATrainerRecordForDisputes()
     {
         using var member = Client("member", "Member");
         using var trainer = Client("buyer", "PT");
@@ -115,7 +146,7 @@ public sealed partial class MembershipPurchaseApiTests
         {
             var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
             var stored = await db.PTSessions.SingleAsync(s => s.Id == session.Id);
-            stored.SessionStatus = PTSessionStatus.Completed;   // UC 4.6 step 7, as the kiosk sets it
+            stored.SessionStatus = PTSessionStatus.Completed;   // Historical data from before trainer-only attendance.
             stored.CheckInCompletedAt = start.AddMinutes(-10);
             db.CheckIns.Add(new CheckIn
             {

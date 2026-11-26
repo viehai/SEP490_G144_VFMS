@@ -1,0 +1,25 @@
+.account-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .5rem;
+}
+.account-editor {
+    display: grid;
+    gap: 1rem;
+    padding: 1.25rem;
+    max-height: 72dvh;
+    overflow-y: auto;
+}
+.account-editor fieldset { min-width: 0; }
+.account-editor legend { font-size: 1rem; font-weight: 600; }
+.account-editor .account-actions { justify-content: flex-end; }
+.account-editor fieldset p { margin: .3rem 0 .6rem; }
+.role-option {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    padding: .45rem 0;
+}
+.lock-reason { white-space: pre-wrap; overflow-wrap: anywhere; }
+.account-editor button:disabled { opacity: .55; }

@@ -126,7 +126,7 @@
                     <span>@Time(slot.StartTime) – @Time(slot.EndTime)</span>
                     <span class="pt-pills">
                         @if (session.Proposal is { Type: "Reschedule" }) { <span class="pt-status-pill" data-tone="gray">Buổi ban đầu</span> }
-                        <span class="pt-status-pill" data-tone="@StatusTone(session.Status)">@Status(session.Status)</span>
+                        <span class="pt-status-pill" data-tone="@StatusTone(session.IsAwaitingAttendance ? "AwaitingAttendance" : session.Status)">@Status(session.IsAwaitingAttendance ? "AwaitingAttendance" : session.Status)</span>
                         @if (session.IsMakeUpUnit) { <span class="pt-status-pill" data-tone="purple">Lượt bù</span> }
                     </span>
                     <span>Chi tiết ca</span>
@@ -146,10 +146,10 @@
                 <div class="trainer-row trainer-between">
                     <strong>@Day(item.Date.DayOfWeek), @Date(item.Date) · @Time(item.StartTime) – @Time(item.EndTime)</strong>
                     @if (item.IsMakeUpUnit) { <span class="trainer-status trainer-status--success">Lượt bù</span> }
-                    else { <TrainerStatus Status="@item.Status" /> }
+                    else { <TrainerStatus Status="@(item.IsAwaitingAttendance ? "AwaitingAttendance" : item.Status)" /> }
                 </div>
-                <p class="trainer-muted">Tính @item.CreditUnits buổi</p>
-                @if (item.CompletedByCheckIn) { <p class="trainer-muted">Ghi có mặt nhờ hội viên ghi nhận vào phòng tập.</p> }
+                <p class="trainer-muted">@(item.IsAwaitingAttendance ? "Chưa trừ buổi" : $"Tính {item.CreditUnits} buổi")</p>
+                @if (item.CompletedByCheckIn) { <p class="trainer-muted">Lịch sử điểm danh tự động tại kiosk theo quy tắc cũ.</p> }
                 @if (IsTrainer)
                 {
                     <div class="trainer-row">
@@ -369,9 +369,9 @@
 
     private static readonly string[] Taught = ["Completed", "AutoCompleted", "NoShow", "Disputed"];
     private IEnumerable<PTSessionResponse> Visible => Contract.Sessions.Where(s => _history
-        ? !IsFuture(s.Date, s.EndTime) && (Taught.Contains(s.Status) || s.Status == "Cancelled" && s.TrainerAbsenceReportedAt is not null)
+        ? !IsFuture(s.Date, s.EndTime) && (s.IsAwaitingAttendance || Taught.Contains(s.Status) || s.Status == "Cancelled" && s.TrainerAbsenceReportedAt is not null)
         : true)
-        .Where(s => _history || !IsTrainer || IsFuture(s.Date, s.EndTime) || s.IsMakeUpUnit);
+        .Where(s => _history || !IsTrainer || IsFuture(s.Date, s.EndTime) || s.CanRecordAttendance || s.IsMakeUpUnit);
     private PTCalendarSlot[] CalendarSlots => Visible.Select(s => new PTCalendarSlot(s.Id, s.Date, s.StartTime, s.EndTime, s.Status))
         .Concat(Visible.Where(s => s.Proposal is { Type: "Reschedule" } p && p.ExpiresAt > DateTime.UtcNow)
             .Select(s => new PTCalendarSlot(-s.Id, s.Proposal!.Date, s.Proposal.StartTime, s.Proposal.EndTime, "Proposed"))).ToArray();

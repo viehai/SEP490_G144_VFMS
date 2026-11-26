@@ -50,6 +50,7 @@ public interface IUserAdministrationService
         CancellationToken cancellationToken = default);
     Task<Result<UserAccountResponse>> LockUserAsync(
         string userId,
+        LockUserRequest request,
         string actorUserId,
         string? ipAddress,
         CancellationToken cancellationToken = default);

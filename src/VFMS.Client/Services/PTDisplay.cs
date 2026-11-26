@@ -27,6 +27,7 @@ internal static class PTDisplay
     internal static string StatusTone(string value) => value switch
     {
         "Scheduled" => "blue",
+        "AwaitingAttendance" => "amber",
         "Completed" or "AutoCompleted" => "green",
         "ReschedulePending" or "RescheduleRequested" or "PendingFreeze" or "MakeUpPending" or "MakeUpRequested" => "amber",
         "Cancelled" or "NoShow" => "red",
@@ -47,6 +48,7 @@ internal static class PTDisplay
         "Refunded" => "Đã hoàn tiền",
         "RefundFailed" => "Hoàn tiền thất bại",
         "Scheduled" => "Đã lên lịch",
+        "AwaitingAttendance" => "Chờ PT điểm danh",
         "Completed" => "Hoàn thành",
         "Cancelled" => "Đã hủy",
         "NoShow" => "Vắng mặt",

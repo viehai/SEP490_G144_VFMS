@@ -1,7 +1,12 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Web;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
+using VFMS.Client.Components.PersonalTraining;
 using VFMS.Client.Auth;
 using VFMS.Client.Services;
 using VFMS.Contracts.Auth;
@@ -46,6 +51,33 @@ public sealed class PersonalTrainingClientTests
         var order = await api.HoldAsync(booking);
         await api.StartPaymentAsync(order.OrderNumber, new("PROMO"));
         Assert.Equal(new[] { "/api/pt/purchases", "/api/pt/purchases/ORD-1/payment" }, paths);
+    }
+
+    [Fact]
+    public async Task TrainerCanFindAnOverdueUnrecordedSessionFromTheContract()
+    {
+        var day = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-3));
+        var waiting = new PTSessionResponse(5, day, new TimeOnly(9, 0), new TimeOnly(10, 0),
+            "Scheduled", 1, null, null, null) { IsAwaitingAttendance = true, CanRecordAttendance = true };
+        var contract = new PTContractResponse(7, "pt", "member", "PT", "Active", day, day.AddMonths(1),
+            1, 0, 1, 0, 1, 0, 0, 0, [waiting]);
+        using var http = new HttpClient();
+        var storage = new Storage("");
+        using var api = new PersonalTrainingApiClient(http, new AuthSession(storage, new AuthApiClient(http)));
+        await using var provider = new ServiceCollection().AddLogging().AddSingleton(api).AddSingleton<ToastService>()
+            .AddSingleton<IJSRuntime>(storage).BuildServiceProvider();
+        await using var renderer = new HtmlRenderer(provider, provider.GetRequiredService<ILoggerFactory>());
+        var html = await renderer.Dispatcher.InvokeAsync(async () =>
+        {
+            var panel = await renderer.RenderComponentAsync<ContractPanel>(ParameterView.FromDictionary(new Dictionary<string, object?>
+            {
+                [nameof(ContractPanel.Contract)] = contract, [nameof(ContractPanel.IsTrainer)] = true
+            }));
+            return WebUtility.HtmlDecode(panel.ToHtmlString());
+        });
+        Assert.Contains("Chờ PT điểm danh", html);
+        Assert.Contains("Chưa trừ buổi", html);
+        Assert.Contains("/pt/contracts/7/sessions/5", html);
     }
 
     private sealed class Handler(Func<HttpRequestMessage, Task<HttpResponseMessage>> send) : HttpMessageHandler

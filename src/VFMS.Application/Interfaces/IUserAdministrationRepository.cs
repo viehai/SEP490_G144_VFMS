@@ -13,9 +13,6 @@ public interface IUserAdministrationRepository
         CancellationToken cancellationToken = default);
     Task<Gym?> GetDefaultGymAsync(CancellationToken cancellationToken = default);
     Task<ApplicationRole?> GetRoleByNameAsync(string roleName, CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<ApplicationRole>> GetRolesByNamesAsync(
-        IReadOnlyCollection<string> roleNames,
-        CancellationToken cancellationToken = default);
     Task<ApplicationUser?> GetUserByIdAsync(string userId, CancellationToken cancellationToken = default);
     Task<ApplicationUser?> GetUserByPasswordSetupTokenHashAsync(
         string tokenHash,
@@ -65,9 +62,9 @@ public interface IUserAdministrationRepository
         AuditLog auditLog,
         CancellationToken cancellationToken = default);
     Task<bool> HasActiveYogaAssignmentsAsync(string userId, CancellationToken cancellationToken);
-    Task ReplaceUserRolesAsync(
+    Task<bool> SetUserRoleAsync(
         ApplicationUser user,
-        IReadOnlyCollection<int> roleIds,
+        int roleId,
         AuditLog auditLog,
         CancellationToken cancellationToken = default);
     Task<AccountStatus?> GetStatusBeforeLatestLockAsync(
@@ -76,6 +73,7 @@ public interface IUserAdministrationRepository
     Task<bool> TryUpdateAccountStatusAsync(
         ApplicationUser user,
         AccountStatus status,
+        string? lockReason,
         bool revokeActiveRefreshTokens,
         AuditLog auditLog,
         CancellationToken cancellationToken = default);

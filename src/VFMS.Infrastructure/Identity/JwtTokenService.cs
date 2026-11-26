@@ -41,6 +41,7 @@ public sealed class JwtTokenService : IJwtTokenService
             new(JwtRegisteredClaimNames.Email, user.Email),
             new(JwtRegisteredClaimNames.Name, user.FullName),
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+            new("access_version", user.AccessVersion.ToString(System.Globalization.CultureInfo.InvariantCulture)),
             new("gym_id", user.GymId.ToString())
         };
 

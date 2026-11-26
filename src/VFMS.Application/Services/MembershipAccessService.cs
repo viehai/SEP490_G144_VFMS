@@ -6,22 +6,30 @@ namespace VFMS.Application.Services;
 
 public sealed class MembershipAccessService(IMembershipAccessRepository repository, TimeProvider clock) : IMembershipAccessService
 {
-    public Task<Result<bool>> CheckGymEntryAsync(string memberId, int membershipId, CancellationToken ct) =>
-        CheckAsync(memberId, membershipId, ComponentType.GYM, "MSG-36", ct);
+    public async Task<Result<bool>> CheckGymEntryAsync(string memberId, int membershipId, CancellationToken ct)
+    {
+        var now = clock.GetUtcNow().UtcDateTime;
+        var today = DateOnly.FromDateTime(now + YogaTime.GymOffset);
+        var plans = await repository.GetEntryPlansAsync([memberId], today, now, ct);
+        var plan = EntryPlan.Best(plans.Where(p => p.MemberMembershipId == membershipId));
+        if (plan is null) return NotFound();
+        return plan.IsActive ? Result<bool>.Success(true) : Denied("MSG-36");
+    }
 
-    public Task<Result<bool>> CheckClassBookingAsync(string memberId, int membershipId, CancellationToken ct) =>
-        CheckAsync(memberId, membershipId, ComponentType.YOGA, "MSG-31", ct);
-
-    private async Task<Result<bool>> CheckAsync(
-        string memberId, int membershipId, ComponentType component, string code, CancellationToken ct)
+    public async Task<Result<bool>> CheckClassBookingAsync(string memberId, int membershipId, CancellationToken ct)
     {
         var membership = await repository.FindOwnedAsync(memberId, membershipId, ct);
-        if (membership is null)
-            return Result<bool>.Failure("Không tìm thấy gói hội viên.", "MEMBERSHIP_NOT_FOUND", 404);
-        var today = DateOnly.FromDateTime(clock.GetUtcNow().ToOffset(TimeSpan.FromHours(7)).DateTime);
-        return membership.ComponentType == component && membership.Status == MembershipStatus.Active &&
+        if (membership is null) return NotFound();
+        var today = YogaTime.Today(clock);
+        return membership.ComponentType == ComponentType.YOGA && membership.Status == MembershipStatus.Active &&
             membership.StartDate <= today && membership.EndDate >= today
                 ? Result<bool>.Success(true)
-                : Result<bool>.Failure("Gói hội viên không có quyền sử dụng dịch vụ ở trạng thái hiện tại.", code, 403);
+                : Denied("MSG-31");
     }
+
+    private static Result<bool> NotFound() =>
+        Result<bool>.Failure("Không tìm thấy gói hội viên.", "MEMBERSHIP_NOT_FOUND", 404);
+
+    private static Result<bool> Denied(string code) =>
+        Result<bool>.Failure("Gói hội viên không có quyền sử dụng dịch vụ ở trạng thái hiện tại.", code, 403);
 }

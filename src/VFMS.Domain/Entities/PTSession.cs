@@ -5,7 +5,7 @@ namespace VFMS.Domain.Entities;
 
 /// <summary>
 /// A single scheduled or completed one-on-one PT session.
-/// Self check-in within [-30 mins, +15 mins] of a scheduled PT session marks it 'Present' (GBR-92, GBR-103).
+/// The assigned PT records attendance after the session ends (GBR-103).
 /// </summary>
 public class PTSession : BaseEntity
 {
@@ -46,7 +46,7 @@ public class PTSession : BaseEntity
     public DateTime? AttendanceRecordedAt { get; set; }
     /// <summary>What the PT recorded: true = 'Present', false = 'Absent' (shown on UC 4.11).</summary>
     public bool? AttendanceRecordedPresent { get; set; }
-    /// <summary>When the Member's self check-in marked the session 'Present' (UC 4.6 step 7, GBR-92); a PT record clears it.</summary>
+    /// <summary>Historical kiosk-generated attendance timestamp. New visits do not set this field.</summary>
     public DateTime? CheckInCompletedAt { get; set; }
     /// <summary>The freeze whose post-freeze schedule created this session, so withdrawing it restores only its own moves (UC 4.8).</summary>
     public int? PTFreezeId { get; set; }

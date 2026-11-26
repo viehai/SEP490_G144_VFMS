@@ -52,6 +52,7 @@ public partial class WorkspaceNavigation
         new("Hoạt động & báo cáo",
             new Link("Báo cáo kinh doanh", "/admin/business-reports", "Admin")),
         new("Quản trị hệ thống",
+            new("Quản lý tài khoản", "/admin/dashboard/accounts", "Admin"),
             new("Từ khóa cấm", "/admin/banned-words", "Admin"),
             new("Nhật ký hệ thống", "/admin/audit-logs", "Admin"))
     ];

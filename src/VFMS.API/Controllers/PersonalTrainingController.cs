@@ -149,6 +149,11 @@ public sealed class PersonalTrainingController(IPersonalTrainingService service)
     public Task<IActionResult> DecideReschedule(int id, PTRescheduleDecision request, CancellationToken ct) =>
         AsUser(actor => service.DecideReschedule(actor, id, request, ct));
 
+    [HttpGet("contracts/{contractId:int}/teaching-sessions/{id:int}")]
+    [Authorize(Roles = "PT")]
+    public Task<IActionResult> TeachingSession(int contractId, int id, CancellationToken ct) =>
+        AsUser(actor => service.TeachingSession(actor, contractId, id, ct));
+
     [HttpPost("sessions/{id:int}/attendance")]
     [Authorize(Roles = "PT")]
     public Task<IActionResult> Attendance(int id, [FromBody] bool attended, CancellationToken ct) =>

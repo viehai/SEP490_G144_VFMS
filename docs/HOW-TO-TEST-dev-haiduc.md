@@ -96,9 +96,7 @@ Data that already exists:
 
 ### Kiosk: `/kiosk`
 
-Open to Staff, Manager, Customer and Member.
-- **Staff and Manager** can scan anyone.
-- **Customers and Members** can only scan themselves: a face or QR that belongs to someone else is refused.
+Staff or Manager opens the gate kiosk. Members present their registered face or personal QR at the gate. A locked member account is refused for both entry and exit at the kiosk and front desk.
 
 **One scan decides the direction.** A member who is outside gets **CHECK-IN**; a member who is inside gets **CHECK-OUT**.
 
@@ -116,13 +114,13 @@ Things that look like errors but are the rules:
 - **QR codes (25/11/2026)** work **all gym day**, until 24:00 gym time, for check-in, check-out and yoga attendance; scanning does not use them up. Opening `/my-qr` again shows **the same code** (`GET /api/my-qr`). **Tạo mã mới** (`POST /api/my-qr`) replaces it, and the old one stops working. The next day `/my-qr` gives a new code. To test: open `/my-qr`, note the first characters of the text code, reload: they are the same; check in and then check out at `/kiosk` with that one code.
 - "Từ chối truy cập: không tìm thấy gói hội viên còn hiệu lực hoặc không xác thực được khuôn mặt/mã QR…" means one of these:
   - the face didn't match, or the QR expired (after 24:00) or was replaced by Tạo mã mới (code `SCAN_NOT_RECOGNISED`; for a QR the kiosk adds how to make a new code);
-  - the person has no usable membership (code `ACCESS_DENIED`, and the message adds "Trạng thái gói: …", for example "Chưa có gói Gym").
+  - the member has no active Gym, Yoga or PT plan. The kiosk returns `ACCESS_DENIED` and shows the plan status, for example "Hết hạn" or "Chưa có gói".
 
 ### Member pages
 
 - `/my-qr` (Customer, Member): the check-in QR image, "Dùng được đến hết ngày dd/MM/yyyy" and a **Tạo mã mới** button.
 - `/face-id` (Customer, Member): consent, camera capture, delete.
-- The profile page's **TIỆN ÍCH HỘI VIÊN** box links to these pages, the kiosk, the yoga schedule and the workout plan.
+- The profile page's **TIỆN ÍCH HỘI VIÊN** box links to these pages, the yoga schedule and the workout plan.
 
 ### Front desk: `/staff/check-ins` (Staff, Manager)
 
@@ -216,9 +214,9 @@ How to tell which plan you got:
 - **A yoga class needs an active yoga trainer.** A class's trainer counts as active only while the account status is **Active**, the account is not banned, and it still has the **YogaInstructor** role (`YogaClassRules.ActiveInstructor`). If the trainer fails any of these, the whole class is hidden. It disappears from the public timetable `/yoga/schedule` and the home page YOGA STUDIO cards. Booking it, or opening its mat map, returns "Yoga class not found." (404). Publishing it is refused with `YOGA_INSTRUCTOR_INACTIVE`. It also no longer counts as a bookable class, so on its own it does not keep yoga plans on sale. The Manager still sees it on `/manager/yoga` and can assign an active trainer. Members already booked keep their bookings. The trainer dropdown already lists only Active accounts, and now leaves out banned ones too. To test: there is no Admin page for this in the client yet. Signed in as Admin, call `PATCH /api/admin/users/{userId}/lock` in Swagger for "Test Yoga Instructor" (user id `c85e1592-122e-4809-bdc6-839aefb9dd9b`), or remove the role with `PUT /api/admin/users/{userId}/roles`. Every local class disappears from the Yoga tab and "Yoga 1 Tháng" stops selling. `PATCH /api/admin/users/{userId}/unlock` brings them back.
 - Yoga plans are sold only while at least one yoga class **their level covers** can be booked: a published class (Open, or Full with a waitlist) whose registration deadline hasn't passed (`YogaClassRules.Bookable`, the same rule as booking). Otherwise the yoga tab says "Hiện chưa có gói Yoga mở bán.", the plan's catalog page is not found, and buying it is refused with `PLAN_NOT_PURCHASABLE`. The Manager still sees and edits the plan. Gym plans are not affected. To test: cancel every yoga class on `/manager/yoga`, or let their registration deadlines pass. In the local database the last registration deadline is Yin Restore's, **06/12/2026 22:00** (gym time), so "Yoga 1 Tháng" stops selling then: create and publish another class on `/manager/yoga` to keep selling yoga plans.
 - Payment is the same as for gym plans. With cash, staff enter the order number and amount on `/staff/membership-cash-receipt`; VietQR is confirmed by the bank webhook. After payment a Customer becomes a Member, and `/my-memberships` shows the plan with **Dịch vụ: Yoga**.
-- A yoga plan lets the member book the yoga classes its level covers but gives no gym access. The kiosk and the front desk only count gym plans (`MembershipRules.Gym` in `GymAccessServices.cs`): a yoga-only member is refused with "Membership status: No gym plan.", and the front-desk search shows **Chưa có gói Gym**. A member with gym and yoga checks in on the gym plan. Check-out is never blocked.
-  - Try it: front desk `/staff/check-ins`, search `0900000021` (Demo Yoga) → Chưa có gói Gym, check-in refused; `0900000011` (Demo Một) → Active.
-  - A yoga-only member still sees and can buy gym plans (home → GYM MEMBERSHIP tab). Other features that need a gym plan refuse them with a message saying so: PT packages ("Cần gói Gym đang hoạt động…") and locker rental ("Hội viên cần có gói Gym đang hiệu lực.").
+- At both the kiosk and the front desk, any one active Gym, Yoga or PT plan permits check-in (GBR-89), including a standalone PT contract. An unlocked member with an open visit can check out even if their last plan has since expired (GBR-91). Locking the account blocks both actions.
+  - During a PT appointment, check in and out at the kiosk or front desk. The visit appears in the facility log. After the session ends, confirm that it shows **Chờ PT điểm danh** and the PT credit balance is the same the next day. Open the session as its trainer, record **Hội viên có mặt** and verify that exactly one session is used.
+  - At `/staff/check-ins`, look up Demo Yoga (`0900000021`) while their Yoga plan is active. The desk should show **Còn hiệu lực**. Check in at the desk, then scan the member’s QR code at the kiosk to check out. Repeat with a member whose only active plan is PT.
   - Still open to Customers and to yoga-only members, because they need no plan: `/workout` (AI workout plan), `/face-id`, and `/my-qr` (yoga attendance scans it). Equipment-issue reports stay open to every Member.
 - API: `POST /api/manager/membership-plans` takes `"serviceType": "YOGA"` (default `GYM`) and, for yoga, `"yogaDifficultyLevel": "Beginner" | "Intermediate" | "Advanced"`; `GET /api/membership-plans?serviceType=YOGA` and the manager list filter by it.
 
@@ -359,6 +357,5 @@ Try it: book a mat someone else just took, cancel a yoga booking less than 2 hou
 - **Trainer roles are only in the database so far.** Profiles and applications created after the migration get no trainer role (`TrainerRoleId` is NULL) until `TrainerService` sets it, and merging `PT` and `YogaInstructor` into one `Trainer` login role is not done. Both belong to the trainer module owner.
 - **Still showing written-in demo content (not changed here):** the PT dashboard `/pt/dashboard` (PT module, another team member), the home page equipment showcase (static), and the template pages Weather and Counter with their menu links.
 - **Business reports made while testing.** On 20/11/2026 two business reports were generated on the local database to check the Manager dashboard: Monthly 2026-10 (empty) and Daily 2026-11-16. The dashboard shows the newest one.
-- **Self check-in from anywhere.** Because the kiosk is open to Customers and Members, one can check in from anywhere with `/my-qr` plus `/kiosk` on one phone. That check-in can also mark a PT session as done.
 - **A shared QR screenshot works all day (25/11/2026, by request).** The QR code now lasts until 24:00 and can be scanned many times, so a photo of it passed to someone else also works for the rest of the day (before, a code lasted 2 minutes and worked once). The member can stop it with **Tạo mã mới**.
 - **Phones can't open localhost.** To test QR with a phone, photograph the code shown on the laptop.

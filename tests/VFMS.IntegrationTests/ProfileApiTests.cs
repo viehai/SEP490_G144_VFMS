@@ -99,6 +99,68 @@ public sealed class ProfileApiTests : IAsyncLifetime
         await _connection.DisposeAsync();
     }
 
+    [Theory]
+    [InlineData("Customer", "scan")]
+    [InlineData("Member", "scan")]
+    [InlineData("Member", "check-in")]
+    [InlineData("Member", "check-out")]
+    [InlineData("Admin", "scan")]
+    public async Task GateEndpointsRequireAStaffOrManagerSession(string role, string action)
+    {
+        using var client = CreateClient("viewer", role);
+        using var response = await client.PostAsJsonAsync($"/api/kiosk/{action}", new { qrToken = "test" });
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task AdminCanChangeRolesLockAndUnlockFromTheAccountList()
+    {
+        await SeedUserAsync("operator", "Admin", "operator@example.test", "0909111101", ["Staff"]);
+        await SeedUserAsync("target", "Nhân viên", "target@example.test", "0909111102", ["Staff"], softDeletedRoles: ["Manager"]);
+        using var client = CreateClient("operator", "Admin");
+        const string path = "/api/admin/users/target";
+        var roles = await ReadJsonAsync<UserAccountResponse>(await client.PutAsJsonAsync(path + "/roles",
+            new UpdateUserRolesRequest(["Manager"], ["Staff"])), HttpStatusCode.OK);
+        Assert.Equal("Manager", Assert.Single(roles.Roles));
+        using var invalid = await client.PatchAsJsonAsync(path + "/lock", new LockUserRequest("   "));
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        const string reason = "Xác minh tài khoản tại quầy";
+        var locked = await ReadJsonAsync<UserAccountResponse>(await client.PatchAsJsonAsync(path + "/lock",
+            new LockUserRequest(reason)), HttpStatusCode.OK);
+        Assert.Equal("Locked", locked.AccountStatus);
+        var page = await client.GetFromJsonAsync<PagedUsersResponse>("/api/admin/users?accountStatus=Locked");
+        var account = Assert.Single(page!.Items);
+        Assert.Equal(reason, account.LockReason);
+        Assert.Equal("Manager", Assert.Single(account.Roles));
+        var unlocked = await ReadJsonAsync<UserAccountResponse>(await client.PatchAsJsonAsync(path + "/unlock", new {}), HttpStatusCode.OK);
+        Assert.Equal("Active", unlocked.AccountStatus);
+        Assert.Null(unlocked.LockReason);
+    }
+
+    [Fact]
+    public async Task AdminMustExplicitlyChooseOneRoleForALegacyAccount()
+    {
+        string[] previousRoles = ["Staff", "Manager"];
+        await SeedUserAsync("operator", "Admin", "operator@example.test", "0909111101", ["Staff"]);
+        await SeedUserAsync("target", "Nhân viên", "target@example.test", "0909111102", previousRoles);
+        using var client = CreateClient("operator", "Admin");
+        const string path = "/api/admin/users/target/roles";
+
+        foreach (string[] invalid in new string[][] { [], ["Staff", "Manager"], ["Staff", "Staff"] })
+        {
+            using var rejected = await client.PutAsJsonAsync(path, new UpdateUserRolesRequest(invalid, previousRoles));
+            Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
+        }
+
+        using var stale = await client.PutAsJsonAsync(path, new UpdateUserRolesRequest(["Manager"], ["Staff"]));
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+        var updated = await ReadJsonAsync<UserAccountResponse>(await client.PutAsJsonAsync(path,
+            new UpdateUserRolesRequest(["Staff"], previousRoles)), HttpStatusCode.OK);
+        Assert.Equal("Staff", Assert.Single(updated.Roles));
+        var page = await client.GetFromJsonAsync<PagedUsersResponse>("/api/admin/users?search=target@example.test");
+        Assert.Equal("Staff", Assert.Single(Assert.Single(page!.Items).Roles));
+    }
+
     [Fact]
     public async Task UnauthenticatedGetMyProfile_ReturnsUnauthorized()
     {

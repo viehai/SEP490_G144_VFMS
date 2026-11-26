@@ -394,7 +394,7 @@ public sealed class UserAdministrationValidatorTests
         IMapper mapper = new ServiceMapper(new EmptyServiceProvider(), mapperConfig);
         var service = new UserAdministrationService(repository, new PasswordHasherFake(), mapper);
 
-        var result = await service.LockUserAsync("admin-user", "ADMIN-USER", null);
+        var result = await service.LockUserAsync("admin-user", new LockUserRequest("security"), "ADMIN-USER", null);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(403, result.StatusCode);
@@ -819,9 +819,6 @@ public sealed class UserAdministrationValidatorTests
         public Task<ApplicationRole?> GetRoleByNameAsync(string roleName, CancellationToken cancellationToken = default) =>
             Task.FromResult<ApplicationRole?>(roleName == "Customer" ? _customerRole : null);
 
-        public Task<IReadOnlyList<ApplicationRole>> GetRolesByNamesAsync(IReadOnlyCollection<string> roleNames, CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<ApplicationRole>>([]);
-
         public Task<ApplicationUser?> GetUserByIdAsync(string userId, CancellationToken cancellationToken = default)
         {
             var user = _users.FirstOrDefault(u => u.UserId == userId);
@@ -861,13 +858,13 @@ public sealed class UserAdministrationValidatorTests
         public Task<bool> HasActiveYogaAssignmentsAsync(string userId, CancellationToken cancellationToken) =>
             Task.FromResult(false);
 
-        public Task ReplaceUserRolesAsync(ApplicationUser user, IReadOnlyCollection<int> roleIds, AuditLog auditLog, CancellationToken cancellationToken = default) =>
-            Task.CompletedTask;
+        public Task<bool> SetUserRoleAsync(ApplicationUser user, int roleId, AuditLog auditLog, CancellationToken cancellationToken = default) =>
+            Task.FromResult(true);
 
         public Task<AccountStatus?> GetStatusBeforeLatestLockAsync(string userId, CancellationToken cancellationToken = default) =>
             Task.FromResult<AccountStatus?>(null);
 
-        public Task<bool> TryUpdateAccountStatusAsync(ApplicationUser user, AccountStatus status, bool revokeActiveRefreshTokens, AuditLog auditLog, CancellationToken cancellationToken = default) =>
+        public Task<bool> TryUpdateAccountStatusAsync(ApplicationUser user, AccountStatus status, string? lockReason, bool revokeActiveRefreshTokens, AuditLog auditLog, CancellationToken cancellationToken = default) =>
             Task.FromResult(true);
 
         public Task<Result<bool>> UpdateUserAsync(ApplicationUser user, CancellationToken cancellationToken = default) =>
@@ -962,11 +959,6 @@ public sealed class UserAdministrationValidatorTests
 
         public Task<ApplicationRole?> GetRoleByNameAsync(string roleName, CancellationToken cancellationToken = default) =>
             Task.FromResult<ApplicationRole?>(roleName == "Customer" ? _customerRole : null);
-
-        public Task<IReadOnlyList<ApplicationRole>> GetRolesByNamesAsync(
-            IReadOnlyCollection<string> roleNames,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<ApplicationRole>>([]);
 
         public Task<ApplicationUser?> GetUserByIdAsync(
             string userId,
@@ -1082,12 +1074,12 @@ public sealed class UserAdministrationValidatorTests
         public Task<bool> HasActiveYogaAssignmentsAsync(string userId, CancellationToken cancellationToken) =>
             Task.FromResult(false);
 
-        public Task ReplaceUserRolesAsync(
+        public Task<bool> SetUserRoleAsync(
             ApplicationUser user,
-            IReadOnlyCollection<int> roleIds,
+            int roleId,
             AuditLog auditLog,
             CancellationToken cancellationToken = default) =>
-            Task.CompletedTask;
+            Task.FromResult(true);
 
         public Task<AccountStatus?> GetStatusBeforeLatestLockAsync(string userId, CancellationToken cancellationToken = default) =>
             Task.FromResult<AccountStatus?>(null);
@@ -1095,6 +1087,7 @@ public sealed class UserAdministrationValidatorTests
         public Task<bool> TryUpdateAccountStatusAsync(
             ApplicationUser user,
             AccountStatus status,
+            string? lockReason,
             bool revokeActiveRefreshTokens,
             AuditLog auditLog,
             CancellationToken cancellationToken = default) =>

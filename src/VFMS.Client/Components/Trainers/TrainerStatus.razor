@@ -14,7 +14,7 @@
     private string Tone => Status switch
     {
         "Hired" or "Approved" or "Available" or "Active" or "Completed" or "AutoCompleted" or "Paid" or "Refunded" => "trainer-status--success",
-        "Pending" or "UnderReview" or "Interviewing" or "Booked" or "Frozen" or "Scheduled" or "PendingPayment" or
+        "AwaitingAttendance" or "Pending" or "UnderReview" or "Interviewing" or "Booked" or "Frozen" or "Scheduled" or "PendingPayment" or
             "PendingFreeze" or "ReschedulePending" or "RescheduleRequested" or "MakeUpPending" or "MakeUpRequested" or
             "CheckoutHold" or "FreezeHold" or "AwaitingConfirmation" or "RefundPending" => "trainer-status--pending",
         "Rejected" or "NoShow" or "Expired" or "Disputed" or "RefundFailed" => "trainer-status--danger",

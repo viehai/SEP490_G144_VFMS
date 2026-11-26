@@ -120,7 +120,7 @@ public sealed class CheckInTests
     {
         var repo = new RepoFake();
         var qr = new MemberQrService(repo, Clock);
-        return (repo, new CheckInService(repo, new ProtectorFake(), qr, Clock), qr);
+        return (repo, new CheckInService(repo, repo, new ProtectorFake(), qr, Clock), qr);
     }
 
     private static async Task<KioskScanRequest> QrScan(MemberQrService qr, string user) =>
@@ -164,42 +164,58 @@ public sealed class CheckInTests
         Assert.EndsWith($"Vui lòng liên hệ quầy lễ tân. Trạng thái gói: {shown}.", result.ErrorMessage);
     }
 
-    [Fact]
-    public async Task OnlyAGymPlanOpensTheGym()   // a yoga-only plan books yoga classes but never passes check-in
+    [Theory]
+    [InlineData(ComponentType.GYM)]
+    [InlineData(ComponentType.YOGA)]
+    [InlineData(ComponentType.PT)]
+    public async Task AnySingleActivePlanPermitsGateAndDeskCheckIn(ComponentType type)
     {
         var (repo, service, qr) = Kiosk();
-        repo.Memberships.Add(Membership("yoga-only", type: ComponentType.YOGA));
-        var yoga = Membership("both", type: ComponentType.YOGA, endOffset: 60);
-        yoga.Id = 8;
-        repo.Memberships.AddRange([Membership("both"), yoga]);
+        var plan = Membership("m1", type: type);
+        // Check-in at 10:00. A plan's training hours do not override gate eligibility.
+        plan.PackageComponent.AccessStartTime = new TimeOnly(17, 0);
+        plan.PackageComponent.AccessEndTime = new TimeOnly(20, 0);
+        repo.Memberships.Add(plan);
+        repo.Memberships.Add(Membership("m1", MembershipStatus.Frozen, endOffset: 90));
+        var scan = await QrScan(qr, "m1");
 
-        var refused = await service.KioskCheckInAsync(await QrScan(qr, "yoga-only"));
-        var manual = await service.ManualCheckInAsync("yoga-only", "staff-1");
-        var desk = (await service.SearchMembersAsync("yoga-only")).Data!.Single();
-        var both = await service.KioskCheckInAsync(await QrScan(qr, "both"));
+        var desk = Assert.Single((await service.SearchMembersAsync("m1")).Data!);
+        Assert.Equal(("Active", plan.EndDate), (desk.MembershipStatus, desk.ValidThrough));
+        Assert.Equal("CheckIn", (await service.KioskScanAsync(scan)).Data!.Action);
+        Assert.Equal("CheckOut", (await service.KioskScanAsync(scan)).Data!.Action);
+        var manual = await service.ManualCheckInAsync("m1", "staff");
+        Assert.Equal(plan.EndDate, manual.Data!.ValidThrough);
 
-        Assert.Equal(403, refused.StatusCode);
-        Assert.EndsWith("Trạng thái gói: Chưa có gói Gym.", refused.ErrorMessage);
-        Assert.Equal(403, manual.StatusCode);
-        Assert.Equal("No gym plan", desk.MembershipStatus);
-        Assert.Null(desk.ValidThrough);
-        Assert.Equal(201, both.StatusCode);
-        Assert.Equal(7, repo.Active.Single(c => c.MemberUserId == "both").MemberMembershipId);   // the gym plan, not the longer yoga one
-        Assert.Equal(Today.AddDays(20), both.Data!.ValidThrough);
+        plan.EndDate = Today.AddDays(-1);
+        Assert.True((await service.ManualCheckOutAsync(manual.Data.CheckInId, "staff")).IsSuccess);
+        Assert.Equal("ACCESS_DENIED", (await service.KioskScanAsync(scan)).ErrorCode);
+        Assert.Equal("ACCESS_DENIED", (await service.ManualCheckInAsync("m1", "staff")).ErrorCode);
     }
 
-    [Fact]
-    public async Task ACustomerCanOnlyScanThemselves()   // kiosk open to Customer/Member: no checking other people in
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LockedMemberCannotEnterOrLeaveAtTheGateOrDesk(bool useFace)
     {
         var (repo, service, qr) = Kiosk();
-        repo.Memberships.Add(Membership("m1", MembershipStatus.Active, -10, 20));
+        repo.Memberships.Add(Membership("m1"));
+        var face = Descriptor(0.1f);
+        repo.Faces.Add(new FaceData { UserId = "m1", IsActive = true, FaceNetEmbedding = new ProtectorFake().Protect(face) });
+        var scan = useFace ? new KioskScanRequest(face, null) : await QrScan(qr, "m1");
+        repo.MemberStatus = AccountStatus.Locked;
+        Assert.Equal("MEMBER_ACCOUNT_LOCKED", (await service.KioskScanAsync(scan)).ErrorCode);
+        Assert.Equal("MEMBER_ACCOUNT_LOCKED", (await service.ManualCheckInAsync("m1", "staff")).ErrorCode);
+        Assert.Empty(repo.Active);
 
-        var other = await service.KioskCheckInAsync(await QrScan(qr, "m1"), selfUserId: "m2");
-        var self = await service.KioskCheckInAsync(await QrScan(qr, "m1"), selfUserId: "m1");
-
-        Assert.Equal(403, other.StatusCode);
-        Assert.Equal(201, self.StatusCode);
-        Assert.Equal(403, (await service.KioskCheckOutAsync(await QrScan(qr, "m1"), selfUserId: "m2")).StatusCode);
+        repo.MemberStatus = AccountStatus.Active;
+        var entry = await service.KioskCheckInAsync(scan);
+        repo.MemberStatus = AccountStatus.Locked;
+        Assert.Equal("MEMBER_ACCOUNT_LOCKED", (await service.KioskCheckOutAsync(scan)).ErrorCode);
+        Assert.Equal("MEMBER_ACCOUNT_LOCKED", (await service.KioskScanAsync(scan)).ErrorCode);
+        Assert.Equal("MEMBER_ACCOUNT_LOCKED", (await service.ManualCheckOutAsync(entry.Data!.CheckInId, "staff")).ErrorCode);
+        Assert.Null(Assert.Single(repo.Active).CheckoutTime);
+        repo.MemberStatus = AccountStatus.Active;
+        Assert.True((await service.KioskCheckOutAsync(scan)).IsSuccess);
     }
 
     [Fact]
@@ -210,7 +226,7 @@ public sealed class CheckInTests
 
         var first = await service.KioskScanAsync(await QrScan(qr, "m1"));
         var second = await service.KioskScanAsync(await QrScan(qr, "m1"));
-        var stranger = await service.KioskScanAsync(await QrScan(qr, "m1"), selfUserId: "m2");
+        var stranger = await service.KioskScanAsync(new KioskScanRequest(null, "unknown"));
 
         Assert.Equal(("CheckIn", 201), (first.Data!.Action, first.StatusCode));
         Assert.NotNull(first.Data.CheckIn);
@@ -281,69 +297,6 @@ public sealed class CheckInTests
         Assert.NotEqual(replaced.Token, (await nextDay.GetOrIssueAsync("m1")).Data!.Token);   // a new day gets a new code
     }
 
-    [Theory]
-    [InlineData(25, true)]    // starts in 25 minutes
-    [InlineData(-15, true)]   // started 15 minutes ago
-    [InlineData(40, false)]
-    [InlineData(-20, false)]
-    public async Task SelfCheckInCompletesPtSessionInsideTheWindow(int startsInMinutes, bool completes)   // GBR-92
-    {
-        var (repo, service, qr) = Kiosk();
-        repo.Memberships.Add(Membership("m1"));
-        var start = TimeOnly.FromDateTime(Now.AddHours(7).AddMinutes(startsInMinutes));
-        var pt = new PTSession { Id = 9, MemberUserId = "m1", SessionDate = Today, StartTime = start, PTPurchase = new PTPurchase { TotalSessions = 3, RemainingSessions = 3 } };
-        pt.PTPurchase.Sessions.Add(pt);
-        repo.PtSessions.Add(pt);
-
-        var result = await service.KioskCheckInAsync(await QrScan(qr, "m1"));
-
-        Assert.Equal(completes ? 9 : null, result.Data!.CompletedPtSessionId);
-        Assert.Equal(completes ? PTSessionStatus.Completed : PTSessionStatus.Scheduled, pt.SessionStatus);
-        Assert.Equal(completes, pt.CheckInCompletedAt is not null);   // UC 4.6 step 7: marked as set by check-in
-        Assert.Equal(completes ? 2 : 3, pt.PTPurchase.RemainingSessions);
-    }
-
-    [Theory]
-    [InlineData(PTSessionStatus.ReschedulePending, -1, true)]     // its answer deadline passed: no longer pending
-    [InlineData(PTSessionStatus.RescheduleRequested, -1, true)]
-    [InlineData(PTSessionStatus.RescheduleRequested, 1, false)]   // still pending
-    [InlineData(PTSessionStatus.PendingFreeze, -1, false)]
-    public async Task CheckInCompletesASessionOnlyWithoutAPendingRequestOrFreeze(PTSessionStatus status, int expiresInMinutes,
-        bool completes)   // UC 4.6 step 7
-    {
-        var (repo, service, qr) = Kiosk();
-        repo.Memberships.Add(Membership("m1"));
-        var pt = new PTSession
-        {
-            Id = 9, MemberUserId = "m1", SessionDate = Today, StartTime = TimeOnly.FromDateTime(Now.AddHours(7).AddMinutes(10)),
-            SessionStatus = status, ProposalExpiresAt = Now.AddMinutes(expiresInMinutes),
-            PTPurchase = new PTPurchase { TotalSessions = 3, RemainingSessions = 3 }
-        };
-        pt.PTPurchase.Sessions.Add(pt);
-        repo.PtSessions.Add(pt);
-
-        var result = await service.KioskCheckInAsync(await QrScan(qr, "m1"));
-
-        Assert.Equal(completes ? 9 : null, result.Data!.CompletedPtSessionId);
-        Assert.Equal(completes ? PTSessionStatus.Completed : status, pt.SessionStatus);
-    }
-
-    [Fact]
-    public async Task CheckInOnTheFinalPtSessionCompletesTheContract()   // GBR-92 with the PT credit rules
-    {
-        var (repo, service, qr) = Kiosk();
-        repo.Memberships.Add(Membership("m1"));
-        var contract = new PTPurchase { TotalSessions = 2, RemainingSessions = 1, Status = PTPurchaseStatus.Active };
-        contract.Sessions.Add(new PTSession { Id = 1, MemberUserId = "m1", SessionDate = Today.AddDays(-7), SessionStatus = PTSessionStatus.Completed, PTPurchase = contract });
-        var last = new PTSession { Id = 2, MemberUserId = "m1", SessionDate = Today, StartTime = TimeOnly.FromDateTime(Now.AddHours(7).AddMinutes(10)), PTPurchase = contract };
-        contract.Sessions.Add(last);
-        repo.PtSessions.Add(last);
-
-        await service.KioskCheckInAsync(await QrScan(qr, "m1"));
-
-        Assert.Equal((0, PTPurchaseStatus.Completed, true), (contract.RemainingSessions, contract.Status, contract.IsCompleted));
-    }
-
     [Fact]
     public async Task FrontDeskSearchShowsEntryStatusAndManualCheckInRecordsStaff()   // UC-46
     {
@@ -351,7 +304,6 @@ public sealed class CheckInTests
         repo.Memberships.Add(Membership("m-active"));
         repo.Memberships.Add(Membership("m-expired", MembershipStatus.Active, -40, -1));
         repo.Memberships.Add(Membership("m-frozen", MembershipStatus.Frozen));
-        repo.PtSessions.Add(new PTSession { MemberUserId = "m-active", SessionDate = Today, StartTime = new TimeOnly(10, 10), PTPurchase = new PTPurchase() });
 
         var found = (await service.SearchMembersAsync("m-")).Data!.ToDictionary(r => r.MemberUserId);
         Assert.Equal(("Active", "Expired", "Frozen"), (found["m-active"].MembershipStatus, found["m-expired"].MembershipStatus, found["m-frozen"].MembershipStatus));
@@ -361,7 +313,6 @@ public sealed class CheckInTests
         var refused = await service.ManualCheckInAsync("m-frozen", "staff-1");
 
         Assert.Equal(201, ok.StatusCode);
-        Assert.Null(ok.Data!.CompletedPtSessionId);   // GBR-92 is for self check-in only
         var visit = repo.Active.Single(c => c.MemberUserId == "m-active");
         Assert.Equal((CheckInMethod.ManualStaff, "staff-1"), (visit.CheckinMethod, visit.HandledByUserId));
         Assert.Equal(403, refused.StatusCode);
@@ -424,12 +375,13 @@ public sealed class CheckInTests
             Enumerable.Range(0, (protectedTemplate.Length - 1) / 4).Select(i => BitConverter.ToSingle(protectedTemplate, 1 + i * 4)).ToArray();
     }
 
-    private sealed class RepoFake : ICheckInRepository
+    private sealed class RepoFake : ICheckInRepository, IMembershipAccessRepository
     {
         public FaceData? Face { get; private set; }
         public List<AuditLog> Audits { get; } = [];
         public List<CheckIn> Active { get; } = [];
         public int TodayCount { get; set; }
+        public AccountStatus MemberStatus { get; set; } = AccountStatus.Active;
 
         public void Add<TEntity>(TEntity entity) where TEntity : BaseEntity
         {
@@ -442,38 +394,31 @@ public sealed class CheckInTests
         public List<FaceData> Faces { get; } = [];
         public List<QRCode> Qr { get; } = [];
         public List<MemberMembership> Memberships { get; } = [];
-        public List<PTSession> PtSessions { get; } = [];
 
         public Task<IReadOnlyList<FaceData>> GetActiveFaceDataAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<FaceData>>(Faces);
         public Task<IReadOnlyList<QRCode>> GetActiveQrCodesAsync(string? userId, string? token, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<QRCode>>(Qr.Where(q => q.IsActive && (userId == null || q.UserId == userId) && (token == null || q.QRToken == token)).ToList());
-        public Task<ApplicationUser?> GetUserAsync(string userId, CancellationToken cancellationToken = default) =>
-            Task.FromResult<ApplicationUser?>(new ApplicationUser { UserId = userId, FullName = "Member " + userId });
-        public Task<IReadOnlyList<MemberMembership>> GetMembershipsAsync(string userId, CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<MemberMembership>>(Memberships.Where(m => m.MemberUserId == userId).ToList());
+        public Task<T> WithMemberVisitAsync<T>(string userId, Func<ApplicationUser?, Task<T>> action, CancellationToken cancellationToken) =>
+            action(new ApplicationUser { UserId = userId, FullName = "Member " + userId, AccountStatus = MemberStatus });
+        public Task<OwnedMembershipAccess?> FindOwnedAsync(string memberId, int membershipId, CancellationToken ct) =>
+            Task.FromResult(Memberships.Where(m => m.MemberUserId == memberId && m.Id == membershipId)
+                .Select(m => new OwnedMembershipAccess(m.Id, m.PackageComponent.ComponentType, m.MembershipStatus, m.StartDate, m.EndDate))
+                .FirstOrDefault());
+        public Task<IReadOnlyList<EntryPlan>> GetEntryPlansAsync(IReadOnlyList<string> userIds, DateOnly today, DateTime nowUtc,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<EntryPlan>>(Memberships.Where(m => userIds.Contains(m.MemberUserId))
+                .Select(m => new EntryPlan(m.MemberUserId, m.Id,
+                    MembershipRules.StatusOn(m.MembershipStatus, m.StartDate, m.EndDate, today).ToString(), m.EndDate)).ToList());
         public Task<CheckIn?> GetCheckInAsync(int id, CancellationToken cancellationToken = default) =>
             Task.FromResult(Active.FirstOrDefault(c => c.Id == id));
         public Task<CheckIn?> GetOpenCheckInAsync(string userId, CancellationToken cancellationToken = default) =>
             Task.FromResult(Active.FirstOrDefault(c => c.MemberUserId == userId && c.Status == CheckInStatus.Active));
-        public Task<IReadOnlyList<PTSession>> GetScheduledPtSessionsAsync(string userId, DateOnly date, DateTime now, CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<PTSession>>(PtSessions.Where(p => p.MemberUserId == userId && p.SessionDate == date)
-                .Where(PersonalTrainingRules.CheckInCanComplete(now).Compile()).ToList());
-        public Task<bool> CompletePtSessionByCheckInAsync(PTSession session, DateTime now, CancellationToken cancellationToken = default)
-        {
-            if (!PersonalTrainingRules.CheckInCanComplete(now).Compile()(session))
-                return Task.FromResult(false);
-            session.SessionStatus = PTSessionStatus.Completed;
-            session.CheckInCompletedAt = now;
-            session.ProposalExpiresAt = null;
-            return Task.FromResult(true);
-        }
-        public Task<IReadOnlyList<(ApplicationUser User, IReadOnlyList<MemberMembership> Memberships, bool IsCheckedIn)>> SearchMembersAsync(
+        public Task<IReadOnlyList<(ApplicationUser User, bool IsCheckedIn)>> SearchMembersAsync(
             string term, CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<(ApplicationUser, IReadOnlyList<MemberMembership>, bool)>>(Memberships
+            Task.FromResult<IReadOnlyList<(ApplicationUser, bool)>>(Memberships
                 .Select(m => m.MemberUserId).Distinct().Where(id => id.Contains(term))
                 .Select(id => (new ApplicationUser { UserId = id, FullName = "Member " + id },
-                    (IReadOnlyList<MemberMembership>)Memberships.Where(m => m.MemberUserId == id).ToList(),
                     Active.Any(c => c.MemberUserId == id && c.Status == CheckInStatus.Active)))
                 .ToList());
 
