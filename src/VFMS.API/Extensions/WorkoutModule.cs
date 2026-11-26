@@ -16,6 +16,8 @@ public static class WorkoutModule
         services.AddHttpClient<IWorkoutPlanGenerator, GeminiWorkoutPlanGenerator>();
         services.AddScoped<IWorkoutRepository, WorkoutRepository>();
         services.AddScoped<IWorkoutPlanService, WorkoutPlanService>();
+        services.AddScoped<IExerciseCatalogRepository, ExerciseCatalogRepository>();
+        services.AddScoped<IExerciseCatalogService, ExerciseCatalogService>();
         return services;
     }
 }

@@ -79,13 +79,18 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
             .Select(e => new CatalogExercise(e.Id, e.Name, e.MuscleGroup, e.DifficultyLevel))
             .ToArray();
         var survey = Anonymise(profile!);
+        var usableEquipment = await _repository.GetUsableEquipmentAsync(cancellationToken);
+        var machineIds = usableEquipment.Select(e => e.Id).ToHashSet();
+        // One entry per machine name keeps the prompt short; the AI only needs to know which kinds of machine exist.
+        var machines = usableEquipment.GroupBy(e => e.EquipmentName.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(g => new CatalogEquipment(g.First().Id, g.Key)).ToArray();
 
         GeneratedPlan? generated = null;
         if (catalog.Length > 0)
         {
             try
             {
-                generated = Sanitize(await _generator.GenerateAsync(survey, catalog, cancellationToken), catalog);
+                generated = Sanitize(await _generator.GenerateAsync(survey, catalog, machines, cancellationToken), catalog, machineIds);
             }
             catch (Exception) when (!cancellationToken.IsCancellationRequested)
             {
@@ -112,7 +117,8 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
                 plan.PlanItems.Add(new PlanItem
                 {
                     DayNumber = item.DayNumber, OrderInDay = item.OrderInDay, ExerciseId = item.ExerciseId,
-                    Sets = item.Sets, Reps = item.Reps, DurationMinutes = item.DurationMinutes, Note = item.Note
+                    Sets = item.Sets, Reps = item.Reps, DurationMinutes = item.DurationMinutes, Note = item.Note,
+                    EquipmentId = item.EquipmentId
                 });
         }
         else
@@ -131,7 +137,9 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
                 plan.PlanItems.Add(new PlanItem
                 {
                     DayNumber = item.DayNumber, OrderInDay = item.OrderInDay, ExerciseId = item.ExerciseId,
-                    Sets = item.Sets, Reps = item.Reps, DurationMinutes = item.DurationMinutes, Note = item.Note
+                    Sets = item.Sets, Reps = item.Reps, DurationMinutes = item.DurationMinutes, Note = item.Note,
+                    // The template's machine, while it still works.
+                    EquipmentId = item.EquipmentId is { } machine && machineIds.Contains(machine) ? machine : null
                 });
         }
 
@@ -286,7 +294,7 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
     {
         var equipment = await _repository.GetUsableEquipmentAsync(cancellationToken);
         return Result<IReadOnlyList<WorkoutEquipmentResponse>>.Success(
-            equipment.Select(e => new WorkoutEquipmentResponse(e.Id, e.EquipmentName)).ToArray());
+            equipment.Select(e => new WorkoutEquipmentResponse(e.Id, e.EquipmentName, e.EquipmentCode)).ToArray());
     }
 
     /// <summary>Consecutive gym-local days with at least one logged exercise, ending today (or yesterday if nothing yet today).</summary>
@@ -345,7 +353,8 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
     }
 
     /// <summary>Keeps only items that reference real catalog exercises and sane values; null if nothing usable remains.</summary>
-    public static GeneratedPlan? Sanitize(GeneratedPlan? plan, IReadOnlyList<CatalogExercise> catalog)
+    /// <param name="machineIds">Working machines; an unknown or broken machine id is dropped, the exercise is kept.</param>
+    public static GeneratedPlan? Sanitize(GeneratedPlan? plan, IReadOnlyList<CatalogExercise> catalog, IReadOnlySet<int>? machineIds = null)
     {
         if (plan is null)
             return null;
@@ -360,7 +369,8 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
                 Sets = i.Sets is > 0 and <= 20 ? i.Sets : null,
                 Reps = i.Reps is > 0 and <= 100 ? i.Reps : null,
                 DurationMinutes = i.DurationMinutes is > 0 and <= 180 ? i.DurationMinutes : null,
-                Note = string.IsNullOrWhiteSpace(i.Note) ? null : i.Note.Trim()[..Math.Min(i.Note.Trim().Length, 500)]
+                Note = string.IsNullOrWhiteSpace(i.Note) ? null : i.Note.Trim()[..Math.Min(i.Note.Trim().Length, 500)],
+                EquipmentId = i.EquipmentId is { } machine && machineIds?.Contains(machine) == true ? machine : null
             }))
             .ToArray();
         if (items.Length == 0)
@@ -421,7 +431,7 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
             i.Exercise?.DifficultyLevel, i.Exercise?.ImageUrl, i.Exercise?.VideoUrl, i.Sets, i.Reps, i.DurationMinutes, i.Note,
             i.Logs.Any(l => l.LoggedOn >= weekStart),
             last is null ? null : new WorkoutLogResponse(last.LoggedOn, last.SetsDone, last.RepsDone, last.WeightKg, last.DurationMinutes),
-            i.EquipmentId, i.Equipment?.EquipmentName);
+            i.EquipmentId, i.Equipment?.EquipmentName, i.Equipment?.EquipmentCode);
     }
 
     private static Result<T> PlanNotFound<T>() => Result<T>.Failure("Không tìm thấy giáo án.", "WORKOUT_PLAN_NOT_FOUND", 404);

@@ -41,7 +41,8 @@ public sealed class GeminiWorkoutPlanGenerator : IWorkoutPlanGenerator
     public string ModelName { get; private set; } = "";
 
     public async Task<GeneratedPlan?> GenerateAsync(
-        AnonymisedSurvey survey, IReadOnlyList<CatalogExercise> catalog, CancellationToken cancellationToken = default)
+        AnonymisedSurvey survey, IReadOnlyList<CatalogExercise> catalog, IReadOnlyList<CatalogEquipment> equipment,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(_settings.ApiKey))
         {
@@ -49,7 +50,7 @@ public sealed class GeminiWorkoutPlanGenerator : IWorkoutPlanGenerator
             return null;
         }
 
-        var prompt = BuildPrompt(survey, catalog);
+        var prompt = BuildPrompt(survey, catalog, equipment);
         var models = new[] { _settings.Model, _settings.FallbackModel }
             .Where(m => !string.IsNullOrWhiteSpace(m)).Distinct().ToArray();
         for (var i = 0; i < models.Length; i++)
@@ -161,12 +162,12 @@ public sealed class GeminiWorkoutPlanGenerator : IWorkoutPlanGenerator
         var items = reply.Days
             .Where(d => d.Exercises is not null)
             .SelectMany(d => d.Exercises!.Select((e, i) =>
-                new GeneratedPlanItem(d.Day, i + 1, e.ExerciseId, e.Sets, e.Reps, e.DurationMinutes, e.Note)))
+                new GeneratedPlanItem(d.Day, i + 1, e.ExerciseId, e.Sets, e.Reps, e.DurationMinutes, e.Note, e.EquipmentId)))
             .ToArray();
         return new GeneratedPlan(reply.PlanName ?? "Personalised plan", items, reply.NutritionTips);
     }
 
-    public static string BuildPrompt(AnonymisedSurvey survey, IReadOnlyList<CatalogExercise> catalog)
+    public static string BuildPrompt(AnonymisedSurvey survey, IReadOnlyList<CatalogExercise> catalog, IReadOnlyList<CatalogEquipment>? equipment = null)
     {
         var sb = new StringBuilder();
         sb.AppendLine("You are a certified strength and conditioning coach at a gym.");
@@ -183,10 +184,16 @@ public sealed class GeminiWorkoutPlanGenerator : IWorkoutPlanGenerator
         sb.AppendLine("Use ONLY exercises from this catalog, referenced by id:");
         foreach (var e in catalog)
             sb.AppendLine($"- id {e.Id}: {e.Name} (muscle: {e.MuscleGroup ?? "-"}, level: {e.DifficultyLevel ?? "-"})");
+        if (equipment is { Count: > 0 })
+        {
+            sb.AppendLine("Machines in the gym, referenced by id. For an exercise done on one of them set equipmentId; otherwise null:");
+            foreach (var m in equipment)
+                sb.AppendLine($"- id {m.Id}: {m.Name}");
+        }
         sb.AppendLine("Give 4-8 exercises per training day. Strength work needs sets and reps; cardio or stretching needs durationMinutes.");
         sb.AppendLine("Add nutritionTips: 2-4 short sentences of nutrition advice for this goal, written in Vietnamese.");
         sb.AppendLine("Reply with JSON only, in exactly this shape:");
-        sb.AppendLine("{\"planName\":\"string\",\"nutritionTips\":\"string\",\"days\":[{\"day\":1,\"exercises\":[{\"exerciseId\":1,\"sets\":3,\"reps\":12,\"durationMinutes\":null,\"note\":\"short tip\"}]}]}");
+        sb.AppendLine("{\"planName\":\"string\",\"nutritionTips\":\"string\",\"days\":[{\"day\":1,\"exercises\":[{\"exerciseId\":1,\"equipmentId\":null,\"sets\":3,\"reps\":12,\"durationMinutes\":null,\"note\":\"short tip\"}]}]}");
         return sb.ToString();
     }
 
@@ -199,5 +206,5 @@ public sealed class GeminiWorkoutPlanGenerator : IWorkoutPlanGenerator
     private sealed record DayReply(int Day, List<ExerciseReply>? Exercises);
     private sealed record ExerciseReply(
         int ExerciseId, int? Sets, int? Reps,
-        [property: JsonPropertyName("durationMinutes")] int? DurationMinutes, string? Note);
+        [property: JsonPropertyName("durationMinutes")] int? DurationMinutes, string? Note, int? EquipmentId = null);
 }

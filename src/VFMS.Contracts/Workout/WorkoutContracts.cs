@@ -52,13 +52,14 @@ public sealed record WorkoutPlanItemResponse(
     bool IsCompleted,
     WorkoutLogResponse? LastLog,
     int? EquipmentId,
-    string? EquipmentName
+    string? EquipmentName,
+    string? EquipmentCode = null
 );
 
 /// <summary>One day's result for an exercise (UC-50).</summary>
 public sealed record WorkoutLogResponse(DateOnly LoggedOn, int? SetsDone, int? RepsDone, decimal? WeightKg, int? DurationMinutes);
 
-public sealed record WorkoutEquipmentResponse(int Id, string Name);
+public sealed record WorkoutEquipmentResponse(int Id, string Name, string? Code = null);
 
 public sealed record WorkoutPlanResponse(
     int Id,

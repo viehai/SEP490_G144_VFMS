@@ -91,23 +91,64 @@
                                         <input type="checkbox" class="mt-1" checked="@item.IsCompleted" disabled="@_busy" @onchange="e => Toggle(item, (bool)(e.Value ?? false))" />
                                         <span>
                                             <span class="font-semibold @(item.IsCompleted ? "line-through text-[#8C8581]" : "")">@item.ExerciseName</span>
-                                            <span class="block text-xs text-[#6F6966]">@Volume(item)@(item.MuscleGroup is null ? "" : $" · {item.MuscleGroup}")</span>
+                                            <span class="block text-xs text-[#6F6966]">@Volume(item)@(item.MuscleGroup is null ? "" : $" · {ExerciseCatalog.MuscleGroupLabel(item.MuscleGroup)}")</span>
+                                            @if (item.EquipmentName is not null)
+                                            {
+                                                <span class="mt-1 flex items-center gap-1.5 text-xs text-[#242424]">
+                                                    <svg aria-hidden="true" class="h-3.5 w-3.5 shrink-0 text-[#B83A3A]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7v10M18 7v10M3 10v4M21 10v4M6 12h12"/></svg>
+                                                    <span>Máy: <strong class="font-semibold">@item.EquipmentName</strong>@(item.EquipmentCode is null ? "" : $" · {item.EquipmentCode}")</span>
+                                                </span>
+                                            }
                                             @if (item.Note is not null) { <span class="block text-xs text-[#6F6966]">@item.Note</span> }
                                         </span>
                                     </label>
                                     @if (_swapItemId == item.Id)
                                     {
-                                        <span class="flex items-center gap-2">
-                                            <select class="border border-[#D8D1CD] px-2 py-1 text-xs rounded-lg" @bind="_swapExerciseId">
-                                                @foreach (var e in _exercises) { <option value="@e.Id">@e.Name (@e.MuscleGroup)</option> }
-                                            </select>
-                                            <button type="button" class="bg-[#B83A3A] hover:bg-[#9F3030] px-3 py-1 text-[11px] font-bold uppercase text-white rounded-lg" @onclick="() => Swap(item)">Đổi</button>
-                                            <button type="button" class="text-[11px] underline" @onclick="() => _swapItemId = null">Hủy</button>
-                                        </span>
+                                        var sameGroup = SwapChoices(_exercises, item.ExerciseId, item.MuscleGroup, allGroups: false);
+                                        var onlyItself = sameGroup.Count <= 1;
+                                        var choices = _swapAllGroups || onlyItself ? SwapChoices(_exercises, item.ExerciseId, item.MuscleGroup, allGroups: true) : sameGroup;
+                                        <fieldset class="basis-full space-y-3 rounded-lg border border-[#D8D1CD] bg-white p-4">
+                                            <legend class="px-1 text-xs font-bold uppercase tracking-wider">Đổi bài tập: @item.ExerciseName</legend>
+                                            <div class="flex flex-wrap gap-2" role="group" aria-label="Lọc theo nhóm cơ">
+                                                <button type="button" aria-pressed="@(!_swapAllGroups && !onlyItself)" disabled="@onlyItself"
+                                                        class="@Chip(!_swapAllGroups && !onlyItself)" @onclick="() => SetAllGroups(item, false)">
+                                                    Cùng nhóm: @ExerciseCatalog.MuscleGroupLabel(item.MuscleGroup)
+                                                </button>
+                                                <button type="button" aria-pressed="@(_swapAllGroups || onlyItself)" class="@Chip(_swapAllGroups || onlyItself)" @onclick="() => SetAllGroups(item, true)">
+                                                    Tất cả nhóm
+                                                </button>
+                                            </div>
+                                            @if (onlyItself)
+                                            {
+                                                <p class="text-xs text-[#6F6966]">Nhóm @ExerciseCatalog.MuscleGroupLabel(item.MuscleGroup) chưa có bài khác, nên đang hiện mọi nhóm.</p>
+                                            }
+                                            <div class="grid gap-3 sm:grid-cols-2">
+                                                <label class="text-xs font-semibold" for="swap-ex-@item.Id">Bài tập
+                                                    <select id="swap-ex-@item.Id" class="mt-1 block min-h-[44px] w-full rounded-lg border border-[#D8D1CD] bg-[#F8F5F2] px-3 text-sm font-normal" @bind="_swapExerciseId">
+                                                        @foreach (var group in choices.GroupBy(e => e.MuscleGroup))
+                                                        {
+                                                            <optgroup label="@ExerciseCatalog.MuscleGroupLabel(group.Key)">
+                                                                @foreach (var e in group) { <option value="@e.Id">@e.Name · @ExerciseCatalog.LevelLabel(e.DifficultyLevel)</option> }
+                                                            </optgroup>
+                                                        }
+                                                    </select>
+                                                </label>
+                                                <label class="text-xs font-semibold" for="swap-eq-@item.Id">Máy
+                                                    <select id="swap-eq-@item.Id" class="mt-1 block min-h-[44px] w-full rounded-lg border border-[#D8D1CD] bg-[#F8F5F2] px-3 text-sm font-normal" @bind="_swapEquipmentId">
+                                                        <option value="">Không dùng máy</option>
+                                                        @foreach (var m in _equipment) { <option value="@m.Id">@m.Name@(m.Code is null ? "" : $" · {m.Code}")</option> }
+                                                    </select>
+                                                </label>
+                                            </div>
+                                            <div class="flex flex-wrap gap-2">
+                                                <button type="button" disabled="@_busy" class="min-h-[44px] rounded-lg bg-[#B83A3A] px-5 text-xs font-bold uppercase text-white hover:bg-[#9F3030] disabled:opacity-50" @onclick="() => Swap(item)">Lưu thay đổi</button>
+                                                <button type="button" class="min-h-[44px] rounded-lg border border-[#C9C0BB] px-5 text-xs font-semibold hover:bg-[#ECE8E4]" @onclick="() => _swapItemId = null">Hủy</button>
+                                            </div>
+                                        </fieldset>
                                     }
                                     else
                                     {
-                                        <button type="button" class="text-xs font-bold underline" @onclick="() => StartSwap(item)">Đổi bài tập</button>
+                                        <button type="button" class="min-h-[44px] px-2 text-xs font-bold underline" aria-label="Đổi bài tập @item.ExerciseName" @onclick="() => StartSwap(item)">Đổi bài tập</button>
                                     }
                                 </li>
                             }
@@ -139,8 +180,11 @@
     private WorkoutPlanResponse? _plan;
     private List<WorkoutPlanSummaryResponse> _history = [];
     private List<ExerciseResponse> _exercises = [];
+    private List<WorkoutEquipmentResponse> _equipment = [];
     private int? _swapItemId;
     private int _swapExerciseId;
+    private int? _swapEquipmentId;
+    private bool _swapAllGroups;
 
     protected override async Task OnInitializedAsync()
     {
@@ -155,6 +199,7 @@
                 Dob = survey.DateOfBirth, Health = survey.HealthConditions
             };
             _exercises = await Api.GetAsync<List<ExerciseResponse>>("api/workout/exercises");
+            _equipment = await Api.GetAsync<List<WorkoutEquipmentResponse>>("api/workout/equipment");
             await LoadPlan();
         }
         catch (ApiException ex) { Show(ex.Message, true); }
@@ -195,12 +240,36 @@
         _plan = await Api.GetAsync<WorkoutPlanResponse>($"api/workout/plans/{_plan.Id}");
     });
 
-    private void StartSwap(WorkoutPlanItemResponse item) { _swapItemId = item.Id; _swapExerciseId = item.ExerciseId; }
+    private void StartSwap(WorkoutPlanItemResponse item)
+    {
+        _swapItemId = item.Id;
+        _swapExerciseId = item.ExerciseId;
+        _swapAllGroups = false;
+        // Keep the current machine while it still works (a swap without one would clear it).
+        _swapEquipmentId = _equipment.Any(m => m.Id == item.EquipmentId) ? item.EquipmentId : null;
+    }
+
+    private void SetAllGroups(WorkoutPlanItemResponse item, bool all)
+    {
+        _swapAllGroups = all;
+        if (!SwapChoices(_exercises, item.ExerciseId, item.MuscleGroup, all).Any(e => e.Id == _swapExerciseId))
+            _swapExerciseId = item.ExerciseId;   // the picked exercise left the list: go back to the current one
+    }
+
+    /// <summary>Exercises offered in "Đổi bài tập": the same muscle group first (always with the current one), or all groups.</summary>
+    public static IReadOnlyList<ExerciseResponse> SwapChoices(IEnumerable<ExerciseResponse> exercises, int currentId, string? muscleGroup, bool allGroups) =>
+        exercises.Where(e => allGroups || e.Id == currentId || e.MuscleGroup == muscleGroup)
+            .OrderBy(e => e.MuscleGroup == muscleGroup ? 0 : 1).ThenBy(e => e.MuscleGroup).ThenBy(e => e.Name)
+            .ToList();
+
+    private static string Chip(bool on) => on
+        ? "min-h-[44px] rounded-full border border-[#B83A3A] bg-[#B83A3A] px-4 text-xs font-semibold text-white"
+        : "min-h-[44px] rounded-full border border-[#C9C0BB] bg-[#F8F5F2] px-4 text-xs font-semibold text-[#242424] hover:bg-[#ECE8E4] disabled:opacity-50";
 
     private Task Swap(WorkoutPlanItemResponse item) => Busy(async () =>
     {
         await Api.PutAsync<WorkoutPlanItemResponse>($"api/workout/plans/{_plan!.Id}/items/{item.Id}",
-            new UpdatePlanItemRequest(_swapExerciseId, item.Sets, item.Reps, item.DurationMinutes ?? (item.Reps is null ? 10 : null), item.Note));
+            new UpdatePlanItemRequest(_swapExerciseId, item.Sets, item.Reps, item.DurationMinutes ?? (item.Reps is null ? 10 : null), item.Note, _swapEquipmentId));
         _swapItemId = null;
         _plan = await Api.GetAsync<WorkoutPlanResponse>($"api/workout/plans/{_plan.Id}");
         Show("Cập nhật giáo án thành công.", false);
