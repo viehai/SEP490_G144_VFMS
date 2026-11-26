@@ -340,18 +340,16 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
             if (accountMatch is { Status: "Matched", UserId: { } matchedId })
                 accountMatch = accountMatch with
                 {
-                    HasUnfinishedPTContract = await HasUnfinishedPTContract(matchedId, ct),
-                    MemberServicesUntil = await MemberServicesUntil(matchedId, ct)
+                    HasUnfinishedPTContract = await HasUnfinishedPTContract(matchedId, ct)
                 };
             else if (accountMatch is { Status: "Ambiguous", Matches: { } candidates })
             {
-                // UC 3.2 step 7: the same PT contract and Gym/locker warnings apply to the account the Manager picks.
+                // UC 3.2 step 7: check the PT contract for the account the Manager picks.
                 var checkedCandidates = new List<TrainerAccountCandidate>();
                 foreach (var candidate in candidates)
                     checkedCandidates.Add(!candidate.Eligible ? candidate : candidate with
                     {
-                        HasUnfinishedPTContract = await HasUnfinishedPTContract(candidate.UserId, ct),
-                        MemberServicesUntil = await MemberServicesUntil(candidate.UserId, ct)
+                        HasUnfinishedPTContract = await HasUnfinishedPTContract(candidate.UserId, ct)
                     });
                 accountMatch = accountMatch with { Matches = checkedCandidates };
             }
@@ -373,7 +371,9 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
         {
             SubmissionHistory = history,
             InterviewNote = a.InterviewNote,
-            AccountMatch = accountMatch
+            InterviewedAt = a.InterviewedAt,
+            AccountMatch = accountMatch,
+            CanResendSetup = await PendingSetupAccount(a, ct) != null
         });
     }
 
@@ -415,15 +415,6 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
         var now = DateTime.UtcNow;
         var makeUpFrom = DateOnly.FromDateTime(now.AddHours(7)).AddDays(-PersonalTrainingRules.MakeUpGraceDays);
         return repo.HasUnfinishedPTContractAsync(userId, now, makeUpFrom, ct);
-    }
-
-    // UC 3.2 step 7: the latest date until which the account still has a Gym Membership or locker rental.
-    private async Task<DateOnly?> MemberServicesUntil(string userId, CancellationToken ct)
-    {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7));
-        var gym = await repo.GetLatestGymMembershipEndAsync(userId, today, ct);
-        var locker = await repo.GetLatestLockerRentalEndAsync(userId, ct);
-        return gym > locker || locker is null ? gym : locker;
     }
 
     private static bool EmailMatches(ApplicationUser user, TrainerApplication application) =>
@@ -496,7 +487,12 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
         }
         if (r.Action == "Approve") return Error<TrainerApplicationResponse>("TRAINER_INVALID_STATE", "Vui lòng chọn ghi nhận phỏng vấn, tuyển dụng hoặc từ chối cho hồ sơ ứng tuyển.");
         if (a.ApplicationStatus == TrainerApplicationStatus.Hired && r.Action == "Hire")
-            return Result<TrainerApplicationResponse>.Success(await ApplicationResponse(a, ct));
+            return Result<TrainerApplicationResponse>.Success(await ApplicationResponse(a, ct) with
+            {
+                InterviewNote = a.InterviewNote,
+                InterviewedAt = a.InterviewedAt,
+                CanResendSetup = await PendingSetupAccount(a, ct) != null
+            });
         if (a.ApplicationStatus is not (TrainerApplicationStatus.Pending or TrainerApplicationStatus.UnderReview or TrainerApplicationStatus.Interviewing))
             return Error<TrainerApplicationResponse>("TRAINER_INVALID_STATE", "Chỉ có thể xét duyệt hồ sơ đang chờ hoặc đang phỏng vấn.");
         // UC 3.2 step 5 (changed, see NewScope.txt): the interview is recorded once; after that the Manager hires or rejects.
@@ -616,14 +612,20 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
         }
         if (r.Action == "Interview")
         {
-            a.InterviewNote = $"[{DateTime.UtcNow.AddHours(7):dd/MM/yyyy HH:mm}] {Note(r)}";
+            a.InterviewNote = r.Note;
+            a.InterviewedAt = DateTime.UtcNow;
         }
         else
             a.ReviewNote = Note(r);
         a.ReviewedByUserId = actor;
         a.ReviewedAt = DateTime.UtcNow;
         Audit(actor, nameof(TrainerApplication), a.Id, r.Action, before, a.ApplicationStatus.ToString());
-        return Result<TrainerApplicationResponse>.Success(await ApplicationResponse(a, ct) with { InterviewNote = a.InterviewNote });
+        return Result<TrainerApplicationResponse>.Success(await ApplicationResponse(a, ct) with
+        {
+            InterviewNote = a.InterviewNote,
+            InterviewedAt = a.InterviewedAt,
+            CanResendSetup = await PendingSetupAccount(a, ct) != null
+        });
     }, ct);
     private void QueueSetup(ApplicationUser user, TrainerApplication application)
     {
@@ -633,16 +635,23 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
         user.PasswordSetupExpiresAt = null;
         Mail(application, user.Email, SetupSubject, "SETUP:" + token);
     }
+    private async Task<ApplicationUser?> PendingSetupAccount(TrainerApplication? application, CancellationToken ct)
+    {
+        if (application is not { ApplicationType: "Recruitment", ApplicationStatus: TrainerApplicationStatus.Hired })
+            return null;
+        var loginRoleId = application.TrainerRoleId is { } trainerRoleId
+            ? await repo.GetActiveLoginRoleIdAsync(trainerRoleId, TrainerLoginRoles, ct)
+            : null;
+        return application.HiredUserId is { } hiredId && loginRoleId is { } roleId
+            ? await repo.GetPendingTrainerAccountAsync(hiredId, roleId, ct)
+            : null;
+    }
+
     public Task<Result<bool>> ResendSetup(int applicationId, string actor, CancellationToken ct) => repo.RunExclusiveAsync(async () =>
     {
         if (!await HasRole(actor, "Manager", ct)) return Error<bool>("TRAINER_FORBIDDEN", "Cần quyền quản lý để thực hiện thao tác này.", 403);
         var a = await repo.GetHiredRecruitmentAsync(applicationId, ct);
-        var loginRoleId = a?.TrainerRoleId is { } trainerRoleId
-            ? await repo.GetActiveLoginRoleIdAsync(trainerRoleId, TrainerLoginRoles, ct)
-            : null;
-        var u = a?.HiredUserId is { } hiredId && loginRoleId is { } roleId
-            ? await repo.GetPendingTrainerAccountAsync(hiredId, roleId, ct)
-            : null;
+        var u = await PendingSetupAccount(a, ct);
         if (u == null) return Error<bool>("TRAINER_INVALID_STATE", "Chỉ tài khoản đã được tuyển và đang chờ kích hoạt mới được nhận liên kết thiết lập mật khẩu.");
         await ClearSetupEmails(u, ct);
         QueueSetup(u, a!);

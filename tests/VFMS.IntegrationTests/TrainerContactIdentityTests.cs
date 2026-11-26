@@ -155,6 +155,59 @@ public class TrainerContactIdentityTests : IAsyncLifetime
         Assert.Equal("TRAINER_APPLICATION_NOT_FOUND", (await service.Track(new string('x', 200), default)).ErrorCode);
     }
 
+    [Theory]
+    [InlineData(1982)]
+    [InlineData(2000)]
+    public async Task InterviewStoresTheFullEnteredNoteWithoutTimestampPrefix(int length)
+    {
+        Success(await service.Submit(Request("interview@example.test", "0900000042"), null, default));
+        var application = await db.TrainerApplications.SingleAsync();
+        var note = " " + new string('a', length - 2) + " ";
+        var before = DateTime.UtcNow;
+        var review = await service.Review(application.Id, new("Interview", note), "manager", default);
+        Success(review);
+        var reviewed = review.Data!;
+        Assert.Equal(note, reviewed.InterviewNote);
+        var json = System.Text.Json.JsonSerializer.SerializeToElement(reviewed);
+        var timestamp = json.GetProperty("InterviewedAt").GetDateTime();
+        Assert.InRange(timestamp, before, DateTime.UtcNow);
+        db.ChangeTracker.Clear();
+        var stored = await db.TrainerApplications.SingleAsync();
+        Assert.Equal(note, stored.InterviewNote);
+        Assert.Equal(timestamp, stored.InterviewedAt);
+        var detail = (await service.Application(application.Id, "manager", default)).Data!;
+        Assert.Equal((note, (DateTime?)timestamp), (detail.InterviewNote, detail.InterviewedAt));
+        var rejection = await service.Review(application.Id, new("Reject", "Not selected"), "manager", default);
+        Success(rejection);
+        var rejected = rejection.Data!;
+        Assert.Equal(note, rejected.InterviewNote);
+        Assert.Equal(timestamp, System.Text.Json.JsonSerializer.SerializeToElement(rejected).GetProperty("InterviewedAt").GetDateTime());
+        Assert.False(System.Text.Json.JsonSerializer.SerializeToElement((await service.Track(application.TrackingCode, default)).Data).TryGetProperty("InterviewedAt", out _));
+    }
+
+    [Fact]
+    public async Task LegacyInterviewNoteKeepsItsPrefixWithoutInventingAnInterviewTime()
+    {
+        Success(await service.Submit(Request("legacy@example.test", "0900000043"), null, default));
+        var application = await db.TrainerApplications.SingleAsync();
+        const string legacyNote = "[25/11/2026 10:15] Existing interview note";
+        application.InterviewNote = legacyNote;
+        application.ApplicationStatus = TrainerApplicationStatus.Interviewing;
+        await db.SaveChangesAsync();
+
+        var detail = (await service.Application(application.Id, "manager", default)).Data!;
+        Assert.Equal(legacyNote, detail.InterviewNote);
+        Assert.Null(detail.InterviewedAt);
+        var rejected = await service.Review(application.Id, new("Reject", "Not selected"), "manager", default);
+        Success(rejected);
+        Assert.Equal(legacyNote, rejected.Data!.InterviewNote);
+        Assert.Null(rejected.Data.InterviewedAt);
+        db.ChangeTracker.Clear();
+        var stored = await db.TrainerApplications.SingleAsync();
+        Assert.Equal(legacyNote, stored.InterviewNote);
+        Assert.Null(stored.InterviewedAt);
+    }
+
     [Fact]
     public async Task ManagerFindsAnApplicationByItsTrackingCode()
     {

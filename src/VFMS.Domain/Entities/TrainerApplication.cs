@@ -37,6 +37,8 @@ public class TrainerApplication : BaseEntity
     public DateTime? ReviewedAt { get; set; }
     public string? ReviewNote { get; set; }
     public string? InterviewNote { get; set; }
+    /// <summary>UTC time the interview was recorded; null for legacy notes.</summary>
+    public DateTime? InterviewedAt { get; set; }
 
     // ── Navigation Properties ──────────────────────────────────
     public ApplicationUser? Applicant { get; set; }

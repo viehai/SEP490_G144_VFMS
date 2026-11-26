@@ -248,17 +248,6 @@ public sealed class TrainerRepository(VfmsDbContext db, IDataProtectionProvider 
             (p.Status == PTPurchaseStatus.PendingPayment && p.HoldExpiresAt > now ||
              (p.Status == PTPurchaseStatus.Active || p.Status == PTPurchaseStatus.Frozen) && p.EndDate >= makeUpFrom), cancellationToken);
 
-    public Task<DateOnly?> GetLatestGymMembershipEndAsync(string userId, DateOnly today, CancellationToken cancellationToken = default) =>
-        Context.MemberMemberships.Where(m => m.MemberUserId == userId && m.MembershipStatus == MembershipStatus.Active &&
-                m.EndDate >= today && m.PackageComponent.ComponentType == ComponentType.GYM)
-            .OrderByDescending(m => m.EndDate).Select(m => (DateOnly?)m.EndDate).FirstOrDefaultAsync(cancellationToken);
-
-    public Task<DateOnly?> GetLatestLockerRentalEndAsync(string userId, CancellationToken cancellationToken = default) =>
-        Context.LockerRentalContracts.Where(c => c.CustomerUserId == userId &&
-                (c.ContractStatus == LockerContractStatus.Active || c.ContractStatus == LockerContractStatus.Overdue ||
-                 c.ContractStatus == LockerContractStatus.PendingHandover))
-            .OrderByDescending(c => c.EndDate).Select(c => (DateOnly?)c.EndDate).FirstOrDefaultAsync(cancellationToken);
-
     public Task<TrainerProfile?> FindProfileForHireAsync(string userId, CancellationToken cancellationToken = default) =>
         Context.TrainerProfiles.FirstOrDefaultAsync(x => x.PTUserId == userId,
             cancellationToken);

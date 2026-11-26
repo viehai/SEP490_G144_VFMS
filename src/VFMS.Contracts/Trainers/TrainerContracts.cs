@@ -33,21 +33,18 @@ public sealed record TrainerSearch(string? Search = null, string? TrainerRole = 
 public sealed record TrainerDocumentResponse(string Id, string FileName, string ContentType, string DownloadUrl, bool IsExternalLink = false,
     string? Replaces = null);
 /// <summary>
-/// HasUnfinishedPTContract blocks hiring the matched account; MemberServicesUntil warns that its Gym Membership or
-/// locker rental can no longer be used once the account holds only the PT role (UC 3.2 step 7).
+/// HasUnfinishedPTContract blocks hiring the matched account (UC 3.2 step 7).
 /// </summary>
 public sealed record TrainerAccountMatch(string Status, string? UserId = null, string? FullName = null,
-    IReadOnlyList<TrainerAccountCandidate>? Matches = null, bool HasUnfinishedPTContract = false,
-    DateOnly? MemberServicesUntil = null);
+    IReadOnlyList<TrainerAccountCandidate>? Matches = null, bool HasUnfinishedPTContract = false);
 public sealed record TrainerAccountCandidate(string UserId, string FullName, string Email, string PhoneNumber,
-    bool EmailMatches, bool PhoneMatches, bool Eligible = true, bool HasUnfinishedPTContract = false,
-    DateOnly? MemberServicesUntil = null);
+    bool EmailMatches, bool PhoneMatches, bool Eligible = true, bool HasUnfinishedPTContract = false);
 public sealed record TrainerApplicationResponse(int Id, string TrackingCode, string Status, string FullName,
     string Email, string PhoneNumber, DateOnly? DateOfBirth, string Gender, string Specialty,
     int ExperienceYears, string Bio, DateTime SubmittedAt, int SubmissionAttempt, string? ReviewNote,
     string? HiredUserId, IReadOnlyList<TrainerDocumentResponse> Certificates, string ApplicationType = "Recruitment",
     IReadOnlyList<TrainerSubmissionAttempt>? SubmissionHistory = null, string? InterviewNote = null, TrainerAccountMatch? AccountMatch = null,
-    string? TrainerRole = null);
+    string? TrainerRole = null, DateTime? InterviewedAt = null, bool CanResendSetup = false);
 public sealed record TrainerSubmissionAttempt(int Id, int SubmissionAttempt, DateTime SubmittedAt, string Status);
 public sealed record TrainerProfileResponse(int Id, string UserId, string FullName, string Level,
     string Specialty, string Gender, int ExperienceYears, string? Bio, string? AvatarUrl, decimal AverageRating)

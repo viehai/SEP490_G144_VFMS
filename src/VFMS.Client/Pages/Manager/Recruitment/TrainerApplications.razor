@@ -115,7 +115,14 @@
                         <Pager PageSize="10" Page="_attemptPage" TotalCount="attempts.Count" Noun="lần nộp" Disabled="Busy" OnPage="page => _attemptPage = page" />
                     }
                 </div>
-                @if (!string.IsNullOrWhiteSpace(app.InterviewNote)) { <div><h3>Ghi chú phỏng vấn</h3><p class="trainer-copy">@app.InterviewNote</p></div> }
+                @if (!string.IsNullOrWhiteSpace(app.InterviewNote))
+                {
+                    <div>
+                        <h3>Ghi chú phỏng vấn</h3>
+                        @if (app.InterviewedAt is { } interviewedAt) { <p class="trainer-muted">Phỏng vấn lúc @PTDisplay.LocalTime(interviewedAt)</p> }
+                        <p class="trainer-copy">@app.InterviewNote</p>
+                    </div>
+                }
                 @if (!string.IsNullOrWhiteSpace(app.ReviewNote)) { <div><h3>Ghi chú quyết định</h3><p class="trainer-copy">@app.ReviewNote</p></div> }
                 @if (app.AccountMatch is { Status: "Ambiguous", Matches: { Count: > 0 } matches })
                 {
@@ -160,10 +167,6 @@
                                     {
                                         <p class="trainer-feedback trainer-error" role="alert">@blocked</p>
                                     }
-                                    @if (chosen.MemberServicesUntil is { } until)
-                                    {
-                                        <p class="trainer-feedback" role="status">Tài khoản còn gói Gym hoặc tủ đồ đến @until.ToString("dd/MM/yyyy"); sau khi tuyển sẽ không dùng được với tư cách hội viên.</p>
-                                    }
                                 }
                                 else if (app.AccountMatch is { Status: "Matched" } match)
                                 {
@@ -175,10 +178,6 @@
                                     @if (AccountMatchError(app) is { } blocked)
                                     {
                                         <p class="trainer-feedback trainer-error" role="alert">@blocked</p>
-                                    }
-                                    @if (match.MemberServicesUntil is { } until)
-                                    {
-                                        <p class="trainer-feedback" role="status">Tài khoản còn gói Gym hoặc tủ đồ đến @until.ToString("dd/MM/yyyy"); sau khi tuyển sẽ không dùng được với tư cách hội viên.</p>
                                     }
                                 }
                                 else if (app.AccountMatch?.Status == "None")
@@ -195,7 +194,7 @@
                         </fieldset>
                     </form>
                 }
-                else if (app is { ApplicationType: "Recruitment", Status: "Hired" })
+                else if (app.CanResendSetup)
                 {
                     <button type="button" class="trainer-button" disabled="@Busy" @onclick="ResendAsync">Gửi lại email thiết lập</button>
                 }
@@ -286,7 +285,7 @@
             return;
         }
         var account = app.AccountMatch?.Status == "Ambiguous" ? _chosenAccount : app.AccountMatch?.UserId;
-        var request = new ReviewTrainerApplicationRequest(_action, _note.Trim(), hire ? _level : null,
+        var request = new ReviewTrainerApplicationRequest(_action, _action == "Interview" ? _note : _note.Trim(), hire ? _level : null,
             hire ? account : null);
         if (!new ReviewTrainerApplicationValidator().Validate(request).IsValid)
         {

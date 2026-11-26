@@ -186,7 +186,7 @@ public sealed partial class MembershipPurchaseApiTests
 
     // Hiring itself runs on SQL Server only (TrainerRepository.RunExclusiveAsync); the hire and role removal are in TrainerWorkflowTests.
     [Fact]
-    public async Task ApplicationDetailFlagsAMemberWithAnUnfinishedPTContractAndActiveMemberServices()
+    public async Task ApplicationDetailFlagsUnfinishedPTButDoesNotExposeGymOrLockerWarnings()
     {
         using var member = Client("member", "Member");
         var (id, _) = await ActivatedPTContract(member);
@@ -218,7 +218,7 @@ public sealed partial class MembershipPurchaseApiTests
         {
             var match = (await Trainers(scope).Application(applicationId, "manager", default)).Data!.AccountMatch!;
             Assert.Equal(("Matched", "member", true), (match.Status, match.UserId, match.HasUnfinishedPTContract));
-            Assert.NotNull(match.MemberServicesUntil);
+            Assert.False(System.Text.Json.JsonSerializer.SerializeToElement(match).TryGetProperty("MemberServicesUntil", out _));
         }
 
         await using (var scope = _app.Services.CreateAsyncScope())

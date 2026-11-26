@@ -45,8 +45,14 @@
                         <label>Giới thiệu<textarea class="trainer-input" rows="5" maxlength="4000" @bind="_bio"></textarea></label>
                         <BannedWordPreview Text="@_bio" Words="_bannedWords" />
                         <label>Đổi ảnh đại diện (JPG hoặc PNG, tối đa 5 MB)
-                            <InputFile @key="_avatarVersion" class="trainer-input" accept=".jpg,.jpeg,.png" OnChange="AvatarAsync" />
+                            <InputFile @key="_avatarVersion" class="trainer-input" accept=".jpg,.jpeg,.png" OnChange="AvatarAsync"
+                                       aria-invalid="@(_avatarError is not null ? "true" : null)"
+                                       aria-describedby="@(_avatarError is not null ? "avatar-error" : null)" />
                         </label>
+                        @if (_avatarError is not null)
+                        {
+                            <p id="avatar-error" class="trainer-feedback trainer-error" role="alert">@_avatarError</p>
+                        }
                         @if (_avatar is { } avatar) { <p>Tệp đã chọn: @avatar.FileName</p> }
                         <button class="trainer-button trainer-primary">Lưu hồ sơ</button>
                     </fieldset>
@@ -127,7 +133,7 @@
     private IReadOnlyList<string> _bannedWords = [];
     private int _avatarVersion;
     private bool _loading = true, _saving, _historyLoading;
-    private string? _error, _historyError;
+    private string? _error, _historyError, _avatarError;
 
     protected override async Task OnInitializedAsync()
     {
@@ -170,7 +176,7 @@
     private async Task AvatarAsync(InputFileChangeEventArgs args)
     {
         _saving = true;
-        _error = null;
+        _avatarError = null;
         _avatar = null;
         try
         {
@@ -179,13 +185,13 @@
             await stream.CopyToAsync(buffer);
             var avatar = new TrainerFileInput(args.File.Name, buffer.ToArray());
             if (TrainerFileRules.ContentType(avatar, avatar: true) is null)
-                _error = "Chọn ảnh JPG hoặc PNG hợp lệ.";
+                _avatarError = "Chọn ảnh JPG hoặc PNG hợp lệ.";
             else
                 _avatar = avatar;
         }
         catch (Exception ex) when (ex is IOException or JSException)
         {
-            _error = "Không đọc được ảnh. Dung lượng tối đa là 5 MB.";
+            _avatarError = "Không đọc được ảnh. Dung lượng tối đa là 5 MB.";
         }
         finally
         {
@@ -196,13 +202,18 @@
 
     private async Task SaveAsync()
     {
-        if (_saving || _profile is not { } profile) return;
+        if (_saving || _avatarError is not null || _profile is not { } profile) return;
         _error = null;
         var bio = _bio.Trim();
         var request = new UpdateTrainerProfileRequest(bio == (profile.Profile.Bio ?? "") ? null : bio, _avatar);
-        if (!new TrainerProfileValidator().Validate(request).IsValid)
+        var validation = new TrainerProfileValidator().Validate(request);
+        if (!validation.IsValid)
         {
-            _error = "Nhập giới thiệu hợp lệ hoặc chọn ảnh đại diện mới.";
+            var avatarErrors = validation.Errors.Where(error => IsAvatarField(error.PropertyName)).ToArray();
+            if (avatarErrors.Length > 0)
+                _avatarError = string.Join(" ", avatarErrors.Select(error => error.ErrorMessage));
+            if (validation.Errors.Any(error => !IsAvatarField(error.PropertyName)))
+                _error = "Nhập giới thiệu hợp lệ hoặc chọn ảnh đại diện mới.";
             return;
         }
         _saving = true;
@@ -217,10 +228,24 @@
         catch (AuthApiException ex)
         {
             _bannedWords = TrainerContentRules.ProhibitedWords(ex.ErrorCode, ex.Message);
-            _error = _bannedWords.Count > 0 ? "Giới thiệu có từ ngữ không được phép. Sửa các từ được tô đỏ rồi lưu lại." : ex.Message;
+            if (_bannedWords.Count > 0)
+                _error = "Giới thiệu có từ ngữ không được phép. Sửa các từ được tô đỏ rồi lưu lại.";
+            else
+            {
+                var avatarErrors = ex.Errors.Where(error => IsAvatarField(error.Key))
+                    .SelectMany(error => error.Value).Where(message => !string.IsNullOrWhiteSpace(message)).ToArray();
+                if (avatarErrors.Length > 0)
+                    _avatarError = string.Join(" ", avatarErrors);
+                if (avatarErrors.Length == 0 || ex.Errors.Any(error => !IsAvatarField(error.Key)))
+                    _error = ex.Message;
+            }
         }
         finally { _saving = false; }
     }
+
+    private static bool IsAvatarField(string field) =>
+        field.Equals(nameof(UpdateTrainerProfileRequest.Avatar), StringComparison.OrdinalIgnoreCase) ||
+        field.StartsWith(nameof(UpdateTrainerProfileRequest.Avatar) + ".", StringComparison.OrdinalIgnoreCase);
 
     private async Task ToggleReadinessAsync()
     {

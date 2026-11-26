@@ -62,8 +62,6 @@ public interface ITrainerRepository : IAuditedRepository
     Task<IReadOnlyList<string>> GetUsersWithAnyRoleAsync(IReadOnlyCollection<string> userIds, IReadOnlyCollection<string> roleNames,
         CancellationToken cancellationToken = default);
     Task<bool> HasUnfinishedPTContractAsync(string userId, DateTime now, DateOnly makeUpFrom, CancellationToken cancellationToken = default);
-    Task<DateOnly?> GetLatestGymMembershipEndAsync(string userId, DateOnly today, CancellationToken cancellationToken = default);
-    Task<DateOnly?> GetLatestLockerRentalEndAsync(string userId, CancellationToken cancellationToken = default);
     Task<TrainerProfile?> FindProfileForHireAsync(string userId, CancellationToken cancellationToken = default);
     Task<bool> HasActiveYogaAssignmentsAsync(string userId, CancellationToken cancellationToken = default);
     Task<bool> UserHasRoleIdAsync(string userId, int roleId, CancellationToken cancellationToken = default);

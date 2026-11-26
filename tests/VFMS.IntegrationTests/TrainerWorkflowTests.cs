@@ -764,7 +764,8 @@ public class TrainerWorkflowTests
         await using var fixture = new TrainerTestDatabase(); await fixture.Initialize();
         var db = fixture.Db; var service = fixture.Service; var app = await fixture.Hire();
         var reviewed = TrainerTestDatabase.Success(await service.Application(app.Id, "manager", default));
-        Assert.Matches(@"^\[\d{2}/\d{2}/\d{4} \d{2}:\d{2}\] Interview completed$", reviewed.InterviewNote);
+        Assert.Equal("Interview completed", reviewed.InterviewNote);
+        Assert.NotNull(reviewed.InterviewedAt);
         Assert.NotEqual(reviewed.InterviewNote, reviewed.ReviewNote);
         TrainerTestDatabase.Success(await service.Setup(new(await fixture.SetupToken(app.Id), "TestPassword1!"), default));
         var profile = await db.TrainerProfiles.SingleAsync(); var userId = profile.PTUserId;

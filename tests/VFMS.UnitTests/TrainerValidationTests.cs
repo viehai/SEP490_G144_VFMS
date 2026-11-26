@@ -112,6 +112,7 @@ public class TrainerValidationTests
             PhoneNumber = "0900000000",
             Specialty = "PT",
             InterviewNote = "private",
+            InterviewedAt = new DateTime(2026, 11, 26, 3, 0, 0, DateTimeKind.Utc),
             ApplicationStatus = VFMS.Domain.Enums.TrainerApplicationStatus.Interviewing,
             CertificatesJson = """[{"Id":"f1","FileName":"proof.pdf","ContentType":"application/pdf"}]"""
         };
@@ -123,6 +124,7 @@ public class TrainerValidationTests
         Assert.Equal("Recruitment", response.ApplicationType);
         Assert.Equal("/api/trainers/applications/7/documents/f1", Assert.Single(response.Certificates).DownloadUrl);
         Assert.Null(response.InterviewNote);
+        Assert.Null(response.InterviewedAt);
         Assert.Null(response.SubmissionHistory);
         Assert.Null(response.AccountMatch);
         Assert.Null(response.TrainerRole);
