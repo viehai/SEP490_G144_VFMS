@@ -123,7 +123,7 @@
                 }
                 <div class="sm:col-span-2">
                     <label class="block text-sm font-semibold text-vfms-text" for="@($"{_fieldPrefix}-reason")">Lý do bảo lưu <span class="text-red-700" aria-hidden="true">*</span></label>
-                    <textarea id="@($"{_fieldPrefix}-reason")" class="@Field" @bind="_model.Reason" @bind:event="oninput" @bind:after="ReasonChanged"
+                    <textarea id="@($"{_fieldPrefix}-reason")" class="@Field resize-none" @bind="_model.Reason" @bind:event="oninput" @bind:after="ReasonChanged"
                               rows="3" maxlength="4000" required aria-describedby="@($"{_fieldPrefix}-reason-error")"
                               placeholder="Ví dụ: Đi công tác, du lịch hoặc lý do sức khỏe..."></textarea>
                     <div id="@($"{_fieldPrefix}-reason-error")" class="mt-1 text-sm text-red-800"><ValidationMessage For="@(() => _model.Reason)" /></div>

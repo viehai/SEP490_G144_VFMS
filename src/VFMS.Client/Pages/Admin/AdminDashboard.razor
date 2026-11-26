@@ -1,137 +1,53 @@
 @page "/admin/dashboard"
 @layout ManagerAdminLayout
 @using Microsoft.AspNetCore.Authorization
-@using VFMS.Contracts.SystemAdministration
-@using VFMS.Contracts.Users
+@using VFMS.Client.Components.Dashboards
+@using VFMS.Contracts.Dashboards
 @attribute [Authorize(Roles = "Admin")]
-@inject VfmsApiClient Api
-@implements IDisposable
 
-<PageTitle>Admin Dashboard | Victor Fitness</PageTitle>
-
-<div class="workspace-page space-y-8 font-['Inter',sans-serif] text-[#242424]">
-    <header class="flex flex-col justify-between gap-5 border-b border-[#D8D1CD] pb-6 md:flex-row md:items-end">
-        <div>
-            <p class="workspace-heading mb-2 text-[10px] font-bold tracking-[.18em] text-[#B83A3A]">VFMS / SYSTEM ADMINISTRATION</p>
-            <h1 class="workspace-heading text-3xl font-extrabold uppercase tracking-tight text-[#242424] sm:text-4xl">Admin Dashboard<span class="text-[#B83A3A]">.</span></h1>
-            <p class="mt-2 max-w-2xl text-sm leading-6 text-[#6F6966]">Theo dõi tài khoản nhân sự, phân quyền và các hoạt động quan trọng của hệ thống.</p>
+<PageTitle>Tổng quan quản trị | Victor Fitness</PageTitle>
+<DashboardView T="AdminOverview" Path="@($"api/dashboards/admin?days={_days}")" Title="Tổng quan quản trị"
+               Description="Theo dõi tài khoản, yêu cầu chờ xử lý và các hoạt động quản trị.">
+    <HeaderControl><label class="dash-date"><DashboardIcon Name="calendar" /><select aria-label="Khoảng thời gian thống kê hoạt động" @bind="_days">
+        <option value="7">7 ngày gần đây</option><option value="30">30 ngày gần đây</option><option value="90">90 ngày gần đây</option>
+    </select></label></HeaderControl>
+    <ChildContent Context="data">
+        <div class="dash-stats">
+            <DashboardStat Icon="people" Label="Tổng số tài khoản" Value="@Vnd.FormatAmount(data.Accounts)" Note="@($"{data.NewAccounts} tài khoản mới trong {data.Activity.Count} ngày")" />
+            <DashboardStat Icon="person" Label="Đang hoạt động" Value="@Vnd.FormatAmount(data.Active)" Note="Tài khoản có trạng thái hoạt động" />
+            <DashboardStat Icon="list" Label="Yêu cầu chờ xử lý" Value="@((data.Applications + data.Proposals).ToString())" Note="@($"{data.Applications} hồ sơ ứng tuyển · {data.Proposals} đề xuất mua sắm")" />
+            <DashboardStat Icon="shield" Label="Tài khoản đang khóa" Value="@data.Locked.ToString()" Note="Trạng thái khóa hiện tại" />
         </div>
-    </header>
-
-    @* There is no admin user-management page yet (the API exists), so the account figures do not link anywhere. *@
-    <section class="grid gap-4 lg:grid-cols-3" aria-label="Thống kê quản trị hệ thống">
-        <StatCard Index="01" Label="TỔNG SỐ STAFF" Value="@_staff?.ToString("00")" Note="Tài khoản có vai trò Staff" />
-        <StatCard Index="02" Label="TÀI KHOẢN ĐANG KHÓA" Value="@_locked?.ToString("00")" Note="Mọi vai trò" />
-        <StatCard Index="03" Label="NHẬT KÝ HÔM NAY" Href="/admin/audit-logs" Value="@_auditToday?.ToString("00")" Note="Thao tác được ghi nhận" />
-    </section>
-
-    @if (_errors.Count > 0)
-    {
-        <p role="alert" class="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">Không tải được: @string.Join("; ", _errors)</p>
-    }
-
-    <section id="quick-actions" aria-labelledby="admin-actions-title">
-        <h2 id="admin-actions-title" class="workspace-heading mb-4 text-sm font-extrabold uppercase tracking-wider text-[#242424]">Truy cập nhanh</h2>
-        <div class="grid gap-3 lg:grid-cols-3">
-            @foreach (var action in Actions)
-            {
-                <a href="@action.Href" class="flex min-h-24 items-center justify-between gap-5 border border-[#D8D1CD] bg-[#F8F5F2] p-5 text-left text-[#242424] transition-all hover:border-[#B83A3A] hover:bg-[#F3EDEA] rounded-xl">
-                    <span><span class="workspace-heading block text-xs font-extrabold uppercase tracking-wider">@action.Title</span><span class="mt-1.5 block text-xs text-[#6F6966]">@action.Description</span></span>
-                    <span class="text-xl text-[#B83A3A]" aria-hidden="true">↗</span>
-                </a>
-            }
+        <div class="dash-grid">
+            <section class="dash-panel"><header><h2>Hoạt động hệ thống</h2></header><p class="dash-sub">Số thao tác được ghi vào nhật ký mỗi ngày.</p>
+                <DashboardTrend Points="data.Activity" Unit="Lượt hoạt động" /></section>
+            <section class="dash-panel"><header><h2>Phân bố tài khoản theo vai trò</h2></header>
+                <DashboardDonut Items="data.Roles" Center="data.Accounts" Caption="tài khoản" Label="OperationsText.RoleLabel" />
+                <p class="dash-footnote">Mỗi tài khoản chỉ được tính vào một nhóm vai trò.</p></section>
+            <section class="dash-panel"><header><h2>Hoạt động gần đây</h2><a href="/admin/audit-logs">Xem nhật ký →</a></header>
+                @if (data.Recent.Count == 0) { <p class="dash-message">Chưa có hoạt động trong khoảng thời gian này.</p> }
+                else
+                {
+                    <div class="dash-scroll"><table aria-label="Hoạt động gần đây"><thead><tr><th>Thời gian</th><th>Người thực hiện</th><th>Hành động</th><th>Đối tượng</th></tr></thead>
+                    <tbody>@foreach (var entry in data.Recent)
+                    {
+                        <tr><td class="dash-number">@entry.OccurredAt.AddHours(7).ToString("dd/MM HH:mm")</td><td>@(entry.Actor ?? "Hệ thống")</td>
+                        <td>@OperationsText.AuditAction(entry.Action)</td><td>@OperationsText.AuditEntity(entry.Entity, entry.EntityId)</td></tr>
+                    }</tbody></table></div>
+                }
+            </section>
+            <section id="quick-actions" class="dash-panel"><header><h2>Lối tắt quản trị</h2></header><div class="dash-actions">
+                <DashboardLink Href="/admin/dashboard/accounts" Icon="people">Tra cứu tài khoản</DashboardLink>
+                <DashboardLink Href="/admin/dashboard/accounts?role=Staff" Icon="person">Tài khoản nhân viên</DashboardLink>
+                <DashboardLink Href="/admin/dashboard/accounts?status=Locked" Icon="shield">Tài khoản đang khóa</DashboardLink>
+                <DashboardLink Href="/admin/audit-logs" Icon="list">Nhật ký hệ thống</DashboardLink>
+                <DashboardLink Href="/admin/banned-words" Icon="shield">Từ khóa cấm</DashboardLink>
+                <DashboardLink Href="/admin/business-reports" Icon="chart">Báo cáo kinh doanh</DashboardLink>
+            </div></section>
         </div>
-    </section>
-
-    <section class="overflow-hidden border border-[#D8D1CD] bg-[#F8F5F2] rounded-xl shadow-sm" aria-labelledby="admin-audit-title">
-        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[#D8D1CD] px-6 py-4">
-            <h2 id="admin-audit-title" class="workspace-heading text-sm font-extrabold uppercase tracking-wider text-[#242424]">Nhật ký hoạt động gần đây</h2>
-            <a href="/admin/audit-logs" class="text-xs font-bold text-[#B83A3A] underline">Xem tất cả</a>
-        </div>
-        @if (_audit is null)
-        {
-            <p role="status" class="px-6 py-8 text-sm text-[#6F6966]">@(_loading ? "Đang tải..." : "Không có dữ liệu nhật ký.")</p>
-        }
-        else if (_audit.Count == 0)
-        {
-            <p role="status" class="px-6 py-8 text-sm text-[#6F6966]">Chưa có hoạt động nào được ghi nhận.</p>
-        }
-        else
-        {
-            <div class="overflow-x-auto">
-                <table class="workspace-table w-full min-w-[680px] text-left text-sm">
-                    <caption class="sr-only">Nhật ký hoạt động gần đây</caption>
-                    <thead class="workspace-heading bg-[#ECE8E4] text-[10px] uppercase tracking-wider"><tr><th scope="col" class="px-6 py-4">Thời điểm</th><th scope="col" class="px-6 py-4">Người thực hiện</th><th scope="col" class="px-6 py-4">Thao tác</th><th scope="col" class="px-6 py-4">Đối tượng</th></tr></thead>
-                    <tbody>
-                        @foreach (var entry in _audit)
-                        {
-                            <tr @key="entry.Id" class="border-t border-[#ECE8E4]"><td class="px-6 py-4 text-xs text-[#6F6966]">@GymTime(entry.OccurredAt).ToString("dd/MM HH:mm")</td><td class="px-6 py-4 font-medium text-[#242424]">@(entry.ActorName ?? "Hệ thống")</td><td class="px-6 py-4 text-xs text-[#6F6966]">@entry.ActionType</td><td class="px-6 py-4 text-xs text-[#6F6966]">@entry.AuditEntity@(entry.EntityId is { } id ? $" #{id}" : "")</td></tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-        }
-    </section>
-</div>
-
+    </ChildContent>
+</DashboardView>
 @code {
-    private static readonly TimeSpan GymOffset = TimeSpan.FromHours(7);
-    private static readonly ActionItem[] Actions =
-    [
-        new("/admin/audit-logs", "Audit Logs", "Theo dõi nhật ký hoạt động"),
-        new("/admin/banned-words", "Từ cấm", "Quản lý danh sách từ cấm"),
-        new("/admin/business-reports", "Báo cáo kinh doanh", "Xem báo cáo doanh thu")
-    ];
+    private int _days = 7;
 
-    private readonly CancellationTokenSource _lifetime = new();
-    private readonly List<string> _errors = [];
-    private int? _staff;
-    private int? _locked;
-    private int? _auditToday;
-    private IReadOnlyCollection<AuditLogResponse>? _audit;
-    private bool _loading = true;
-
-    private static DateTime GymTime(DateTime utc) => DateTime.SpecifyKind(utc, DateTimeKind.Utc).Add(GymOffset);
-
-    protected override async Task OnInitializedAsync()
-    {
-        // Midnight today in gym time, as UTC. Sent without "Z": the API compares From with UTC times as given,
-        // and a "Z" value would be bound as server-local time.
-        var todayStartUtc = DateTime.UtcNow.Add(GymOffset).Date.Subtract(GymOffset);
-        await Task.WhenAll(
-            Load("tài khoản", async ct => _staff = (await Api.GetAsync<PagedUsersResponse>("api/admin/users?role=Staff&page=1&pageSize=1", ct)).TotalCount),
-            Load("tài khoản khóa", async ct => _locked = (await Api.GetAsync<PagedUsersResponse>("api/admin/users?accountStatus=Locked&page=1&pageSize=1", ct)).TotalCount),
-            Load("nhật ký", async ct =>
-            {
-                var today = await Api.GetAsync<PagedResponse<AuditLogResponse>>(
-                    $"api/admin/audit-logs?from={todayStartUtc.ToString("yyyy-MM-ddTHH:mm:ss", System.Globalization.CultureInfo.InvariantCulture)}&page=1&pageSize=1", ct);
-                _auditToday = today.TotalCount;
-                _audit = (await Api.GetAsync<PagedResponse<AuditLogResponse>>("api/admin/audit-logs?page=1&pageSize=8", ct)).Items;
-            }));
-        _loading = false;
-    }
-
-    private async Task Load(string what, Func<CancellationToken, Task> load)
-    {
-        try
-        {
-            await load(_lifetime.Token);
-        }
-        catch (ApiException ex)
-        {
-            _errors.Add($"{what} ({ex.Message})");
-        }
-        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
-        {
-            // The user left the page.
-        }
-    }
-
-    public void Dispose()
-    {
-        _lifetime.Cancel();
-        _lifetime.Dispose();
-    }
-
-    private sealed record ActionItem(string Href, string Title, string Description);
 }

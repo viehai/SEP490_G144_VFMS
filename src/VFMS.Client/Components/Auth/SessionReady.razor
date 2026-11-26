@@ -1,0 +1,11 @@
+@if (Authentication.IsCompletedSuccessfully)
+{
+    @ChildContent
+}
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState> Authentication { get; set; } = default!;
+    [Parameter, EditorRequired] public RenderFragment ChildContent { get; set; } = default!;
+
+    protected override Task OnParametersSetAsync() => Authentication;
+}

@@ -17,6 +17,7 @@ public static class SystemAdministrationModule
         services.AddScoped<IGymSettingsService, GymSettingsService>();
         services.AddScoped<IBusinessReportRepository, BusinessReportRepository>();
         services.AddScoped<IBusinessReportService, BusinessReportService>();
+        services.AddScoped<DashboardQueries>();
         return services;
     }
 }

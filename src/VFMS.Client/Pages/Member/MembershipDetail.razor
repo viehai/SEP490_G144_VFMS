@@ -3,6 +3,7 @@
 @using Microsoft.AspNetCore.Authorization
 @using System.Net
 @using VFMS.Client.Components.Memberships
+@using VFMS.Client.Components.Operations
 @using VFMS.Contracts.Memberships
 @attribute [Authorize(Roles = "Customer,Member")]
 @inject MembershipPlanApiClient Plans
@@ -99,7 +100,8 @@
                     {
                         <ul class="list-none divide-y divide-vfms-border p-0">
                             @foreach (var period in detail.Freeze.History.OrderBy(period => MembershipFreezeStatusBadge.Priority(period.Status))
-                                .ThenByDescending(period => period.SubmittedAt).ThenByDescending(period => period.RequestedStartDate))
+                                .ThenByDescending(period => period.SubmittedAt).ThenByDescending(period => period.RequestedStartDate)
+                                .Skip((_historyPage - 1) * HistoryPageSize).Take(HistoryPageSize))
                             {
                                 <li class="py-3 first:pt-0 last:pb-0">
                                     <dl class="grid gap-3 text-sm sm:grid-cols-3">
@@ -148,6 +150,11 @@
                                 </li>
                             }
                         </ul>
+                        @if (detail.Freeze.History.Count > HistoryPageSize)
+                        {
+                            <Pager Page="_historyPage" PageSize="HistoryPageSize" TotalCount="detail.Freeze.History.Count" Noun="yêu cầu"
+                                   AriaLabel="Phân trang lịch sử bảo lưu" OnPage="page => _historyPage = page" />
+                        }
                     }
                 </div>
             </section>
@@ -167,6 +174,8 @@
 @code {
     [Parameter] public int MembershipId { get; set; }
 
+    private const int HistoryPageSize = 10;
+    private int _historyPage = 1;
     private CancellationTokenSource? _loadRequest;
     private MembershipDetailResponse? _detail;
     private MembershipSummaryResponse? _choosing;
@@ -179,10 +188,15 @@
         if (_requestedMembershipId == MembershipId) return Task.CompletedTask;
         _requestedMembershipId = MembershipId;
         _choosing = null;
+        _historyPage = 1;
         return LoadAsync();
     }
 
-    private void ActivationSaved(MembershipDetailResponse detail) => _detail = detail;
+    private void ActivationSaved(MembershipDetailResponse detail)
+    {
+        _detail = detail;
+        _historyPage = 1;
+    }
 
     private void CloseActivation() => _choosing = null;
 
@@ -227,6 +241,7 @@
             request.ActualEndDate, request.Status, RequestedDays: request.RequestedDays, SubmittedAt: request.SubmittedAt,
             ReviewNote: request.ReviewNote);
         _detail = _detail with { Freeze = _detail.Freeze with { History = [period, .. _detail.Freeze.History] } };
+        _historyPage = 1;
     }
 
     private void CancelLoad()

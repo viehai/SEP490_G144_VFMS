@@ -106,6 +106,27 @@ public sealed partial class MembershipPurchaseApiTests
     }
 
     [Fact]
+    public async Task TransactionHistoryReturnsTenOrdersPerPageByDefault()
+    {
+        using var buyer = Client("buyer", "Customer");
+        var orders = new List<string>();
+        for (var i = 0; i < 11; i++)
+        {
+            var purchase = await CreateAsync(buyer, Purchase([new(_basic)]));
+            orders.Add(purchase.OrderNumber);
+        }
+        orders.Reverse();
+
+        var first = await ListTransactionsAsync(buyer);
+        var second = await ListTransactionsAsync(buyer, "?page=2");
+
+        Assert.Equal(10, first.PageSize);
+        Assert.Equal(11, first.TotalCount);
+        Assert.Equal(orders.Take(10), first.Items.Select(item => item.OrderNumber));
+        Assert.Equal(orders[10], Assert.Single(second.Items).OrderNumber);
+    }
+
+    [Fact]
     public async Task TransactionHistoryIsPagedNewestFirstWithDeterministicIdTieBreakerAndDatabaseOwnership()
     {
         using var buyer = Client("buyer", "Customer");

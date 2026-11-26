@@ -1,0 +1,53 @@
+@if (Points.Count > 0)
+{
+    <div class="dash-trend">
+        <div class="dash-plot"><div class="dash-y" aria-hidden="true"><span>@Tick(Max)</span><span>@(Max > 1 || Bars ? Tick(Max / 2) : "")</span><span>0</span></div>
+        <svg viewBox="0 0 600 160" preserveAspectRatio="none" role="img" aria-label="@Description">
+            <path d="M0 5h600M0 80h600M0 155h600" fill="none" stroke="#ded9d8" vector-effect="non-scaling-stroke" />
+            @if (Bars)
+            {
+                @for (var i = 0; i < Points.Count; i++)
+                {
+                    var p = Points[i];
+                    <rect x="@N((i + .15) * 600 / Points.Count)" y="@N(Y(p))" width="@N(.7 * 600 / Points.Count)"
+                          height="@N(155 - Y(p))" rx="2" fill="@(i == Points.Count-1 ? "#b92f37" : "#ecaca9")"><title>@p.Date.ToString("dd/MM/yyyy") · @Value(p.Value)</title></rect>
+                }
+            }
+            else
+            {
+                <polygon points="@($"0,155 {Line} 600,155")" fill="#f5dcdc" />
+                <polyline points="@Line" fill="none" stroke="#b72e36" stroke-width="2.4" vector-effect="non-scaling-stroke" />
+                @if (Points.Count <= 14)
+                {
+                    @for (var i = 0; i < Points.Count; i++)
+                    { <circle cx="@N(X(i))" cy="@N(Y(Points[i]))" r="3" fill="white" stroke="#b72e36" stroke-width="2"><title>@Value(Points[i].Value)</title></circle> }
+                }
+            }
+        </svg>
+        <div class="dash-axis" aria-hidden="true">@foreach (var i in Ticks)
+        {
+            var left = Bars ? (i + .5) * 100 / Points.Count : X(i) / 6;
+            <span style="left:@(N(left))%">@Points[i].Date.ToString("dd/MM")</span>
+        }</div></div>
+        <details class="dash-chart-data"><summary>Xem số liệu theo ngày</summary><div class="dash-scroll"><table>
+            <thead><tr><th>Ngày</th><th>@Unit</th></tr></thead><tbody>@foreach (var p in Points)
+            { <tr><td>@p.Date.ToString("dd/MM/yyyy")</td><td>@Value(p.Value)</td></tr> }</tbody>
+        </table></div></details>
+    </div>
+}
+@code {
+    [Parameter] public IReadOnlyList<ChartPoint> Points { get; set; } = [];
+    [Parameter] public bool Bars { get; set; }
+    [Parameter] public string Unit { get; set; } = "Lượt";
+    private decimal Max { get; set; }
+    protected override void OnParametersSet() => Max = Points.Count == 0 ? 1m : Math.Max(1m, Points.Max(p => p.Value));
+    private double Y(ChartPoint p) => 155 - 150 * (double)(p.Value / Max);
+    private double X(int i) => Points.Count == 1 ? 300 : 4 + 592d * i / (Points.Count - 1);
+    private static string N(double n) => n.ToString("0.##", CultureInfo.InvariantCulture);
+    private string Line => string.Join(" ", Points.Select((p,i) => $"{N(X(i))},{N(Y(p))}"));
+    private IEnumerable<int> Ticks => Enumerable.Range(0, Math.Min(Points.Count, 5))
+        .Select(i => (int)Math.Round(i * (Points.Count - 1d) / Math.Max(1, Math.Min(Points.Count, 5) - 1)));
+    private string Description => $"{Unit} từ {Points[0].Date:dd/MM} đến {Points[^1].Date:dd/MM}. Tổng {Value(Points.Sum(p => p.Value))}.";
+    private string Value(decimal value) => Bars ? Vnd.Format(value) : Vnd.FormatAmount(value);
+    private static string Tick(decimal value) => Vnd.FormatAmount(value);
+}

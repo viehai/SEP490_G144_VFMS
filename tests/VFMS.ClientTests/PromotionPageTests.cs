@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using VFMS.Client.Components.Operations;
 using VFMS.Client.Pages.Manager;
 using VFMS.Client.Components.Promotions;
 using VFMS.Client.Services;
@@ -47,6 +48,36 @@ public sealed class PromotionPageTests
         // Opt-in standalone artifact for manual responsive visual review; ordinary test runs write no files.
         if (Environment.GetEnvironmentVariable("VFMS_PROMOTION_PREVIEW") is { Length: > 0 } output)
             await WritePreviewAsync(html, output);
+    }
+
+    [Fact]
+    public async Task Page_ShowsTenVouchersAndCanOpenTheSecondPage()
+    {
+        var rows = Enumerable.Range(1, 11).Select(id => PromotionApiClientTests.Response(PromotionStatus.Active) with
+        {
+            Id = id, Name = $"Ưu đãi {id:D2}", Code = $"VOUCHER-{id:D2}"
+        }).ToArray();
+        using var api = PromotionApiClientTests.CreateClient(_ => Task.FromResult(PromotionApiClientTests.Json(rows)));
+        var capture = new PromotionActivator();
+        await using var services = new ServiceCollection().AddLogging().AddSingleton(api)
+            .AddSingleton<IComponentActivator>(capture).BuildServiceProvider();
+        await using var renderer = new HtmlRenderer(services, services.GetRequiredService<ILoggerFactory>());
+        await renderer.Dispatcher.InvokeAsync(async () =>
+        {
+            var view = await renderer.RenderComponentAsync<Promotions>();
+            var firstPage = WebUtility.HtmlDecode(view.ToHtmlString());
+            Assert.Contains("Trang 1 / 2 · 11 voucher", firstPage);
+            foreach (var row in rows.Take(10))
+                Assert.Contains(row.Code, firstPage);
+            Assert.DoesNotContain(rows[^1].Code, firstPage);
+
+            await capture.Pager!.OnPage.InvokeAsync(2);
+
+            var secondPage = WebUtility.HtmlDecode(view.ToHtmlString());
+            Assert.Contains("Trang 2 / 2 · 11 voucher", secondPage);
+            Assert.Contains(rows[^1].Code, secondPage);
+            Assert.DoesNotContain(rows[0].Code, secondPage);
+        });
     }
 
     [Fact]
@@ -97,10 +128,12 @@ public sealed class PromotionPageTests
     private sealed class PromotionActivator : IComponentActivator
     {
         public Promotions? Page { get; private set; }
+        public Pager? Pager { get; private set; }
         public IComponent CreateInstance(Type type)
         {
             var component = (IComponent)Activator.CreateInstance(type)!;
             if (component is Promotions page) Page = page;
+            if (component is Pager pager) Pager = pager;
             return component;
         }
     }

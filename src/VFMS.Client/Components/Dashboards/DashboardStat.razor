@@ -1,0 +1,10 @@
+<article class="dash-stat">
+    <span class="dash-icon-tile"><DashboardIcon Name="@Icon" /></span>
+    <div><h2>@Label</h2><strong>@Value</strong>@if (!string.IsNullOrEmpty(Note)) { <small>@Note</small> }</div>
+</article>
+@code {
+    [Parameter] public string Icon { get; set; } = "";
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public string? Note { get; set; }
+}

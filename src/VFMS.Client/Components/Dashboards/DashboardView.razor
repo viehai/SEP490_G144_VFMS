@@ -1,0 +1,59 @@
+@typeparam T where T : class
+@inject VfmsApiClient Api
+@implements IDisposable
+@using Microsoft.AspNetCore.Components.Sections
+@using System.Net
+
+<SectionContent SectionName="dashboard-notifications"><DashboardNotifications /></SectionContent>
+<div class="role-dashboard" aria-busy="@(_request is not null ? "true" : "false")">
+    <header class="dash-heading">
+        <div><h1>@Title</h1><p>@Description</p></div>
+        <div class="dash-heading-end">@HeaderControl</div>
+    </header>
+    @if (_error is not null)
+    {
+        <div class="dash-error" role="alert">@_error <button type="button" @onclick="Load">Thử lại</button></div>
+    }
+    @if (_data is not null) { @ChildContent(_data) }
+    else if (_request is not null) { <p class="dash-message" role="status">Đang tải số liệu…</p> }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Path { get; set; } = "";
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public string? Description { get; set; }
+    [Parameter] public RenderFragment? HeaderControl { get; set; }
+    [Parameter, EditorRequired] public RenderFragment<T> ChildContent { get; set; } = default!;
+    private T? _data;
+    private string? _error, _requested;
+    private CancellationTokenSource? _request;
+
+    protected override Task OnParametersSetAsync() => _requested != Path ? Load() : Task.CompletedTask;
+
+    private async Task Load()
+    {
+        _request?.Cancel();
+        using var request = new CancellationTokenSource();
+        _request = request;
+        _requested = Path;
+        _error = null;
+        try
+        {
+            var result = await Api.GetAsync<T>(Path, request.Token);
+            if (!request.IsCancellationRequested) _data = result;
+        }
+        catch (OperationCanceledException) when (request.IsCancellationRequested) { }
+        catch (ApiException ex)
+        {
+            if (request.IsCancellationRequested) return;
+            if (ex.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden) _data = null;
+            _error = _data is null ? ex.Message : $"Chưa cập nhật được số liệu. Đang hiển thị kết quả lần trước. {ex.Message}";
+        }
+        finally
+        {
+            if (_request == request) _request = null;
+        }
+    }
+
+    public void Dispose() => _request?.Cancel();
+}

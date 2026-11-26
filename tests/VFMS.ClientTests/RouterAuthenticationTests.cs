@@ -21,7 +21,7 @@ using Xunit;
 
 namespace VFMS.ClientTests;
 
-public sealed class RouterAuthenticationTests
+public sealed partial class RouterAuthenticationTests
 {
     [Theory]
     [InlineData("Admin", "/admin/dashboard", "admin")]
@@ -45,18 +45,16 @@ public sealed class RouterAuthenticationTests
                 };
             if (request.RequestUri!.AbsolutePath == "/api/yoga/schedule")   // the home page's yoga classes
                 return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(Array.Empty<object>()) };
-            if (request.RequestUri!.AbsolutePath == "/api/check-ins/active")   // the staff dashboard's figures
-                return new HttpResponseMessage(HttpStatusCode.OK)
-                {
-                    Content = JsonContent.Create(new ActiveCheckInsResponse(0, 0, []))
-                };
-            if (request.RequestUri!.AbsolutePath is "/api/equipment-issues" or "/api/consultations"   // dashboard counts and lists
-                or "/api/business-reports" or "/api/manager/membership-freeze-requests" or "/api/purchase-proposals"
-                or "/api/admin/users" or "/api/admin/audit-logs")
-                return new HttpResponseMessage(HttpStatusCode.OK)
-                {
-                    Content = JsonContent.Create(new PagedResponse<object>(1, 1, 0, []))
-                };
+            if (request.RequestUri!.AbsolutePath == "/api/dashboards/notifications")
+                return new(HttpStatusCode.OK) { Content = JsonContent.Create(new { unread = 0, recent = Array.Empty<object>() }) };
+            if (request.RequestUri.AbsolutePath == $"/api/dashboards/{variant}")
+            {
+                var empty = Array.Empty<object>();
+                return new(HttpStatusCode.OK) { Content = JsonContent.Create(new {
+                    today = new DateOnly(2026, 11, 25), roles = empty, activity = empty, recent = empty, revenue = empty,
+                    memberships = empty, counter = empty, arrivals = empty, orders = empty, schedule = empty, progress = empty
+                }) };
+            }
             Assert.Equal("/api/auth/logout", request.RequestUri!.AbsolutePath);
             logoutCalls++;
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new { Message = "Logged out." }) };

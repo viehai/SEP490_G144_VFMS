@@ -1,0 +1,38 @@
+@if (Items.Count == 0)
+{
+    <p class="dash-message">Chưa có dữ liệu để phân bổ.</p>
+}
+else
+{
+    <div class="dash-distribution">
+        <div class="dash-ring" style="@Gradient" aria-hidden="true"><div><strong>@Center</strong><small>@Caption</small></div></div>
+        <ul aria-label="@Caption">@for (var i = 0; i < Items.Count; i++)
+        {
+            var row = Items[i];
+            <li><span class="dash-swatch" style="background:@Colors[i % Colors.Length]"></span><span>@Label(row.Category)</span>
+            <strong>@row.Count</strong><small>@Vnd.FormatAmount(decimal.Round(Percent(row.Count), 1))%</small></li>
+        }</ul>
+    </div>
+}
+@code {
+    [Parameter] public IReadOnlyList<CategoryCount> Items { get; set; } = [];
+    [Parameter] public int Center { get; set; }
+    [Parameter] public string Caption { get; set; } = "";
+    [Parameter] public Func<string,string> Label { get; set; } = s => s;
+    private static readonly string[] Colors = ["#b72e36", "#d65d57", "#e89680", "#f1c6a8", "#a79091", "#81515b", "#6b7680", "#a89b84", "#ccc3be"];
+    private decimal Percent(int count) => Items.Sum(x => x.Count) is > 0 and var total ? 100m * count / total : 0;
+    private string Gradient
+    {
+        get
+        {
+            decimal at = 0;
+            var stops = Items.Select((row,i) =>
+            {
+                var start = at;
+                at += Percent(row.Count);
+                return FormattableString.Invariant($"{Colors[i % Colors.Length]} {start:0.####}% {at:0.####}%");
+            });
+            return $"background:conic-gradient({string.Join(",", stops)})";
+        }
+    }
+}

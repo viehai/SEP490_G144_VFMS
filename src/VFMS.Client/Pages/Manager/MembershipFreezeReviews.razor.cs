@@ -17,7 +17,7 @@ public partial class MembershipFreezeReviews : IDisposable
     [Inject] private IJSRuntime JS { get; set; } = default!;
 
     private readonly CancellationTokenSource _lifetime = new();
-    private const int PageSize = 20;
+    private const int PageSize = 10;
     private readonly RejectMembershipFreezeRequestValidator _rejectValidator = new();
     private PagedResponse<MembershipFreezeReviewSummaryResponse>? _page;
     private MembershipFreezeReviewDetailResponse? _detail;
