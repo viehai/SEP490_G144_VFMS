@@ -145,6 +145,15 @@
                            class="inline-flex min-h-[44px] items-center rounded-lg border border-vfms-primary px-5 py-2 text-sm font-semibold text-vfms-primary hover:bg-vfms-primary-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary">
                             Xem chi tiết
                         </a>
+                        @if (membership.ComponentType == "YOGA" && membership.Status == MembershipStatuses.Expired)
+                        {
+                            @* Yoga plans are not extended: buy a new one (plans of this level and above). *@
+                            <a href="@VFMS.Client.Pages.Member.MyYogaBookings.BuyNewHref(membership.YogaDifficultyLevel)"
+                               aria-label="Mua gói yoga mới thay cho @membership.PlanName"
+                               class="inline-flex min-h-[44px] items-center rounded-lg bg-vfms-primary px-5 py-2 text-sm font-semibold text-white hover:bg-vfms-primary-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary">
+                                Mua gói mới
+                            </a>
+                        }
                         @if (option is not null)
                         {
                             <button type="button"

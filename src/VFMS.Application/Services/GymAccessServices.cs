@@ -23,6 +23,14 @@ internal static class MembershipRules
             .OrderByDescending(m => m.EndDate)
             .FirstOrDefault();
 
+    /// <summary>
+    /// TC-YEXP (option B): a yoga booking counts on a day only while the member has a usable yoga plan that covers the
+    /// class level on that day. Otherwise the booking is on hold: the mat stays theirs, but they can't attend until they buy a new plan.
+    /// </summary>
+    public static bool CoversYogaClass(IEnumerable<MemberMembership> memberships, string? classLevel, DateOnly day) =>
+        Usable(memberships.Where(m => VFMS.Contracts.Yoga.Validators.YogaRules.PlanCovers(m.PackageComponent.YogaDifficultyLevel, classLevel)),
+            day, ComponentType.YOGA) is not null;
+
     /// <summary>Only GYM memberships open the gym: a yoga-only plan books yoga classes but never passes check-in.</summary>
     public static List<MemberMembership> Gym(IEnumerable<MemberMembership> memberships) =>
         memberships.Where(m => m.PackageComponent.ComponentType == ComponentType.GYM).ToList();

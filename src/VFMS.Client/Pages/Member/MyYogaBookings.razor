@@ -46,7 +46,7 @@
                 <ul class="space-y-3" aria-label="Lớp yoga sắp tới, buổi gần nhất ở trên cùng">
                     @foreach (var b in ordered)
                     {
-                        var first = b == ordered[0];
+                        var first = b == ordered.FirstOrDefault(o => !o.OnHold);   // the next class the member can attend
                         var when = Countdown(b);
                         <li @key="b.BookingId" class="@(first ? "rounded-xl border-2 border-[#B83A3A] bg-white p-5 shadow-sm" : Ui.Card)">
                             @if (first)
@@ -66,11 +66,22 @@
                                 <div class="min-w-0 flex-1 space-y-1">
                                     <div class="flex flex-wrap items-center gap-2">
                                         <a href="@VFMS.Client.Components.Memberships.YogaClassCard.ScheduleLink(b.YogaClassId, b.NextDate)" class="@($"font-bold hover:text-[#B83A3A] hover:underline underline-offset-4 {(first ? "text-lg" : "text-base")}")">@b.ClassName</a>
-                                        <StatusBadge Status="@b.Status" Label="Đã đặt" />
+                                        <StatusBadge Status="@(b.OnHold ? "Pending" : b.Status)" Label="@(b.OnHold ? "Tạm giữ" : "Đã đặt")" />
                                     </div>
-                                    <p class="@($"font-semibold {(when.Soon ? "text-[#B45309]" : "text-[#242424]")} {(first ? "text-base" : "text-sm")}")">
-                                        @when.Text · @b.StartTime.ToString("HH:mm")–@b.EndTime.ToString("HH:mm")
-                                    </p>
+                                    @if (b.OnHold)
+                                    {
+                                        <p id="hold-@b.BookingId" class="flex items-start gap-1.5 text-sm font-semibold text-[#B45309]">
+                                            <svg aria-hidden="true" class="mt-0.5 h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M10 9v6M14 9v6"/></svg>
+                                            <span>Gói yoga của bạn đã hết hạn nên chỗ đang được tạm giữ. Mua gói mới để tiếp tục tham gia lớp này.</span>
+                                        </p>
+                                        <p class="text-sm text-[#242424]">@b.StartTime.ToString("HH:mm")–@b.EndTime.ToString("HH:mm")</p>
+                                    }
+                                    else
+                                    {
+                                        <p class="@($"font-semibold {(when.Soon ? "text-[#B45309]" : "text-[#242424]")} {(first ? "text-base" : "text-sm")}")">
+                                            @when.Text · @b.StartTime.ToString("HH:mm")–@b.EndTime.ToString("HH:mm")
+                                        </p>
+                                    }
                                     <p class="text-sm text-[#6F6966]">
                                         @VFMS.Client.Components.Memberships.YogaClassCard.DayName(b.NextDate) @b.NextDate.ToString("dd/MM/yyyy") · Phòng @b.StudioName · @(b.MatNumber is { } mat ? $"Thảm số {mat}" : "Thảm do phòng tập xếp")
                                     </p>
@@ -85,6 +96,11 @@
                                 }
                                 else
                                 {
+                                    @if (b.OnHold)
+                                    {
+                                        <a href="@BuyNewHref(b.DifficultyLevel)" aria-describedby="hold-@b.BookingId"
+                                           class="inline-flex min-h-[44px] items-center rounded-lg bg-[#B83A3A] px-5 py-2 text-sm font-semibold text-white hover:bg-[#9F2F2F] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B83A3A]">Mua gói mới</a>
+                                    }
                                     <button type="button" class="@Ui.DangerButton" disabled="@_working" @onclick="() => _confirmId = b.BookingId">Hủy đặt chỗ</button>
                                 }
                             </div>
@@ -237,4 +253,8 @@
         catch (ApiException ex) { _error = ex.Message; _late = null; }
         finally { _working = false; }
     }
+
+    /// <summary>Plans that book this level (no class id: the member already holds the booking, so checkout must not offer to book it again).</summary>
+    public static string BuyNewHref(string? level) =>
+        VFMS.Contracts.Yoga.Validators.YogaRules.IsDifficulty(level) ? $"/membership-plans?type=yoga&level={level}" : "/membership-plans?type=yoga";
 }

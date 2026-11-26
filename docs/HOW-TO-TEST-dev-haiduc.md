@@ -53,7 +53,7 @@ dotnet user-secrets set "Gemini:ApiKey" "YOUR_KEY" --project src/VFMS.API
 | Member (yoga only) | yoga1@example.com | Test@1234 |
 | Member (yoga Trung bình) | yoga2@example.com | Test@1234 |
 | Member (gym plan expired) | expired.gym@example.com | Test@1234 |
-| Member (yoga plan expired, class still booked) | expired.yoga@example.com | Test@1234 |
+| Member (yoga plan expired, booking on hold) | expired.yoga@example.com | Test@1234 |
 
 Member user id: `b7a2e8b5-23e2-4415-8679-357bb5c33ad3`. Use an InPrivate window to be signed in as two roles at once.
 
@@ -68,7 +68,7 @@ Demo Trung Bình (`yoga2@example.com`, phone `0900000022`) was added on 25/11/20
 | Account | Data | What to try | What you should see |
 |---|---|---|---|
 | Demo Gym Hết Hạn, `expired.gym@example.com`, phone `0900000023` | Gym "3 Tháng" (order ORD-20261125-BD35C7BB7890), membership 21, **Expired**, 20/08 to 17/11/2026 | `/kiosk` with its `/my-qr` code; front desk `/staff/check-ins`, search `0900000023`; `/my-memberships` | Kiosk: "Từ chối truy cập… Trạng thái gói: Hết hạn." Checked through the API. The front desk and `/my-memberships` should also show the plan as expired; not checked on screen. |
-| Demo Yoga Hết Hạn, `expired.yoga@example.com`, phone `0900000024` | "Yoga Trung bình 1 Tháng" (order ORD-20261125-42E6881D53E2), membership 22, **Expired**, 25/10 to 24/11/2026; booked **Vinyasa Dynamic** on mat 2 (booking 9, booked 20/11, while the plan was valid) | `/yoga/my-bookings`; `/yoga/schedule`; book another class; the instructor's roster on 01/12 (`/pt/yoga`, `yoga@test.vn`) | The open rule TC-YEXP (section 5): Vinyasa still under **Sắp tới** with mat 2; the timetable offers **Mua gói và đăng ký** on other classes (`api/yoga/my-plan` says no plan); booking is refused with `MEMBERSHIP_REQUIRED` (these three checked through the API). The roster part is covered by the automated test, not checked on this account. |
+| Demo Yoga Hết Hạn, `expired.yoga@example.com`, phone `0900000024` | "Yoga Trung bình 1 Tháng" (order ORD-20261125-42E6881D53E2), membership 22, **Expired**, 25/10 to 24/11/2026; booked **Vinyasa Dynamic** on mat 2 (booking 9, booked 20/11, while the plan was valid) | `/yoga/my-bookings`; `/my-memberships`; `/yoga/schedule`; book another class; the instructor's roster of session 18 (Vinyasa, 01/12 18:30, `/pt/yoga`, `yoga@test.vn`) | TC-YEXP / GBR-Y13 hold (section 5): under **Sắp tới**, Vinyasa keeps mat 2 with the **Tạm giữ** badge, the hold note and **Mua gói mới** (plans of level Trung bình); `/my-memberships` shows **Mua gói mới** on the expired plan; on the roster the member shows "Tạm giữ chỗ · gói yoga đã hết hạn" with no Có mặt / Vắng buttons, and a QR scan is refused (`YOGA_PLAN_ON_HOLD`); booking another class is refused with `MEMBERSHIP_REQUIRED`. Checked on 26/11 through the API (bookings `onHold: true`, level Intermediate; memberships level Intermediate; roster session 18 `onHold: true` for this member, `false` for Demo Trung Bình). Not yet looked at on screen. Buying a new Trung bình or Nâng cao plan lifts the hold, and the demo then stops working; reset the dates with the SQL below and cancel the new membership. |
 
 To make them expired again after testing a renewal, rerun (SQL Server needs `-I`):
 ```powershell
@@ -222,7 +222,13 @@ How to tell which plan you got:
 
 **My next class, `/yoga/my-bookings` → Sắp tới (25/11/2026):** classes are sorted by their next session. The nearest one is a highlighted card, "Buổi yoga tiếp theo của bạn", with a red date block (weekday, day, month), a countdown in gym time ("Hôm nay · còn 3 giờ" or "Ngày mai" in amber; "Còn 6 ngày"), the time, the studio and the mat ("Thảm do phòng tập xếp" when none). Other bookings use the same layout in plain cards. Cancelling works as before. Try it as Demo Trung Bình (section 2): Vinyasa Dynamic, Thứ 3 01/12, Studio A, mat 1.
 
-**A booked class when the plan expires (open rule):** today the booking stays, the member stays on the roster and can be marked present, a new booking is refused (`MEMBERSHIP_REQUIRED`), and a waitlisted member with an expired plan is still offered a seat they can't take. The test cases and the three options for the coming rule are in `docs/BR-pending-yoga-plan-levels.md` (TC-YEXP); the test `CurrentBehaviour_BookingMadeWithValidPlanSurvivesThePlanExpiring` pins today's behaviour.
+**A booked class when the plan expires (decided 26/11/2026, GBR-Y13, "hold"):** the booking keeps its mat but is **on hold** on any session date the member has no usable yoga plan covering the class level.
+- **Member, `/yoga/my-bookings` → Sắp tới:** badge **Tạm giữ**, note "Gói yoga của bạn đã hết hạn nên chỗ đang được tạm giữ…", no countdown, and **Mua gói mới** (opens `/membership-plans?type=yoga&level=…`, only plans that book that level, banner "Các gói dưới đây đăng ký được lớp …"). A held class is never the highlighted "Buổi yoga tiếp theo".
+- **Instructor roster:** the member shows "Tạm giữ chỗ · gói yoga đã hết hạn. Không điểm danh, không tính vắng." instead of Có mặt / Vắng; the roster submits without a mark for them, and no row is written (not counted absent). A QR scan, or a "Có mặt" sent anyway, is refused with `YOGA_PLAN_ON_HOLD`.
+- **Late cancel while held:** not a no-show. **Waitlist:** a member without a covering plan is skipped when a seat frees.
+- **`/my-memberships`:** an expired yoga plan has **Mua gói mới** (yoga plans are never extended), filtered to its level; an old plan without a level opens the plain yoga tab.
+- **Buying a covering plan** lifts the hold at once (nothing is stored). A lower-level plan does not.
+- Test cases TC-YEXP-01…07 are in `docs/BR-pending-yoga-plan-levels.md`; the automated test is `YogaPersistenceTests.ExpiredYogaPlanHoldsTheBookingUntilANewPlanIsBought`. Demo account: `expired.yoga@example.com`.
 
 **Book (Member, on `/yoga/schedule`):**
 - Each session shows **Đặt chỗ**, or **Vào danh sách chờ (miễn phí)** when the class is full, when your yoga plan's level covers the class (see "Yoga plan levels" above for the other cases).
@@ -318,7 +324,7 @@ Try it: book a mat someone else just took, cancel a yoga booking less than 2 hou
   Expected result now (25/11/2026, after merging main again):
   - Unit: 722 pass.
   - Client: 538 pass.
-  - Integration: 630 pass, 3 fail, 50 skipped.
+  - Integration: 630 pass, 3 fail, 50 skipped. `WalkInCustomerOnboardingApiTests` (teammate's concurrency tests) failed once on 26/11 while Visual Studio was running and passed on rerun.
 - **PR #21 to main is open (25/11/2026):** https://github.com/viehai/SEP490_G144_VFMS/pull/21. Once it is merged, teammates who pull main get the migration `YogaPlanLevelReplacesClassType`. It drops `PackageComponents.YogaClassTypeId` and `YogaWaitlists.YogaClassTypeId`, so code or tests that still use `YogaClassType` on a plan no longer build, and yoga plans in test seeds need `YogaDifficultyLevel`.
 
 - **Yoga plans can't be renewed yet.** Renewal (`/my-memberships` → gia hạn) still only covers gym plans, so a yoga member buys a new yoga plan instead; it starts after the current one ends.

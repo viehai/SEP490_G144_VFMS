@@ -17,6 +17,8 @@ public sealed record MembershipSummaryResponse(
 {
     public int? DurationValue { get; init; }
     public MembershipDurationUnit? DurationUnit { get; init; }
+    /// <summary>Yoga plans only; the "Mua gói mới" link on an expired yoga plan filters plans by it.</summary>
+    public string? YogaDifficultyLevel { get; init; }
 }
 
 public sealed record MembershipActivationWindow(DateOnly PurchasedOn, DateOnly EarliestDate, DateOnly Deadline);

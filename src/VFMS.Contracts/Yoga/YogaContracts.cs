@@ -140,7 +140,7 @@ public sealed record CancelYogaBookingRequest(bool ConfirmLateCancellation = fal
 /// <summary>UC-40: a booked class with its next session (date and times are gym-local).</summary>
 public sealed record MyYogaBookingResponse(
     int BookingId, int YogaClassId, string ClassName, DateOnly NextDate, TimeOnly StartTime, TimeOnly EndTime,
-    string StudioName, int? MatNumber, string Status);
+    string StudioName, int? MatNumber, string Status, bool OnHold = false, string? DifficultyLevel = null);   // OnHold: TC-YEXP
 
 /// <summary>UC-40 Past tab: one attended-or-missed session. Result is Attended, No-show or Not recorded.</summary>
 public sealed record MyYogaPastSessionResponse(
@@ -157,7 +157,8 @@ public sealed record MyYogaBookingsResponse(
 // ── Attendance (UC-42 Take Yoga Attendance) ──
 
 /// <summary>Mark is Attended, No-show or null (not marked yet).</summary>
-public sealed record YogaAttendanceEntry(int BookingId, string MemberUserId, string MemberName, int? MatNumber, string? Mark);
+/// <summary>OnHold: the member's yoga plan has ended, so they can't be marked present and are not counted absent (TC-YEXP).</summary>
+public sealed record YogaAttendanceEntry(int BookingId, string MemberUserId, string MemberName, int? MatNumber, string? Mark, bool OnHold = false);
 
 public sealed record YogaAttendanceRosterResponse(
     int SessionId, string ClassName, DateOnly Date, TimeOnly StartTime, DateTime? SubmittedAt, bool SubmittedLate,

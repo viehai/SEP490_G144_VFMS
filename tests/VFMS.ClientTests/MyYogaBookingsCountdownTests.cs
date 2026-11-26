@@ -21,4 +21,12 @@ public sealed class MyYogaBookingsCountdownTests
             new TimeOnly(hour, minute).AddHours(1), "Lotus", 3, "Confirmed");
         Assert.Equal((text, soon), MyYogaBookings.Countdown(booking, Now));
     }
+
+    // "Mua gói mới" on a held booking or an expired yoga plan: plans of that level, never a class (it is already booked).
+    [Theory]
+    [InlineData("Intermediate", "/membership-plans?type=yoga&level=Intermediate")]
+    [InlineData(null, "/membership-plans?type=yoga")]
+    [InlineData("Unknown", "/membership-plans?type=yoga")]
+    public void BuyNewLinksToPlansOfTheLevel(string? level, string href) =>
+        Assert.Equal(href, MyYogaBookings.BuyNewHref(level));
 }
