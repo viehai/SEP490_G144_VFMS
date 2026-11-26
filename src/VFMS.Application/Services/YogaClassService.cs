@@ -255,6 +255,10 @@ public sealed class YogaClassService : IYogaClassService
         var yogaClass = await _repository.GetClassAsync(classId, cancellationToken);
         if (yogaClass is null)
             return ClassNotFound<YogaWeeklySessionsResponse>();
+        if (request.Days.Distinct().Count() != yogaClass.SessionsPerWeek)   // the class says how many sessions a week it has
+            return Result<YogaWeeklySessionsResponse>.Failure(
+                $"Lớp này có {yogaClass.SessionsPerWeek} buổi/tuần: hãy chọn đúng {yogaClass.SessionsPerWeek} ngày trong tuần.",
+                "YOGA_SESSION_DAYS_COUNT");
 
         var now = _clock.GetUtcNow().UtcDateTime;
         var earliest = yogaClass.ClassStatus == YogaClassStatus.Draft ? DateOnly.MinValue : YogaTime.Today(_clock).AddDays(PublishLeadDays);   // GBR-77

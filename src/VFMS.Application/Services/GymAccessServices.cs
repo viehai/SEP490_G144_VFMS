@@ -23,6 +23,14 @@ internal static class MembershipRules
             .OrderByDescending(m => m.EndDate)
             .FirstOrDefault();
 
+    /// <summary>
+    /// TC-YEXP (option B): a yoga booking counts on a day only while the member has a usable yoga plan that covers the
+    /// class level on that day. Otherwise the booking is on hold: the mat stays theirs, but they can't attend until they buy a new plan.
+    /// </summary>
+    public static bool CoversYogaClass(IEnumerable<MemberMembership> memberships, string? classLevel, DateOnly day) =>
+        Usable(memberships.Where(m => VFMS.Contracts.Yoga.Validators.YogaRules.PlanCovers(m.PackageComponent.YogaDifficultyLevel, classLevel)),
+            day, ComponentType.YOGA) is not null;
+
     /// <summary>Only GYM memberships open the gym: a yoga-only plan books yoga classes but never passes check-in.</summary>
     public static List<MemberMembership> Gym(IEnumerable<MemberMembership> memberships) =>
         memberships.Where(m => m.PackageComponent.ComponentType == ComponentType.GYM).ToList();
@@ -56,7 +64,7 @@ internal static class GymAccessMessages
     public const string Denied =
         "Từ chối truy cập: không tìm thấy gói hội viên còn hiệu lực hoặc không xác thực được khuôn mặt/mã QR. Vui lòng liên hệ quầy lễ tân.";   // MSG-36
     public const string DeniedCode = "ACCESS_DENIED";
-    /// <summary>Kiosk scan matched no member (face not enrolled, QR token used, expired or replaced).</summary>
+    /// <summary>Kiosk scan matched no member (face not enrolled, QR token expired or replaced).</summary>
     public const string NotRecognisedCode = "SCAN_NOT_RECOGNISED";
 
     /// <summary>MSG-36 with the membership status, as UC "Check In" step 3 asks.</summary>
@@ -83,8 +91,6 @@ internal static class GymAccessMessages
 
 public sealed class MemberQrService : IMemberQrService
 {
-    public static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(2);
-
     private readonly ICheckInRepository _repository;
     private readonly TimeProvider _clock;
 
@@ -93,6 +99,9 @@ public sealed class MemberQrService : IMemberQrService
         _repository = repository;
         _clock = clock;
     }
+
+    /// <summary>A code lasts until the gym day ends (midnight gym time), so check-in, check-out and yoga all use one code.</summary>
+    public DateTime EndOfGymDayUtc() => YogaTime.ToUtc(YogaTime.Today(_clock).AddDays(1), TimeOnly.MinValue);
 
     public async Task<Result<MemberQrResponse>> IssueAsync(string userId, CancellationToken cancellationToken = default)
     {
@@ -104,20 +113,27 @@ public sealed class MemberQrService : IMemberQrService
             UserId = userId,
             QRToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)),
             GeneratedAt = now,
-            ExpiresAt = now + Lifetime
+            ExpiresAt = EndOfGymDayUtc()
         };
         _repository.Add(code);
         await _repository.SaveChangesAsync(cancellationToken);
         return Result<MemberQrResponse>.Success(new MemberQrResponse(code.QRToken, code.ExpiresAt), 201);
     }
 
+    public async Task<Result<MemberQrResponse>> GetOrIssueAsync(string userId, CancellationToken cancellationToken = default)
+    {
+        var now = _clock.GetUtcNow().UtcDateTime;
+        var live = (await _repository.GetActiveQrCodesAsync(userId, null, cancellationToken))
+            .Where(code => code.ExpiresAt > now).MaxBy(code => code.GeneratedAt);
+        return live is null
+            ? await IssueAsync(userId, cancellationToken)
+            : Result<MemberQrResponse>.Success(new MemberQrResponse(live.QRToken, live.ExpiresAt));
+    }
+
     public async Task<string?> RedeemAsync(string token, CancellationToken cancellationToken = default)
     {
         var code = (await _repository.GetActiveQrCodesAsync(null, token, cancellationToken)).FirstOrDefault();
-        if (code is null || code.ExpiresAt <= _clock.GetUtcNow().UtcDateTime)
-            return null;
-        code.IsActive = false;   // single use: saved together with the caller's change
-        return code.UserId;
+        return code is null || code.ExpiresAt <= _clock.GetUtcNow().UtcDateTime ? null : code.UserId;
     }
 }
 
@@ -188,7 +204,7 @@ public sealed class CheckInService : ICheckInService
 
     public async Task<Result<KioskScanResultResponse>> KioskScanAsync(KioskScanRequest request, string? selfUserId = null, CancellationToken cancellationToken = default)
     {
-        // Identify once: a QR token is single-use, so the in/out decision must not redeem it twice.
+        // Identify once, then decide in or out.
         var (userId, method) = await IdentifyAsync(request, cancellationToken);
         if (userId is null || (selfUserId is not null && userId != selfUserId))
             return Result<KioskScanResultResponse>.Failure(GymAccessMessages.Denied, GymAccessMessages.NotRecognisedCode, 403);
@@ -230,7 +246,7 @@ public sealed class CheckInService : ICheckInService
             open.Id, open.MemberUserId, name, open.CheckinTime, now, (int)(now - open.CheckinTime).TotalMinutes));
     }
 
-    /// <summary>The member behind a kiosk scan, or null (MSG-36). A matched face gets LastUsedAt; a QR token is used up.</summary>
+    /// <summary>The member behind a kiosk scan, or null (MSG-36). A matched face gets LastUsedAt.</summary>
     internal async Task<(string? UserId, CheckInMethod Method)> IdentifyAsync(KioskScanRequest request, CancellationToken cancellationToken)
     {
         if (request.QrToken is { Length: > 0 } token)

@@ -36,7 +36,7 @@ public sealed class YogaAttendanceService : IYogaAttendanceService
     {
         var session = await _repository.GetSessionAsync(sessionId, cancellationToken);
         return CanOpen(session, userId, isStaff)
-            ? Result<YogaAttendanceRosterResponse>.Success(ToResponse(session!))
+            ? Result<YogaAttendanceRosterResponse>.Success(ToResponse(session!, await OnHoldAsync(session!, cancellationToken)))
             : NotFound();
     }
 
@@ -49,9 +49,12 @@ public sealed class YogaAttendanceService : IYogaAttendanceService
             var booking = Roster(session).FirstOrDefault(b => b.MemberUserId == memberId);
             if (booking is null)
                 return Result<YogaAttendanceRosterResponse>.Failure(GymAccessMessages.Denied, GymAccessMessages.DeniedCode, 403);
+            var onHold = await OnHoldAsync(session, cancellationToken);
+            if (onHold.Contains(booking.Id))
+                return OnHoldFailure(booking.Member?.FullName);
             Mark(session, booking, YogaAttendanceStatus.Present, now);
             await _repository.SaveChangesAsync(cancellationToken);
-            return Result<YogaAttendanceRosterResponse>.Success(ToResponse(session, $"{booking.Member?.FullName} marked as attended."));
+            return Result<YogaAttendanceRosterResponse>.Success(ToResponse(session, onHold, $"{booking.Member?.FullName} marked as attended."));
         }, cancellationToken);
 
     public Task<Result<YogaAttendanceRosterResponse>> SubmitAsync(
@@ -61,18 +64,22 @@ public sealed class YogaAttendanceService : IYogaAttendanceService
             var roster = Roster(session);
             if (request.Marks.Any(m => roster.All(b => b.Id != m.BookingId)))
                 return Result<YogaAttendanceRosterResponse>.Failure("Có lượt đặt chỗ được điểm danh nhưng không thuộc danh sách buổi học này.", "NOT_ON_ROSTER", 400);
-            if (roster.Any(b => request.Marks.All(m => m.BookingId != b.Id) && RowOf(session, b) is null))   // GBR-87
+            // TC-YEXP: a booking on hold can't be marked present and is not counted absent, so it needs no mark.
+            var onHold = await OnHoldAsync(session, cancellationToken);
+            if (request.Marks.FirstOrDefault(m => m.Attended && onHold.Contains(m.BookingId)) is { } held)
+                return OnHoldFailure(roster.First(b => b.Id == held.BookingId).Member?.FullName);
+            if (roster.Any(b => !onHold.Contains(b.Id) && request.Marks.All(m => m.BookingId != b.Id) && RowOf(session, b) is null))   // GBR-87
                 return Result<YogaAttendanceRosterResponse>.Failure(
                     "Hãy điểm danh mọi hội viên đã đặt chỗ: Có mặt hoặc Vắng mặt.", "ROSTER_INCOMPLETE", 400);
 
-            foreach (var mark in request.Marks)
+            foreach (var mark in request.Marks.Where(m => !onHold.Contains(m.BookingId)))
                 Mark(session, roster.First(b => b.Id == mark.BookingId),
                     mark.Attended ? YogaAttendanceStatus.Present : YogaAttendanceStatus.NoShow, now);
             session.AttendanceSubmittedAt = now;   // closes the session; late when over 30 minutes after start (GBR-86)
             _repository.Add(AuditedWriter.Audit(userId, AuditActionType.Update, nameof(YogaAttendance), null,
                 newValue: $"Session={session.Id}; Marked={request.Marks.Count}; Late={SubmittedLate(session)}"));
             await _repository.SaveChangesAsync(cancellationToken);
-            return Result<YogaAttendanceRosterResponse>.Success(ToResponse(session, "Cập nhật điểm danh thành công."));   // MSG-03
+            return Result<YogaAttendanceRosterResponse>.Success(ToResponse(session, onHold, "Cập nhật điểm danh thành công."));   // MSG-03
         }, cancellationToken);
 
     /// <summary>Runs a roster change under the session lock, after the access, closed and timing checks.</summary>
@@ -128,7 +135,24 @@ public sealed class YogaAttendanceService : IYogaAttendanceService
         row.RecordedAt = now;
     }
 
-    private static YogaAttendanceRosterResponse ToResponse(YogaClassSchedule session, string? message = null) => new(
+    /// <summary>Roster bookings whose member has no usable yoga plan covering the class on the session date (TC-YEXP).</summary>
+    private async Task<HashSet<int>> OnHoldAsync(YogaClassSchedule session, CancellationToken cancellationToken)
+    {
+        // shortcut: one membership query per booked member; fine for a class of ~20 mats, batch it if rosters grow.
+        var held = new HashSet<int>();
+        foreach (var booking in Roster(session))
+            if (!MembershipRules.CoversYogaClass(await _repository.GetMembershipsAsync(booking.MemberUserId, cancellationToken),
+                    session.YogaClass.DifficultyLevel, session.ScheduledDate))
+                held.Add(booking.Id);
+        return held;
+    }
+
+    private static Result<YogaAttendanceRosterResponse> OnHoldFailure(string? memberName) =>
+        Result<YogaAttendanceRosterResponse>.Failure(
+            $"Gói yoga của {(string.IsNullOrWhiteSpace(memberName) ? "hội viên" : memberName)} đã hết hạn nên chỗ đang được tạm giữ. " +
+            "Hội viên cần mua gói mới để tham gia buổi học.", "YOGA_PLAN_ON_HOLD", 403);
+
+    private static YogaAttendanceRosterResponse ToResponse(YogaClassSchedule session, IReadOnlySet<int> onHold, string? message = null) => new(
         session.Id, session.YogaClass.ClassName, session.ScheduledDate, session.StartTime,
         session.AttendanceSubmittedAt, SubmittedLate(session),
         Roster(session).Select(b => new YogaAttendanceEntry(b.Id, b.MemberUserId, b.Member?.FullName ?? string.Empty, b.MatNumber,
@@ -137,7 +161,7 @@ public sealed class YogaAttendanceService : IYogaAttendanceService
                 YogaAttendanceStatus.Present => "Attended",
                 YogaAttendanceStatus.NoShow or YogaAttendanceStatus.Absent => "No-show",
                 _ => null
-            })).ToList(),
+            }, onHold.Contains(b.Id))).ToList(),
         message);
 
     private static DateTime Start(YogaClassSchedule s) => YogaTime.ToUtc(s.ScheduledDate, s.StartTime);

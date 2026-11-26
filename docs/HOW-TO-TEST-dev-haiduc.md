@@ -37,7 +37,7 @@ dotnet user-secrets set "Gemini:ApiKey" "YOUR_KEY" --project src/VFMS.API
 ```
 
 - Get a key at https://aistudio.google.com/app/apikey, then restart the API.
-- The model is `gemini-3.5-flash-lite` (`Gemini:Model` in appsettings.json). `gemini-2.0-flash` and `gemini-2.5-flash` return 404 for new keys.
+- The model is `gemini-3.5-flash-lite` (`Gemini:Model` in appsettings.json), with `gemini-3.5-flash` as the backup (`Gemini:FallbackModel`; empty turns it off). Each call may take up to 60 s (`Gemini:TimeoutSeconds`), and the member's page waits up to 130 s. `gemini-2.0-flash` and `gemini-2.5-flash` return 404 for new keys.
 - Never put the key in `appsettings*.json`; those files are committed.
 
 ## 2. Test accounts (local VfmsDb)
@@ -52,6 +52,8 @@ dotnet user-secrets set "Gemini:ApiKey" "YOUR_KEY" --project src/VFMS.API
 | Member (demo)  | demo1@example.com, demo2@example.com, demo3@example.com | Test@1234 |
 | Member (yoga only) | yoga1@example.com | Test@1234 |
 | Member (yoga Trung bình) | yoga2@example.com | Test@1234 |
+| Member (gym plan expired) | expired.gym@example.com | Test@1234 |
+| Member (yoga plan expired, booking on hold) | expired.yoga@example.com | Test@1234 |
 
 Member user id: `b7a2e8b5-23e2-4415-8679-357bb5c33ad3`. Use an InPrivate window to be signed in as two roles at once.
 
@@ -60,6 +62,18 @@ The three demo members (Demo Hội Viên Một / Hai / Ba, phones `0900000011`�
 Demo Yoga (`yoga1@example.com`, phone `0900000021`) has only a yoga plan. It was registered on 16/11/2026 and bought "Yoga 1 Tháng" (600.000 ₫, 30 days) on the home page with cash; staff confirmed the cash on `/staff/membership-cash-receipt` (order ORD-20261116-72A8729070BF). The yoga plan is valid 16/11 to 15/12/2026, and the account has booked Hatha Morning on mat 1.
 
 Demo Trung Bình (`yoga2@example.com`, phone `0900000022`) was added on 25/11/2026 to test yoga plan levels, through the app's own API (no SQL, no DbInitializer): registered, bought **Yoga Trung bình 1 Tháng** (plan 6, level Trung bình, 800.000 ₫, 30 days, created on `/manager/membership-plans`) with cash (order ORD-20261125-30BF9D34F6A1, confirmed by staff), activated 25/11, valid to 24/12/2026, and booked Vinyasa Dynamic on mat 1 from the timetable. On `/yoga/schedule` it sees **Đặt chỗ** on Cơ bản and Trung bình classes and the "Mua gói có độ khó cao hơn…" note with **Mua gói** on Ashtanga Flow (Nâng cao).
+
+**Demo accounts for cases you can't reach by waiting (25/11/2026).** Both were made through the app's own API: registered, bought a plan with cash, cash confirmed by staff, activated 25/11. Only the dates were then moved into the past with SQL on the local VfmsDb, because no screen or API can make a plan expire early. They exist only in this local database, not in DbInitializer. Their orders are dated 25/11 although the plans run from earlier dates, so the transaction history shows a purchase after the plan started; that comes from the SQL, not from a bug. Both accounts keep the **Member** role (nothing in the app removes it when a plan expires).
+
+| Account | Data | What to try | What you should see |
+|---|---|---|---|
+| Demo Gym Hết Hạn, `expired.gym@example.com`, phone `0900000023` | Gym "3 Tháng" (order ORD-20261125-BD35C7BB7890), membership 21, **Expired**, 20/08 to 17/11/2026 | `/kiosk` with its `/my-qr` code; front desk `/staff/check-ins`, search `0900000023`; `/my-memberships` | Kiosk: "Từ chối truy cập… Trạng thái gói: Hết hạn." Checked through the API. The front desk and `/my-memberships` should also show the plan as expired; not checked on screen. |
+| Demo Yoga Hết Hạn, `expired.yoga@example.com`, phone `0900000024` | "Yoga Trung bình 1 Tháng" (order ORD-20261125-42E6881D53E2), membership 22, **Expired**, 25/10 to 24/11/2026; booked **Vinyasa Dynamic** on mat 2 (booking 9, booked 20/11, while the plan was valid) | `/yoga/my-bookings`; `/my-memberships`; `/yoga/schedule`; book another class; the instructor's roster of session 18 (Vinyasa, 01/12 18:30, `/pt/yoga`, `yoga@test.vn`) | TC-YEXP / GBR-125 hold (section 5): under **Sắp tới**, Vinyasa keeps mat 2 with the **Tạm giữ** badge, the hold note and **Mua gói mới** (plans of level Trung bình); `/my-memberships` shows **Mua gói mới** on the expired plan; on the roster the member shows "Tạm giữ chỗ · gói yoga đã hết hạn" with no Có mặt / Vắng buttons, and a QR scan is refused (`YOGA_PLAN_ON_HOLD`); booking another class is refused with `MEMBERSHIP_REQUIRED`. Checked on 26/11 through the API (bookings `onHold: true`, level Intermediate; memberships level Intermediate; roster session 18 `onHold: true` for this member, `false` for Demo Trung Bình). Also checked on screen on 26/11: Sắp tới, **Mua gói mới** → plans of level Trung bình (banner "Các gói dưới đây đăng ký được lớp Trung bình."), and `/my-memberships`. The instructor roster was checked through the API only. Buying a new Trung bình or Nâng cao plan lifts the hold, and the demo then stops working; reset the dates with the SQL below and cancel the new membership. |
+
+To make them expired again after testing a renewal, rerun (SQL Server needs `-I`):
+```powershell
+sqlcmd -S localhost -d VfmsDb -E -I -Q "UPDATE MemberMemberships SET StartDate='2026-08-20', EndDate='2026-11-17', MembershipStatus='Expired' WHERE Id=21; UPDATE MemberMemberships SET StartDate='2026-10-25', EndDate='2026-11-24', MembershipStatus='Expired' WHERE Id=22;"
+```
 
 Data that already exists:
 - The member has "Gym 1 Month" (order ORD-20261112-367A858627B3, paid in cash), valid 12/11 to 11/12/2026, and "Yoga 1 Tháng" (order ORD-20261120-D5FCE39ABCD6, paid in cash, confirmed by staff), valid 20/11 to 19/12/2026.
@@ -92,20 +106,21 @@ Open to Staff, Manager, Customer and Member.
 1. Open `/kiosk` and allow camera access. The camera starts by itself; the face models take a few seconds to load the first time ("Đang mở camera và tải mô hình nhận diện…"). If the browser refuses the camera, press **Bật camera**.
 2. While it shows "Đang chờ khuôn mặt hoặc mã QR…", stand in front of the camera **or** hold a QR code in the middle of the frame. It checks the camera a few times a second: QR first, then face.
 3. After a successful scan it shows "Mời bạn rời khỏi khung hình để người tiếp theo quét." and waits until that person (same face) or that QR code has been out of view for about 1.5 seconds. **Step out of the frame before the next scan**; otherwise the same person would be checked straight back out.
-4. After a refused scan it waits 3 seconds and tries again. A QR code it already sent is never sent twice.
+4. After a refused scan it waits 3 seconds and tries again. A QR code it already sent is not sent again while it stays in view; once the code leaves the frame it can be scanned again (for example to check out).
+5. **Beep (25/11/2026):** one short beep on check-in, two on check-out (WebAudio, no sound file). The kiosk opens by itself, so some browsers keep sound off until someone touches the screen or presses a key once; after that it beeps. A refused scan makes no sound.
 
 Test it in Edge with a real camera: check in with your face, step away, come back: you are checked out. Try it with a QR from `/my-qr` on a phone too.
 
 Things that look like errors but are the rules:
 - **No wait between visits (23/11/2026):** the old 15-minute anti-passback rule is gone. A member can check in again right after checking out. Checking in while already inside is refused (409, "Hội viên này đang ở trong phòng tập. Hãy check-out trước.").
-- **QR codes** work once, expire after **2 minutes**, and are **replaced each time `/my-qr` is opened**. To scan a photo of the code: open `/my-qr` once, take the photo, don't reload, and scan within 2 minutes.
+- **QR codes (25/11/2026)** work **all gym day**, until 24:00 gym time, for check-in, check-out and yoga attendance; scanning does not use them up. Opening `/my-qr` again shows **the same code** (`GET /api/my-qr`). **Tạo mã mới** (`POST /api/my-qr`) replaces it, and the old one stops working. The next day `/my-qr` gives a new code. To test: open `/my-qr`, note the first characters of the text code, reload: they are the same; check in and then check out at `/kiosk` with that one code.
 - "Từ chối truy cập: không tìm thấy gói hội viên còn hiệu lực hoặc không xác thực được khuôn mặt/mã QR…" means one of these:
-  - the face didn't match, or the QR was used, expired or replaced (code `SCAN_NOT_RECOGNISED`; for a QR the kiosk adds how to make a new code);
+  - the face didn't match, or the QR expired (after 24:00) or was replaced by Tạo mã mới (code `SCAN_NOT_RECOGNISED`; for a QR the kiosk adds how to make a new code);
   - the person has no usable membership (code `ACCESS_DENIED`, and the message adds "Trạng thái gói: …", for example "Chưa có gói Gym").
 
 ### Member pages
 
-- `/my-qr` (Customer, Member): the check-in QR image, its expiry time and a **Tạo mã mới** button.
+- `/my-qr` (Customer, Member): the check-in QR image, "Dùng được đến hết ngày dd/MM/yyyy" and a **Tạo mã mới** button.
 - `/face-id` (Customer, Member): consent, camera capture, delete.
 - The profile page's **TIỆN ÍCH HỘI VIÊN** box links to these pages, the kiosk, the yoga schedule and the workout plan.
 
@@ -130,7 +145,7 @@ Things that look like errors but are the rules:
 - **Kiosk endpoints:**
   - `POST /api/kiosk/scan` checks in or out on its own.
   - `POST /api/kiosk/check-in` and `POST /api/kiosk/check-out` still exist.
-  - Body for all three: `{ "qrToken": "<token from POST /api/my-qr>" }` or `{ "descriptor": [128 numbers] }`.
+  - Body for all three: `{ "qrToken": "<token from GET /api/my-qr>" }` or `{ "descriptor": [128 numbers] }`.
 
 ## 4. Workout plan: `/workout` (Member)
 
@@ -145,7 +160,13 @@ Then try the rest:
 
 How to tell which plan you got:
 - **AI plan:** its name follows your goal, and the header doesn't say "Giáo án tiêu chuẩn".
-- **Standard plan:** shows "Dịch vụ AI tạm thời không khả dụng…". It means there's no key, Gemini failed, or it took longer than 25 s. The API log line `Gemini returned HTTP …` gives the reason.
+- **Standard plan:** shows "Dịch vụ AI tạm thời không khả dụng…". It means there's no key, or both models failed or took longer than 60 s each. The API log line `Gemini returned HTTP …` now includes Google's own error message.
+- **Why AI plans kept failing (25/11/2026):** the key was fine. Google answered **HTTP 503 "This model is currently experiencing high demand"** for `gemini-3.5-flash-lite`, and the app gave up on the first error, so AI Studio counted the calls with 0 successes. The first fix retries a busy reply (500, 502, 503 or 504) up to 3 times, 1 s then 2 s apart; with only that fix, other errors and a timeout fell back at once (for today's behaviour see **Backup model** below). Right after the first fix, the first plan still fell back after 3 busy replies, and the second came from Gemini on its first attempt. So retries help only while a busy spell is short; a retry rescuing a plan is covered by `GeminiWorkoutPlanGeneratorTests` but has not yet been seen against the real API. In direct calls `gemini-3.5-flash` answered in about 5 s, and one `gemini-3.5-flash-lite` call took 22 s, close to the old 25 s timeout.
+- **Backup model (25/11/2026, later):** when the main model stays busy (3 busy replies), times out, can't be reached or is unknown (404), the plan is asked once more from `gemini-3.5-flash`; a bad key, a 429 quota error or an unusable reply still falls back at once. A plan from the backup shows "gemini-3.5-flash" next to "Tạo lúc" on `/workout-plan`. Live check through the API as `member@test.vn`: lite answered 503 three times, then flash returned an AI plan in about 30 s in total. With the earlier 40 s limit, the same flow fell back because flash took longer than 40 s, so the limit is now 60 s. A plan can therefore take up to about 2 minutes before the standard plan appears. Logs: `Gemini model … is unavailable; trying gemini-3.5-flash.`
+- **Machines on each exercise (26/11/2026):** each plan row shows "Máy: {name} · {code}" when the exercise uses a machine (`PlanItem.EquipmentId`, no new column). For an AI plan Gemini picks the machine from the gym's working machines (one per machine name is sent, so the prompt stays short); an unknown or broken machine id is dropped and the exercise kept. A standard (fallback) plan copies the template's machine while it still works. Plans made before this change show no machine until a new plan is generated. Exercises without a machine (Plank, Push-up…) show no machine line.
+- **Đổi bài tập:** opens a panel with **Cùng nhóm: {group}** (default) or **Tất cả nhóm**, a **Bài tập** list (grouped by muscle group) and a **Máy** list that keeps the current machine (choose "Không dùng máy" to clear it). A group with no other exercise (Đùi sau) shows every group with a hint.
+- **Local machines (your VfmsDb only, not in git, not in DbInitializer):** 3 categories and 11 machines were added on 26/11 through HungND's Manager equipment API: Máy chạy bộ CD-0001/0002, Xe đạp tập CD-0003/0004, Máy chèo thuyền CD-0005, Máy đạp đùi ST-0001, Máy kéo xô ST-0002, Máy kéo cáp ST-0003, Ghế tập tạ FW-0001, Giàn tạ squat FW-0002, Xà đơn FW-0003. SQL then linked the template plans' items to them. The scripts are in the session notes folder (`local-machines-setup.sh`, `local-machines-fix-names.sql`). Checked: a new AI plan for `member@test.vn` gave Lat Pulldown → Máy kéo xô, Leg Press → Máy đạp đùi, Stationary Bike → Xe đạp tập.
+- **Manager: `/manager/exercises` (menu "Bài tập")** lists the exercise catalog (filter by muscle group and status), adds and edits exercises (name, nhóm cơ from a fixed list, độ khó, short guide, image and video links) and **Ngừng dùng / Dùng lại**. Exercises are never deleted: a stopped one is no longer offered to the AI or in Đổi bài tập, but plans that have it keep it. Machines themselves stay on `/manager/equipment`.
 
 ## 5. Yoga
 
@@ -157,7 +178,7 @@ How to tell which plan you got:
 | `/yoga/my-bookings` | Member | Upcoming (with cancel), past (Có mặt / Vắng) and waitlist tabs |
 | `/staff/yoga` | Staff | The day's sessions; **Điểm danh** opens the roster |
 
-**Yoga plan levels (25/11/2026; rules waiting for the BR list in `docs/BR-pending-yoga-plan-levels.md`):**
+**Yoga plan levels (25/11/2026; rules GBR-113…124 in the SRS BR table; messages MSG-50…53):**
 - Every yoga plan has a level: **Cơ bản**, **Trung bình** or **Nâng cao**. A higher level includes the lower ones: Cơ bản books Cơ bản classes, Trung bình books Cơ bản and Trung bình, Nâng cao books every class.
 - Manager, `/manager/membership-plans` → **Thêm gói mới** → **Loại dịch vụ: Yoga** shows a required **Cấp độ yoga** dropdown; its hint lists the classes the level books. Saving without a level is refused ("Hãy chọn cấp độ yoga…", `YOGA_LEVEL_REQUIRED`). The list shows **Yoga · Trung bình**.
 - **Buyers keep the level they bought.** Once a yoga plan has an order or a membership, its level can't be changed (`YOGA_LEVEL_LOCKED`, "Gói đã có người mua nên không đổi được cấp độ…"); create a new plan for another level. Name, price, term and status can still be edited.
@@ -200,6 +221,41 @@ How to tell which plan you got:
   - A yoga-only member still sees and can buy gym plans (home → GYM MEMBERSHIP tab). Other features that need a gym plan refuse them with a message saying so: PT packages ("Cần gói Gym đang hoạt động…") and locker rental ("Hội viên cần có gói Gym đang hiệu lực.").
   - Still open to Customers and to yoga-only members, because they need no plan: `/workout` (AI workout plan), `/face-id`, and `/my-qr` (yoga attendance scans it). Equipment-issue reports stay open to every Member.
 - API: `POST /api/manager/membership-plans` takes `"serviceType": "YOGA"` (default `GYM`) and, for yoga, `"yogaDifficultyLevel": "Beginner" | "Intermediate" | "Advanced"`; `GET /api/membership-plans?serviceType=YOGA` and the manager list filter by it.
+
+**Weekly sessions must match "buổi/tuần" (25/11/2026):** on `/manager/yoga` → a class's **Buổi học** panel, the weekday chips allow exactly as many days as the class's sessions per week. Under them "Đã chọn x/N ngày" counts; once N are picked the other days grey out (unpick one to change) and **Tạo lịch** turns on only at N/N. The API refuses another count with 400 `YOGA_SESSION_DAYS_COUNT`. Try the class TEST (2 buổi/tuần): pick T2 and T4, T3 is greyed out.
+
+**My next class, `/yoga/my-bookings` → Sắp tới (25/11/2026):** classes are sorted by their next session. The nearest one is a highlighted card, "Buổi yoga tiếp theo của bạn", with a red date block (weekday, day, month), a countdown in gym time ("Hôm nay · còn 3 giờ" or "Ngày mai" in amber; "Còn 6 ngày"), the time, the studio and the mat ("Thảm do phòng tập xếp" when none). Other bookings use the same layout in plain cards. Cancelling works as before. Try it as Demo Trung Bình (section 2): Vinyasa Dynamic, Thứ 3 01/12, Studio A, mat 1.
+
+**A booked class when the plan expires (decided 26/11/2026, GBR-125, "hold"):** the booking keeps its mat but is **on hold** on any session date the member has no usable yoga plan covering the class level.
+- **Member, `/yoga/my-bookings` → Sắp tới:** badge **Tạm giữ**, note "Gói yoga của bạn đã hết hạn nên chỗ đang được tạm giữ…", no countdown, and **Mua gói mới** (opens `/membership-plans?type=yoga&level=…`, only plans that book that level, banner "Các gói dưới đây đăng ký được lớp …"). A held class is never the highlighted "Buổi yoga tiếp theo".
+- **Instructor roster:** the member shows "Tạm giữ chỗ · gói yoga đã hết hạn. Không điểm danh, không tính vắng." instead of Có mặt / Vắng; the roster submits without a mark for them, and no row is written (not counted absent). A QR scan, or a "Có mặt" sent anyway, is refused with `YOGA_PLAN_ON_HOLD`.
+- **Late cancel while held:** not a no-show. **Waitlist:** a member without a covering plan is skipped when a seat frees.
+- **`/my-memberships`:** an expired yoga plan has **Mua gói mới** (yoga plans are never extended), filtered to its level; an old plan without a level opens the plain yoga tab.
+- **Buying a covering plan** lifts the hold once that plan is usable (nothing is stored): a paid plan first waits for activation, so activate it on `/my-memberships` (**Chọn ngày kích hoạt**); from its start date the hold is gone. Until then Sắp tới still shows **Tạm giữ**. A lower-level plan does not lift it.
+- Test cases TC-YEXP-01…07 are below; the automated test is `YogaPersistenceTests.ExpiredYogaPlanHoldsTheBookingUntilANewPlanIsBought`. Demo account: `expired.yoga@example.com`.
+
+**Setup for every case:** member M has a usable yoga plan, books class C (sessions run past the plan's end date), then
+the plan reaches its end date (status Expired). C still has sessions after that date.
+
+| ID | Steps | Expected |
+|---|---|---|
+| TC-YEXP-01 | M opens `/yoga/my-bookings` → **Sắp tới** | Booking still Confirmed with its mat, badge **Tạm giữ**, note "Gói yoga của bạn đã hết hạn nên chỗ đang được tạm giữ…" and a **Mua gói mới** button (plans of the class level). It is never the highlighted "Buổi yoga tiếp theo". |
+| TC-YEXP-02 | Instructor opens the roster of C's next session; M shows their QR | M is listed with "Tạm giữ chỗ · gói yoga đã hết hạn" instead of the Có mặt / Vắng buttons. The scan is refused with `YOGA_PLAN_ON_HOLD`; a submitted "Có mặt" for M is refused too |
+| TC-YEXP-03 | M tries to book another class (or C again after cancelling) | Refused, `MEMBERSHIP_REQUIRED` |
+| TC-YEXP-04 | M was on C's waitlist; a seat frees after M's plan ended | M is skipped; the next waiting member with a covering plan is offered the seat |
+| TC-YEXP-05 | M buys a covering plan, then the next session comes | The hold is lifted once the new plan is usable: after payment the plan waits for activation ("Chọn ngày kích hoạt" on `/my-memberships`), and from its start date Sắp tới shows the normal card and countdown and the scan marks Có mặt. Until then the card still says Tạm giữ. A plan of a lower level than the class does not lift it |
+| TC-YEXP-06 | No-show counting for sessions while held | The roster submits without a mark for M and writes no row, so M is not counted absent; a late cancel while held is not a no-show |
+| TC-YEXP-07 | M opens `/my-memberships` | The expired yoga plan shows **Mua gói mới** (no **Gia hạn gói**), which opens the yoga plans filtered to its level |
+
+**Still open:** how long a hold may last. Today a held booking keeps its mat until the class ends, so a class can look
+full because of held members who never come back. If that becomes a problem, add a deadline (e.g. release the mat after
+N days on hold).
+
+**Known limits of yoga plan levels:**
+
+- The plans page `/membership-plans` lists from `api/packages`, which hides yoga plans without a level but does not check that a class the plan covers can be booked (it never checked bookable classes, even before levels). Such a plan shows there but is refused at checkout with `PLAN_NOT_PURCHASABLE`. The home page catalog and the details page do apply the full rule.
+- The "N lớp cùng giờ" chip appears only for classes with the same start time; classes that overlap but start at different times sit in different rows.
+
 
 **Book (Member, on `/yoga/schedule`):**
 - Each session shows **Đặt chỗ**, or **Vào danh sách chờ (miễn phí)** when the class is full, when your yoga plan's level covers the class (see "Yoga plan levels" above for the other cases).
@@ -287,16 +343,15 @@ Try it: book a mat someone else just took, cancel a yoga booking less than 2 hou
   dotnet test tests/VFMS.IntegrationTests --filter "FullyQualifiedName!~InvoicePdfPreservesMaximumPersistedDecimalPrecision"
   ```
 
-- **Three teammates' integration tests still fail (25/11/2026, after merging main into this branch).** Main's latest changes fixed most of the phone-number failures from 23/11. These three are left to their owners:
+- **Two teammates' integration tests still fail (26/11/2026, after merging main into this branch).** Main's latest changes fixed most of the phone-number failures from 23/11 and the duplicate user-role failure. These two are left to their owners:
   - `ConsultationPersistenceTests`: a duplicate phone number (`UNIQUE constraint failed: ApplicationUsers.PhoneNumber`).
   - `InvoicePdfPreservesMaximumPersistedDecimalPrecision…`: SQLite decimal precision, see above.
-  - `TransactionHistoryRetainsPaidPurchases…`: a duplicate user-role row.
 
-  Expected result now:
-  - Unit: 701 pass.
-  - Client: 511 pass.
-  - Integration: 611 pass, 3 fail, 47 skipped.
-- **PR #21 to main is open (25/11/2026):** https://github.com/viehai/SEP490_G144_VFMS/pull/21. Once it is merged, teammates who pull main get the migration `YogaPlanLevelReplacesClassType`. It drops `PackageComponents.YogaClassTypeId` and `YogaWaitlists.YogaClassTypeId`, so code or tests that still use `YogaClassType` on a plan no longer build, and yoga plans in test seeds need `YogaDifficultyLevel`.
+  Expected result now (26/11/2026, after merging main again):
+  - Unit: 786 pass.
+  - Client: 590 pass.
+  - Integration: 689 pass, 2 fail, 51 skipped. `WalkInCustomerOnboardingApiTests` (teammate's concurrency tests) failed once on 26/11 while Visual Studio was running and passed on rerun.
+- **PR #23 to main is open (26/11/2026):** https://github.com/viehai/SEP490_G144_VFMS/pull/23 (machine per exercise, Manager exercise page `/manager/exercises`, yoga plan hold, Gemini backup model). No new migrations. PR #21 (yoga plan levels, migration `YogaPlanLevelReplacesClassType`) was merged on 24/11/2026.
 
 - **Yoga plans can't be renewed yet.** Renewal (`/my-memberships` → gia hạn) still only covers gym plans, so a yoga member buys a new yoga plan instead; it starts after the current one ends.
 - **Old SQL yoga parts removed (20/11/2026).** Before yoga plans existed, a YOGA part was added by SQL to the gym package "Gym 1 Month", so its buyers (the member and the three demo members) also got a yoga membership. That part and those 4 yoga memberships are now soft-deleted (`IsDeleted = 1`, by SQL, because no API removes a membership); nothing used them. The 4 accounts bought "Yoga 1 Tháng" through the real flow instead, so `/my-memberships` shows one Gym card and one Yoga card.
@@ -305,4 +360,5 @@ Try it: book a mat someone else just took, cancel a yoga booking less than 2 hou
 - **Still showing written-in demo content (not changed here):** the PT dashboard `/pt/dashboard` (PT module, another team member), the home page equipment showcase (static), and the template pages Weather and Counter with their menu links.
 - **Business reports made while testing.** On 20/11/2026 two business reports were generated on the local database to check the Manager dashboard: Monthly 2026-10 (empty) and Daily 2026-11-16. The dashboard shows the newest one.
 - **Self check-in from anywhere.** Because the kiosk is open to Customers and Members, one can check in from anywhere with `/my-qr` plus `/kiosk` on one phone. That check-in can also mark a PT session as done.
+- **A shared QR screenshot works all day (25/11/2026, by request).** The QR code now lasts until 24:00 and can be scanned many times, so a photo of it passed to someone else also works for the rest of the day (before, a code lasted 2 minutes and worked once). The member can stop it with **Tạo mã mới**.
 - **Phones can't open localhost.** To test QR with a phone, photograph the code shown on the laptop.

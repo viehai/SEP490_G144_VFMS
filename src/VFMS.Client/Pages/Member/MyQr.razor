@@ -14,7 +14,7 @@
     <header class="border-b border-[#D8D1CD] pb-7">
         <p class="mb-3 text-[10px] font-bold tracking-[.18em] text-[#B83A3A]">TÀI KHOẢN / MÃ QR</p>
         <h1 class="font-['Montserrat'] text-3xl font-extrabold uppercase tracking-tight sm:text-4xl">Mã QR của tôi<span class="text-[#B83A3A]">.</span></h1>
-        <p class="mt-3 text-sm leading-6 text-[#6F6966]">Đưa mã này cho Kiosk để vào hoặc ra phòng tập. Mã dùng một lần và hết hạn sau 2 phút; mỗi lần mở lại trang này sẽ tạo mã mới và mã cũ không dùng được nữa.</p>
+        <p class="mt-3 text-sm leading-6 text-[#6F6966]">Đưa mã này cho Kiosk để vào và ra phòng tập, hoặc cho lớp yoga điểm danh. Mã dùng được cả ngày, hết hạn lúc 24:00; mở lại trang này vẫn là mã cũ. Bấm "Tạo mã mới" nếu lỡ chia sẻ ảnh mã: mã cũ sẽ không dùng được nữa.</p>
     </header>
 
     @if (_error is not null)
@@ -26,7 +26,7 @@
         @if (_svg is not null && _qr is not null)
         {
             <div class="mx-auto w-64">@((MarkupString)_svg)</div>
-            <p class="text-xs text-[#6F6966]">Hết hạn lúc @DateTime.SpecifyKind(_qr.ExpiresAt, DateTimeKind.Utc).AddHours(7).ToString("HH:mm:ss")</p>
+            <p class="text-xs text-[#6F6966]">Dùng được đến hết ngày @DateTime.SpecifyKind(_qr.ExpiresAt, DateTimeKind.Utc).AddHours(7).AddMinutes(-1).ToString("dd/MM/yyyy")</p>
             <p class="break-all font-mono text-[11px] text-[#6F6966]">@_qr.Token</p>
         }
         <button type="button" disabled="@_busy" class="bg-[#B83A3A] hover:bg-[#9F3030] px-6 py-3 text-xs font-bold uppercase text-white rounded-lg disabled:opacity-40" @onclick="NewCode">@(_qr is null ? "Tạo mã" : "Tạo mã mới")</button>
@@ -38,15 +38,17 @@
     private string? _svg, _error;
     private bool _busy;
 
-    protected override Task OnInitializedAsync() => NewCode();
+    protected override Task OnInitializedAsync() => Load(() => Api.GetAsync<MemberQrResponse>("api/my-qr"));   // today's code, the same on every visit
 
-    private async Task NewCode()
+    private Task NewCode() => Load(() => Api.PostAsync<MemberQrResponse>("api/my-qr", new { }));
+
+    private async Task Load(Func<Task<MemberQrResponse>> fetch)
     {
         _busy = true;
         _error = null;
         try
         {
-            _qr = await Api.PostAsync<MemberQrResponse>("api/my-qr", new { });
+            _qr = await fetch();
             await JS.InvokeVoidAsync("import", "./js/qr-code.js");
             _svg = await JS.InvokeAsync<string>("vfmsQr.svg", _qr.Token);
         }

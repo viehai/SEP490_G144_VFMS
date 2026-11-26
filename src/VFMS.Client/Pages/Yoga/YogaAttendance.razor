@@ -53,13 +53,24 @@
                     <ul class="divide-y divide-[#D8D1CD]">
                         @foreach (var entry in _roster.Roster)
                         {
-                            var mark = _marks[entry.BookingId];
+                            var mark = _marks.GetValueOrDefault(entry.BookingId);
                             <li @key="entry.BookingId" class="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
                                 <p class="text-sm"><span class="font-semibold">@entry.MemberName</span>@(entry.MatNumber is { } mat ? $" · thảm #{mat}" : "")</p>
-                                <div class="flex gap-2" role="group" aria-label="Điểm danh @entry.MemberName">
-                                    <button type="button" aria-pressed="@(mark == true)" disabled="@Closed" class="@Choice(mark == true, "emerald")" @onclick="() => _marks[entry.BookingId] = true">Có mặt</button>
-                                    <button type="button" aria-pressed="@(mark == false)" disabled="@Closed" class="@Choice(mark == false, "red")" @onclick="() => _marks[entry.BookingId] = false">Vắng</button>
-                                </div>
+                                @if (entry.OnHold)
+                                {
+                                    @* TC-YEXP: plan ended; can't be marked present, not counted absent, no mark needed. *@
+                                    <p class="flex max-w-xs items-start gap-1.5 text-xs font-semibold text-[#B45309]">
+                                        <svg aria-hidden="true" class="mt-0.5 h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M10 9v6M14 9v6"/></svg>
+                                        <span>Tạm giữ chỗ · gói yoga đã hết hạn. Không điểm danh, không tính vắng.</span>
+                                    </p>
+                                }
+                                else
+                                {
+                                    <div class="flex gap-2" role="group" aria-label="Điểm danh @entry.MemberName">
+                                        <button type="button" aria-pressed="@(mark == true)" disabled="@Closed" class="@Choice(mark == true, "emerald")" @onclick="() => _marks[entry.BookingId] = true">Có mặt</button>
+                                        <button type="button" aria-pressed="@(mark == false)" disabled="@Closed" class="@Choice(mark == false, "red")" @onclick="() => _marks[entry.BookingId] = false">Vắng</button>
+                                    </div>
+                                }
                             </li>
                         }
                     </ul>
@@ -126,7 +137,7 @@
         _roster = roster;
         var local = new Dictionary<int, bool?>(_marks);
         _marks.Clear();
-        foreach (var e in roster.Roster)
+        foreach (var e in roster.Roster.Where(e => !e.OnHold))
             _marks[e.BookingId] = e.Mark switch { "Attended" => true, "No-show" => false, _ => local.GetValueOrDefault(e.BookingId) };
         if (roster.Message is { Length: > 0 } message) _notice = message;
     }

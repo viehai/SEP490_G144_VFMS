@@ -28,7 +28,7 @@ public sealed partial class RouterAuthenticationTests
                 "/manager/membership-freeze-requests", "/manager/general-policies",
                 "Huấn luyện viên & PT", "/manager/trainer-applications", "/manager/pt-packages",
                 "/manager/pt-freeze-requests", "/manager/pt-attendance-disputes",
-                "Thiết bị & mua sắm", "/manager/equipment", "/manager/equipment-issues", "/manager/purchase-proposals",
+                "Thiết bị & mua sắm", "/manager/equipment", "/manager/exercises", "/manager/equipment-issues", "/manager/purchase-proposals",
                 "Tủ đồ", "/manager/lockers", "/manager/locker-pricing", "/manager/locker-operations", "/manager/locker-clearances",
                 "Bán hàng & Marketing", "/manager/supplement-products", "/manager/supplement-orders", "/manager/promotions",
                 "Khách hàng", "/manager/customers/create", "/manager/feedback", "/manager/consultations", "/manager/promotions"

@@ -38,7 +38,11 @@ public sealed record AnonymisedSurvey(
 
 public sealed record CatalogExercise(int Id, string Name, string? MuscleGroup, string? DifficultyLevel);
 
-public sealed record GeneratedPlanItem(int DayNumber, int OrderInDay, int ExerciseId, int? Sets, int? Reps, int? DurationMinutes, string? Note);
+/// <summary>A working machine the AI may assign to an exercise (one per machine name).</summary>
+public sealed record CatalogEquipment(int Id, string Name);
+
+/// <summary>EquipmentId: the machine the AI picked for this exercise (PlanItem.EquipmentId), or null for none.</summary>
+public sealed record GeneratedPlanItem(int DayNumber, int OrderInDay, int ExerciseId, int? Sets, int? Reps, int? DurationMinutes, string? Note, int? EquipmentId = null);
 
 public sealed record GeneratedPlan(string Name, IReadOnlyList<GeneratedPlanItem> Items, string? NutritionAdvice = null);
 
@@ -46,7 +50,8 @@ public sealed record GeneratedPlan(string Name, IReadOnlyList<GeneratedPlanItem>
 public interface IWorkoutPlanGenerator
 {
     string ModelName { get; }
-    Task<GeneratedPlan?> GenerateAsync(AnonymisedSurvey survey, IReadOnlyList<CatalogExercise> catalog, CancellationToken cancellationToken = default);
+    Task<GeneratedPlan?> GenerateAsync(AnonymisedSurvey survey, IReadOnlyList<CatalogExercise> catalog,
+        IReadOnlyList<CatalogEquipment> equipment, CancellationToken cancellationToken = default);
 }
 
 /// <summary>UC-49/UC-58 Generate and UC-50/UC-59 Manage Personalized Workout Plan.</summary>

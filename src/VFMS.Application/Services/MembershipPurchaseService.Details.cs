@@ -57,7 +57,8 @@ public sealed partial class MembershipPurchaseService
             GetCurrentMembershipStatus(membership.Status, membership.EndDate, today).ToString(), activation)
         {
             DurationValue = days is > 0 ? days : months is > 0 ? months : null,
-            DurationUnit = days is > 0 ? MembershipDurationUnit.Day : months is > 0 ? MembershipDurationUnit.Month : null
+            DurationUnit = days is > 0 ? MembershipDurationUnit.Day : months is > 0 ? MembershipDurationUnit.Month : null,
+            YogaDifficultyLevel = membership.YogaDifficultyLevel
         };
     }
 

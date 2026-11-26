@@ -1,0 +1,207 @@
+@page "/manager/exercises"
+@layout ManagerAdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using VFMS.Client.Components.Operations
+@using VFMS.Contracts.Workout
+@attribute [Authorize(Roles = "Manager")]
+@inject VfmsApiClient Api
+
+<PageTitle>Bài tập | Victor Fitness</PageTitle>
+
+<div class="workspace-page max-w-6xl space-y-6">
+    <header class="space-y-2 border-b border-vfms-border pb-5">
+        <h1 class="workspace-heading text-3xl text-vfms-text">Bài tập</h1>
+        <p class="text-sm leading-6 text-vfms-text-secondary">
+            Danh mục bài tập mà AI dùng để tạo giáo án và hội viên chọn khi đổi bài. Bài đã ngừng dùng không còn được đề xuất,
+            nhưng giáo án cũ vẫn giữ nguyên. Máy tập được quản lý ở <a href="/manager/equipment" class="font-semibold text-vfms-primary underline">Thiết bị</a>.
+        </p>
+    </header>
+
+    @if (_notice is not null)
+    {
+        <p role="status" class="@Ui.Notice">@_notice</p>
+    }
+
+    @* Create / edit form. Labels above fields, error next to the form, 44 px targets. *@
+    <section aria-labelledby="exercise-form-title" class="@Ui.Card">
+        <h2 id="exercise-form-title" class="mb-4 text-base font-bold text-vfms-text">@(_editingId is null ? "Thêm bài tập" : $"Sửa bài tập: {_form.Name}")</h2>
+        @if (_error is not null)
+        {
+            <p role="alert" class="@Ui.Error mb-4">@_error</p>
+        }
+        <form @onsubmit="SaveAsync" @onsubmit:preventDefault novalidate>
+            <fieldset disabled="@_saving" class="grid gap-4 sm:grid-cols-2">
+                <label class="@Ui.Label" for="ex-name">Tên bài tập <span class="text-vfms-primary" aria-hidden="true">*</span>
+                    <input id="ex-name" class="@Ui.Field min-h-[44px]" maxlength="100" required @bind="_form.Name" />
+                </label>
+                <label class="@Ui.Label" for="ex-group">Nhóm cơ <span class="text-vfms-primary" aria-hidden="true">*</span>
+                    <select id="ex-group" class="@Ui.Field min-h-[44px]" required @bind="_form.MuscleGroup">
+                        <option value="">Chọn nhóm cơ</option>
+                        @foreach (var g in ExerciseCatalog.MuscleGroups) { <option value="@g">@ExerciseCatalog.MuscleGroupLabel(g)</option> }
+                    </select>
+                    <span class="mt-1 block font-normal text-vfms-text-secondary">Hội viên đổi bài sẽ thấy trước các bài cùng nhóm.</span>
+                </label>
+                <label class="@Ui.Label" for="ex-level">Độ khó <span class="text-vfms-primary" aria-hidden="true">*</span>
+                    <select id="ex-level" class="@Ui.Field min-h-[44px]" required @bind="_form.DifficultyLevel">
+                        <option value="">Chọn độ khó</option>
+                        @foreach (var l in ExerciseCatalog.Levels) { <option value="@l">@ExerciseCatalog.LevelLabel(l)</option> }
+                    </select>
+                </label>
+                <label class="@Ui.Label" for="ex-image">Link ảnh minh họa
+                    <input id="ex-image" type="url" class="@Ui.Field min-h-[44px]" placeholder="https://…" @bind="_form.ImageUrl" />
+                </label>
+                <label class="@Ui.Label sm:col-span-2" for="ex-desc">Hướng dẫn ngắn
+                    <textarea id="ex-desc" rows="2" maxlength="500" class="@Ui.Field" @bind="_form.Description"></textarea>
+                </label>
+                <label class="@Ui.Label" for="ex-video">Link video
+                    <input id="ex-video" type="url" class="@Ui.Field min-h-[44px]" placeholder="https://…" @bind="_form.VideoUrl" />
+                </label>
+                <div class="flex flex-wrap items-end gap-2">
+                    <button type="submit" class="@Ui.PrimaryButton min-h-[44px]">@(_saving ? "Đang lưu…" : _editingId is null ? "Thêm bài tập" : "Lưu thay đổi")</button>
+                    @if (_editingId is not null)
+                    {
+                        <button type="button" class="@Ui.Button min-h-[44px]" @onclick="ResetForm">Hủy sửa</button>
+                    }
+                </div>
+            </fieldset>
+        </form>
+    </section>
+
+    <section aria-labelledby="exercise-list-title" class="@Ui.ListCard">
+        <div class="@Ui.ListHeader flex flex-wrap items-end justify-between gap-3">
+            <h2 id="exercise-list-title" class="text-base font-bold text-vfms-text">Danh mục (@Shown.Count)</h2>
+            <div class="flex flex-wrap gap-3">
+                <label class="@Ui.Label" for="ex-filter-group">Nhóm cơ
+                    <select id="ex-filter-group" class="@Ui.Field min-h-[44px]" @bind="_filterGroup">
+                        <option value="">Tất cả nhóm</option>
+                        @foreach (var g in ExerciseCatalog.MuscleGroups) { <option value="@g">@ExerciseCatalog.MuscleGroupLabel(g)</option> }
+                    </select>
+                </label>
+                <label class="@Ui.Label" for="ex-filter-status">Trạng thái
+                    <select id="ex-filter-status" class="@Ui.Field min-h-[44px]" @bind="_filterStatus">
+                        <option value="">Tất cả</option>
+                        <option value="active">Đang dùng</option>
+                        <option value="inactive">Đã ngừng dùng</option>
+                    </select>
+                </label>
+            </div>
+        </div>
+        @if (_loading)
+        {
+            <p class="p-5 text-sm text-vfms-text-secondary" role="status">Đang tải danh mục bài tập…</p>
+        }
+        else if (Shown.Count == 0)
+        {
+            <p class="p-5 text-sm text-vfms-text-secondary">Không có bài tập nào khớp bộ lọc.</p>
+        }
+        else
+        {
+            @* Cards rather than a wide table, so it reads on a phone too. *@
+            <ul class="divide-y divide-vfms-border">
+                @foreach (var e in Shown)
+                {
+                    <li @key="e.Id" class="flex flex-wrap items-start justify-between gap-3 px-5 py-4 @(e.IsActive ? "" : "bg-[#ECE8E4]/60")">
+                        <div class="min-w-0 flex-1 space-y-1">
+                            <p class="flex flex-wrap items-center gap-2">
+                                <span class="font-semibold text-vfms-text">@e.Name</span>
+                                <StatusBadge Status="@(e.IsActive ? "Active" : "Inactive")" Label="@(e.IsActive ? "Đang dùng" : "Ngừng dùng")" />
+                            </p>
+                            <p class="text-xs text-vfms-text-secondary">
+                                @ExerciseCatalog.MuscleGroupLabel(e.MuscleGroup) · @ExerciseCatalog.LevelLabel(e.DifficultyLevel) · Có trong @e.PlanUses mục giáo án
+                            </p>
+                            @if (e.Description is not null) { <p class="text-xs text-vfms-text-secondary">@e.Description</p> }
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="button" class="@Ui.Button min-h-[44px]" aria-label="Sửa @e.Name" @onclick="() => Edit(e)">Sửa</button>
+                            <button type="button" class="@(e.IsActive ? Ui.DangerButton : Ui.Button) min-h-[44px]" disabled="@_saving"
+                                    aria-label="@(e.IsActive ? "Ngừng dùng" : "Dùng lại") @e.Name" @onclick="() => ToggleAsync(e)">
+                                @(e.IsActive ? "Ngừng dùng" : "Dùng lại")
+                            </button>
+                        </div>
+                    </li>
+                }
+            </ul>
+        }
+    </section>
+</div>
+
+@code {
+    private List<ManagerExerciseResponse> _items = [];
+    private ExerciseForm _form = new();
+    private int? _editingId;
+    private bool _loading = true, _saving;
+    private string? _error, _notice;
+    private string _filterGroup = "", _filterStatus = "";
+
+    private List<ManagerExerciseResponse> Shown => _items
+        .Where(e => _filterGroup == "" || e.MuscleGroup == _filterGroup)
+        .Where(e => _filterStatus == "" || (_filterStatus == "active") == e.IsActive)
+        .ToList();
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try { _items = await Api.GetAsync<List<ManagerExerciseResponse>>("api/manager/exercises"); }
+        catch (ApiException ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private void Edit(ManagerExerciseResponse e)
+    {
+        _editingId = e.Id;
+        _form = new() { Name = e.Name, MuscleGroup = e.MuscleGroup ?? "", DifficultyLevel = e.DifficultyLevel ?? "", Description = e.Description, ImageUrl = e.ImageUrl, VideoUrl = e.VideoUrl };
+        _error = _notice = null;
+    }
+
+    private void ResetForm()
+    {
+        _editingId = null;
+        _form = new();
+        _error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_saving) return;
+        var request = new ExerciseRequest(_form.Name, _form.MuscleGroup, _form.DifficultyLevel, _form.Description, _form.ImageUrl, _form.VideoUrl);
+        _saving = true;
+        _error = _notice = null;
+        try
+        {
+            if (_editingId is { } id) await Api.PutAsync<ManagerExerciseResponse>($"api/manager/exercises/{id}", request);
+            else await Api.PostAsync<ManagerExerciseResponse>("api/manager/exercises", request);
+            _notice = _editingId is null ? $"Đã thêm bài tập {request.Name.Trim()}." : $"Đã lưu bài tập {request.Name.Trim()}.";
+            ResetForm();
+            await LoadAsync();
+        }
+        catch (ApiException ex) { _error = ex.Message; }
+        finally { _saving = false; }
+    }
+
+    private async Task ToggleAsync(ManagerExerciseResponse e)
+    {
+        if (_saving) return;
+        _saving = true;
+        _error = _notice = null;
+        try
+        {
+            await Api.PutAsync<ManagerExerciseResponse>($"api/manager/exercises/{e.Id}/active", new SetExerciseActiveRequest(!e.IsActive));
+            _notice = e.IsActive ? $"Đã ngừng dùng {e.Name}. Giáo án đang có bài này vẫn giữ nguyên." : $"Đã dùng lại {e.Name}.";
+            await LoadAsync();
+        }
+        catch (ApiException ex) { _error = ex.Message; }
+        finally { _saving = false; }
+    }
+
+    private sealed class ExerciseForm
+    {
+        public string Name { get; set; } = "";
+        public string MuscleGroup { get; set; } = "";
+        public string DifficultyLevel { get; set; } = "";
+        public string? Description { get; set; }
+        public string? ImageUrl { get; set; }
+        public string? VideoUrl { get; set; }
+    }
+}

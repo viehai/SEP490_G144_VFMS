@@ -34,7 +34,7 @@ public sealed record FrontDeskMemberResponse(
 
 public sealed record ManualCheckInRequest(string MemberUserId);
 
-/// <summary>Short-lived single-use token the member shows as a QR code at the kiosk or yoga studio.</summary>
+/// <summary>The member's QR token for the kiosk or yoga studio; it works all gym day until midnight gym time.</summary>
 public sealed record MemberQrResponse(string Token, DateTime ExpiresAt);
 
 // ── Active check-ins (UC-48 / UC-57) ────────────────────────────

@@ -139,6 +139,7 @@ public sealed class YogaBookingService : IYogaBookingService
     {
         var now = _clock.GetUtcNow().UtcDateTime;
         var bookings = await _repository.GetMemberBookingsAsync(memberUserId, cancellationToken);
+        var memberships = await _repository.GetMembershipsAsync(memberUserId, cancellationToken);
 
         var upcoming = bookings
             .Where(b => b.BookingStatus == YogaBookingStatus.Confirmed)
@@ -146,7 +147,9 @@ public sealed class YogaBookingService : IYogaBookingService
             .Where(x => x.Next is not null)
             .OrderBy(x => x.Next!.ScheduledDate).ThenBy(x => x.Next!.StartTime)
             .Select(x => new MyYogaBookingResponse(x.Booking.Id, x.Booking.YogaClassId, x.Booking.YogaClass.ClassName,
-                x.Next!.ScheduledDate, x.Next.StartTime, x.Next.EndTime, x.Next.YogaStudio.StudioName, x.Booking.MatNumber, "Confirmed"))
+                x.Next!.ScheduledDate, x.Next.StartTime, x.Next.EndTime, x.Next.YogaStudio.StudioName, x.Booking.MatNumber, "Confirmed",
+                !MembershipRules.CoversYogaClass(memberships, x.Booking.YogaClass.DifficultyLevel, x.Next.ScheduledDate),
+                x.Booking.YogaClass.DifficultyLevel))
             .ToList();
 
         // Past tab: sessions that started while the member held the booking.
@@ -214,8 +217,11 @@ public sealed class YogaBookingService : IYogaBookingService
         booking.CancelledAt = now;
         // A late cancellation counts as a no-show of that session (GBR-83, GBR-84), unless attendance (e.g. a QR scan,
         // UC-42) already marked this booking; the session lock keeps that check and the attendance writes in order.
+        // A booking on hold (plan ended, TC-YEXP) can't be attended, so cancelling it late is not a no-show either.
+        var onHold = !MembershipRules.CoversYogaClass(
+            await _repository.GetMembershipsAsync(booking.MemberUserId, cancellationToken), yogaClass.DifficultyLevel, next.ScheduledDate);
         await _repository.LockSessionAsync(next.Id, cancellationToken);
-        if (late && !(await _repository.GetSessionAsync(next.Id, cancellationToken))!.Attendances.Any(a => a.YogaBookingId == booking.Id))
+        if (late && !onHold && !(await _repository.GetSessionAsync(next.Id, cancellationToken))!.Attendances.Any(a => a.YogaBookingId == booking.Id))
             _repository.Add(new YogaAttendance
             {
                 YogaClassScheduleId = next.Id,
@@ -228,9 +234,17 @@ public sealed class YogaBookingService : IYogaBookingService
         if (yogaClass.ClassStatus == YogaClassStatus.Full)
             yogaClass.ClassStatus = YogaClassStatus.Open;   // the seat is free again
 
-        // GBR-82: offer the seat to the first waiting member.
+        // GBR-82: offer the seat to the first waiting member who could book it (a usable plan covering the class, TC-YEXP).
         // shortcut: the seat is not held for them, anyone may book it first; hold it if members complain.
-        if ((await _repository.GetWaitlistAsync(yogaClass.Id, cancellationToken)).FirstOrDefault(w => w.NotifiedAt is null) is { } first)
+        YogaWaitlist? first = null;
+        foreach (var waiting in (await _repository.GetWaitlistAsync(yogaClass.Id, cancellationToken)).Where(w => w.NotifiedAt is null))
+            if (MembershipRules.CoversYogaClass(await _repository.GetMembershipsAsync(waiting.MemberUserId, cancellationToken),
+                    yogaClass.DifficultyLevel, YogaTime.Today(_clock)))
+            {
+                first = waiting;
+                break;
+            }
+        if (first is not null)
         {
             first.NotifiedAt = now;
             var notice = AuditedWriter.Notify(first.MemberUserId, null, "Lớp yoga vừa có chỗ trống",
