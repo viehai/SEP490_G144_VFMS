@@ -227,7 +227,7 @@ How to tell which plan you got:
 - **Instructor roster:** the member shows "Tạm giữ chỗ · gói yoga đã hết hạn. Không điểm danh, không tính vắng." instead of Có mặt / Vắng; the roster submits without a mark for them, and no row is written (not counted absent). A QR scan, or a "Có mặt" sent anyway, is refused with `YOGA_PLAN_ON_HOLD`.
 - **Late cancel while held:** not a no-show. **Waitlist:** a member without a covering plan is skipped when a seat frees.
 - **`/my-memberships`:** an expired yoga plan has **Mua gói mới** (yoga plans are never extended), filtered to its level; an old plan without a level opens the plain yoga tab.
-- **Buying a covering plan** lifts the hold at once (nothing is stored). A lower-level plan does not.
+- **Buying a covering plan** lifts the hold once that plan is usable (nothing is stored): a paid plan first waits for activation, so activate it on `/my-memberships` (**Chọn ngày kích hoạt**); from its start date the hold is gone. Until then Sắp tới still shows **Tạm giữ**. A lower-level plan does not lift it.
 - Test cases TC-YEXP-01…07 are in `docs/BR-pending-yoga-plan-levels.md`; the automated test is `YogaPersistenceTests.ExpiredYogaPlanHoldsTheBookingUntilANewPlanIsBought`. Demo account: `expired.yoga@example.com`.
 
 **Book (Member, on `/yoga/schedule`):**
