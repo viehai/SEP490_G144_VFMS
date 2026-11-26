@@ -105,6 +105,7 @@ public sealed partial class LockerService
         {
             renewal.Order.OrderStatus = OrderStatus.Cancelled;
             renewal.PaymentStatus = PaymentStatus.Cancelled;
+            ReleaseVoucher(renewal);
         }
         ReleaseReplacement(rental);
         Audit(actor, rental, "LockerReturned", now);

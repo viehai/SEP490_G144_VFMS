@@ -1,0 +1,55 @@
+@using VFMS.Client.Components.Operations
+
+@{ var cash = CashTendered; var invalid = cash is null || cash < AmountDue; }
+<form @onsubmit="ConfirmAsync" @onsubmit:preventDefault>
+    <fieldset class="space-y-3" disabled="@Busy">
+        <legend class="sr-only">Xác nhận thu tiền đơn @OrderNumber</legend>
+        <label class="@Ui.Label block" for="@_inputId">
+            Khách đưa (₫) <span aria-hidden="true" class="text-red-700">*</span>
+            <input id="@_inputId" type="text" inputmode="numeric" class="@Ui.Field min-h-[44px] tabular-nums"
+                   @bind:get="_amount" @bind:set="SetCashTendered" @bind:event="oninput"
+                   data-vnd-input="whole" required maxlength="38" aria-invalid="@(invalid ? "true" : "false")" aria-describedby="@(_inputId + "-feedback")" />
+        </label>
+        <div id="@(_inputId + "-feedback")" aria-live="polite">
+            @if (cash is null)
+            {
+                <p class="text-sm text-red-800">Nhập số tiền hợp lệ, ví dụ @Vnd.FormatAmount(AmountDue).</p>
+            }
+            else if (cash < AmountDue)
+            {
+                <p class="text-sm font-semibold text-red-800">Còn thiếu @OperationsText.Money(AmountDue - cash.Value).</p>
+            }
+            else if (cash > AmountDue)
+            {
+                <p class="text-sm font-semibold text-vfms-text">Trả lại khách @OperationsText.Money(cash.Value - AmountDue).</p>
+            }
+        </div>
+        <button type="submit" class="@Ui.PrimaryButton min-h-[44px] disabled:opacity-60" disabled="@(invalid || Blocked)">
+            @(Busy ? "Đang xác nhận…" : ConfirmLabel)
+        </button>
+    </fieldset>
+</form>
+
+@code {
+    [Parameter, EditorRequired] public string OrderNumber { get; set; } = "";
+    [Parameter] public decimal AmountDue { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public bool Blocked { get; set; }
+    [Parameter] public string ConfirmLabel { get; set; } = "Xác nhận đã nhận tiền";
+    [Parameter] public EventCallback<decimal> OnConfirm { get; set; }
+    private readonly string _inputId = "cash-" + Guid.NewGuid().ToString("N");
+    private (string, decimal)? _loaded;
+    private string _amount = "";
+    private decimal? CashTendered => Vnd.ParseInput(_amount, wholeUnits: true) is >= 0 and var cash ? cash : null;
+
+    protected override void OnParametersSet()
+    {
+        if (_loaded == (OrderNumber, AmountDue)) return;
+        _loaded = (OrderNumber, AmountDue);
+        _amount = Vnd.FormatAmount(AmountDue);
+    }
+
+    private void SetCashTendered(string? input) => _amount = Vnd.FormatInput(_amount, input, wholeUnits: true);
+    private Task ConfirmAsync() => !Busy && !Blocked && CashTendered >= AmountDue
+        ? OnConfirm.InvokeAsync(AmountDue) : Task.CompletedTask;
+}

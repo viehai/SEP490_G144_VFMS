@@ -56,8 +56,8 @@ public sealed class LockerZoneRequestValidator : AbstractValidator<LockerZoneReq
 {
     public LockerZoneRequestValidator()
     {
-        RuleFor(x => x.Name).NotEmpty().WithMessage("Tên không được để trống.").MaximumLength(100).WithMessage("Tên không được vượt quá {MaxLength} ký tự.");
-        RuleFor(x => x.Floor).InclusiveBetween(-5, 100).WithMessage("Tầng phải từ {From} đến {To}.");
+        // Optional legacy input; the server generates the actual name and ignores the floor.
+        RuleFor(x => x.Name).MaximumLength(100).WithMessage("Tên không được vượt quá {MaxLength} ký tự.");
     }
 }
 

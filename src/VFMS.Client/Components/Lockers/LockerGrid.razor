@@ -1,23 +1,23 @@
 @using VFMS.Contracts.Lockers
 @using VFMS.Client.Components.Operations
-@* Locker grid grouped by zone and floor, colour-coded by status. A slot is clickable only when Selectable allows it. *@
+@* Locker grid grouped by zone; the cell frame remains visible in every state. *@
 @if (Slots.Count == 0)
 {
     <p role="status" class="text-sm text-vfms-text-secondary">Không có tủ phù hợp.</p>
 }
 else
 {
-    @foreach (var zone in PageSlots.GroupBy(s => (s.Zone, s.Floor)))
+    @foreach (var zone in PageSlots.GroupBy(s => s.Zone))
     {
-        <section class="space-y-2" aria-label="@($"Khu {zone.Key.Zone}, tầng {zone.Key.Floor}")">
-            <h3 class="text-xs font-bold uppercase tracking-wider text-vfms-text-secondary">Khu @zone.Key.Zone · Tầng @zone.Key.Floor</h3>
-            <div class="grid grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-2">
+        <section class="space-y-2" aria-label="@($"Khu {zone.Key}")">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-vfms-text-secondary">Khu @zone.Key</h3>
+            <div class="locker-grid">
                 @foreach (var slot in zone.OrderBy(s => s.Number, StringComparer.OrdinalIgnoreCase))
                 {
                     var chosen = slot.Id == SelectedId;
                     <button type="button" @key="slot.Id" disabled="@(!IsSelectable(slot))" aria-pressed="@chosen.ToString().ToLowerInvariant()"
-                            class="@Cell(chosen, IsSelectable(slot))" @onclick="() => OnSelect.InvokeAsync(slot)">
-                        <span class="block text-sm font-extrabold text-[#242424]">@slot.Number</span>
+                            class="locker-cell" data-locker-status="@slot.Status" @onclick="() => OnSelect.InvokeAsync(slot)">
+                        <span class="locker-cell-number">@slot.Number</span>
                         <StatusBadge Status="@LockerText.SlotTone(slot.Status)" Label="@LockerText.Slot(slot.Status)" />
                     </button>
                 }
@@ -39,7 +39,7 @@ else
     private const int PageSize = 10;
     private int _page = 1;
     private IReadOnlyList<LockerSlot>? _previousSlots;
-    private IEnumerable<LockerSlot> PageSlots => Slots.OrderBy(s => s.Floor).ThenBy(s => s.Zone)
+    private IEnumerable<LockerSlot> PageSlots => Slots.OrderBy(s => s.Zone)
         .ThenBy(s => s.Number, StringComparer.OrdinalIgnoreCase).ThenBy(s => s.Id)
         .Skip((_page - 1) * PageSize).Take(PageSize);
 
@@ -54,8 +54,4 @@ else
 
     private bool IsSelectable(LockerSlot slot) => Selectable?.Invoke(slot) ?? true;
 
-    private static string Cell(bool chosen, bool enabled) =>
-        "flex flex-col items-center gap-1.5 rounded-lg border px-2 py-3 text-center transition " +
-        (chosen ? "border-[#B83A3A] bg-[#F3E4E2]" : "border-[#D8D1CD] bg-[#F8F5F2]") +
-        (enabled ? " hover:border-[#B83A3A]" : " cursor-not-allowed opacity-70");
 }

@@ -59,6 +59,15 @@ public sealed class MyVoucherRepository(VfmsDbContext db) : IMyVoucherRepository
         var orders = db.Orders.Where(o => o.PurchaserUserId == userId && o.OrderNumber == orderNumber &&
             o.OrderStatus == OrderStatus.Pending && (o.VoucherRedemption == null ||
             o.VoucherRedemption.RedemptionStatus == VoucherRedemptionStatus.Released));
+        var lockerFee = await orders.Where(o => o.PaymentTransaction != null && o.PaymentTransaction.LockerRentalContractId != null &&
+                o.PaymentTransaction.PaymentStatus == PaymentStatus.Pending && o.PaymentTransaction.PaymentStartedAt == null &&
+                (o.PaymentTransaction.GatewayName == "PendingChoice" || o.PaymentTransaction.LockerPurpose == LockerPaymentPurpose.Rental && o.Channel == OrderChannel.Online) &&
+                o.PaymentTransaction.PaymentExpiresAt > now && o.PaymentTransaction.HoldExpiresAt > now &&
+                (o.PaymentTransaction.LockerPurpose == LockerPaymentPurpose.Rental || o.PaymentTransaction.LockerPurpose == LockerPaymentPurpose.Renewal))
+            .Select(o => (decimal?)(o.PaymentTransaction!.LockerPurpose == LockerPaymentPurpose.Rental
+                ? o.PaymentTransaction.LockerRentalContract!.RentalPrice
+                : o.PaymentTransaction.AmountDue - (o.PaymentTransaction.OverdueFees ?? 0))).SingleOrDefaultAsync(ct);
+        if (lockerFee is > 0) return lockerFee;
         var prices = await orders.Where(o => db.PTPurchases.Any(p => p.OrderId == o.Id)
             ? o.Channel == OrderChannel.Online && o.PaymentTransaction == null && o.CreatedAt > ptCutoff &&
                 db.PTPurchases.Any(p => p.OrderId == o.Id && p.Status == PTPurchaseStatus.PendingPayment)

@@ -38,7 +38,7 @@
             Toasts.Show(maintenance ? "Đã cập nhật tủ bảo trì thành công." : "Đã cập nhật tủ thành công.");
             await OnDone.InvokeAsync();
         }
-        catch (ApiException ex) { _error = ex.Message; }
+        catch (ApiException ex) { _error = ex.Message; Toasts.ShowError(ex.Message); }
         finally { _busy = false; }
     }
 }

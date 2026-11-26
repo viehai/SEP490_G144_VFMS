@@ -36,6 +36,7 @@ public sealed partial class LockerService
             {
                 charge.Order.OrderStatus = OrderStatus.Expired;
                 charge.PaymentStatus = PaymentStatus.Cancelled;
+                ReleaseVoucher(charge);
                 await ReleaseInitialHold(charge, now, ct);
             }
             var expiredRelocations = await repo.GetExpiredReplacementsAsync(now, 100, ct);

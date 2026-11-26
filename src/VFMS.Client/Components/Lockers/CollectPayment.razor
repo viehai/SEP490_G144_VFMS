@@ -3,9 +3,10 @@
 @* A counter order waiting for money: cash is confirmed by Staff, VietQR is confirmed by the bank callback. *@
 <div class="space-y-3">
     <p class="text-sm">Đơn <strong>@Order.OrderNumber</strong> · <strong>@OperationsText.Money(Order.AmountDue)</strong></p>
+    @if (Order.DiscountAmount > 0) { <p class="text-sm">Voucher @Order.VoucherCode: giảm @OperationsText.Money(Order.DiscountAmount).</p> }
     @if (Method == "Cash")
     {
-        <button type="button" class="@Ui.PrimaryButton" disabled="@Busy" @onclick="OnCash">Đã thu @OperationsText.Money(Order.AmountDue) tiền mặt</button>
+        <CashReceiptForm OrderNumber="@Order.OrderNumber" AmountDue="Order.AmountDue" Busy="Busy" OnConfirm="OnCash" />
     }
     else
     {
@@ -19,6 +20,6 @@
     [Parameter] public string Method { get; set; } = "Cash";
     [Parameter] public DateTime Now { get; set; } = DateTime.UtcNow;
     [Parameter] public bool Busy { get; set; }
-    [Parameter] public EventCallback OnCash { get; set; }
+    [Parameter] public EventCallback<decimal> OnCash { get; set; }
     [Parameter] public EventCallback OnCancel { get; set; }
 }

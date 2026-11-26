@@ -1,6 +1,6 @@
 namespace VFMS.Client.Services;
 
-/// <summary>Success toasts (spec MSG-03, MSG-04, MSG-05). Field and request errors stay inline on the page.</summary>
+/// <summary>Action feedback. Errors can also remain inline beside the affected form.</summary>
 public sealed class ToastService
 {
     public static readonly TimeSpan Duration = TimeSpan.FromSeconds(5);
@@ -10,9 +10,12 @@ public sealed class ToastService
     public IReadOnlyList<Toast> Items => _items;
     public event Action? Changed;
 
-    public void Show(string message)
+    public void Show(string message) => Add(message, false);
+    public void ShowError(string message) => Add(message, true);
+
+    private void Add(string message, bool error)
     {
-        var toast = new Toast(++_nextId, message);
+        var toast = new Toast(++_nextId, message, error);
         _items.Add(toast);
         Changed?.Invoke();
         _ = DismissLaterAsync(toast);
@@ -30,5 +33,5 @@ public sealed class ToastService
         Dismiss(toast.Id);
     }
 
-    public sealed record Toast(int Id, string Message);
+    public sealed record Toast(int Id, string Message, bool IsError = false);
 }

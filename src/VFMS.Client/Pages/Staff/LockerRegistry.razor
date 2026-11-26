@@ -10,7 +10,7 @@
 
 <PageTitle>Sơ đồ tủ | Victor Fitness</PageTitle>
 
-<section class="workspace-page space-y-6 font-['Inter',sans-serif] text-[#242424]" aria-labelledby="locker-registry-title">
+<section class="workspace-page locker-page space-y-6 font-['Inter',sans-serif] text-[#242424]" aria-labelledby="locker-registry-title">
     <PageHeader Overline="VFMS / LỄ TÂN" Title="Sơ đồ tủ" Description="Xem trạng thái tủ, thuê tại quầy và đặt tủ vào bảo trì.">
         <div class="flex flex-wrap gap-2">
             <a href="/staff/locker-contracts" class="@Ui.PrimaryButton">Hợp đồng &amp; trả tủ</a>
@@ -25,6 +25,8 @@
     }
     else
     {
+        <div class="locker-layout">
+        <div class="space-y-6">
         <div class="@Ui.Card space-y-4">
             <div class="flex flex-wrap items-center gap-2 text-xs text-[#6F6966]">
                 @foreach (var status in new[] { "Available", "Reserved", "Occupied", "Overdue", "Maintenance" })
@@ -63,6 +65,9 @@
                 }
             </div>
         }
+        </div>
+        <LockerRulesPanel Text="@_rules" KeyDeposit="@(_policies.FirstOrDefault()?.Deposit ?? 100_000)" />
+        </div>
     }
 </section>
 
@@ -72,7 +77,7 @@
     private LockerPolicy[] _policies = [];
     private LockerSlot? _selected;
     private bool _loading = true;
-    private string? _error;
+    private string? _error, _rules;
 
     protected override async Task OnInitializedAsync()
     {
@@ -87,6 +92,7 @@
             var ct = _lifetime.Token;
             _grid = await Api.DeskGridAsync(ct);
             _policies = await Api.DeskPricingAsync(ct);
+            _rules = (await Api.DeskRulesAsync(ct)).Text;
             _selected = _selected is null ? null : _grid.FirstOrDefault(s => s.Id == _selected.Id);
             _error = null;
         }

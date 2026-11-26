@@ -19,6 +19,7 @@ public class LockerRentalContract : BaseEntity
     public decimal DepositAmount { get; set; }
     public decimal RentalPrice { get; set; }
     public RentalType? RentalTypeSnapshot { get; set; }
+    public int? TermMonthsSnapshot { get; set; }
     public decimal? OverdueDailyFeeSnapshot { get; set; }
     public decimal? KeyReplacementFeeSnapshot { get; set; }
     public DateTime? HandedOverAt { get; set; }

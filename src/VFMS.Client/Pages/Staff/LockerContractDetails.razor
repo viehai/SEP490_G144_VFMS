@@ -1,0 +1,63 @@
+@page "/staff/locker-contracts/{Id:int}"
+@layout StaffPTLayout
+@using Microsoft.AspNetCore.Authorization
+@using VFMS.Client.Components.Operations
+@using VFMS.Client.Components.Lockers
+@using VFMS.Contracts.Lockers
+@attribute [Authorize(Roles = "Staff")]
+@inject LockerApiClient Api
+@inject ToastService Toasts
+@implements IDisposable
+
+<PageTitle>Xử lý hợp đồng tủ | Victor Fitness</PageTitle>
+<section class="workspace-page space-y-6">
+    <PageHeader Overline="VFMS / LỄ TÂN" Title="Xử lý hợp đồng tủ" Description="Giao chìa, gia hạn, trả tủ và xử lý khoản phí của hợp đồng.">
+        <a href="@BackUrl" class="@Ui.Button">← Quay lại danh sách</a>
+    </PageHeader>
+    <Alerts Error="@_error" />
+    @if (_loading && _item is null)
+    {
+        <p role="status">Đang tải hợp đồng…</p>
+    }
+    else if (_item is { } item)
+    {
+        <div class="@Ui.Card">
+            <LockerContractPanel @key="item.Rental.Id" Item="item" Policies="_policies" OnChanged="LoadAsync" />
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter] public int Id { get; set; }
+    [SupplyParameterFromQuery] public string? Tab { get; set; }
+    [SupplyParameterFromQuery] public string? Search { get; set; }
+    [SupplyParameterFromQuery] public int Page { get; set; } = 1;
+    [SupplyParameterFromQuery] public bool OverdueOnly { get; set; }
+    private readonly CancellationTokenSource _lifetime = new();
+    private LockerStaffRental? _item;
+    private LockerPolicy[] _policies = [];
+    private bool _loading = true;
+    private string? _error;
+    private string BackUrl => $"/staff/locker-contracts?tab={(Tab is "pickup" or "unpaid" ? Tab : "contracts")}&page={Math.Max(1, Page)}&search={Uri.EscapeDataString(Search ?? "")}&overdueOnly={OverdueOnly.ToString().ToLowerInvariant()}";
+
+    protected override Task OnParametersSetAsync()
+    {
+        if (_item?.Rental.Id != Id) _item = null;
+        return LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            if (_policies.Length == 0) _policies = await Api.DeskPricingAsync(_lifetime.Token);
+            _item = await Api.DeskRentalDetailsAsync(Id, _lifetime.Token);
+        }
+        catch (ApiException ex) { _error = ex.Message; Toasts.ShowError(ex.Message); }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        finally { _loading = false; }
+    }
+    public void Dispose() { _lifetime.Cancel(); _lifetime.Dispose(); }
+}

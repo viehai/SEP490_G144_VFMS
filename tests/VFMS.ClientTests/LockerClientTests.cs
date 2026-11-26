@@ -6,6 +6,7 @@ using VFMS.Client.Auth;
 using VFMS.Client.Services;
 using VFMS.Contracts.Auth;
 using VFMS.Contracts.Lockers;
+using VFMS.Contracts.Common;
 using Xunit;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
@@ -17,7 +18,7 @@ using VFMS.Client.Components.Operations;
 namespace VFMS.ClientTests;
 
 /// <summary>Locker screens: API calls, 204 for "no rental", and the labels and countdown they show.</summary>
-public sealed class LockerClientTests
+public sealed partial class LockerClientTests
 {
     private readonly List<HttpRequestMessage> _requests = [];
 
@@ -114,6 +115,68 @@ public sealed class LockerClientTests
 
         Assert.Null(await api.MyRentalAsync());
         Assert.Equal("/api/lockers/my-rental", _requests.Single().RequestUri!.AbsolutePath);
+    }
+
+    [Fact]
+    public async Task RentalHistorySendsPage()
+    {
+        var page = new PagedResponse<LockerRentalView>(2, 10, 0, []);
+        var api = Client(HttpStatusCode.OK, page);
+        Assert.Equal(2, (await api.HistoryAsync(2)).Page);
+        Assert.Equal("/api/lockers/my-rentals/history?page=2", _requests.Single().RequestUri!.PathAndQuery);
+    }
+
+    [Fact]
+    public async Task RentalHistoryShowsAnEmptyState()
+    {
+        await using var provider = new ServiceCollection().AddLogging()
+            .AddSingleton(Client(HttpStatusCode.OK, new PagedResponse<LockerRentalView>(1, 10, 0, [])))
+            .BuildServiceProvider();
+        await using var renderer = new HtmlRenderer(provider, provider.GetRequiredService<ILoggerFactory>());
+        var html = await renderer.Dispatcher.InvokeAsync(async () =>
+            (await renderer.RenderComponentAsync<LockerRentalHistory>()).ToHtmlString());
+        Assert.Contains("Chưa có lịch sử thuê tủ.", WebUtility.HtmlDecode(html));
+    }
+
+    [Fact]
+    public async Task RentalHistoryPagerReachesTheLastContract()
+    {
+        LockerRentalView Rental(int id) => new(id, $"OLD-{id:00}", new(id, $"A{id:00}", "A", 1, "Available"),
+            "Monthly", "Terminated", 250_000, 0, null, null, null, 0, 0, null, false, null, null, null, false, 1, null, 0, null);
+        var first = new PagedResponse<LockerRentalView>(1, 10, 11, Enumerable.Range(1, 10).Select(Rental).ToArray());
+        var last = new PagedResponse<LockerRentalView>(2, 10, 11, [Rental(11)]);
+        var http = new HttpClient(new Handler(request => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = JsonContent.Create(request.RequestUri!.Query.Contains("page=2") ? last : first)
+        }))) { BaseAddress = new Uri("https://api.example.test/") };
+        var login = new LoginResponse("access", "refresh", "Bearer", 1800, "member", "Member", "member@example.test", ["Member"]);
+        var stored = JsonSerializer.Serialize(new StoredAuthSession(login, DateTimeOffset.UtcNow.AddMinutes(10), false));
+        var client = new LockerApiClient(new VfmsApiClient(http, new AuthSession(new Storage(stored), new AuthApiClient(http))));
+        var activator = new TrackingActivator();
+        await using var provider = new ServiceCollection().AddLogging().AddSingleton(client)
+            .AddSingleton<IComponentActivator>(activator).BuildServiceProvider();
+        await using var renderer = new HtmlRenderer(provider, provider.GetRequiredService<ILoggerFactory>());
+        await renderer.Dispatcher.InvokeAsync(async () =>
+        {
+            var root = await renderer.RenderComponentAsync<LockerRentalHistory>();
+            var html = WebUtility.HtmlDecode(root.ToHtmlString());
+            Assert.Contains("OLD-01", html);
+            Assert.DoesNotContain("OLD-11", html);
+            await activator.Instances.OfType<Pager>().Single().OnPage.InvokeAsync(2);
+            html = WebUtility.HtmlDecode(root.ToHtmlString());
+            Assert.Contains("OLD-11", html);
+            Assert.DoesNotContain("OLD-01", html);
+            Assert.Contains("/my-locker/history/11?page=2", html);
+        });
+    }
+
+    [Fact]
+    public async Task RentalHistoryDetailsUseTheMemberEndpoint()
+    {
+        var api = Client(HttpStatusCode.OK, new { id = 7, contractNumber = "OLD-07" });
+        var rental = await api.MyRentalDetailsAsync(7);
+        Assert.Equal(7, rental.Id);
+        Assert.Equal("/api/lockers/my-rentals/7", _requests.Single().RequestUri!.AbsolutePath);
     }
 
     [Fact]

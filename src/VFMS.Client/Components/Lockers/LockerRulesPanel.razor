@@ -1,0 +1,19 @@
+@using VFMS.Contracts.Lockers
+
+<aside class="locker-rules" aria-label="Nội quy tủ">
+    <h2>Nội quy tủ</h2>
+    @if (Lines.Length > 0) { <p>@Lines[0]</p> }
+    <p class="locker-rules-deposit">Phí cọc chìa <strong>@OperationsText.Money(KeyDeposit)</strong></p>
+    @foreach (var line in Lines.Skip(1)) { <p>@line</p> }
+    @ChildContent
+</aside>
+
+@code {
+    [Parameter] public string? Text { get; set; }
+    [Parameter] public decimal KeyDeposit { get; set; } = 100_000;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private string[] Lines => (string.IsNullOrWhiteSpace(Text) ? LockerRuleDefaults.Text : Text)
+        .Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+        .Where(line => !line.StartsWith("Phí cọc chìa", StringComparison.OrdinalIgnoreCase)).ToArray();
+}

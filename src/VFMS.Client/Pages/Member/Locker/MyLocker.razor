@@ -12,11 +12,21 @@
 
 <PageTitle>Tủ của tôi | Victor Fitness</PageTitle>
 
-<section class="mx-auto min-w-0 max-w-4xl space-y-6 px-[20px] pb-16 pt-28 font-body" aria-labelledby="locker-title" aria-busy="@_loading.ToString().ToLowerInvariant()">
+<section class="locker-page mx-auto min-w-0 max-w-6xl space-y-6 px-[20px] pb-16 pt-28 font-body" aria-labelledby="locker-title" aria-busy="@_loading.ToString().ToLowerInvariant()">
     <PageHeader Overline="VFMS / TỦ ĐỒ" Title="Tủ của tôi" Description="Xem hợp đồng thuê tủ, hạn sử dụng, tiền cọc chìa và gia hạn." />
     <Alerts Error="@_error" />
 
-    @if (_loading)
+    <div class="locker-layout">
+    <div class="space-y-6">
+    <div class="flex gap-3 border-b border-vfms-border pb-3" aria-label="Hợp đồng thuê tủ">
+        <button type="button" class="@(!_historyTab ? Ui.PrimaryButton : Ui.Button)" aria-pressed="@(!_historyTab)" @onclick="() => _historyTab = false">Tủ đang thuê</button>
+        <button type="button" class="@(_historyTab ? Ui.PrimaryButton : Ui.Button)" aria-pressed="@_historyTab" @onclick="() => _historyTab = true">Lịch sử thuê tủ</button>
+    </div>
+    @if (_historyTab)
+    {
+        <LockerRentalHistory InitialPage="HistoryPage" />
+    }
+    else if (_loading)
     {
         <p role="status" class="text-sm text-vfms-text-secondary">Đang tải…</p>
     }
@@ -44,7 +54,7 @@
                     <StatusBadge Status="@LockerText.ContractTone(rental.Status)" Label="@LockerText.Contract(rental.Status)" />
                 </div>
                 <dl class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 text-sm">
-                    <dt class="text-vfms-text-secondary">Khu / tầng</dt><dd>@rental.Locker.Zone · Tầng @rental.Locker.Floor</dd>
+                    <dt class="text-vfms-text-secondary">Khu</dt><dd>Khu @rental.Locker.Zone</dd>
                     <dt class="text-vfms-text-secondary">Loại thuê</dt><dd>@(rental.Type == "Daily" ? "Theo ngày" : $"{rental.TermMonths} tháng")</dd>
                     @if (rental.StartDate is { } start)
                     {
@@ -99,11 +109,18 @@
                     </div>
                 }
 
-                @if (rental.CanRenew)
+                @if (rental.PendingOrderNumber is { } pendingOrder)
+                {
+                    <div class="space-y-3 border-t border-vfms-border pt-4">
+                        <p class="text-sm">Đơn gia hạn @pendingOrder đang chờ thanh toán. Chọn phương thức và voucher trên trang thanh toán.</p>
+                        <a href="@($"/locker-checkout/{Uri.EscapeDataString(pendingOrder)}")" class="@Ui.PrimaryButton">Thanh toán đơn gia hạn</a>
+                    </div>
+                }
+                else if (rental.CanRenew)
                 {
                     <div class="space-y-3 border-t border-vfms-border pt-4">
                         <h3 class="text-sm font-bold">Gia hạn thuê tháng</h3>
-                        <p class="text-xs text-vfms-text-secondary">Phí quá hạn (nếu có) được cộng thêm vào tiền gia hạn. Thanh toán bằng VietQR, hạn chuyển khoản 15 phút.</p>
+                        <p class="text-xs text-vfms-text-secondary">Phí quá hạn được cộng thêm vào tiền gia hạn. Bước tiếp theo cho phép chọn voucher, VietQR hoặc tiền mặt tại quầy; hạn thanh toán 15 phút.</p>
                         <div class="flex flex-wrap items-end gap-3">
                             <label class="@Ui.Label">Thời hạn
                                 <select class="@Ui.Field" @bind="_renewPolicy" disabled="@_busy">
@@ -120,17 +137,15 @@
             </div>
         }
 
-        <div class="@Ui.Card space-y-3">
-            <button type="button" class="@Ui.Button" aria-expanded="@_showRules.ToString().ToLowerInvariant()" @onclick="ToggleRulesAsync">Xem nội quy tủ</button>
-            @if (_showRules)
-            {
-                <p class="whitespace-pre-line text-sm">@(string.IsNullOrWhiteSpace(_rules) ? "Phòng tập chưa đăng nội quy tủ." : _rules)</p>
-            }
-        </div>
     }
+    </div>
+    <LockerRulesPanel Text="@_rules" KeyDeposit="@(_rental?.KeyDeposit > 0 ? _rental.KeyDeposit : _rulesDeposit)" />
+    </div>
 </section>
 
 @code {
+    [SupplyParameterFromQuery] public bool History { get; set; }
+    [SupplyParameterFromQuery] public int HistoryPage { get; set; } = 1;
     private const string LockerSlotAvailable = "Available";
     private readonly CancellationTokenSource _lifetime = new();
     private LockerRentalView? _rental;
@@ -140,12 +155,14 @@
     private int _renewPolicy;
     private bool _loading = true;
     private bool _busy;
-    private bool _showRules;
+    private decimal _rulesDeposit = 100_000;
+    private bool _historyTab;
     private string? _rules;
     private string? _error;
 
     protected override async Task OnInitializedAsync()
     {
+        _historyTab = History;
         await LoadAsync();
         _loading = false;
     }
@@ -155,6 +172,9 @@
         try
         {
             var ct = _lifetime.Token;
+            var rules = await Api.RulesAsync(ct);
+            _rules = rules.Text;
+            _rulesDeposit = rules.KeyDeposit;
             _rental = await Api.MyRentalAsync(ct);
             _outstanding = (await Api.OutstandingAsync(ct)).Amount;
             if (_rental is { CanRenew: true })
@@ -166,7 +186,7 @@
                 _available = (await Api.GridAsync(ct)).Where(s => s.Status == LockerSlotAvailable).ToArray();
             _error = null;
         }
-        catch (ApiException ex) { _error = ex.Message; }
+        catch (ApiException ex) { _error = ex.Message; Toasts.ShowError(ex.Message); }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
     }
 
@@ -177,10 +197,11 @@
         _error = null;
         try
         {
-            var order = await Api.RenewAsync(rental.Id, new LockerRenewalRequest(_renewPolicy, null), _lifetime.Token);
+            var order = await Api.RenewAsync(rental.Id, new LockerRenewalRequest(_renewPolicy, null, true), _lifetime.Token);
+            Toasts.Show("Đã tạo đơn gia hạn. Chọn phương thức thanh toán và voucher.");
             Navigation.NavigateTo($"/locker-checkout/{Uri.EscapeDataString(order.OrderNumber)}");
         }
-        catch (ApiException ex) { _error = ex.Message; }
+        catch (ApiException ex) { _error = ex.Message; Toasts.ShowError(ex.Message); }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
         finally { _busy = false; }
     }
@@ -195,18 +216,9 @@
             _rental = await Api.SelectReplacementAsync(rental.Id, slot.Id, _lifetime.Token);
             Toasts.Show("Đã chọn tủ thay thế. Mang chìa đến quầy lễ tân để đổi tủ.");
         }
-        catch (ApiException ex) { _error = ex.Message; }
+        catch (ApiException ex) { _error = ex.Message; Toasts.ShowError(ex.Message); }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
         finally { _busy = false; }
-    }
-
-    private async Task ToggleRulesAsync()
-    {
-        _showRules = !_showRules;
-        if (!_showRules || _rules is not null) return;
-        try { _rules = (await Api.RulesAsync(_lifetime.Token)).Text; }
-        catch (ApiException ex) { _error = ex.Message; }
-        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
     }
 
     public void Dispose()

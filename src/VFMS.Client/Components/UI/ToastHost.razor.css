@@ -33,3 +33,5 @@
     line-height: 1;
     cursor: pointer;
 }
+
+.toast-item--error { background: #B83A3A; }

@@ -64,12 +64,13 @@ public sealed class LockerRepository(VfmsDbContext db) : AuditedRepositoryBase(d
         var eligible = EligibleMemberships(today);
         var allocated = Allocations(Context.LockerRentalContracts, now);
         var unpaid = Unpaid(Context.LockerRentalContracts);
+        search = search.ToLowerInvariant();
         return await Users(UserRole.Member).Where(u => u.GymId == gymId &&
-                (u.FullName.Contains(search) || u.PhoneNumber.Contains(search)))
+                (u.FullName.ToLower().Contains(search) || u.PhoneNumber.Contains(search) || u.Email.ToLower().Contains(search)))
             .OrderBy(u => u.FullName).ThenBy(u => u.UserId).Take(25)
             .Select(u => new LockerMember(u.UserId, u.FullName, u.PhoneNumber,
                 eligible.Any(m => m.MemberUserId == u.UserId) && !allocated.Any(r => r.CustomerUserId == u.UserId) &&
-                !unpaid.Any(r => r.CustomerUserId == u.UserId)))
+                !unpaid.Any(r => r.CustomerUserId == u.UserId), u.Email))
             .ToListAsync(cancellationToken);
     }
 
@@ -78,7 +79,7 @@ public sealed class LockerRepository(VfmsDbContext db) : AuditedRepositoryBase(d
     public async Task<IReadOnlyList<Locker>> GetGymLockersAsync(int gymId, CancellationToken cancellationToken = default) =>
         await Context.Lockers.AsNoTracking().Include(l => l.LockerZone)
             .Where(l => l.LockerZone.GymId == gymId && l.LockerStatus != LockerStatus.Inactive)
-            .OrderBy(l => l.LockerZone.FloorNumber).ThenBy(l => l.LockerNumber).ToListAsync(cancellationToken);
+            .OrderBy(l => l.LockerZone.ZoneName).ThenBy(l => l.LockerNumber).ToListAsync(cancellationToken);
 
     public Task<Locker?> GetGymLockerAsync(int lockerId, int gymId, CancellationToken cancellationToken = default) =>
         Context.Lockers.Include(l => l.LockerZone).ThenInclude(z => z.Gym)
@@ -95,11 +96,11 @@ public sealed class LockerRepository(VfmsDbContext db) : AuditedRepositoryBase(d
 
     public async Task<IReadOnlyList<LockerZone>> GetZonesAsync(int gymId, CancellationToken cancellationToken = default) =>
         await Context.LockerZones.AsNoTracking()
-            .Include(z => z.Lockers.Where(l => l.LockerStatus != LockerStatus.Inactive))
-            .Where(z => z.GymId == gymId).OrderBy(z => z.FloorNumber).ThenBy(z => z.ZoneName).ToListAsync(cancellationToken);
+            .Include(z => z.Lockers)
+            .Where(z => z.GymId == gymId).OrderBy(z => z.ZoneName).ToListAsync(cancellationToken);
 
     public Task<LockerZone?> GetZoneAsync(int zoneId, int gymId, CancellationToken cancellationToken = default) =>
-        Context.LockerZones.SingleOrDefaultAsync(z => z.Id == zoneId && z.GymId == gymId, cancellationToken);
+        Context.LockerZones.Include(z => z.Lockers).SingleOrDefaultAsync(z => z.Id == zoneId && z.GymId == gymId, cancellationToken);
 
     public Task<bool> LockerNumberExistsAsync(int gymId, string number, CancellationToken cancellationToken = default) =>
         Context.Lockers.AnyAsync(l => l.LockerZone.GymId == gymId && l.LockerNumber == number, cancellationToken);
@@ -111,7 +112,7 @@ public sealed class LockerRepository(VfmsDbContext db) : AuditedRepositoryBase(d
         .Include(r => r.LockerPricingPolicy)
         .Include(r => r.Customer)
         .Include(r => r.ReplacementLocker).ThenInclude(l => l!.LockerZone)
-        .Include(r => r.Payments).ThenInclude(p => p.Order)
+        .Include(r => r.Payments).ThenInclude(p => p.Order).ThenInclude(o => o.VoucherRedemption)
         .Include(r => r.Payments).ThenInclude(p => p.Invoice)
         .AsSplitQuery();
 
@@ -147,6 +148,22 @@ public sealed class LockerRepository(VfmsDbContext db) : AuditedRepositoryBase(d
         Rentals.SingleOrDefaultAsync(r => r.Id == id && r.Locker.LockerZone.GymId == gymId &&
             (customerId == null || r.CustomerUserId == customerId), cancellationToken);
 
+    public async Task<PagedResponse<LockerRentalContract>> GetRentalHistoryAsync(string memberId, int page,
+        CancellationToken cancellationToken = default)
+    {
+        const int pageSize = 10;
+        var query = Rentals.AsNoTracking().Where(r => r.CustomerUserId == memberId &&
+            (r.ContractStatus == LockerContractStatus.Terminated || r.ContractStatus == LockerContractStatus.Abandoned ||
+             r.ContractStatus == LockerContractStatus.Cancelled) &&
+            (r.HandedOverAt != null || r.Payments.Any(p => p.LockerPurpose == LockerPaymentPurpose.Rental &&
+                p.PaymentStatus == PaymentStatus.Paid)));
+        var total = await query.CountAsync(cancellationToken);
+        page = Math.Min(page, Math.Max(1, (int)Math.Ceiling(total / (double)pageSize)));
+        var items = await query.OrderByDescending(r => r.CreatedAt).ThenByDescending(r => r.Id)
+            .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
+        return new(page, pageSize, total, items);
+    }
+
     public async Task<IReadOnlyList<LockerRentalContract>> GetRegistryAsync(int gymId, DateTime now, DateOnly today, string? search,
         bool overdueOnly, CancellationToken cancellationToken = default)
     {
@@ -158,9 +175,13 @@ public sealed class LockerRepository(VfmsDbContext db) : AuditedRepositoryBase(d
                 (r.ExpiresAt <= now || r.ContractStatus != LockerContractStatus.PendingHandover &&
                     r.ExpiresAt == null && r.EndDate < today));
         if (!string.IsNullOrWhiteSpace(search))
-            query = query.Where(r => r.ContractNumber.Contains(search) || r.Locker.LockerNumber.Contains(search) ||
-                r.Customer.FullName.Contains(search) || r.Payments.Any(p => p.LockerPurpose == LockerPaymentPurpose.Rental &&
-                    p.Invoice!.InvoiceNumber.Contains(search)));
+        {
+            search = search.Trim().ToLowerInvariant();
+            query = query.Where(r => r.ContractNumber.ToLower().Contains(search) || r.Locker.LockerNumber.ToLower().Contains(search) ||
+                r.Customer.FullName.ToLower().Contains(search) || r.Customer.PhoneNumber.Contains(search) ||
+                r.Customer.Email.ToLower().Contains(search) || r.Payments.Any(p => p.LockerPurpose == LockerPaymentPurpose.Rental &&
+                    p.Invoice!.InvoiceNumber.ToLower().Contains(search)));
+        }
         return await query.OrderBy(r => r.EndDate).ThenBy(r => r.Id).Take(100).ToListAsync(cancellationToken);
     }
 
@@ -204,8 +225,12 @@ public sealed class LockerRepository(VfmsDbContext db) : AuditedRepositoryBase(d
     {
         var query = Unpaid(Rentals.AsNoTracking()).Where(r => r.Locker.LockerZone.GymId == gymId);
         if (!string.IsNullOrWhiteSpace(search))
-            query = query.Where(r => r.ContractNumber.Contains(search) || r.Locker.LockerNumber.Contains(search) ||
-                r.Customer.FullName.Contains(search) || r.Customer.PhoneNumber.Contains(search));
+        {
+            search = search.Trim().ToLowerInvariant();
+            query = query.Where(r => r.ContractNumber.ToLower().Contains(search) || r.Locker.LockerNumber.ToLower().Contains(search) ||
+                r.Customer.FullName.ToLower().Contains(search) || r.Customer.PhoneNumber.Contains(search) ||
+                r.Customer.Email.ToLower().Contains(search));
+        }
         return await query.OrderBy(r => r.Id).Take(100).ToListAsync(cancellationToken);
     }
 
@@ -223,14 +248,14 @@ public sealed class LockerRepository(VfmsDbContext db) : AuditedRepositoryBase(d
 
     public Task<PaymentTransaction?> GetCheckoutAsync(string orderNumber, int gymId, string? customerId,
         CancellationToken cancellationToken = default) =>
-        Context.PaymentTransactions.AsNoTracking().Include(p => p.Order).Include(p => p.Invoice)
+        Context.PaymentTransactions.AsNoTracking().Include(p => p.Order).ThenInclude(o => o.VoucherRedemption).Include(p => p.Invoice)
             .SingleOrDefaultAsync(p => p.Order.OrderNumber == orderNumber && p.LockerRentalContract!.Locker.LockerZone.GymId == gymId &&
                 (customerId == null || p.LockerRentalContract!.CustomerUserId == customerId), cancellationToken);
 
     public async Task<IReadOnlyList<PaymentTransaction>> GetStaleChargesAsync(DateTime now, int take,
         CancellationToken cancellationToken = default) =>
         await Context.PaymentTransactions.Include(p => p.LockerRentalContract!).ThenInclude(r => r.Locker)
-            .Include(p => p.Order).Where(p => p.LockerRentalContractId != null && p.HoldExpiresAt <= now &&
+            .Include(p => p.Order).ThenInclude(o => o.VoucherRedemption).Where(p => p.LockerRentalContractId != null && p.HoldExpiresAt <= now &&
                 (p.Order.OrderStatus == OrderStatus.Pending ||
                 p.LockerPurpose == LockerPaymentPurpose.Rental && p.LockerRentalContract!.ContractStatus == LockerContractStatus.PendingPayment &&
                 p.Order.OrderStatus == OrderStatus.Expired)).OrderBy(p => p.Id).Take(take).ToListAsync(cancellationToken);

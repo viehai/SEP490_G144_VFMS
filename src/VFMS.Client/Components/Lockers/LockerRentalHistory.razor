@@ -1,0 +1,68 @@
+@using VFMS.Contracts.Common
+@using VFMS.Contracts.Lockers
+@using VFMS.Client.Components.Operations
+@inject LockerApiClient Api
+@implements IDisposable
+
+<div class="space-y-4" aria-busy="@_loading.ToString().ToLowerInvariant()">
+    <Alerts Error="@_error" />
+    @if (_loading)
+    {
+        <p role="status" class="text-sm text-vfms-text-secondary">Đang tải lịch sử thuê tủ…</p>
+    }
+    else if (_history is { Items.Count: 0 })
+    {
+        <p role="status" class="@Ui.Card text-sm">Chưa có lịch sử thuê tủ.</p>
+    }
+    else if (_history is { } history)
+    {
+        <div class="@Ui.ListCard">
+            <div class="overflow-x-auto">
+                <table class="workspace-table w-full text-left text-sm">
+                    <caption class="sr-only">Hợp đồng thuê tủ đã kết thúc</caption>
+                    <thead><tr><th scope="col" class="px-4 py-3">Mã hợp đồng</th><th scope="col" class="px-4 py-3">Tủ</th><th scope="col" class="px-4 py-3">Loại thuê</th><th scope="col" class="px-4 py-3">Trạng thái</th><th scope="col" class="px-4 py-3"><span class="sr-only">Chi tiết</span></th></tr></thead>
+                    <tbody>
+                        @foreach (var rental in history.Items)
+                        {
+                            <tr @key="rental.Id">
+                                <th scope="row" class="px-4 py-3">@rental.ContractNumber</th>
+                                <td class="px-4 py-3">@rental.Locker.Number</td>
+                                <td class="px-4 py-3">@(rental.Type == "Daily" ? "Theo ngày" : $"{rental.TermMonths} tháng")</td>
+                                <td class="px-4 py-3"><StatusBadge Status="@LockerText.ContractTone(rental.Status)" Label="@LockerText.Contract(rental.Status)" /></td>
+                                <td class="px-4 py-3"><a class="@Ui.Button" href="@($"/my-locker/history/{rental.Id}?page={history.Page}")">Xem chi tiết</a></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <Pager Page="history.Page" PageSize="history.PageSize" TotalCount="history.TotalCount" Noun="hợp đồng" OnPage="LoadAsync" />
+        </div>
+    }
+
+</div>
+
+@code {
+    private readonly CancellationTokenSource _lifetime = new();
+    private PagedResponse<LockerRentalView>? _history;
+    private bool _loading = true;
+    private string? _error;
+
+    [Parameter] public int InitialPage { get; set; } = 1;
+    protected override Task OnInitializedAsync() => LoadAsync(Math.Max(1, InitialPage));
+
+    private async Task LoadAsync(int page)
+    {
+        _loading = true;
+        _error = null;
+        try { _history = await Api.HistoryAsync(page, _lifetime.Token); }
+        catch (ApiException ex) { _error = ex.Message; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        finally { _loading = false; }
+    }
+
+    public void Dispose()
+    {
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+    }
+}

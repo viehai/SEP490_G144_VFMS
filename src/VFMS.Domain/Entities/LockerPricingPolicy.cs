@@ -10,6 +10,8 @@ public class LockerPricingPolicy : BaseEntity
 {
     public string PolicyName { get; set; } = string.Empty;
     public RentalType RentalType { get; set; }
+    /// <summary>Monthly duration; null preserves the legacy enum duration.</summary>
+    public int? DurationMonths { get; set; }
     public decimal RentalPrice { get; set; }
     /// <summary>Refundable key deposit (100,000 VND per GBR-19).</summary>
     public decimal DepositAmount { get; set; }

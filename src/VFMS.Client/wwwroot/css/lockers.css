@@ -1,0 +1,21 @@
+.locker-page { container: locker-page / inline-size; }
+.locker-layout { display: grid; grid-template-columns: minmax(0, 1fr) 280px; align-items: start; gap: 24px; }
+.locker-form-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 12px; }
+.locker-form-fields > *, .locker-price-row > * { min-width: 0; }
+.locker-layout > * { min-width: 0; }
+.locker-rules { display: flex; flex-direction: column; gap: 18px; min-height: 360px; padding: 24px; border: 1px solid #D8D1CD; border-radius: 12px; background: #F8F5F2; color: #242424; box-shadow: 0 1px 2px rgb(0 0 0 / .05); }
+.locker-rules h2 { margin: 0; color: #B83A3A; font: 800 18px/1.4 'Montserrat', sans-serif; }
+.locker-rules p { margin: 0; font-size: 14px; line-height: 1.65; }
+.locker-rules-deposit { padding: 14px 0; border-top: 1px solid #D8D1CD; border-bottom: 1px solid #D8D1CD; }
+.locker-rules-deposit strong { display: block; margin-top: 5px; color: #B83A3A; font-size: 22px; }
+.locker-price-row { display: grid; grid-template-columns: minmax(90px, .6fr) minmax(120px, 1fr) auto; align-items: end; gap: 12px; }
+.locker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.locker-cell { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 92px; width: 100%; padding: 12px 8px; border: 1px solid #B8ADA6; border-radius: 8px; background: #F8F5F2; color: #242424; transition: border-color .15s, background-color .15s; }
+.locker-cell-number { font-size: 14px; font-weight: 800; }
+.locker-cell[data-locker-status="Maintenance"] { background: #ECE8E4; border-color: #9F948D; }
+.locker-cell[aria-pressed="true"] { border: 2px solid #B83A3A; background: #F3E4E2; }
+.locker-cell:not(:disabled):hover { border-color: #B83A3A; }
+.locker-cell:disabled, .workspace-shell .locker-cell:disabled { cursor: not-allowed; opacity: 1; }
+.locker-cell:focus-visible { outline: 2px solid #B83A3A; outline-offset: 3px; }
+@container locker-page (max-width: 680px) { .locker-layout { grid-template-columns: minmax(0, 1fr); } .locker-rules { min-height: 0; } }
+@container locker-page (max-width: 480px) { .locker-price-row { grid-template-columns: 1fr 1fr; } .locker-price-row > button { grid-column: 1 / -1; justify-self: start; } }

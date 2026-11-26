@@ -1,0 +1,35 @@
+@using VFMS.Client.Components.Operations
+@using VFMS.Client.Components.Promotions
+
+<div class="space-y-3">
+    <label class="@Ui.Label">Voucher (không bắt buộc)
+        <input class="@Ui.Field" maxlength="80" @bind="_voucher" disabled="@Busy" />
+    </label>
+    @if (ShowWallet)
+    {
+        <CheckoutVoucherPicker OrderNumber="@OrderNumber" Disabled="@Busy" OnChoose="code => _voucher = code" />
+    }
+    @if (Hint is not null) { <p class="text-xs text-vfms-text-secondary">@Hint</p> }
+    <div class="flex flex-wrap gap-3">
+        <button type="button" class="@Ui.PrimaryButton" disabled="@Busy" @onclick='() => ChooseAsync("VietQR")'>Tạo mã VietQR</button>
+        <button type="button" class="@Ui.Button" disabled="@Busy" @onclick='() => ChooseAsync("Cash")'>Thanh toán tiền mặt tại quầy</button>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string OrderNumber { get; set; } = "";
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public bool ShowWallet { get; set; } = true;
+    [Parameter] public string? Hint { get; set; }
+    [Parameter] public EventCallback<(string Method, string? Voucher)> OnChoose { get; set; }
+    private string _voucher = "";
+    private string? _loaded;
+    protected override void OnParametersSet()
+    {
+        if (_loaded == OrderNumber) return;
+        _loaded = OrderNumber;
+        _voucher = "";
+    }
+    private Task ChooseAsync(string method) => Busy ? Task.CompletedTask :
+        OnChoose.InvokeAsync((method, string.IsNullOrWhiteSpace(_voucher) ? null : _voucher.Trim()));
+}

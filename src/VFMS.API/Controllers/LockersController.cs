@@ -31,6 +31,16 @@ public sealed class LockersController(ILockerService service) : ControllerBase
     [Authorize(Roles = "Member")]
     public Task<IActionResult> MyRental(CancellationToken ct) => AsUser(actor => service.MyRental(actor, ct));
 
+    [HttpGet("my-rentals/history")]
+    [Authorize(Roles = "Member")]
+    public Task<IActionResult> MyHistory([FromQuery] int page = 1, CancellationToken ct = default) =>
+        AsUser(actor => service.MyHistory(actor, page, ct));
+
+    [HttpGet("my-rentals/{id:int}")]
+    [Authorize(Roles = "Member")]
+    public Task<IActionResult> MyRentalDetails(int id, CancellationToken ct) =>
+        AsUser(actor => service.MyRentalDetails(actor, id, ct));
+
     [HttpGet("rules")]
     [Authorize(Roles = "Member")]
     public Task<IActionResult> Rules(CancellationToken ct) => AsUser(actor => service.Rules(actor, UserRole.Member, ct));
@@ -58,6 +68,16 @@ public sealed class LockersController(ILockerService service) : ControllerBase
     [Authorize(Roles = "Member")]
     public Task<IActionResult> CancelOrder(string number, CancellationToken ct) =>
         AsUser(actor => service.CancelCheckout(actor, UserRole.Member, number, ct));
+
+    [HttpPost("orders/{number}/payment")]
+    [Authorize(Roles = "Member")]
+    public Task<IActionResult> ChoosePayment(string number, LockerPaymentRequest request, CancellationToken ct) =>
+        AsUser(actor => service.ChoosePayment(actor, UserRole.Member, number, request, ct));
+
+    [HttpPost("staff/orders/{number}/payment")]
+    [Authorize(Roles = "Staff")]
+    public Task<IActionResult> ChooseCounterPayment(string number, LockerPaymentRequest request, CancellationToken ct) =>
+        AsUser(actor => service.ChoosePayment(actor, UserRole.Staff, number, request, ct));
 
     [HttpPost("rentals/{id:int}/renew")]
     [Authorize(Roles = "Member")]
@@ -184,6 +204,11 @@ public sealed class LockersController(ILockerService service) : ControllerBase
     [Authorize(Roles = "Manager")]
     public Task<IActionResult> AddZone(LockerZoneRequest request, CancellationToken ct) =>
         AsUser(actor => service.AddZone(actor, request, ct));
+
+    [HttpDelete("manager/zones/{id:int}")]
+    [Authorize(Roles = "Manager")]
+    public Task<IActionResult> DeleteZone(int id, CancellationToken ct) =>
+        AsUser(actor => service.DeleteZone(actor, id, ct));
 
     [HttpPost("manager/lockers")]
     [Authorize(Roles = "Manager")]

@@ -77,6 +77,9 @@ public sealed partial class LockerService(ILockerRepository repo, TimeProvider c
         _ => 0
     };
 
+    private static int Months(LockerPricingPolicy policy) =>
+        policy.RentalType == RentalType.Daily ? 0 : policy.DurationMonths ?? Months(policy.RentalType);
+
     private static RentalType Type(LockerRentalContract rental) =>
         rental.RentalTypeSnapshot ?? rental.LockerPricingPolicy.RentalType;
 
@@ -170,7 +173,7 @@ public sealed partial class LockerService(ILockerRepository repo, TimeProvider c
             InvoiceNumber: initial?.Invoice?.InvoiceNumber,
             OutstandingAmount: rental.OutstandingAmount,
             RenewalDue: status == "Active" && !daily && rental.ReturnedAt is null && RentalExpiry(rental) - now <= TimeSpan.FromDays(7),
-            TermMonths: lastRenewal?.RenewalMonths ?? Months(rentalType),
+            TermMonths: lastRenewal?.RenewalMonths ?? rental.TermMonthsSnapshot ?? Months(rental.LockerPricingPolicy),
             SettledAt: rental.SettledAt is { } settled ? Utc(settled) : null,
             RefundedDeposit: initial is { RefundStatus: "Refunded" } && IsDepositReturn(initial.RefundReason)
                 ? initial.RefundAmount ?? 0
@@ -183,11 +186,14 @@ public sealed partial class LockerService(ILockerRepository repo, TimeProvider c
             ReturnedAt: rental.ReturnedAt is { } returned ? Utc(returned) : null,
             ReminderSentAt: rental.ReminderSentAt is { } reminder ? Utc(reminder) : null,
             OverdueNoticeSentAt: rental.FinalNoticeAt is { } notice ? Utc(notice) : null,
-            OutstandingPaidAt: rental.OutstandingPaidAt is { } paidAt ? Utc(paidAt) : null);
+            OutstandingPaidAt: rental.OutstandingPaidAt is { } paidAt ? Utc(paidAt) : null,
+            KeyDeposit: rental.DepositAmount,
+            PendingOrderNumber: rental.Payments.Where(p => Pending(p, now) && p.LockerPurpose is LockerPaymentPurpose.Rental or LockerPaymentPurpose.Renewal)
+                .OrderByDescending(p => p.Id).Select(p => p.Order.OrderNumber).FirstOrDefault());
     }
 
     private static LockerPolicy Policy(LockerPricingPolicy p) =>
-        new(p.Id, p.PolicyName, p.RentalType.ToString(), Months(p.RentalType),
+        new(p.Id, p.PolicyName, p.RentalType.ToString(), Months(p),
             p.RentalType == RentalType.Daily ? 0 : p.RentalPrice, p.DepositAmount,
             p.OverdueDailyFee);
 
@@ -244,5 +250,26 @@ public sealed partial class LockerService(ILockerRepository repo, TimeProvider c
         var now = Now.UtcDateTime;
         var rental = await repo.GetCurrentRentalAsync(actor, now, ct);
         return Result<LockerRentalView?>.Success(rental is null ? null : View(rental, now));
+    }
+
+    public async Task<Result<PagedResponse<LockerRentalView>>> MyHistory(string actor, int page, CancellationToken ct)
+    {
+        if (await Actor(actor, UserRole.Member, ct) is null)
+            return Forbidden<PagedResponse<LockerRentalView>>();
+        if (page < 1)
+            return Invalid<PagedResponse<LockerRentalView>>("Số trang phải lớn hơn hoặc bằng 1.");
+        var history = await repo.GetRentalHistoryAsync(actor, page, ct);
+        var now = Now.UtcDateTime;
+        return Result<PagedResponse<LockerRentalView>>.Success(new(history.Page, history.PageSize,
+            history.TotalCount, history.Items.Select(r => View(r, now)).ToArray()));
+    }
+
+    public async Task<Result<LockerRentalView>> MyRentalDetails(string actor, int id, CancellationToken ct)
+    {
+        var member = await Actor(actor, UserRole.Member, ct);
+        if (member is null)
+            return Forbidden<LockerRentalView>();
+        var rental = await repo.GetRentalAsync(id, member.GymId, actor, ct);
+        return rental is null ? Missing<LockerRentalView>() : Result<LockerRentalView>.Success(View(rental, Now.UtcDateTime));
     }
 }

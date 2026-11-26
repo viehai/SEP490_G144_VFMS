@@ -1,4 +1,5 @@
 using VFMS.Contracts.Lockers;
+using VFMS.Contracts.Common;
 
 namespace VFMS.Client.Services;
 
@@ -6,6 +7,8 @@ namespace VFMS.Client.Services;
 public sealed class LockerApiClient(VfmsApiClient api)
 {
     private const string Root = "api/lockers";
+    public Task<LockerCheckout> ChoosePaymentAsync(string number, LockerPaymentRequest request, bool staff = false, CancellationToken ct = default) =>
+        api.PostAsync<LockerCheckout>($"{Root}/{(staff ? "staff/" : "")}orders/{Uri.EscapeDataString(number)}/payment", request, ct);
 
     // Member
     public Task<LockerSlot[]> GridAsync(CancellationToken ct = default) => api.GetAsync<LockerSlot[]>(Root, ct);
@@ -13,6 +16,10 @@ public sealed class LockerApiClient(VfmsApiClient api)
     public Task<LockerRulesView> RulesAsync(CancellationToken ct = default) => api.GetAsync<LockerRulesView>($"{Root}/rules", ct);
     public Task<LockerOutstanding> OutstandingAsync(CancellationToken ct = default) =>
         api.GetAsync<LockerOutstanding>($"{Root}/my-outstanding", ct);
+    public Task<PagedResponse<LockerRentalView>> HistoryAsync(int page = 1, CancellationToken ct = default) =>
+        api.GetAsync<PagedResponse<LockerRentalView>>($"{Root}/my-rentals/history?page={page}", ct);
+    public Task<LockerRentalView> MyRentalDetailsAsync(int id, CancellationToken ct = default) =>
+        api.GetAsync<LockerRentalView>($"{Root}/my-rentals/{id}", ct);
 
     /// <summary>The Member's current rental; null when there is none (the API answers 204).</summary>
     public async Task<LockerRentalView?> MyRentalAsync(CancellationToken ct = default)
@@ -41,6 +48,8 @@ public sealed class LockerApiClient(VfmsApiClient api)
         api.PostAsync<LockerRentalView>($"{Root}/rentals/{rentalId}/replacement", new LockerRelocationRequest(lockerId), ct);
 
     // Staff (front desk)
+    public Task<LockerStaffRental> DeskRentalDetailsAsync(int id, CancellationToken ct = default) =>
+        api.GetAsync<LockerStaffRental>($"{Root}/staff/rentals/{id}", ct);
     public Task<LockerSlot[]> DeskGridAsync(CancellationToken ct = default) => api.GetAsync<LockerSlot[]>($"{Root}/staff/grid", ct);
     public Task<LockerPolicy[]> DeskPricingAsync(CancellationToken ct = default) => api.GetAsync<LockerPolicy[]>($"{Root}/staff/pricing", ct);
     public Task<LockerRulesView> DeskRulesAsync(CancellationToken ct = default) => api.GetAsync<LockerRulesView>($"{Root}/staff/rules", ct);
@@ -89,6 +98,8 @@ public sealed class LockerApiClient(VfmsApiClient api)
         api.PutAsync<LockerPolicy[]>($"{Root}/manager/pricing", request, ct);
     public Task<LockerCatalogZone> AddZoneAsync(LockerZoneRequest request, CancellationToken ct = default) =>
         api.PostAsync<LockerCatalogZone>($"{Root}/manager/zones", request, ct);
+    public Task<int> DeleteZoneAsync(int zoneId, CancellationToken ct = default) =>
+        api.DeleteAsync<int>($"{Root}/manager/zones/{zoneId}", ct);
     public Task<LockerSlot> AddLockerAsync(LockerCreateRequest request, CancellationToken ct = default) =>
         api.PostAsync<LockerSlot>($"{Root}/manager/lockers", request, ct);
     public Task<LockerSlot> DeactivateLockerAsync(int lockerId, CancellationToken ct = default) =>

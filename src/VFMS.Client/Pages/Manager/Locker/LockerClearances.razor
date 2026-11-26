@@ -83,7 +83,7 @@
             _page = Math.Clamp(_page, 1, Math.Max(1, (_items.Length + PageSize - 1) / PageSize));
             _error = null;
         }
-        catch (ApiException ex) { _error = ex.Message; }
+        catch (ApiException ex) { _error = ex.Message; Toasts.ShowError(ex.Message); }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
     }
 
@@ -98,7 +98,7 @@
             Toasts.Show("Đã cập nhật hợp đồng tủ thành công.");
             await LoadAsync();
         }
-        catch (ApiException ex) { _error = ex.Message; }
+        catch (ApiException ex) { _error = ex.Message; Toasts.ShowError(ex.Message); }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
         finally { _busy = false; }
     }

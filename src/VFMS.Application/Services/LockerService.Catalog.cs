@@ -30,10 +30,11 @@ public sealed partial class LockerService
         var replacements = byLocker.SelectMany(g => g).Where(r => r.ReplacementLockerId != null)
             .Select(r => r.ReplacementLockerId!.Value).ToHashSet();
         var prices = (await repo.GetActivePoliciesAsync(ct)).Select(Policy).OrderBy(p => p.Months).ToArray();
-        var rules = (await repo.GetGymAsync(manager.GymId, ct))?.LockerRules ?? string.Empty;
+        var rules = (await repo.GetGymAsync(manager.GymId, ct))?.LockerRules;
+        if (string.IsNullOrWhiteSpace(rules)) rules = LockerRuleDefaults.Text;
         return Result<LockerCatalog>.Success(new(zones.Select(z => new LockerCatalogZone(z.Id, z.ZoneName, z.FloorNumber,
-            z.Lockers.OrderBy(l => l.LockerNumber).Select(l => new LockerSlot(l.Id, l.LockerNumber, z.ZoneName, z.FloorNumber,
-                replacements.Contains(l.Id) ? "Reserved" : SlotStatus(l, byLocker[l.Id].FirstOrDefault(), now))).ToArray())).ToArray(),
+            z.Lockers.Where(l => l.LockerStatus != LockerStatus.Inactive).OrderBy(l => l.LockerNumber).Select(l => new LockerSlot(l.Id, l.LockerNumber, z.ZoneName, z.FloorNumber,
+                replacements.Contains(l.Id) ? "Reserved" : SlotStatus(l, byLocker[l.Id].FirstOrDefault(), now))).ToArray(), z.Lockers.Count == 0)).ToArray(),
             prices, rules));
     }
 
@@ -43,16 +44,46 @@ public sealed partial class LockerService
             var manager = await Actor(actor, UserRole.Manager, ct);
             if (manager is null)
                 return Forbidden<LockerCatalogZone>();
-            var name = input.Name?.Trim();
-            if (string.IsNullOrEmpty(name) || name.Length > 100)
-                return Invalid<LockerCatalogZone>("Tên khu vực là bắt buộc và tối đa 100 ký tự.");
-            var zone = new LockerZone { GymId = manager.GymId, ZoneName = name, FloorNumber = input.Floor };
+            var used = (await repo.GetZonesAsync(manager.GymId, ct))
+                .Select(z => z.ZoneName.Trim().Replace("Khu ", "", StringComparison.OrdinalIgnoreCase))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var index = 1;
+            string name;
+            do { name = ZoneLetters(index++); } while (used.Contains(name));
+            var zone = new LockerZone { GymId = manager.GymId, ZoneName = name, FloorNumber = 0 };
             repo.Add(zone);
             await repo.SaveChangesAsync(ct);
             AuditCatalog(actor, nameof(LockerZone), zone.Id, $"LockerZoneAdded:{name}", Now.UtcDateTime);
             await repo.SaveChangesAsync(ct);
-            return Result<LockerCatalogZone>.Success(new(zone.Id, zone.ZoneName, zone.FloorNumber, []), 201);
+            return Result<LockerCatalogZone>.Success(new(zone.Id, zone.ZoneName, zone.FloorNumber, [], true), 201);
         }, ct);
+
+    public Task<Result<int>> DeleteZone(string actor, int zoneId, CancellationToken ct) =>
+        Write(async () =>
+        {
+            var manager = await Actor(actor, UserRole.Manager, ct);
+            if (manager is null) return Forbidden<int>();
+            var zone = await repo.GetZoneAsync(zoneId, manager.GymId, ct);
+            if (zone is null) return Missing<int>();
+            if (zone.Lockers.Count != 0)
+                return Result<int>.Failure("Chỉ xóa được khu chưa có tủ. Khu còn tủ đang dùng hoặc đã ngừng dùng phải được giữ lại.", "LOCKER_ZONE_NOT_EMPTY", 409);
+            zone.IsDeleted = true;
+            AuditCatalog(actor, nameof(LockerZone), zone.Id, $"LockerZoneDeleted:{zone.ZoneName}", Now.UtcDateTime);
+            await repo.SaveChangesAsync(ct);
+            return Result<int>.Success(zone.Id);
+        }, ct);
+
+    private static string ZoneLetters(int index)
+    {
+        var name = string.Empty;
+        while (index > 0)
+        {
+            index--;
+            name = (char)('A' + index % 26) + name;
+            index /= 26;
+        }
+        return name;
+    }
 
     public Task<Result<LockerSlot>> AddLocker(string actor, LockerCreateRequest input, CancellationToken ct) =>
         Write(async () =>
@@ -116,7 +147,8 @@ public sealed partial class LockerService
             gym.LockerRules = text;
             AuditCatalog(actor, nameof(Gym), gym.Id, "LockerRulesSaved", Now.UtcDateTime);
             await repo.SaveChangesAsync(ct);
-            return Result<LockerRulesView>.Success(new(text));
+            var deposit = (await repo.GetActivePoliciesAsync(ct)).FirstOrDefault()?.DepositAmount ?? 100_000;
+            return Result<LockerRulesView>.Success(new(text, deposit));
         }, ct);
 
     // UC 5.1 Step 5: any signed-in Member or desk user reads the rules the Manager published.
@@ -125,6 +157,8 @@ public sealed partial class LockerService
         var user = await Actor(actor, role, ct);
         if (user is null)
             return Forbidden<LockerRulesView>();
-        return Result<LockerRulesView>.Success(new((await repo.GetGymAsync(user.GymId, ct))?.LockerRules ?? string.Empty));
+        var text = (await repo.GetGymAsync(user.GymId, ct))?.LockerRules;
+        var deposit = (await repo.GetActivePoliciesAsync(ct)).FirstOrDefault()?.DepositAmount ?? 100_000;
+        return Result<LockerRulesView>.Success(new(string.IsNullOrWhiteSpace(text) ? LockerRuleDefaults.Text : text, deposit));
     }
 }

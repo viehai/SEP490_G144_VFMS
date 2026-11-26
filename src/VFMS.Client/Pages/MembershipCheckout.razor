@@ -67,18 +67,7 @@
                     }
                     @if (!_checkout.IsApplying && !_checkout.IsRemoving && purchase.AmountDue > 0 && purchase.VietQr is { } qr && Remaining > TimeSpan.Zero)
                     {
-                        <div class="flex flex-col items-center gap-4 sm:flex-row sm:items-start sm:gap-6">
-                            <div class="rounded-xl border border-[#D8D1CD] bg-white p-3 shadow-sm shrink-0">
-                                <img src="@qr.ImageUrl" alt="Mã VietQR thanh toán đơn hàng" class="w-56 max-w-full rounded-lg"
-                                     referrerpolicy="no-referrer" width="224" />
-                            </div>
-                            <dl class="grid flex-1 gap-2.5 text-xs">
-                                <div><dt class="font-semibold text-[#6F6966]">Ngân hàng</dt><dd class="text-sm font-bold text-[#242424]">@qr.BankId</dd></div>
-                                <div><dt class="font-semibold text-[#6F6966]">Số tài khoản</dt><dd class="text-sm font-bold text-[#242424]">@qr.AccountNumber</dd></div>
-                                <div><dt class="font-semibold text-[#6F6966]">Chủ tài khoản</dt><dd class="text-sm font-bold text-[#242424]">@qr.AccountName</dd></div>
-                                <div><dt class="font-semibold text-[#6F6966]">Nội dung chuyển khoản</dt><dd class="text-sm font-bold text-[#B83A3A] bg-white border border-[#D8D1CD] rounded-md px-2 py-1 select-all">@qr.TransferContent</dd></div>
-                            </dl>
-                        </div>
+                        <CheckoutQrDetails Qr="qr" AmountDue="purchase.AmountDue" />
                     }
                     @if (purchase.AmountDue > 0 && purchase.PaymentMethod == MembershipPaymentMethods.Cash)
                     {

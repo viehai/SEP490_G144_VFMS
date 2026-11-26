@@ -1,0 +1,35 @@
+@using VFMS.Contracts.Lockers
+@using VFMS.Client.Components.Operations
+@using VFMS.Client.Components.Promotions
+@inject LockerApiClient Api
+@inject ToastService Toasts
+
+<div class="space-y-3" aria-label="Chọn thanh toán tủ">
+    <Alerts Error="@_error" />
+    <CheckoutPaymentOptions OrderNumber="@Order.OrderNumber" Busy="@(_busy || Busy)" ShowWallet="@(!Staff)" OnChoose="ChooseAsync"
+                            Hint="Voucher giảm phí thuê hoặc gia hạn; không giảm tiền cọc và phí quá hạn. Phương thức và voucher được chốt khi bấm thanh toán." />
+</div>
+
+@code {
+    [Parameter, EditorRequired] public LockerCheckout Order { get; set; } = null!;
+    [Parameter] public bool Staff { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public EventCallback<LockerCheckout> OnChanged { get; set; }
+    private bool _busy;
+    private string? _error;
+
+    private async Task ChooseAsync((string Method, string? Voucher) choice)
+    {
+        if (_busy || Busy) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            var order = await Api.ChoosePaymentAsync(Order.OrderNumber, new(choice.Method, choice.Voucher), Staff);
+            Toasts.Show(order.Status == "Paid" ? "Đã hoàn tất đơn bằng voucher." : choice.Method == "VietQR" ? "Đã tạo mã VietQR. Đang chờ thanh toán." : "Đã chọn tiền mặt. Vui lòng thanh toán tại quầy.");
+            await OnChanged.InvokeAsync(order);
+        }
+        catch (ApiException ex) { _error = ex.Message; Toasts.ShowError(ex.Message); }
+        finally { _busy = false; }
+    }
+}

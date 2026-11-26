@@ -1308,6 +1308,9 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<decimal>("DepositAmount")
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<int?>("DurationMonths")
+                        .HasColumnType("int");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
@@ -1453,6 +1456,9 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.Property<DateOnly>("StartDate")
                         .HasColumnType("date");
+
+                    b.Property<int?>("TermMonthsSnapshot")
+                        .HasColumnType("int");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");

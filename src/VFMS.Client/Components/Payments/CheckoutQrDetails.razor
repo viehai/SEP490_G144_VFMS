@@ -1,0 +1,24 @@
+@using VFMS.Contracts.Memberships
+@using VFMS.Client.Components.Operations
+
+<div class="flex min-w-0 flex-col items-center gap-4 sm:flex-row sm:items-start sm:gap-6">
+    @if (Uri.TryCreate(Qr.ImageUrl, UriKind.Absolute, out var image) && image.Scheme == "https")
+    {
+        <div class="max-w-full shrink-0 rounded-xl border border-vfms-border bg-white p-3 shadow-sm">
+            <img src="@image.AbsoluteUri" alt="@ImageAlt" class="w-56 max-w-full rounded-lg" referrerpolicy="no-referrer" width="224" />
+        </div>
+    }
+    <dl class="grid min-w-0 flex-1 gap-2.5 text-xs">
+        <div><dt class="font-semibold text-vfms-text-secondary">Ngân hàng</dt><dd class="break-words text-sm font-bold text-vfms-text">@Qr.BankId</dd></div>
+        <div><dt class="font-semibold text-vfms-text-secondary">Số tài khoản</dt><dd class="break-all text-sm font-bold text-vfms-text">@Qr.AccountNumber</dd></div>
+        <div><dt class="font-semibold text-vfms-text-secondary">Chủ tài khoản</dt><dd class="break-words text-sm font-bold text-vfms-text">@Qr.AccountName</dd></div>
+        <div><dt class="font-semibold text-vfms-text-secondary">Số tiền</dt><dd class="text-sm font-bold text-vfms-text">@OperationsText.Money(AmountDue)</dd></div>
+        <div><dt class="font-semibold text-vfms-text-secondary">Nội dung chuyển khoản</dt><dd class="select-all break-all rounded-md border border-vfms-border bg-white px-2 py-1 text-sm font-bold text-vfms-primary">@Qr.TransferContent</dd></div>
+    </dl>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public VietQrPaymentResponse Qr { get; set; } = null!;
+    [Parameter] public decimal AmountDue { get; set; }
+    [Parameter] public string ImageAlt { get; set; } = "Mã VietQR thanh toán đơn hàng";
+}

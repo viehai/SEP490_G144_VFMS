@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using VFMS.Client.Auth;
 using VFMS.Client.Pages.Staff;
+using VFMS.Client.Components.Payments;
 using VFMS.Client.Services;
 using VFMS.Contracts.Auth;
 using VFMS.Contracts.Common;
@@ -81,15 +82,16 @@ public sealed partial class MembershipPlanApiClientTests
             const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
             var events = (IHandleEvent)page;
             var open = type.GetMethod("OpenDetails", flags)!.CreateDelegate<Action<StaffPackageOrderResponse>>(page);
-            var confirm = type.GetMethod("ConfirmCashAsync", flags)!.CreateDelegate<Func<Task>>(page);
             await events.HandleEventAsync(new EventCallbackWorkItem(open), pending);
             var details = WebUtility.HtmlDecode(view.ToHtmlString());
             Assert.Contains("value=\"4.800.000\"", details);
             Assert.Contains("data-vnd-input", details);
             Assert.DoesNotContain(">Đã nhận</dt>", details);
 
-            var setAmount = type.GetMethod("SetCashTendered", flags)!.CreateDelegate<Action<string>>(page);
-            Task EnterAmountAsync(string text) => events.HandleEventAsync(new EventCallbackWorkItem(setAmount), text);
+            var cashForm = activator.CashForm!;
+            var confirm = typeof(CashReceiptForm).GetMethod("ConfirmAsync", flags)!.CreateDelegate<Func<Task>>(cashForm);
+            var setAmount = typeof(CashReceiptForm).GetMethod("SetCashTendered", flags)!.CreateDelegate<Action<string>>(cashForm);
+            Task EnterAmountAsync(string text) => ((IHandleEvent)cashForm).HandleEventAsync(new EventCallbackWorkItem(setAmount), text);
 
             await EnterAmountAsync("3000");
             Assert.Contains("value=\"3.000\"", view.ToHtmlString());
@@ -113,7 +115,7 @@ public sealed partial class MembershipPlanApiClientTests
                 Assert.Contains("Trả lại khách 200.000 ₫", WebUtility.HtmlDecode(view.ToHtmlString()));
                 Assert.Contains("value=\"5.000.000\"", view.ToHtmlString());
             }
-            else await events.HandleEventAsync(new EventCallbackWorkItem(open), pending);
+            else await EnterAmountAsync("4.800.000");
 
             await confirm();
             Assert.Contains("Hóa đơn INV-CASH", (string)type.GetField("_notice", flags)!.GetValue(page)!);
@@ -125,11 +127,13 @@ public sealed partial class MembershipPlanApiClientTests
     private sealed class StaffOrderPageActivator : IComponentActivator
     {
         public MembershipCashReceipt? Page { get; private set; }
+        public CashReceiptForm? CashForm { get; private set; }
 
         public IComponent CreateInstance(Type componentType)
         {
             var component = (IComponent)Activator.CreateInstance(componentType)!;
             if (component is MembershipCashReceipt page) Page = page;
+            if (component is CashReceiptForm cashForm) CashForm = cashForm;
             return component;
         }
     }

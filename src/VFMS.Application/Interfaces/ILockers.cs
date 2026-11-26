@@ -19,7 +19,7 @@ public interface ILockerRepository : IAuditedRepository
     Task<ApplicationUser?> GetActiveUserInRoleAsync(string userId, UserRole role, CancellationToken cancellationToken = default);
     /// <summary>GBR-18: the user is an active Member with a Gym Membership covering today and not frozen today.</summary>
     Task<bool> HasEligibleGymMembershipAsync(string memberId, DateOnly today, CancellationToken cancellationToken = default);
-    /// <summary>Up to 25 active Members of the gym matching the name or phone, flagged eligible when they may rent now.</summary>
+    /// <summary>Up to 25 active Members of the gym matching name, phone or email, flagged eligible when they may rent now.</summary>
     Task<IReadOnlyList<LockerMember>> SearchMembersAsync(int gymId, string search, DateTime now, DateOnly today,
         CancellationToken cancellationToken = default);
 
@@ -47,6 +47,8 @@ public interface ILockerRepository : IAuditedRepository
     Task<LockerRentalContract?> GetAllocationForLockerAsync(int lockerId, DateTime now, CancellationToken cancellationToken = default);
     /// <summary>The member's newest full live allocation past checkout (read only).</summary>
     Task<LockerRentalContract?> GetCurrentRentalAsync(string memberId, DateTime now, CancellationToken cancellationToken = default);
+    /// <summary>Paid or handed-over closed contracts owned by this member, newest first, ten per page.</summary>
+    Task<PagedResponse<LockerRentalContract>> GetRentalHistoryAsync(string memberId, int page, CancellationToken cancellationToken = default);
     /// <summary>A full rental of the gym; customerId limits it to that customer's.</summary>
     Task<LockerRentalContract?> GetRentalAsync(int id, int gymId, string? customerId = null, CancellationToken cancellationToken = default);
     /// <summary>UC registry: up to 100 full live allocations of the gym by end date (read only).</summary>
@@ -93,6 +95,8 @@ public interface ILockerService
     Task<Result<IReadOnlyList<LockerSlot>>> Grid(string actor, UserRole role, CancellationToken ct);
     Task<Result<IReadOnlyList<LockerPolicy>>> Pricing(string actor, UserRole role, CancellationToken ct);
     Task<Result<LockerRentalView?>> MyRental(string actor, CancellationToken ct);
+    Task<Result<PagedResponse<LockerRentalView>>> MyHistory(string actor, int page, CancellationToken ct);
+    Task<Result<LockerRentalView>> MyRentalDetails(string actor, int id, CancellationToken ct);
     Task<Result<IReadOnlyList<LockerPolicy>>> SavePricing(string actor, LockerPricingRequest input, CancellationToken ct);
     Task<Result<IReadOnlyList<LockerMember>>> FindMembers(string actor, string? search, CancellationToken ct);
     Task<Result<IReadOnlyList<LockerStaffRental>>> Registry(string actor, UserRole role, string? search, bool overdueOnly, CancellationToken ct);
@@ -105,6 +109,7 @@ public interface ILockerService
     // UC 5.7 Manage Locker Catalog & Pricing
     Task<Result<LockerCatalog>> Catalog(string actor, CancellationToken ct);
     Task<Result<LockerCatalogZone>> AddZone(string actor, LockerZoneRequest input, CancellationToken ct);
+    Task<Result<int>> DeleteZone(string actor, int zoneId, CancellationToken ct);
     Task<Result<LockerSlot>> AddLocker(string actor, LockerCreateRequest input, CancellationToken ct);
     Task<Result<LockerSlot>> DeactivateLocker(string actor, int lockerId, CancellationToken ct);
     Task<Result<LockerRulesView>> SaveRules(string actor, LockerRulesRequest input, CancellationToken ct);
@@ -113,6 +118,7 @@ public interface ILockerService
     Task<Result<LockerCheckout>> CounterRent(string actor, CounterLockerRentalRequest input, CancellationToken ct);
     Task<Result<LockerCheckout>> GetCheckout(string actor, UserRole role, string number, CancellationToken ct);
     Task<Result<LockerCheckout>> Proceed(string actor, string number, CancellationToken ct);
+    Task<Result<LockerCheckout>> ChoosePayment(string actor, UserRole role, string number, LockerPaymentRequest input, CancellationToken ct);
     Task<Result<LockerCheckout>> CancelCheckout(string actor, UserRole role, string number, CancellationToken ct);
     Task<Result<LockerCheckout>> ConfirmCash(string actor, string number, decimal amount, CancellationToken ct);
     Task<Result<LockerRentalView>> Handover(string actor, int id, LockerHandoverRequest request, CancellationToken ct);

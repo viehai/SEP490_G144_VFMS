@@ -28,7 +28,7 @@
             }
         </div>
         <form class="mb-2 flex flex-wrap items-center gap-2" @onsubmit="LoadAsync" @onsubmit:preventDefault>
-            <input class="@Ui.Field !mt-0 w-64" aria-label="Tìm hợp đồng" placeholder="Số tủ, tên hội viên, mã hợp đồng" maxlength="100" @bind="_search" />
+            <input class="@Ui.Field !mt-0 w-64" aria-label="Tìm hợp đồng theo tên, số điện thoại, email, số tủ hoặc mã hợp đồng" placeholder="Tên, SĐT, email, số tủ, mã hợp đồng" maxlength="100" @bind="_search" />
             @if (_tab == "contracts")
             {
                 <label class="flex items-center gap-1 text-xs"><input type="checkbox" @bind="_overdueOnly" @bind:after="LoadAsync" /> Chỉ tủ quá hạn</label>
@@ -66,7 +66,7 @@
                                 <td class="px-4 py-3 text-xs">@(r.ExpiresAt is { } e ? (r.Type == "Daily" ? LockerText.Local(e) : LockerText.LastDay(e)) : r.CollectBy is { } c ? $"Nhận chìa trước {LockerText.Local(c)}" : "—")</td>
                                 <td class="px-4 py-3 text-xs">@(r.OverdueDays > 0 ? $"{r.OverdueDays} ngày · {OperationsText.Money(r.OverdueFees)}" : "—")</td>
                                 <td class="px-4 py-3"><StatusBadge Status="@LockerText.ContractTone(r.Status)" Label="@LockerText.Contract(r.Status)" /></td>
-                                <td class="px-4 py-3 text-right"><button type="button" class="@(_selected?.Rental.Id == r.Id ? Ui.PrimaryButton : Ui.Button)" @onclick="() => _selected = item">Xử lý</button></td>
+                                <td class="px-4 py-3 text-right"><a class="@Ui.Button" href="@DetailsUrl(r.Id)">Xử lý</a></td>
                             </tr>
                         }
                     </tbody>
@@ -76,12 +76,6 @@
         }
     </div>
 
-    @if (_selected is { } selected)
-    {
-        <div class="@Ui.Card">
-            <LockerContractPanel @key="selected.Rental.Id" Item="selected" Policies="_policies" OnChanged="LoadAsync" />
-        </div>
-    }
 </section>
 
 @code {
@@ -96,10 +90,14 @@
 
     [SupplyParameterFromQuery(Name = "search")] public string? SearchQuery { get; set; }
 
+    [SupplyParameterFromQuery(Name = "tab")] public string? TabQuery { get; set; }
+    [SupplyParameterFromQuery(Name = "page")] public int PageQuery { get; set; } = 1;
+    [SupplyParameterFromQuery(Name = "overdueOnly")] public bool OverdueQuery { get; set; }
+
+    private string DetailsUrl(int id) => $"/staff/locker-contracts/{id}?tab={_tab}&page={_page}&search={Uri.EscapeDataString(_search)}&overdueOnly={_overdueOnly.ToString().ToLowerInvariant()}";
     private readonly CancellationTokenSource _lifetime = new();
     private LockerStaffRental[] _items = [];
     private LockerPolicy[] _policies = [];
-    private LockerStaffRental? _selected;
     private string _tab = "contracts";
     private string _search = "";
     private bool _overdueOnly;
@@ -114,16 +112,18 @@
     protected override async Task OnInitializedAsync()
     {
         _search = SearchQuery ?? "";
+        _tab = TabQuery is "pickup" or "unpaid" ? TabQuery : "contracts";
+        _overdueOnly = OverdueQuery;
         try { _policies = await Api.DeskPricingAsync(_lifetime.Token); }
         catch (ApiException ex) { _error = ex.Message; }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
         await LoadAsync();
+        _page = Math.Clamp(PageQuery, 1, Math.Max(1, (Visible.Count + PageSize - 1) / PageSize));
     }
 
     private async Task SwitchAsync(string tab)
     {
         _tab = tab;
-        _selected = null;
         await LoadAsync();
     }
 
@@ -136,8 +136,6 @@
             var ct = _lifetime.Token;
             var search = string.IsNullOrWhiteSpace(_search) ? null : _search.Trim();
             _items = _tab == "unpaid" ? await Api.UnpaidAsync(search, ct) : await Api.RegistryAsync(search, _tab == "contracts" && _overdueOnly, ct);
-            // Keep the open contract in sync after an action; drop it when it left the list.
-            _selected = _selected is null ? null : _items.FirstOrDefault(i => i.Rental.Id == _selected.Rental.Id);
             _error = null;
         }
         catch (ApiException ex) { _error = ex.Message; }

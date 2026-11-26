@@ -23,7 +23,6 @@ public partial class MembershipCashReceipt : IDisposable
     private StaffPackageOrderQuery _active = new();
     private PagedResponse<StaffPackageOrderResponse>? _orders;
     private StaffPackageOrderResponse? _selected;
-    private string _amount = "";
     private bool _loading;
     private bool _confirming;
     private string? _loadError;
@@ -133,7 +132,6 @@ public partial class MembershipCashReceipt : IDisposable
     private void OpenDetails(StaffPackageOrderResponse row)
     {
         _selected = row;
-        _amount = row is { CanConfirmCash: true, AmountDue: { } due } ? Vnd.FormatAmount(due) : "";
         _actionError = null;
         _notice = null;
         _focus = FocusTarget.Details;
@@ -146,10 +144,10 @@ public partial class MembershipCashReceipt : IDisposable
         _focus = FocusTarget.List;
     }
 
-    private async Task ConfirmCashAsync()
+    private async Task ConfirmCashAsync(decimal amount)
     {
         if (Busy || _selected is not { CanConfirmCash: true, AmountDue: { } due } order ||
-            CashTendered is not { } tendered || tendered < due) return;
+            amount != due) return;
 
         _confirming = true;
         _actionError = _notice = null;
@@ -176,10 +174,6 @@ public partial class MembershipCashReceipt : IDisposable
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
         finally { _confirming = false; }
     }
-
-    private decimal? CashTendered => Vnd.ParseInput(_amount, wholeUnits: true) is >= 0 and var cash ? cash : null;
-
-    private void SetCashTendered(string? input) => _amount = Vnd.FormatInput(_amount, input, wholeUnits: true);
 
     private static bool HasFilters(StaffPackageOrderQuery query) =>
         !string.IsNullOrWhiteSpace(query.Search) || !string.IsNullOrEmpty(query.Status) ||

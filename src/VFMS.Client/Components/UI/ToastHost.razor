@@ -4,7 +4,7 @@
 <div class="toast-region" role="status" aria-live="polite">
     @foreach (var toast in Toasts.Items)
     {
-        <div class="toast-item" @key="toast.Id">
+        <div class="toast-item @(toast.IsError ? "toast-item--error" : "")" role="@(toast.IsError ? "alert" : "status")" @key="toast.Id">
             <span>@toast.Message</span>
             <button type="button" class="toast-close" aria-label="Đóng thông báo" @onclick="() => Toasts.Dismiss(toast.Id)">×</button>
         </div>

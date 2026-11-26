@@ -84,37 +84,7 @@
 
                     @if (order is { CanConfirmCash: true, AmountDue: { } due })
                     {
-                        var tendered = CashTendered;
-                        var invalid = tendered is null || tendered < due;
-                        <form @onsubmit="ConfirmCashAsync" @onsubmit:preventDefault>
-                            <fieldset class="space-y-3" disabled="@Busy">
-                                <legend class="sr-only">Xác nhận thu tiền đơn @order.OrderNumber</legend>
-                                <label class="@Ui.Label block" for="package-cash-amount">
-                                    Khách đưa (₫) <span aria-hidden="true" class="text-red-700">*</span>
-                                    <input id="package-cash-amount" type="text" inputmode="numeric" class="@Ui.Field min-h-[44px] tabular-nums"
-                                           @bind:get="_amount" @bind:set="SetCashTendered" @bind:event="oninput"
-                                           data-vnd-input="whole" required maxlength="38"
-                                           aria-invalid="@(invalid ? "true" : "false")" aria-describedby="package-cash-feedback package-cash-error" />
-                                </label>
-                                <div id="package-cash-feedback" aria-live="polite">
-                                    @if (tendered is not { } cash)
-                                    {
-                                        <p class="text-sm text-red-800">Nhập số tiền hợp lệ, ví dụ @Vnd.FormatAmount(due).</p>
-                                    }
-                                    else if (cash < due)
-                                    {
-                                        <p class="text-sm font-semibold text-red-800">Còn thiếu @OperationsText.Money(due - cash).</p>
-                                    }
-                                    else if (cash > due)
-                                    {
-                                        <p class="text-sm font-semibold text-vfms-text">Trả lại khách @OperationsText.Money(cash - due).</p>
-                                    }
-                                </div>
-                                <button type="submit" class="@Ui.PrimaryButton min-h-[44px] disabled:opacity-60" disabled="@invalid">
-                                    @(_confirming ? "Đang xác nhận…" : "Xác nhận đã nhận tiền")
-                                </button>
-                            </fieldset>
-                        </form>
+                        <CashReceiptForm OrderNumber="@order.OrderNumber" AmountDue="due" Busy="Busy" OnConfirm="ConfirmCashAsync" />
                     }
                     <div id="package-cash-error">
                         @if (_actionError is not null)

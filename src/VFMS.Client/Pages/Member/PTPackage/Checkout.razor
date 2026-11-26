@@ -29,26 +29,12 @@
                 @if (order.Status == "Pending" && order.VietQr is { } qr)
                 {
                     <p>Còn <strong>@Remaining(order.ExpiresAt)</strong> để chuyển khoản đúng số tiền và nội dung (trước @LocalTime(order.ExpiresAt)).</p>
-                    @if (Uri.TryCreate(qr.ImageUrl, UriKind.Absolute, out var image) && image.Scheme == "https")
-                    {
-                        <img class="pt-qr" src="@image.AbsoluteUri" alt="Mã VietQR thanh toán gói PT" />
-                    }
-                    <dl class="pt-facts">
-                        <dt>Ngân hàng</dt><dd>@qr.BankId</dd>
-                        <dt>Số tài khoản</dt><dd>@qr.AccountNumber</dd>
-                        <dt>Chủ tài khoản</dt><dd>@qr.AccountName</dd>
-                        <dt>Nội dung</dt><dd>@qr.TransferContent</dd>
-                    </dl>
+                    <CheckoutQrDetails Qr="qr" AmountDue="order.AmountDue" ImageAlt="Mã VietQR thanh toán gói PT" />
                 }
                 else if (order.Status == "Pending" && CanChoose(order))
                 {
                     <p>Còn <strong>@Remaining(order.ProceedBefore!.Value)</strong> để chọn cách thanh toán (trước @LocalTime(order.ProceedBefore.Value)). Sau khi chọn, số tiền được chốt.</p>
-                    <label>Voucher (không bắt buộc)<input class="trainer-input" maxlength="80" @bind="_voucher" disabled="@_busy" /></label>
-                    <CheckoutVoucherPicker OrderNumber="@order.OrderNumber" Disabled="@_busy" OnChoose="code => _voucher = code" />
-                    <div class="trainer-row">
-                        <button type="button" class="trainer-button trainer-primary" disabled="@_busy" @onclick="() => PayAsync(MembershipPaymentMethods.VietQr)">Tạo mã VietQR</button>
-                        <button type="button" class="trainer-button" disabled="@_busy" @onclick="() => PayAsync(MembershipPaymentMethods.Cash)">Thanh toán tại quầy</button>
-                    </div>
+                    <CheckoutPaymentOptions OrderNumber="@order.OrderNumber" Busy="_busy" OnChoose="PayAsync" />
                     <small class="trainer-muted">VietQR: chuyển khoản trong 15 phút kể từ lúc giữ lịch. Tại quầy: trả tiền mặt trong 24 giờ kể từ lúc giữ lịch.</small>
                 }
                 else if (order.Status == "Pending" && order.ProceedBefore is not null)
@@ -101,7 +87,6 @@
     [Parameter] public string OrderNumber { get; set; } = "";
     private CancellationTokenSource? _lifetime;
     private PTCheckoutResponse? _order;
-    private string _voucher = "";
     private bool _busy;
     private string? _error;
 
@@ -113,7 +98,6 @@
         _lifetime = lifetime;
         _order = null;
         _busy = false;
-        _voucher = "";
         await RefreshAsync();
         if (!ct.IsCancellationRequested)
             _ = PollAsync(ct);
@@ -138,7 +122,7 @@
         finally { if (!ct.IsCancellationRequested) _busy = false; }
     }
 
-    private async Task PayAsync(string method)
+    private async Task PayAsync((string Method, string? Voucher) choice)
     {
         if (_busy || _order is not { Status: "Pending", VietQr: null, PayAtCounter: false } order || !CanChoose(order)) return;
         _busy = true;
@@ -147,7 +131,7 @@
         try
         {
             var updated = await Api.StartPaymentAsync(order.OrderNumber,
-                new(string.IsNullOrWhiteSpace(_voucher) ? null : _voucher.Trim(), method));
+                new(choice.Voucher, choice.Method));
             if (!ct.IsCancellationRequested) SetOrder(updated);
         }
         catch (AuthApiException ex) { if (!ct.IsCancellationRequested) _error = ex.Message; }

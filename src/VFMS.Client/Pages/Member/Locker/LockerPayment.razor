@@ -12,7 +12,7 @@
 <PageTitle>Thanh toán thuê tủ | Victor Fitness</PageTitle>
 
 <section class="mx-auto min-w-0 max-w-2xl space-y-6 px-[20px] pb-16 pt-28 font-body" aria-labelledby="checkout-title">
-    <PageHeader Overline="VFMS / TỦ ĐỒ" Title="Thanh toán thuê tủ" Description="Thanh toán bằng VietQR. Hệ thống tự cập nhật khi nhận được tiền.">
+    <PageHeader Overline="VFMS / TỦ ĐỒ" Title="Thanh toán thuê tủ" Description="Chọn VietQR hoặc tiền mặt tại quầy, dùng voucher và theo dõi thanh toán.">
         <a href="/my-locker" class="@Ui.Button">← Tủ của tôi</a>
     </PageHeader>
     <Alerts Error="@_error" />
@@ -30,8 +30,17 @@
                 <StatusBadge Status="@LockerText.OrderTone(order.Status)" Label="@LockerText.Order(order.Status)" />
             </div>
             <p class="text-2xl font-extrabold">@OperationsText.Money(order.AmountDue)</p>
+            @if (order.DiscountAmount > 0)
+            {
+                <p class="text-sm">Voucher <strong>@order.VoucherCode</strong>: giảm @OperationsText.Money(order.DiscountAmount).</p>
+            }
 
-            @if (order.Status == "Pending" && order.VietQr is not null)
+            @if (order.Status == "Pending" && order.CanChoosePayment)
+            {
+                @if (order.ProceedBy is { } chooseBy) { <p class="text-sm">Chọn thanh toán trước @LockerText.Local(chooseBy). Đơn không được gia hạn thời gian khi áp voucher.</p> }
+                <LockerPaymentChoice Order="order" Busy="_busy" OnChanged="Set" />
+            }
+            else if (order.Status == "Pending" && order.VietQr is not null)
             {
                 <LockerQr Checkout="order" Now="_now" />
             }
@@ -49,7 +58,7 @@
             }
             else if (order.Status == "Pending")
             {
-                <p class="text-sm">Đơn đang chờ thanh toán trước @LockerText.Local(order.ExpiresAt).</p>
+                <p class="text-sm">@(order.PaymentMethod == "Cash" ? "Đã chọn tiền mặt. Đọc mã đơn cho lễ tân để thanh toán" : "Đơn đang chờ thanh toán") trước @LockerText.Local(order.ExpiresAt).</p>
             }
             else if (order.Status == "AwaitingConfirmation")
             {
@@ -132,14 +141,19 @@
             Set(await Api.OrderAsync(OrderNumber, ct));
             _error = null;
         }
-        catch (ApiException ex) when (!quiet) { _error = ex.Message; }
+        catch (ApiException ex) when (!quiet) { _error = ex.Message; Toasts.ShowError(ex.Message); }
         catch (ApiException) { }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
         finally { _busy = false; }
     }
 
     private async Task ProceedAsync() => await Act(() => Api.ProceedAsync(OrderNumber, _lifetime!.Token));
-    private async Task CancelAsync() => await Act(() => Api.CancelOrderAsync(OrderNumber, _lifetime!.Token));
+    private async Task CancelAsync() => await Act(async () =>
+    {
+        var order = await Api.CancelOrderAsync(OrderNumber, _lifetime!.Token);
+        Toasts.Show("Đã hủy đơn tủ thành công.");
+        return order;
+    });
 
     private async Task Act(Func<Task<LockerCheckout>> call)
     {
@@ -150,6 +164,7 @@
         catch (ApiException ex)
         {
             _error = ex.Message;
+            Toasts.ShowError(ex.Message);
             _busy = false;
             await RefreshAsync(quiet: true);
         }
@@ -159,6 +174,7 @@
 
     private void Set(LockerCheckout order)
     {
+        if (_order is { CanChoosePayment: false } && order.CanChoosePayment) return;
         _order = order;
         if (order.Status == "Paid" && _lastStatus is not null and not "Paid")
             Toasts.Show($"Thanh toán thành công{(order.InvoiceNumber is { } invoice ? $" cho hóa đơn #{invoice}" : "")}.");

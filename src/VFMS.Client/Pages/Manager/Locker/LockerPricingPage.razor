@@ -1,0 +1,104 @@
+@page "/manager/locker-pricing"
+@layout ManagerAdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using VFMS.Client.Components.Operations
+@using VFMS.Client.Components.Lockers
+@using VFMS.Contracts.Lockers
+@attribute [Authorize(Roles = "Manager")]
+@inject LockerApiClient Api
+@inject ToastService Toasts
+@implements IDisposable
+
+<PageTitle>Bảng giá thuê tủ | Victor Fitness</PageTitle>
+<section class="workspace-page locker-page space-y-6" aria-labelledby="locker-pricing-title">
+    <PageHeader Overline="VFMS / QUẢN LÝ TỦ" Title="Bảng giá thuê tủ" Description="Thêm kỳ thuê theo số tháng bạn muốn, chỉnh phí thuê, cọc chìa và phí quá hạn.">
+        <a href="/manager/lockers" class="@Ui.Button">Khu và tủ</a>
+    </PageHeader>
+    <Alerts Error="@_error" />
+    @if (_loading)
+    {
+        <p role="status">Đang tải bảng giá…</p>
+    }
+    else
+    {
+        <div class="locker-layout">
+            <form class="@Ui.Card space-y-5" @onsubmit="SaveAsync" @onsubmit:preventDefault>
+                <h2 class="text-lg font-bold">Các mức giá thuê tháng</h2>
+                <p class="text-sm text-vfms-text-secondary">Bạn có thể thêm kỳ 2 tháng, 5 tháng hoặc kỳ khác. Giá mới áp dụng cho đơn mới; đơn đang chờ và hợp đồng cũ giữ nguyên giá, số tháng và cọc đã chốt.</p>
+                <div class="space-y-3">
+                    @foreach (var tier in _tiers)
+                    {
+                        <div class="locker-price-row" @key="tier">
+                            <label class="@Ui.Label">Số tháng<input class="@Ui.Field" type="number" min="1" max="1200" step="1" @bind="tier.Months" disabled="@_busy" /></label>
+                            <label class="@Ui.Label">Phí thuê (₫)<input class="@Ui.Field" type="number" min="1" step="1" @bind="tier.Fee" disabled="@_busy" /></label>
+                            <button type="button" class="@Ui.DangerButton" disabled="@_busy" @onclick="() => _tiers.Remove(tier)">Bỏ dòng</button>
+                        </div>
+                    }
+                </div>
+                <button type="button" class="@Ui.Button" disabled="@_busy" @onclick="AddTier">Thêm mức giá</button>
+                <div class="locker-form-fields">
+                    <label class="@Ui.Label">Cọc chìa (₫)<input type="number" min="1" step="1" class="@Ui.Field" @bind="_deposit" disabled="@_busy" /></label>
+                    <label class="@Ui.Label">Phí quá hạn mỗi ngày (₫)<input type="number" min="1" step="1" class="@Ui.Field" @bind="_overdue" disabled="@_busy" /></label>
+                </div>
+                <p class="text-sm text-vfms-text-secondary">Thuê ngày không có phí thuê, chỉ thu cọc chìa. Một mức cọc áp dụng cho mọi kỳ thuê.</p>
+                <button type="submit" class="@Ui.PrimaryButton" disabled="@_busy">@(_busy ? "Đang lưu…" : "Lưu bảng giá")</button>
+            </form>
+            <LockerRulesPanel Text="@_rules" KeyDeposit="_deposit" />
+        </div>
+    }
+</section>
+
+@code {
+    private sealed class Tier { public int Months { get; set; } public decimal Fee { get; set; } }
+    private readonly CancellationTokenSource _lifetime = new();
+    private List<Tier> _tiers = [];
+    private decimal _deposit = 100_000, _overdue;
+    private string? _rules, _error;
+    private bool _loading = true, _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var catalog = await Api.CatalogAsync(_lifetime.Token);
+            _rules = catalog.Rules;
+            Fill(catalog.Prices);
+        }
+        catch (ApiException ex) { _error = ex.Message; Toasts.ShowError(ex.Message); }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        finally { _loading = false; }
+    }
+
+    private void Fill(IReadOnlyList<LockerPolicy> policies)
+    {
+        _tiers = policies.Where(p => p.Type != "Daily").OrderBy(p => p.Months)
+            .Select(p => new Tier { Months = p.Months, Fee = p.RentalFee }).ToList();
+        _deposit = policies.FirstOrDefault()?.Deposit ?? 100_000;
+        _overdue = policies.FirstOrDefault(p => p.Type != "Daily")?.OverdueDailyFee ?? 0;
+    }
+
+    private void AddTier()
+    {
+        var months = 1;
+        while (_tiers.Any(t => t.Months == months)) months++;
+        _tiers.Add(new Tier { Months = months });
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_busy) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            var tiers = _tiers.Select(t => new LockerPricingTier(t.Months, t.Fee)).ToArray();
+            Fill(await Api.SavePricingAsync(new(0, _deposit, 0, 0, 0, 0, _overdue, tiers), _lifetime.Token));
+            Toasts.Show("Đã cập nhật bảng giá tủ thành công.");
+        }
+        catch (ApiException ex) { _error = ex.Message; Toasts.ShowError(ex.Message); }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        finally { _busy = false; }
+    }
+
+    public void Dispose() { _lifetime.Cancel(); _lifetime.Dispose(); }
+}

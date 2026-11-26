@@ -1,0 +1,55 @@
+@page "/my-locker/history/{Id:int}"
+@layout PublicLayout
+@using Microsoft.AspNetCore.Authorization
+@using VFMS.Client.Components.Operations
+@using VFMS.Contracts.Lockers
+@attribute [Authorize(Roles = "Member")]
+@inject LockerApiClient Api
+@inject ToastService Toasts
+@implements IDisposable
+
+<PageTitle>Chi tiết hợp đồng thuê tủ | Victor Fitness</PageTitle>
+<section class="mx-auto min-w-0 max-w-6xl space-y-6 px-[20px] pb-16 pt-28 font-body">
+    <PageHeader Overline="VFMS / LỊCH SỬ THUÊ TỦ" Title="Chi tiết hợp đồng thuê tủ" Description="Thông tin hợp đồng đã kết thúc, tiền cọc và khoản phí còn nợ.">
+        <a href="@($"/my-locker?history=true&historyPage={Math.Max(1, Page)}")" class="@Ui.Button">← Quay lại lịch sử thuê tủ</a>
+    </PageHeader>
+    <Alerts Error="@_error" />
+    @if (_loading) { <p role="status">Đang tải chi tiết hợp đồng…</p> }
+    else if (_selected is { } selected)
+    {
+        <section class="@Ui.Card space-y-3" aria-label="Chi tiết hợp đồng thuê tủ cũ">
+            <h2 class="font-heading text-lg font-bold">Hợp đồng @selected.ContractNumber</h2>
+            <dl class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
+                <dt>Tủ / khu</dt><dd>@selected.Locker.Number · Khu @selected.Locker.Zone</dd>
+                <dt>Loại thuê</dt><dd>@(selected.Type == "Daily" ? "Theo ngày" : $"{selected.TermMonths} tháng")</dd>
+                <dt>Ngày bắt đầu</dt><dd>@(selected.StartDate?.ToString("dd/MM/yyyy") ?? "—")</dd>
+                <dt>Ngày hết hạn</dt><dd>@(selected.LastRentalDate?.ToString("dd/MM/yyyy") ?? "—")</dd>
+                <dt>Trạng thái</dt><dd>@LockerText.Contract(selected.Status)</dd>
+                <dt>Phí thuê</dt><dd>@OperationsText.Money(selected.RentalFee)</dd>
+                <dt>Cọc khi thuê</dt><dd>@OperationsText.Money(selected.KeyDeposit)</dd>
+                <dt>Cọc đã hoàn</dt><dd>@OperationsText.Money(selected.RefundedDeposit)</dd>
+                <dt>Phí còn nợ</dt><dd>@OperationsText.Money(selected.OutstandingPaidAt is null ? selected.OutstandingAmount ?? 0 : 0)</dd>
+                <dt>Mã hóa đơn</dt><dd>@(selected.InvoiceNumber ?? "—")</dd>
+            </dl>
+        </section>
+    }
+</section>
+@code {
+    [Parameter] public int Id { get; set; }
+    [SupplyParameterFromQuery] public int Page { get; set; } = 1;
+    private readonly CancellationTokenSource _lifetime = new();
+    private LockerRentalView? _selected;
+    private bool _loading = true;
+    private string? _error;
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        _error = null;
+        _selected = null;
+        try { _selected = await Api.MyRentalDetailsAsync(Id, _lifetime.Token); }
+        catch (ApiException ex) { _error = ex.Message; Toasts.ShowError(ex.Message); }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        finally { _loading = false; }
+    }
+    public void Dispose() { _lifetime.Cancel(); _lifetime.Dispose(); }
+}
