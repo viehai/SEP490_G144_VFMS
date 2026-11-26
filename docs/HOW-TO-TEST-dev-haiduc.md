@@ -328,7 +328,7 @@ Try it: book a mat someone else just took, cancel a yoga booking less than 2 hou
   Expected result now (25/11/2026, after merging main again):
   - Unit: 722 pass.
   - Client: 538 pass.
-  - Integration: 630 pass, 3 fail, 50 skipped. `WalkInCustomerOnboardingApiTests` (teammate's concurrency tests) failed once on 26/11 while Visual Studio was running and passed on rerun.
+  - Integration: 631 pass, 3 fail, 50 skipped. `WalkInCustomerOnboardingApiTests` (teammate's concurrency tests) failed once on 26/11 while Visual Studio was running and passed on rerun.
 - **PR #21 to main is open (25/11/2026):** https://github.com/viehai/SEP490_G144_VFMS/pull/21. Once it is merged, teammates who pull main get the migration `YogaPlanLevelReplacesClassType`. It drops `PackageComponents.YogaClassTypeId` and `YogaWaitlists.YogaClassTypeId`, so code or tests that still use `YogaClassType` on a plan no longer build, and yoga plans in test seeds need `YogaDifficultyLevel`.
 
 - **Yoga plans can't be renewed yet.** Renewal (`/my-memberships` → gia hạn) still only covers gym plans, so a yoga member buys a new yoga plan instead; it starts after the current one ends.
