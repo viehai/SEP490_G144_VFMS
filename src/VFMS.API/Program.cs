@@ -55,9 +55,7 @@ builder.Services.AddEquipmentModule();
 builder.Services.AddSupplementModule();
 builder.Services.AddCompetitionModule();
 builder.Services.AddDataProtection();
-builder.Services.AddScoped<ITrainerStore, TrainerStore>();
-builder.Services.AddScoped<TrainerService>();
-builder.Services.AddHostedService<TrainerEmailWorker>();
+builder.Services.AddTrainerModule();
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;

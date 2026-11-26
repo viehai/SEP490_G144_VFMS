@@ -3,6 +3,12 @@
 .workspace-shell--manager { --workspace-accent: #B83A3A; }
 .workspace-shell *, .workspace-shell *::before, .workspace-shell *::after { box-sizing: border-box; }
 .workspace-shell a { text-decoration: none; }
+.workspace-skip-link {
+    position: absolute; z-index: 2; inset-block-start: 8px; inset-inline-start: 8px;
+    transform: translateY(calc(-100% - 16px)); padding: 10px 16px; border-radius: 8px;
+    background: var(--vfms-surface); color: var(--vfms-text); font-weight: 600;
+}
+.workspace-skip-link:focus { transform: none; }
 .workspace-shell .workspace-heading { font-family: 'Montserrat', sans-serif; font-weight: 800; }
 .workspace-sidebar { position: sticky; top: 0; height: 100vh; height: 100dvh; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; padding: 28px 18px; background: #F8F5F2; color: #242424; border-right: 1px solid #D8D1CD; }
 .workspace-shell--manager .workspace-sidebar { background: #F8F5F2; }
@@ -26,6 +32,24 @@
 .workspace-nav .workspace-nav-link--active span { color: inherit; }
 .workspace-nav .workspace-nav-link--active:hover { color: #9F3030; }
 .workspace-shell--manager .workspace-nav .workspace-nav-link--active:hover { color: #9F3030; }
+.workspace-nav-toggle { display: none; }
+.workspace-nav--grouped { flex: none; gap: 16px; }
+.workspace-nav-group + .workspace-nav-group { padding-top: 12px; border-top: 1px solid var(--vfms-border); }
+.workspace-nav-group-title {
+    margin: 0 0 4px; padding-inline: 12px; color: var(--vfms-text-secondary);
+    font: 700 .75rem/1.5 'Montserrat', sans-serif;
+}
+.workspace-nav-links { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.workspace-nav--grouped .workspace-nav-link {
+    min-height: 44px; padding: 8px 12px; color: var(--vfms-text);
+    font: 500 .875rem/1.4 'Inter', sans-serif;
+    overflow-wrap: anywhere;
+    transition: color .15s ease, background-color .15s ease;
+}
+.workspace-nav--grouped .workspace-nav-link--active {
+    color: var(--vfms-primary); font-weight: 700;
+    box-shadow: inset 3px 0 currentColor;
+}
 .workspace-sidebar-bottom { margin-top: auto; padding-top: 24px; }
 .workspace-sidebar-bottom > p:last-of-type { color: #8C8581; font-size: 11px; line-height: 1.7; margin-top: 8px; }
 .workspace-content { height: 100vh; height: 100dvh; min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; background: #F2EFEC; }
@@ -80,6 +104,26 @@
     .workspace-sidebar > .workspace-sidebar-label, .workspace-role, .workspace-sidebar-bottom { display: none; }
     .workspace-nav { margin-top: 12px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
     .workspace-nav .workspace-nav-link { padding: 10px; font-size: 11px; white-space: normal; }
+    .workspace-sidebar:has(.workspace-nav-toggle) {
+        display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center;
+    }
+    .workspace-nav-toggle {
+        display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+        min-height: 44px; padding: 8px 16px;
+        border: 1px solid var(--vfms-border-strong); border-radius: 8px;
+        background: var(--vfms-surface); color: var(--vfms-text);
+        font: 600 .875rem/1.4 'Inter', sans-serif;
+    }
+    .workspace-nav-toggle[aria-expanded="true"] { background: var(--vfms-surface-alt); }
+    .workspace-nav--grouped { display: none; grid-column: 1 / -1; }
+    .workspace-nav--grouped.workspace-nav--open {
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 245px), 1fr));
+        gap: 16px 24px; align-items: start;
+        max-height: 65vh; max-height: 65dvh; overflow-y: auto; overscroll-behavior-y: contain;
+        padding: 6px; scroll-padding-block: 6px;
+    }
+    .workspace-nav--grouped .workspace-nav-link { font-size: .875rem; }
+    .workspace-nav--open .workspace-nav-group { padding-top: 8px; border-top: 1px solid var(--vfms-border); }
     .workspace-topbar { min-height: 0; padding: 16px; flex-wrap: wrap; gap: 14px; }
     .workspace-preview-picker { flex: 1; justify-content: flex-end; }
     .workspace-preview-picker label { display: none; }

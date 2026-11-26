@@ -9,6 +9,7 @@ namespace VFMS.Client.Pages.Member;
 
 public partial class MyFreezeRequests : IDisposable
 {
+    private const int PageSize = 10;
     private const string SecondaryButton = "min-h-[44px] rounded-lg border border-vfms-border bg-white px-4 py-2 text-sm font-semibold text-vfms-text hover:bg-vfms-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary disabled:opacity-50";
     private const string TextLink = "inline-flex min-h-[44px] items-center gap-2 text-sm font-semibold text-vfms-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vfms-primary";
     private static readonly (string Status, string Label)[] Filters =
@@ -28,21 +29,32 @@ public partial class MyFreezeRequests : IDisposable
     private bool _focusEditor;
     private bool _focusNotice;
     private string _filter = "";
+    private int _page = 1;
     private string? _loadError;
     private string? _actionError;
     private string? _notice;
     private bool ActionsDisabled => _loading || _working || _editing is not null;
     private MembershipFreezeRequestResponse[] FilteredRequests => _requests
-        .Where(request => _filter switch
-        {
-            "" => true,
-            "History" => MembershipFreezeStatusBadge.Priority(request.Status) == 3,
-            _ => request.Status == _filter
-        })
+        .Where(MatchesFilter)
         .OrderBy(request => MembershipFreezeStatusBadge.Priority(request.Status))
         .ThenByDescending(request => request.SubmittedAt)
         .ThenByDescending(request => request.FreezeRequestId)
         .ToArray();
+
+    private bool MatchesFilter(MembershipFreezeRequestResponse request) => _filter switch
+    {
+        "" => true,
+        "History" => MembershipFreezeStatusBadge.Priority(request.Status) == 3,
+        _ => request.Status == _filter
+    };
+
+    private void SetFilter(string filter)
+    {
+        _filter = filter;
+        _page = 1;
+    }
+
+    private void ClampPage() => _page = Math.Min(_page, Math.Max(1, (_requests.Count(MatchesFilter) + PageSize - 1) / PageSize));
 
     protected override Task OnInitializedAsync() => LoadAsync();
 
@@ -72,7 +84,10 @@ public partial class MyFreezeRequests : IDisposable
         {
             var requests = await Api.GetMyFreezeRequestsAsync(ct);
             if (!ct.IsCancellationRequested)
+            {
                 _requests = requests;
+                ClampPage();
+            }
         }
         catch (AuthApiException error)
         {
@@ -158,6 +173,7 @@ public partial class MyFreezeRequests : IDisposable
     {
         _requests = _requests.Select(request =>
             request.FreezeRequestId == updated.FreezeRequestId ? updated : request).ToArray();
+        ClampPage();
         _notice = notice;
         _actionError = null;
         _focusNotice = true;

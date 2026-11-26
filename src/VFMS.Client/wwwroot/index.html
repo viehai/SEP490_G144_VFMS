@@ -6,8 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>VFMS - V-Fitness Management System</title>
     <base href="/" />
+    <link rel="preload" as="script" href="_framework/blazor.webassembly.js" />
     <script src="js/customer-setup.js"></script>
-    <link rel="preload" as="image" href="images/victor-fitness.png" />
     <link href="css/splash.css" rel="stylesheet" />
     
     <!-- Google Fonts: Montserrat (Headings) & Inter (Body) -->
@@ -23,8 +23,9 @@
     <link href="css/facility-map.css?v=3" rel="stylesheet" />
     <link href="css/auth.css" rel="stylesheet" />
     <link href="css/workspace.css" rel="stylesheet" />
+    <link href="css/dashboards.css" rel="stylesheet" />
     <link href="css/profile.css" rel="stylesheet" />
-    <link href="css/trainers.css?v=2" rel="stylesheet" />
+    <link href="css/trainers.css?v=6" rel="stylesheet" />
     <script src="js/trainer-files.js" defer></script>
     <style>
         html, body {
@@ -33,68 +34,61 @@
             max-width: 100vw !important;
         }
     </style>
+    <link href="css/tailwind.css" rel="stylesheet" />
 </head>
 
 <body>
-    <div id="vfms-splash" class="vfms-splash" role="status" aria-live="polite">
-        <div class="splash-content">
-            <div class="splash-logo-wrapper">
-                <img class="splash-logo" src="images/victor-fitness-dark.png" alt="VICTOR FITNESS" />
-                <div class="splash-shine" aria-hidden="true"></div>
+    <template id="vfms-splash-template">
+        <div id="vfms-splash" class="vfms-splash" role="status" aria-live="polite">
+            <div class="splash-content">
+                <div class="splash-logo-wrapper">
+                    <img class="splash-logo" src="images/victor-fitness-dark.png" alt="VICTOR FITNESS" />
+                    <div class="splash-shine" aria-hidden="true"></div>
+                </div>
+                <div class="splash-loader" aria-hidden="true">
+                    <div class="splash-progress"></div>
+                </div>
+                <p class="splash-status">Đang khởi tạo hệ thống...</p>
             </div>
-            <div class="splash-loader" aria-hidden="true">
-                <div class="splash-progress"></div>
-            </div>
-            <p class="splash-status">Đang khởi tạo hệ thống...</p>
+            <div class="splash-footer">VFMS · V-FITNESS MANAGEMENT</div>
         </div>
-        <div class="splash-footer">VFMS · V-FITNESS MANAGEMENT</div>
-    </div>
-    <div id="app"></div>
-
-    <!-- Load the application styles after the startup screen can be painted. -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    </template>
     <script>
-        if (window.tailwind) tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        /* Soft Black + Muted Red + Warm Neutral design tokens */
-                        'vfms-bg':            '#F2EFEC',
-                        'vfms-surface':       '#F8F5F2',
-                        'vfms-surface-alt':   '#ECE8E4',
-                        'vfms-surface-strong':'#FFFFFF',
-                        'vfms-muted':         '#ECE8E4',
-                        'vfms-charcoal':      '#252323',
-                        'vfms-charcoal-soft': '#2B2928',
-                        'vfms-text':          '#242424',
-                        'vfms-text-secondary':'#6F6966',
-                        'vfms-text-subtle':   '#8C8581',
-                        'vfms-text-muted':    '#8C8581',
-                        'vfms-primary':       '#B83A3A',
-                        'vfms-primary-hover': '#9F3030',
-                        'vfms-primary-dark':  '#7F2929',
-                        'vfms-primary-soft':  '#F3E4E2',
-                        'vfms-border':        '#D8D1CD',
-                        'vfms-border-strong': '#C9C0BB',
-                        'vfms-dark-olive':    '#252323',
-                        /* Semantic status */
-                        'vfms-success': '#16A34A',
-                        'vfms-warning': '#D97706',
-                        'vfms-error':   '#DC2626',
-                        'vfms-neutral': '#6B7280',
-                    },
-                    fontFamily: { heading: ['Montserrat', 'sans-serif'], body: ['Inter', 'sans-serif'], sans: ['Inter', 'sans-serif'] }
-                }
+        const startupSplash = (async () => {
+            const url = new URL(location.href);
+            const launched = url.searchParams.get('vfms-startup') === '1';
+            if (launched) {
+                url.searchParams.delete('vfms-startup');
+                history.replaceState(history.state, '', url);
             }
-        };
+            const seenKey = 'vfms.splash.seen';
+            function claimFirstVisit() {
+                if (localStorage.getItem(seenKey)) return false;
+                localStorage.setItem(seenKey, '1');
+                return true;
+            }
+            let firstVisit = false;
+            try {
+                if (!localStorage.getItem(seenKey)) {
+                    firstVisit = navigator.locks
+                        ? await navigator.locks.request(seenKey, claimFirstVisit)
+                        : claimFirstVisit();
+                }
+            } catch { /* With storage disabled, only an explicit Run shows the splash. */ }
+            if (!launched && !firstVisit) return null;
+
+            const template = document.getElementById('vfms-splash-template');
+            template.replaceWith(template.content);
+            return document.getElementById('vfms-splash');
+        })();
     </script>
+    <div id="app"></div>
 
     <div id="blazor-error-ui">
         An unhandled error has occurred.
         <a href="" class="reload">Reload</a>
         <a class="dismiss">🗙</a>
     </div>
-    <script src="js/auth.js"></script>
     <script src="js/modal.js"></script>
     <script src="js/freeze-documents.js"></script>
     <script src="js/invoice-download.js"></script>
@@ -102,15 +96,20 @@
     <script src="_framework/blazor.webassembly.js" autostart="false"></script>
     <script>
         (async function () {
-            const splash = document.getElementById('vfms-splash');
+            const splash = await startupSplash;
             try {
                 await Blazor.start();
+                if (!splash) return;
                 splash.addEventListener('transitionend', function (event) {
                     if (event.target === splash && event.propertyName === 'opacity') splash.remove();
                 });
                 splash.classList.add('splash-hidden');
             } catch (error) {
                 console.error('VFMS startup failed:', error);
+                if (!splash) {
+                    document.getElementById('blazor-error-ui').style.display = 'block';
+                    return;
+                }
                 document.querySelector('.splash-status').textContent =
                     'Không thể khởi động hệ thống. Vui lòng tải lại trang.';
                 document.querySelector('.splash-progress').classList.add('splash-progress-error');

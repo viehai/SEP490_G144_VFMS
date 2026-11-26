@@ -1,0 +1,54 @@
+@page "/admin/dashboard/accounts"
+@layout ManagerAdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using VFMS.Client.Components.Dashboards
+@using VFMS.Client.Components.Operations
+@using VFMS.Contracts.Users
+@attribute [Authorize(Roles = "Admin")]
+
+<PageTitle>Tra cứu tài khoản | Victor Fitness</PageTitle>
+<DashboardView T="PagedUsersResponse" Path="@Path" Title="Tra cứu tài khoản" Description="Xem vai trò và trạng thái tài khoản trong hệ thống.">
+    <HeaderControl><a class="dash-date" href="/admin/dashboard">← Tổng quan quản trị</a></HeaderControl>
+    <ChildContent Context="data">
+        <section class="dash-panel">
+            <form class="dash-dates dash-account-filters" @onsubmit="Search" @onsubmit:preventDefault>
+                <label>Tên, email hoặc số điện thoại<input type="search" maxlength="256" @bind="_search" /></label>
+                <label>Vai trò<select aria-label="Vai trò" @bind="_role"><option value="">Tất cả</option>
+                    @foreach (var r in Roles) { <option value="@r">@OperationsText.RoleLabel(r)</option> }</select></label>
+                <label>Trạng thái<select aria-label="Trạng thái" @bind="_status"><option value="">Tất cả</option>
+                    @foreach (var status in Statuses) { <option value="@status">@StatusLabel(status)</option> }</select></label>
+                <button type="submit">Tìm tài khoản</button>
+            </form>
+            @if (data.Items.Count == 0) { <p class="dash-message">Không tìm thấy tài khoản phù hợp.</p> }
+            else { <div class="dash-scroll"><table aria-label="Danh sách tài khoản"><thead><tr><th>Họ tên</th><th>Email</th><th>Vai trò</th><th>Trạng thái</th></tr></thead>
+                <tbody>@foreach (var account in data.Items) { <tr @key="account.UserId"><td>@account.FullName</td><td>@(account.Email ?? "—")</td>
+                    <td>@string.Join(", ", account.Roles.Select(OperationsText.RoleLabel))</td><td>@StatusLabel(account.AccountStatus)</td></tr> }</tbody>
+                </table></div> }
+            <Pager Page="data.Page" PageSize="data.PageSize" TotalCount="data.TotalCount" Noun="tài khoản" OnPage="Navigate" />
+        </section>
+    </ChildContent>
+</DashboardView>
+@code {
+    [Inject] private NavigationManager Navigation { get; set; } = default!;
+    [SupplyParameterFromQuery] public string? Role { get; set; }
+    [SupplyParameterFromQuery] public string? Status { get; set; }
+    [SupplyParameterFromQuery(Name = "q")] public string? Term { get; set; }
+    [SupplyParameterFromQuery] public int? Page { get; set; }
+    private static readonly string[] Roles = ["Customer","Member","Staff","Manager","PT","YogaInstructor","Admin"];
+    private static readonly string[] Statuses = ["Active","Locked","Inactive","PendingVerification"];
+    private string _role = "", _status = "", _search = "";
+    private string Path => $"api/admin/users?page={Math.Clamp(Page ?? 1, 1, 1000000)}&pageSize=10" +
+        $"&role={Uri.EscapeDataString(Role ?? "")}&accountStatus={Uri.EscapeDataString(Status ?? "")}&search={Uri.EscapeDataString(Term ?? "")}";
+
+    protected override void OnParametersSet() => (_role, _status, _search) = (Role ?? "", Status ?? "", Term ?? "");
+    private void Search() => NavigateTo(1, _role, _status, _search.Trim());
+    private void Navigate(int page) => NavigateTo(page, Role, Status, Term);
+    private void NavigateTo(int page, string? role, string? status, string? term) => Navigation.NavigateTo(
+        Navigation.GetUriWithQueryParameters(new Dictionary<string,object?> {
+            ["page"] = page > 1 ? page : null, ["role"] = string.IsNullOrEmpty(role) ? null : role,
+            ["status"] = string.IsNullOrEmpty(status) ? null : status, ["q"] = string.IsNullOrEmpty(term) ? null : term
+        }));
+    private static string StatusLabel(string status) => status switch {
+        "Active" => "Đang hoạt động", "Locked" => "Đang khóa", "Inactive" => "Ngừng hoạt động", "PendingVerification" => "Chờ xác minh", _ => status
+    };
+}

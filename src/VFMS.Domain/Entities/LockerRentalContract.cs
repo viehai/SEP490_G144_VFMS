@@ -32,6 +32,10 @@ public class LockerRentalContract : BaseEntity
     public DateTime? SettledAt { get; set; }
     public string? SettledByUserId { get; set; }
     public decimal? OutstandingAmount { get; set; }
+    /// <summary>GBR-110: when Staff collected the OutstandingAmount; null while it is still unpaid.</summary>
+    public DateTime? OutstandingPaidAt { get; set; }
+    /// <summary>GBR-20: when the in-app reminder 7 days before expiry was sent.</summary>
+    public DateTime? ReminderSentAt { get; set; }
     public DateTime? KeyLossConfirmedAt { get; set; }
     public int? ReplacementLockerId { get; set; }
     public Locker? ReplacementLocker { get; set; }

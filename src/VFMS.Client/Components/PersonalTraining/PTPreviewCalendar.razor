@@ -43,7 +43,8 @@
         var firstSlotMonday = Slots.Count == 0 ? startMonday : MondayOf(Slots.Min(slot => slot.Date));
         var lastSlotMonday = Slots.Count == 0 ? startMonday : MondayOf(Slots.Max(slot => slot.Date));
         _firstMonday = firstSlotMonday < _currentMonday ? firstSlotMonday : _currentMonday;
-        _lastMonday = lastSlotMonday > _currentMonday ? lastSlotMonday : _currentMonday;
+        // One extra week after the last session so the Member can look ahead (for example at make-up time).
+        _lastMonday = (lastSlotMonday > _currentMonday ? lastSlotMonday : _currentMonday).AddDays(7);
         ShowWeek(_monday < _firstMonday ? _firstMonday : _monday > _lastMonday ? _lastMonday : _monday);
     }
 

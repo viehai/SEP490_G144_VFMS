@@ -1,6 +1,6 @@
 @page "/pt-checkout/{OrderNumber}"
 @layout PublicLayout
-@attribute [Authorize(Roles = "Member")]
+@attribute [Authorize(Roles = "Customer,Member")]
 @implements IDisposable
 @using VFMS.Contracts.Memberships
 @using VFMS.Client.Components.Operations
@@ -119,7 +119,7 @@
             _ = PollAsync(ct);
     }
 
-    // GBR-96: the payment choice must be made within 10 minutes of holding the slots.
+    // GBR-102: the payment choice must be made within 10 minutes of holding the slots.
     private static bool CanChoose(PTCheckoutResponse order) =>
         order.ProceedBefore is { } before && DateTime.UtcNow < before && DateTime.UtcNow < order.ExpiresAt;
 

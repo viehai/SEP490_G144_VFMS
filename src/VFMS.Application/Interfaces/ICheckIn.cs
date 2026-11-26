@@ -22,8 +22,11 @@ public interface ICheckInRepository : IAuditedRepository
     /// <summary>The member's open check-in (tracked), if any.</summary>
     Task<CheckIn?> GetOpenCheckInAsync(string userId, CancellationToken cancellationToken = default);
     Task<CheckIn?> GetCheckInAsync(int id, CancellationToken cancellationToken = default);
-    /// <summary>The member's Scheduled PT sessions on a gym-local date, with their purchase (tracked).</summary>
-    Task<IReadOnlyList<PTSession>> GetScheduledPtSessionsAsync(string userId, DateOnly date, CancellationToken cancellationToken = default);
+    /// <summary>The member's PT sessions on a gym-local date that a check-in may complete (GBR-92), with their purchase (tracked).</summary>
+    Task<IReadOnlyList<PTSession>> GetScheduledPtSessionsAsync(string userId, DateOnly date, DateTime now, CancellationToken cancellationToken = default);
+    /// <summary>Marks the session 'Present' by check-in only if it still qualifies, so a 'PT Absent' report saved at the
+    /// same moment is never overwritten; reloads the tracked session either way. False when it no longer qualified.</summary>
+    Task<bool> CompletePtSessionByCheckInAsync(PTSession session, DateTime now, CancellationToken cancellationToken = default);
     /// <summary>Up to 20 users whose name or phone contains the term, or who hold a membership bought on that order number;
     /// with their memberships (component loaded) and whether they have an open visit.</summary>
     Task<IReadOnlyList<(ApplicationUser User, IReadOnlyList<MemberMembership> Memberships, bool IsCheckedIn)>> SearchMembersAsync(

@@ -7,7 +7,8 @@
 @inject MembershipPlanApiClient Plans
 @inject NavigationManager Navigation
 @inject AuthSession Session
-@implements IDisposable
+@inject IJSRuntime JS
+@implements IAsyncDisposable
 
 <PageTitle>Gói của tôi | Victor Fitness</PageTitle>
 
@@ -179,13 +180,17 @@
 }
 
 @code {
+    [CascadingParameter] private Task<AuthenticationState> Authentication { get; set; } = default!;
     private static readonly string[] FilterStatuses = [string.Empty, MembershipStatuses.AwaitingActivation, MembershipStatuses.Scheduled,
         MembershipStatuses.Active, MembershipStatuses.Frozen, MembershipStatuses.Expired, MembershipStatuses.Suspended, MembershipStatuses.Cancelled];
     private readonly CancellationTokenSource _lifetime = new();
     private IReadOnlyList<MembershipSummaryResponse> _memberships = [];
     private IReadOnlyDictionary<int, MembershipRenewalOption> _options = new Dictionary<int, MembershipRenewalOption>();
     private bool _loading;
-    private bool _fetching;
+    private Task _listLoad = Task.CompletedTask;
+    private bool? _isMember;
+    private DotNetObjectReference<MyMemberships>? _pageReference;
+    private IJSObjectReference? _purchaseSubscription;
     private string? _loadError;
     private bool _loadingRenewals;
     private string? _renewalsLoadError;
@@ -202,35 +207,68 @@
 
     protected override async Task OnInitializedAsync()
     {
+        _pageReference = DotNetObjectReference.Create(this);
+        _purchaseSubscription = await JS.InvokeAsync<IJSObjectReference>("vfmsMembershipUpdates.subscribe", _pageReference);
+        if (_lifetime.IsCancellationRequested) await UnsubscribeAsync();
+    }
+
+    [JSInvokable]
+    public Task ReloadAfterPurchase() => InvokeAsync(async () =>
+    {
+        // A request started before settlement can still return the old list.
+        await _listLoad;
+        if (_lifetime.IsCancellationRequested) return;
+        await LoadMembershipsAsync(showLoading: false);
+        if (!_lifetime.IsCancellationRequested) StateHasChanged();
+    });
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var isMember = (await Authentication).User.IsInRole("Member");
+        if (_isMember == isMember) return;
+        var firstLoad = _isMember is null;
+        _isMember = isMember;
+        // Payment can complete in another tab while this page is showing an empty list.
+        await _listLoad;
         await LoadAsync();
-        if (!_lifetime.IsCancellationRequested)
-            _ = WatchMembershipDatesAsync(_lifetime.Token);
+        if (firstLoad && !_lifetime.IsCancellationRequested)
+            _ = WatchMembershipsAsync(_lifetime.Token);
     }
 
     private Task LoadAsync() => LoadMembershipsAsync(showLoading: true);
 
-    private async Task LoadMembershipsAsync(bool showLoading)
+    private Task LoadMembershipsAsync(bool showLoading, bool periodic = false)
     {
-        if (_fetching || _lifetime.IsCancellationRequested) return;
+        if (_listLoad.IsCompleted)
+            _listLoad = FetchMembershipsAsync(showLoading, periodic);
+        return _listLoad;
+    }
+
+    private async Task FetchMembershipsAsync(bool showLoading, bool periodic)
+    {
+        if (_lifetime.IsCancellationRequested) return;
         var ct = _lifetime.Token;
-        _fetching = true;
         _loading = showLoading;
         if (showLoading) _loadError = null;
         try
         {
-            _memberships = await Plans.GetMyMembershipsAsync(ct);
+            var memberships = await Plans.GetMyMembershipsAsync(ct);
+            _loadError = null;
+            if (periodic && _renewalsLoadError is null && _memberships.SequenceEqual(memberships)) return;
+            _memberships = memberships;
         }
         catch (AuthApiException ex)
         {
             if (showLoading) _loadError = ex.Message;
+            return;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // The user left the page.
+            return;
         }
         finally
         {
-            _loading = _fetching = false;
+            _loading = false;
         }
         if (_memberships.Count > 0 && !ct.IsCancellationRequested)
             await LoadRenewalsAsync();
@@ -238,6 +276,8 @@
 
     private async Task ActivationSavedAsync(MembershipDetailResponse detail)
     {
+        await _listLoad;
+        if (_lifetime.IsCancellationRequested) return;
         _memberships = _memberships.Select(membership => membership.MembershipId == detail.Membership.MembershipId
             ? detail.Membership : membership).ToArray();
         _statusFilter = string.Empty;
@@ -246,24 +286,15 @@
 
     private void CloseActivation() => _choosing = null;
 
-    private async Task WatchMembershipDatesAsync(CancellationToken ct)
+    private async Task WatchMembershipsAsync(CancellationToken ct)
     {
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(10));
         try
         {
             while (await timer.WaitForNextTickAsync(ct))
             {
-                var today = MembershipDisplay.Today;
-                if (_choosing is null && _memberships.Any(membership => membership.Status switch
-                    {
-                        MembershipStatuses.Scheduled => membership.StartDate <= today,
-                        MembershipStatuses.Active => membership.EndDate < today,
-                        MembershipStatuses.AwaitingActivation => membership.Activation?.Deadline <= today,
-                        _ => false
-                    }))
-                {
-                    await InvokeAsync(() => LoadMembershipsAsync(showLoading: false));
-                }
+                // Staff can settle an order after the buyer has closed the checkout tab.
+                await InvokeAsync(() => LoadMembershipsAsync(showLoading: false, periodic: true));
                 if (!ct.IsCancellationRequested) await InvokeAsync(StateHasChanged);
             }
         }
@@ -329,9 +360,19 @@
         }
     }
 
-    public void Dispose()
+    private async ValueTask UnsubscribeAsync()
+    {
+        if (_purchaseSubscription is not { } subscription) return;
+        _purchaseSubscription = null;
+        await subscription.InvokeVoidAsync("dispose");
+        await subscription.DisposeAsync();
+    }
+
+    public async ValueTask DisposeAsync()
     {
         _lifetime.Cancel();
+        await UnsubscribeAsync();
+        _pageReference?.Dispose();
         _lifetime.Dispose();
     }
 }

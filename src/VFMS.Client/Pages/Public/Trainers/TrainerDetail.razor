@@ -18,7 +18,7 @@
                 <TrainerAvatar Trainer="detail.Profile" />
                 <div>
                     <h1>@detail.Profile.FullName</h1>
-                    <p class="trainer-muted">@detail.Profile.TrainerRole · @detail.Profile.Specialty · @detail.Profile.Level · @detail.Profile.ExperienceYears năm kinh nghiệm</p>
+                    <p class="trainer-muted">@detail.Profile.TrainerRole · @detail.Profile.Specialty · @PTDisplay.Level(detail.Profile.Level) · @detail.Profile.ExperienceYears năm kinh nghiệm</p>
                     @if (IsPT)
                     {
                         <p class="trainer-muted">@(detail.Profile.IsAcceptingNewMembers ? "Sẵn sàng nhận học viên" : "Không nhận học viên mới")</p>
@@ -47,7 +47,7 @@
                             <p class="trainer-muted">Gói PT đã chọn hiện không thể đặt với huấn luyện viên này.</p>
                         }
                     }
-                    else if (IsPT && detail.Profile.IsAcceptingNewMembers)
+                    else if (IsPT && detail.Profile.IsAcceptingNewMembers && !detail.HasActivePTContract)
                     {
                         <a class="trainer-button trainer-primary" href="@($"/trainers/{Id}/packages")">Khám phá gói PT</a>
                     }
@@ -84,16 +84,22 @@
                 }
                 else
                 {
-                    <p class="trainer-status">Trung bình @detail.Profile.AverageRating.ToString("0.0") / 5 sao</p>
+                    <div class="trainer-row">
+                        <StarRating Value="detail.Profile.AverageRating" Large="true" />
+                        <span class="trainer-muted">trên 5 · @detail.ReviewTotal đánh giá</span>
+                    </div>
                     <ul class="trainer-list">
                         @foreach (var review in detail.Reviews)
                         {
-                            <li><strong>@review.MemberName</strong> · @review.Rating / 5 sao<p class="trainer-copy">@review.Comment</p></li>
+                            <li class="trainer-review-item">
+                                <div class="trainer-row trainer-between"><strong>@review.MemberName</strong><StarRating Value="review.Rating" ShowValue="false" /></div>
+                                <p class="trainer-copy">@review.Comment</p>
+                            </li>
                         }
                     </ul>
-                    @if (detail.ReviewTotal > 20)
+                    @if (detail.ReviewTotal > 10)
                     {
-                        <Pager Page="detail.ReviewPage" TotalCount="detail.ReviewTotal" Noun="đánh giá"
+                        <Pager PageSize="10" Page="detail.ReviewPage" TotalCount="detail.ReviewTotal" Noun="đánh giá"
                                Disabled="_loadingReviews" OnPage="LoadReviewsAsync" />
                     }
                 }

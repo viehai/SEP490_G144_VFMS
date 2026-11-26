@@ -17,24 +17,16 @@ public class TrainerMigrationTests
     {
         await using var fixture = new TrainerTestDatabase(); var db = fixture.Db;
         await db.GetService<IMigrator>().MigrateAsync("20261120101437_AddTrainerRoles");
-        var pt = await db.TrainerRoles.Where(t => t.RoleName == TrainerRole.PT).Select(t => t.Id).SingleAsync();
-        TrainerApplication App(string code, string specialty, TrainerApplicationStatus status) => new()
-        {
-            TrackingCode = code,
-            FullName = code,
-            Email = code + "@example.test",
-            PhoneNumber = "0900000000",
-            CitizenId = "",
-            Specialty = specialty,
-            Gender = "Other",
-            Bio = "Bio",
-            ApplicationStatus = status,
-            SubmittedAt = DateTime.UtcNow,
-            TrainerRoleId = pt
-        };
-        db.TrainerApplications.AddRange(App("open-yoga", "Yoga", TrainerApplicationStatus.Interviewing),
-            App("hired-yoga", "Yoga", TrainerApplicationStatus.Hired), App("open-pt", "PT", TrainerApplicationStatus.Pending));
-        await db.SaveChangesAsync();
+        // Seed the old required CitizenId column explicitly; the current model no longer contains it.
+        await db.Database.ExecuteSqlRawAsync("""
+            DECLARE @now datetime2 = SYSUTCDATETIME();
+            DECLARE @pt int = (SELECT Id FROM TrainerRoles WHERE RoleName = 'PT');
+            INSERT INTO TrainerApplications (TrackingCode, FullName, Email, PhoneNumber, CitizenId, Specialty, Gender, Bio,
+                ApplicationFileUrl, ApplicationStatus, SubmittedAt, SubmissionAttempt, TrainerRoleId, CreatedAt, UpdatedAt, IsDeleted)
+                VALUES ('open-yoga', 'open-yoga', 'open-yoga@example.test', '0900000000', '', 'Yoga', 'Other', 'Bio', '', 'Interviewing', @now, 1, @pt, @now, @now, 0),
+                       ('hired-yoga', 'hired-yoga', 'hired-yoga@example.test', '0900000001', '', 'Yoga', 'Other', 'Bio', '', 'Hired', @now, 1, @pt, @now, @now, 0),
+                       ('open-pt', 'open-pt', 'open-pt@example.test', '0900000002', '', 'PT', 'Other', 'Bio', '', 'Pending', @now, 1, @pt, @now, @now, 0);
+            """);
 
         await db.Database.MigrateAsync();
         var roles = await db.TrainerApplications.AsNoTracking().Select(a => new { a.TrackingCode, a.TrainerRole!.RoleName })
@@ -109,20 +101,20 @@ public class TrainerMigrationTests
         Assert.Equal(TrainerApplicationStatus.Rejected, rejected.ApplicationStatus); Assert.Equal("Original rejection", rejected.ReviewNote);
         var profile = await db.TrainerProfiles.SingleAsync();
         Assert.Equal("Strength", profile.Specialty); Assert.Equal("Legacy biography", profile.Bio); Assert.Equal("Tier2", profile.CommissionTier);
-        var store = new TrainerStore(db, fixture.Protection, fixture.Configuration);
+        var store = new TrainerRepository(db, fixture.Protection, fixture.Configuration);
         var preservedFiles = JsonSerializer.Deserialize<List<TrainerStoredFile>>(profile.CertificatesJson)!;
         Assert.Equal(4, preservedFiles.Count);
         var publicFile = Assert.Single(preservedFiles.Where(x => x.IsPublic && !x.IsAvatar));
         Assert.Equal("legacy.pdf", publicFile.FileName); Assert.True(publicFile.IsPublic);
-        Assert.Equal("%PDF-1.7 legacy"u8.ToArray(), await store.ReadFile(publicFile, default));
+        Assert.Equal("%PDF-1.7 legacy"u8.ToArray(), await store.ReadFileAsync(publicFile, default));
         var originalFile = Assert.Single(JsonSerializer.Deserialize<List<TrainerStoredFile>>(original.CertificatesJson)!.Where(x => !x.IsDeleted));
         Assert.Equal(publicFile.Id, originalFile.Id);
         var pendingFile = Assert.Single(JsonSerializer.Deserialize<List<TrainerStoredFile>>(pending.CertificatesJson)!);
-        Assert.False(pendingFile.IsPublic); Assert.Equal("%PDF-1.7 pending"u8.ToArray(), await store.ReadFile(pendingFile, default));
+        Assert.False(pendingFile.IsPublic); Assert.Equal("%PDF-1.7 pending"u8.ToArray(), await store.ReadFileAsync(pendingFile, default));
         Assert.False(Assert.Single(preservedFiles.Where(x => x.Id == pendingFile.Id)).IsPublic);
         var avatar = JsonSerializer.Deserialize<TrainerStoredFile>(profile.AvatarJson!)!;
         Assert.True(avatar.IsAvatar); Assert.Equal("avatar.png", avatar.FileName);
-        Assert.Equal(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }, await store.ReadFile(avatar, default));
+        Assert.Equal(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }, await store.ReadFileAsync(avatar, default));
         var user = await db.ApplicationUsers.SingleAsync(x => x.UserId == "legacy-pt");
         Assert.Equal("preserve-password", user.PasswordHash); Assert.Equal(new string('B', 64), user.PasswordSetupTokenHash); Assert.True(user.PasswordSetupExpiresAt > DateTime.UtcNow);
         var emails = apps.SelectMany(x => JsonSerializer.Deserialize<List<TrainerQueuedEmail>>(x.EmailQueueJson)!).ToList();
@@ -160,6 +152,8 @@ public class TrainerMigrationTests
         var restrictionForeignKeyCount = await db.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM sys.foreign_keys WHERE name = 'FK_TrainerApplications_ApplicationUsers_RestrictionChangedByUserId'").SingleAsync();
         var restrictionIndexCount = await db.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM sys.indexes WHERE object_id = OBJECT_ID('TrainerApplications') AND name = 'IX_TrainerApplications_RestrictionChangedByUserId'").SingleAsync();
         Assert.Equal(0, restrictionForeignKeyCount); Assert.Equal(0, restrictionIndexCount);
+        var citizenColumnCount = await db.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM sys.columns c JOIN sys.tables t ON t.object_id = c.object_id WHERE t.name IN ('TrainerApplications','TrainerProfiles') AND c.name = 'CitizenId'").SingleAsync();
+        Assert.Equal(0, citizenColumnCount);
         Assert.Equal(2, await db.ApplicationUsers.CountAsync());
     }
 }

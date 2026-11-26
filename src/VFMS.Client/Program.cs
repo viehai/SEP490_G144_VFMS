@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.JSInterop;
 using VFMS.Client;
 using VFMS.Client.Auth;
 using VFMS.Client.Services;
@@ -16,7 +17,8 @@ builder.Services.AddAuthorizationCore();
 builder.Services.AddScoped(_ => new AuthApiClient(CreateApiHttpClient()));
 builder.Services.AddScoped<AuthSession>();
 builder.Services.AddScoped<AuthenticationStateProvider>(sp => sp.GetRequiredService<AuthSession>());
-builder.Services.AddScoped(sp => new MembershipPlanApiClient(CreateApiHttpClient(), sp.GetRequiredService<AuthSession>()));
+builder.Services.AddScoped(sp => new MembershipPlanApiClient(CreateApiHttpClient(), sp.GetRequiredService<AuthSession>(),
+    sp.GetRequiredService<IJSRuntime>()));
 // 130 s: AI workout plan generation may try two Gemini models, 60 s each (Gemini:TimeoutSeconds).
 builder.Services.AddScoped(sp => new VfmsApiClient(CreateApiHttpClient(130), sp.GetRequiredService<AuthSession>(),
     sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<VfmsApiClient>>()));
@@ -27,8 +29,17 @@ builder.Services.AddScoped(sp => new PromotionApiClient(CreateApiHttpClient(), s
 
 builder.Services.AddScoped(sp => new TrainerApiClient(CreateApiHttpClient(), sp.GetRequiredService<AuthSession>()));
 builder.Services.AddScoped(sp => new PersonalTrainingApiClient(CreateApiHttpClient(), sp.GetRequiredService<AuthSession>()));
+builder.Services.AddScoped(sp => new LockerApiClient(sp.GetRequiredService<VfmsApiClient>()));
 
-await builder.Build().RunAsync();
+var host = builder.Build();
+// An open or cached index.html can predate the JavaScript functions this client calls.
+var js = host.Services.GetRequiredService<IJSRuntime>();
+var clientVersion = typeof(App).Module.ModuleVersionId.ToString("N");
+await Task.WhenAll(
+    js.InvokeVoidAsync("import", $"./js/auth.js?v={clientVersion}").AsTask(),
+    js.InvokeVoidAsync("import", $"./js/membership-updates.js?v={clientVersion}").AsTask());
+await host.Services.GetRequiredService<AuthSession>().WatchBrowserSessionAsync();
+await host.RunAsync();
 
 HttpClient CreateApiHttpClient(int timeoutSeconds = 30)
 {

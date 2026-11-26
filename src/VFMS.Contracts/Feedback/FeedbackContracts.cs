@@ -14,10 +14,22 @@ public sealed record FeedbackReplyRequest(string? Reply);
 
 public sealed record FeedbackSubmitRequest(string? TrainerUserId, int Rating, string? Comment, int? PackageId = null);
 
+public sealed record FeedbackUpdateRequest(int Rating, string? Comment);
+
+public sealed record PublicFeedbackResponse(
+    int Id,
+    string MemberName,
+    int Rating,
+    string? Comment,
+    DateTime CreatedAt,
+    string? PackageName,
+    string? ManagerReply,
+    bool IsMine);
+
 public sealed record FeedbackResponse(
     int Id,
-    string TrainerUserId,
-    string TrainerName,
+    string? TrainerUserId,
+    string? TrainerName,
     string MemberUserId,
     string MemberName,
     int Rating,

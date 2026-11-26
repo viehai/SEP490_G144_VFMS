@@ -11,6 +11,7 @@ namespace VFMS.Client.Pages.Manager;
 
 public partial class Promotions : IDisposable
 {
+    private const int PageSize = 10;
     private const string Label = "block text-sm font-semibold text-vfms-text";
     private const string Field = "mt-1 block min-h-[44px] min-w-0 w-full rounded-lg border border-vfms-border bg-vfms-surface px-3 py-2 text-base text-vfms-text sm:text-sm";
     private const string PrimaryButton = "min-h-[44px] rounded-lg bg-vfms-primary px-5 py-2 text-sm font-semibold text-white hover:bg-vfms-primary-hover disabled:opacity-50";
@@ -25,6 +26,7 @@ public partial class Promotions : IDisposable
     private string _search = string.Empty;
     private PromotionStatus? _statusFilter;
     private PromotionAudience? _audienceFilter;
+    private int _page = 1;
     private PromotionFormModel? _form;
     private EditContext? _editContext;
     private ValidationMessageStore? _messages;
@@ -43,6 +45,8 @@ public partial class Promotions : IDisposable
     private ElementReference _errorNotice;
     private ElementReference _successNotice;
     private bool Busy => _working || _loading;
+
+    private void ResetPage() => _page = 1;
 
     private IEnumerable<PromotionResponse> FilteredRows()
     {
@@ -69,7 +73,11 @@ public partial class Promotions : IDisposable
         if (_loading) return;
         _loading = true;
         _error = null;
-        try { _promotions = await Api.ListAsync(_lifetime.Token); }
+        try
+        {
+            _promotions = await Api.ListAsync(_lifetime.Token);
+            _page = Math.Min(_page, Math.Max(1, (FilteredRows().Count() + PageSize - 1) / PageSize));
+        }
         catch (AuthApiException error) { _error = error.Message; }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
         finally { _loading = false; }

@@ -228,7 +228,6 @@ public sealed partial class MembershipPurchaseService(
         var today = LocalDate(now);
         var userIds = order.Items.Select(item => item.BeneficiaryUserId).Distinct().ToArray();
         var beneficiaries = await repository.LockUsersAsync(userIds, ct);
-        var active = new HashSet<string>();
         var freezePolicy = await repository.GetPurchaseFreezePolicyAsync(ct);
 
         foreach (var item in order.Items.OrderBy(item => item.Id))
@@ -263,11 +262,9 @@ public sealed partial class MembershipPurchaseService(
                     SetMembershipTerm(membership, component, start, today);
                 }
                 item.MemberMemberships.Add(membership);
-                if (membership.MembershipStatus == MembershipStatus.Active)
-                    active.Add(item.BeneficiaryUserId);
             }
         }
-        await PromoteAsync(beneficiaries.Where(user => active.Contains(user.UserId)), ct);
+        await PromoteAsync(beneficiaries, ct);
 
         RecordPaidOrder(order, amount, transferredAt, gatewayReference, now);
         await repository.SaveChangesAsync(ct);

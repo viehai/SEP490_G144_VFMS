@@ -59,7 +59,7 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
         builder.Services.AddValidatorsFromAssemblyContaining<MembershipPurchaseRequestValidator>();
         if (sqlServer is null)
         {
-            var dbOptions = new DbContextOptionsBuilder<VfmsDbContext>().UseSqlite(_connection).Options;
+            var dbOptions = new DbContextOptionsBuilder<VfmsDbContext>().UseSqlite(_connection).AddInterceptors(UniqueTestPhoneInterceptor.Instance).Options;
             builder.Services.AddScoped<VfmsDbContext>(_ => new TestContext(dbOptions));
         }
         else
@@ -75,7 +75,7 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
         builder.Services.AddPersonalTrainingModule();
         builder.Services.AddLockerModule();
         builder.Services.Remove(builder.Services.Single(service =>
-            service.ImplementationType == typeof(VFMS.Infrastructure.Lockers.LockerWorker)));
+            service.ImplementationType == typeof(VFMS.Infrastructure.Workers.LockerWorker)));
         var ptWorker = builder.Services.Single(service => service.ImplementationType ==
             typeof(VFMS.Infrastructure.Workers.PersonalTrainingWorker));
         builder.Services.Remove(ptWorker);
@@ -252,8 +252,8 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
             var memberships = await db.MemberMemberships.OrderBy(row => row.MemberUserId).ToListAsync();
             Assert.Equal(3, memberships.Count);
             Assert.All(memberships, membership => Assert.Equal(MembershipStatus.AwaitingActivation, membership.MembershipStatus));
-            Assert.Equal(["Customer", "PT"], await RolesAsync(db, "buyer"));
-            Assert.Equal(["Customer"], await RolesAsync(db, "gift"));
+            Assert.Equal(["Member", "PT"], await RolesAsync(db, "buyer"));
+            Assert.Equal(["Member"], await RolesAsync(db, "gift"));
             Assert.Single(await db.Invoices.ToListAsync());
         }
 
@@ -278,7 +278,7 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
         {
             var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
             Assert.Equal(["Member", "PT"], await RolesAsync(db, "buyer"));
-            Assert.Equal(["Customer"], await RolesAsync(db, "gift"));
+            Assert.Equal(["Member"], await RolesAsync(db, "gift"));
             Assert.All(await db.OrderItems.ToListAsync(), item => Assert.Null(item.ActivationStartDate));
         }
         _clock.Now = _clock.Now.AddDays(1);
@@ -379,7 +379,7 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task YogaPlanPaidInCashWaitsForActivationAndThenGrantsTheMemberRole()
+    public async Task YogaPlanPaidInCashGrantsTheMemberRoleBeforeActivation()
     {
         await SeedYogaClassAsync("staff", _clock.Now.UtcDateTime.AddDays(7));
         var yogaPlan = await SeedYogaPlanAsync();
@@ -393,6 +393,8 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
             new ConfirmMembershipCashRequest(purchase.AmountDue)), HttpStatusCode.OK)).OrderStatus);
         var awaiting = Assert.Single(await ListOwnedMembershipsAsync(buyer));
         Assert.Equal(MembershipStatuses.AwaitingActivation, awaiting.Status);
+        await using (var paidScope = _app.Services.CreateAsyncScope())
+            Assert.Contains("Member", await RolesAsync(paidScope.ServiceProvider.GetRequiredService<VfmsDbContext>(), "buyer"));
         await ActivateMembershipAsync(buyer, awaiting.MembershipId, Today);
 
         await using var scope = _app.Services.CreateAsyncScope();

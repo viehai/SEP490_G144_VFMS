@@ -47,7 +47,7 @@ public sealed partial class MembershipPurchaseApiTests
     }
 
     [Fact]
-    public async Task PTBookingUsesPublishedWeeklyTemplateAndAStartingMonday()
+    public async Task PTBookingUsesPublishedWeeklyTemplateAndAnyFutureStartingDate()
     {
         var request = await PreparePTCheckout();
         using var member = Client("member", "Member");
@@ -55,7 +55,7 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Equal(15, template!.Length);
         Assert.All(template, slot => Assert.False(slot.TryGetProperty("date", out _)));
 
-        foreach (var start in new[] { request.StartDate.AddDays(-7), request.StartDate.AddDays(1) })
+        foreach (var start in new[] { Today.AddDays(-1), Today })
         {
             using var preview = await member.PostAsJsonAsync("/api/pt/schedule/preview", request with { StartDate = start });
             Assert.Equal(HttpStatusCode.BadRequest, preview.StatusCode);
@@ -64,6 +64,8 @@ public sealed partial class MembershipPurchaseApiTests
         }
         using var valid = await member.PostAsJsonAsync("/api/pt/schedule/preview", request);
         Assert.Equal(HttpStatusCode.OK, valid.StatusCode);
+        using var tuesday = await member.PostAsJsonAsync("/api/pt/schedule/preview", request with { StartDate = request.StartDate.AddDays(1) });
+        Assert.Equal(HttpStatusCode.OK, tuesday.StatusCode);
     }
 
     [Fact]
@@ -148,7 +150,7 @@ public sealed partial class MembershipPurchaseApiTests
         {
             await RunJobAsync((service, ct) => service.ExpireOrdersAsync(ct));
             await using var workerScope = _app.Services.CreateAsyncScope();
-            await workerScope.ServiceProvider.GetRequiredService<VFMS.Application.Services.PersonalTrainingService>()
+            await workerScope.ServiceProvider.GetRequiredService<VFMS.Application.Interfaces.IPersonalTrainingService>()
                 .ExpirePending(CancellationToken.None);
         }
         if (taken)
@@ -276,9 +278,12 @@ public sealed partial class MembershipPurchaseApiTests
         var first = (await trainer.GetFromJsonAsync<VFMS.Contracts.Common.PagedResponse<PTAssignedMember>>(path))!;
         var second = (await trainer.GetFromJsonAsync<VFMS.Contracts.Common.PagedResponse<PTAssignedMember>>(path + "&page=2"))!;
         Assert.Equal(21, first.TotalCount);
-        Assert.Equal(20, first.Items.Count);
-        var ended = Assert.Single(second.Items);
-        Assert.DoesNotContain(first.Items, item => item.ContractId == ended.ContractId);
+        Assert.Equal(10, first.PageSize);
+        Assert.Equal(10, first.Items.Count);
+        Assert.Equal(10, second.Items.Count);
+        var third = (await trainer.GetFromJsonAsync<VFMS.Contracts.Common.PagedResponse<PTAssignedMember>>(path + "&page=3"))!;
+        var ended = Assert.Single(third.Items);
+        Assert.Equal(21, first.Items.Concat(second.Items).Concat(third.Items).Select(item => item.ContractId).Distinct().Count());
         var visible = await trainer.GetFromJsonAsync<PTContractResponse[]>($"/api/pt/contracts/{ended.ContractId}");
         Assert.Equal("Expired", Assert.Single(visible!).Status);
     }
@@ -423,7 +428,7 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Equal(HttpStatusCode.OK, options.StatusCode);
         using var calendarJson = System.Text.Json.JsonDocument.Parse(await options.Content.ReadAsStringAsync());
         Assert.All(calendarJson.RootElement.EnumerateArray(), slot =>
-            Assert.Equal(new[] { "date", "endTime", "startTime", "status" },
+            Assert.Equal(new[] { "date", "endTime", "reason", "startTime", "status" },
                 slot.EnumerateObject().Select(property => property.Name).OrderBy(name => name)));
         var calendar = (await options.Content.ReadFromJsonAsync<PTRescheduleSlot[]>())!;
         Assert.Contains(calendar, slot => slot.Date == session.Date && slot.StartTime == busyTime && slot.Status == "Busy");
@@ -474,7 +479,7 @@ public sealed partial class MembershipPurchaseApiTests
         {
             _clock.Now = new DateTimeOffset(pending.Proposal.ExpiresAt);
             await using var worker = _app.Services.CreateAsyncScope();
-            await worker.ServiceProvider.GetRequiredService<VFMS.Application.Services.PersonalTrainingService>()
+            await worker.ServiceProvider.GetRequiredService<VFMS.Application.Interfaces.IPersonalTrainingService>()
                 .ExpirePending(CancellationToken.None);
         }
         using var decided = await trainer.PostAsJsonAsync($"{requestPath}/decision", decision);
@@ -653,7 +658,18 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.True(confirm.IsSuccessStatusCode, await confirm.Content.ReadAsStringAsync());
         using var repeated = await member.PostAsJsonAsync($"{path}/confirm", confirmation);
         Assert.Equal(HttpStatusCode.Conflict, repeated.StatusCode);
-        var updated = (await confirm.Content.ReadFromJsonAsync<PTContractResponse>())!;
+
+        // The request waits for the Manager: the freeze and the schedule stay as approved until then.
+        var waiting = (await member.GetFromJsonAsync<PTContractResponse[]>(contractPath))!.Single();
+        Assert.Equal(approvedContract.EndDate, waiting.EndDate);
+        var change = await manager.GetFromJsonAsync<PTFreezeChangePreview>($"/api/pt/manager/freezes/{freeze.Id}/change-preview");
+        Assert.Equal("EarlyResume", change!.Type);
+        Assert.NotNull(change.EarlyResume);
+        using var approvedChange = await manager.PostAsJsonAsync($"/api/pt/manager/freezes/{freeze.Id}/change-decision",
+            new PTFreezeDecision(true, null));
+        Assert.True(approvedChange.IsSuccessStatusCode, await approvedChange.Content.ReadAsStringAsync());
+        Assert.Equal("Approved", (await approvedChange.Content.ReadFromJsonAsync<PTFreezeResponse>())!.ChangeRequestStatus);
+        var updated = (await member.GetFromJsonAsync<PTContractResponse[]>(contractPath))!.Single();
         Assert.Equal("Frozen", updated.Status);
         Assert.Equal(updated.Sessions.Where(s => s.Status == "Scheduled").Max(s => s.Date), updated.EndDate);
         Assert.Equal(0, updated.RemainingFreezeDays); // an early unfreeze gives no new freeze
@@ -714,7 +730,7 @@ public sealed partial class MembershipPurchaseApiTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task CheckoutRequiresGymOnTheHoldDateOnly(bool activeToday)
+    public async Task CheckoutAllowsActiveOrExpiredGymMembership(bool activeToday)
     {
         var request = await PreparePTCheckout(13, 5, 20);
         await using var scope = _app.Services.CreateAsyncScope();
@@ -729,12 +745,6 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Equal(13, schedule.Sessions.Count);
         Assert.Equal(schedule.Sessions[^1].Date, schedule.ExpiresOn);
         using var hold = await member.PostAsJsonAsync("/api/pt/purchases", request);
-        if (!activeToday)
-        {
-            Assert.Equal(HttpStatusCode.Conflict, hold.StatusCode);
-            Assert.Empty(await db.PTPurchases.ToListAsync());
-            return;
-        }
         Assert.Equal(HttpStatusCode.Created, hold.StatusCode);
         var checkout = await IssueQr(member, (await hold.Content.ReadFromJsonAsync<PTCheckoutResponse>())!);
         var transfer = new DateTimeOffset(checkout.ExpiresAt).AddMinutes(-14);
@@ -748,8 +758,12 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Equal(13, contract.Sessions.Count(s => s.Status == "Scheduled"));
     }
 
-    [Fact]
-    public async Task AttendanceCannotCompleteASessionWhenGymMembershipIsSuspended()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("Suspended")]
+    [InlineData("Expired")]
+    [InlineData("Active")]
+    public async Task PTAttendanceDoesNotRequireGymMembership(string? gymStatus)
     {
         var request = await PreparePTCheckout();
         using var member = Client("member", "Member");
@@ -766,12 +780,23 @@ public sealed partial class MembershipPurchaseApiTests
         var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
         var session = await db.PTSessions.AsNoTracking().OrderBy(s => s.SessionDate).FirstAsync();
         var membership = await db.MemberMemberships.SingleAsync();
-        membership.MembershipStatus = MembershipStatus.Suspended;
+        if (gymStatus is null)
+            db.MemberMemberships.Remove(membership);
+        else
+        {
+            membership.MembershipStatus = Enum.Parse<MembershipStatus>(gymStatus);
+            if (gymStatus == "Expired")
+                membership.EndDate = Today.AddDays(-1);
+        }
         await db.SaveChangesAsync();
         _clock.Now = new DateTimeOffset(session.SessionDate.ToDateTime(session.EndTime), TimeSpan.FromHours(7)).AddMinutes(1);
         using var attendance = await trainer.PostAsJsonAsync($"/api/pt/sessions/{session.Id}/attendance", true);
-        Assert.Equal(HttpStatusCode.Conflict, attendance.StatusCode);
-        Assert.Equal(PTSessionStatus.Scheduled, await db.PTSessions.Where(s => s.Id == session.Id).Select(s => s.SessionStatus).SingleAsync());
+        Assert.True(attendance.StatusCode == HttpStatusCode.OK, await attendance.Content.ReadAsStringAsync());
+        var recorded = await db.PTSessions.AsNoTracking().SingleAsync(s => s.Id == session.Id);
+        Assert.Equal(PTSessionStatus.Completed, recorded.SessionStatus);
+        Assert.True(recorded.AttendanceRecordedPresent);
+        Assert.NotNull(recorded.AttendanceRecordedAt);
+        Assert.Equal(11, await db.PTPurchases.Select(p => p.RemainingSessions).SingleAsync());
     }
 
     private static object PackageInput(int credits, int minimum, int maximum) => new
@@ -886,7 +911,7 @@ public sealed partial class MembershipPurchaseApiTests
             .Select(hour => new PTSlotInput((DayOfWeek)day, new TimeOnly(hour, 0)))).ToArray();
         using var published = await trainer.PutAsJsonAsync("/api/pt/availability", new PTPublishRequest(slots));
         Assert.True(published.StatusCode == HttpStatusCode.OK, await published.Content.ReadAsStringAsync());
-        // GBR-12: the first Monday that can still be held today (at least 3 days ahead).
+        // Use a future Monday as a stable recurring fixture; real bookings may start on any weekday.
         var start = NextMonday(Today.AddDays(3));
         var calendar = (await trainer.GetFromJsonAsync<PTCalendarSlot[]>($"/api/pt/trainers/buyer/calendar?from={start:yyyy-MM-dd}"))!;
         var pattern = calendar.Where(s => s.StartTime.Hour == 18 &&

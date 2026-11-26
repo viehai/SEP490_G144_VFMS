@@ -35,7 +35,7 @@
         <section class="rounded-[12px] border border-vfms-border bg-vfms-surface p-5 sm:p-6 shadow-sm" aria-labelledby="log-detail-title">
             <div class="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                    <h2 id="log-detail-title" class="text-base font-bold text-vfms-text">#@log.Id · @ActionLabel(log.ActionType) · @OperationsText.AuditEntity(log.AuditEntity, log.EntityId)</h2>
+                    <h2 id="log-detail-title" class="text-base font-bold text-vfms-text">#@log.Id · @OperationsText.AuditAction(log.ActionType) · @OperationsText.AuditEntity(log.AuditEntity, log.EntityId)</h2>
                     <p class="mt-1 text-xs text-vfms-text-secondary">@log.OccurredAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") · @(log.ActorName ?? "Hệ thống")</p>
                 </div>
                 <button type="button" class="@Button" @onclick="() => _selected = null">Đóng chi tiết</button>
@@ -77,7 +77,7 @@
                             <option value="">Tất cả</option>
                             @foreach (var type in AuditLogListRequestValidator.ActionTypes)
                             {
-                                <option value="@type">@ActionLabel(type)</option>
+                                <option value="@type">@OperationsText.AuditAction(type)</option>
                             }
                         </InputSelect>
                     </label>
@@ -113,7 +113,7 @@
                             <tr @key="row.Id">
                                 <th scope="row" class="whitespace-nowrap font-normal">@row.OccurredAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")</th>
                                 <td>@(row.ActorName ?? "Hệ thống")</td>
-                                <td><span class="inline-block whitespace-nowrap rounded-md border border-vfms-border bg-vfms-surface-alt px-2.5 py-1 text-[11px] font-semibold text-vfms-text">@ActionLabel(row.ActionType)</span></td>
+                                <td><span class="inline-block whitespace-nowrap rounded-md border border-vfms-border bg-vfms-surface-alt px-2.5 py-1 text-[11px] font-semibold text-vfms-text">@OperationsText.AuditAction(row.ActionType)</span></td>
                                 <td>@OperationsText.AuditEntity(row.AuditEntity, row.EntityId)</td>
                                 <td><button type="button" class="@Button" @onclick="() => OpenAsync(row.Id)">Xem</button></td>
                             </tr>
@@ -162,7 +162,7 @@
             var (rows, truncated) = await CsvFile.CollectAsync((page, size) =>
                 Api.GetAuditLogsAsync(CreateRequest(page) with { PageSize = size }, _lifetime.Token));
             var name = CsvFile.FileName("nhat-ky-he-thong");
-            await CsvFile.DownloadAsync(JS, name, ListExports.AuditLogs(rows, ActionLabel), _lifetime.Token);
+            await CsvFile.DownloadAsync(JS, name, ListExports.AuditLogs(rows, OperationsText.AuditAction), _lifetime.Token);
             _notice = $"Đã xuất {rows.Count} bản ghi ra {name}." + (truncated ? $" Chỉ lấy {CsvFile.MaxRows} dòng đầu, hãy lọc bớt." : "");
         }
         catch (AuthApiException error)
@@ -233,24 +233,7 @@
         catch (JsonException) { return value.Replace("; ", "\n"); }
     }
 
-    private static string ActionLabel(string type) => type switch
-    {
-        "Create" => "Tạo mới",
-        "Update" => "Cập nhật",
-        "Delete" => "Xóa",
-        "Login" => "Đăng nhập",
-        "Logout" => "Đăng xuất",
-        "RoleChange" => "Đổi vai trò",
-        "AccountLock" => "Khóa tài khoản",
-        "AccountUnlock" => "Mở khóa tài khoản",
-        "PasswordChange" => "Đổi mật khẩu",
-        "CreateMembershipPlan" => "Tạo gói hội viên",
-        "UpdateMembershipPlan" => "Sửa gói hội viên",
-        "ActivateMembershipPlan" => "Mở bán gói hội viên",
-        "DeactivateMembershipPlan" => "Ngừng bán gói hội viên",
-        "DeleteMembershipPlan" => "Xóa gói hội viên",
-        _ => type
-    };
+
 
     public void Dispose()
     {

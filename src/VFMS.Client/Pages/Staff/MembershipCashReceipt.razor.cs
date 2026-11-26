@@ -18,6 +18,7 @@ public partial class MembershipCashReceipt : IDisposable
     private static readonly string[] PaymentStatuses = ["Pending", "Paid", "Failed", "Cancelled", "Refunded"];
 
     private readonly CancellationTokenSource _lifetime = new();
+    private CancellationTokenSource? _listRequest;
     private StaffPackageOrderQuery _draft = new();
     private StaffPackageOrderQuery _active = new();
     private PagedResponse<StaffPackageOrderResponse>? _orders;
@@ -37,7 +38,23 @@ public partial class MembershipCashReceipt : IDisposable
 
     private enum FocusTarget { None, Details, List, Notice }
 
-    protected override Task OnInitializedAsync() => RefreshAsync();
+    [SupplyParameterFromQuery(Name = "order")] public string? OrderNumber { get; set; }
+    private string? _previousNumber;
+    private bool _initialized;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_initialized && _previousNumber == OrderNumber) return;
+        _initialized = true;
+        _previousNumber = OrderNumber;
+        _selected = null;
+        var number = OrderNumber;
+        _draft = new() { Search = number };
+        _orders = null;
+        await LoadAsync(_draft with { Page = 1 });
+        if (number is not null && number == OrderNumber && _orders?.Items.FirstOrDefault(o => o.OrderNumber == number) is { } match)
+            OpenDetails(match);
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -79,19 +96,24 @@ public partial class MembershipCashReceipt : IDisposable
 
     private async Task LoadAsync(StaffPackageOrderQuery query)
     {
-        if (_loading || _lifetime.IsCancellationRequested) return;
+        if (_lifetime.IsCancellationRequested) return;
+        _listRequest?.Cancel();
+        using var request = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        _listRequest = request;
         _loading = true;
         _loadError = null;
         _active = query;
-        var ct = _lifetime.Token;
+        var ct = request.Token;
         try
         {
             var page = await Plans.ListStaffOrdersAsync(query, ct);
+            ct.ThrowIfCancellationRequested();
             var lastPage = Math.Max(1, (int)Math.Ceiling(page.TotalCount / (double)query.PageSize));
             if (query.Page > lastPage)
             {
                 _active = query with { Page = lastPage };
                 page = await Plans.ListStaffOrdersAsync(_active, ct);
+                ct.ThrowIfCancellationRequested();
             }
             _orders = page;
             if (_selected is { } selected)
@@ -102,7 +124,10 @@ public partial class MembershipCashReceipt : IDisposable
             _loadError = error.Message;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
-        finally { _loading = false; }
+        finally
+        {
+            if (_listRequest == request) { _listRequest = null; _loading = false; }
+        }
     }
 
     private void OpenDetails(StaffPackageOrderResponse row)

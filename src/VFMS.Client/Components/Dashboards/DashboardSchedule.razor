@@ -1,0 +1,20 @@
+@if (Rows.Count == 0)
+{
+    <p class="dash-message">@Empty</p>
+}
+else
+{
+    <div class="dash-scroll"><table aria-label="@Label"><thead><tr><th>Thời gian</th><th>Nội dung</th>@if (!YogaOnly) { <th>Loại</th> }<th>@(YogaOnly ? "Phòng tập" : "Hội viên / Phòng")</th><th>Trạng thái</th></tr></thead>
+        <tbody>@foreach (var row in Rows)
+        {
+            <tr><td class="dash-number">@row.Start.ToString("HH:mm") – @row.End.ToString("HH:mm")</td><td>@row.Name</td>
+                @if (!YogaOnly) { <td><span class="dash-badge @(row.Type == "Yoga" ? "violet" : "rose")">@row.Type</span></td> }
+                <td>@row.Place</td><td><span class="dash-badge @(row.Status is "Completed" or "AutoCompleted" ? "positive" : "")">@(row.Status == "Ongoing" ? "Đang diễn ra" : PTDisplay.Status(row.Status))</span></td></tr>
+        }</tbody></table></div>
+}
+@code {
+    [Parameter] public IReadOnlyList<TrainingSlot> Rows { get; set; } = [];
+    [Parameter] public string Label { get; set; } = "Lịch huấn luyện hôm nay";
+    [Parameter] public string Empty { get; set; } = "Hôm nay chưa có lịch huấn luyện.";
+    [Parameter] public bool YogaOnly { get; set; }
+}

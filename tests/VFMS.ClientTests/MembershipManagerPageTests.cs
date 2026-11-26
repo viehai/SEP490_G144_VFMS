@@ -88,6 +88,24 @@ public sealed partial class MembershipPlanApiClientTests
     }
 
     [Fact]
+    public async Task ManagerLists_RequestTenRowsPerPage()
+    {
+        using var plans = CreateClient(request =>
+        {
+            Assert.Equal("/api/manager/membership-plans?page=1&pageSize=10&status=ACTIVE", request.RequestUri!.PathAndQuery);
+            return Task.FromResult(Json(new PagedResponse<MembershipPlanResponse>(1, 10, 0, [])));
+        }, role: "Manager");
+        using var reviews = CreateClient(request =>
+        {
+            Assert.Equal("/api/manager/membership-freeze-requests?page=1&pageSize=10", request.RequestUri!.PathAndQuery);
+            return Task.FromResult(Json(new PagedResponse<MembershipFreezeReviewSummaryResponse>(1, 10, 0, [])));
+        }, role: "Manager");
+
+        await RenderManagerPageAsync<MembershipPlans>(plans);
+        await RenderManagerPageAsync<MembershipFreezeReviews>(reviews);
+    }
+
+    [Fact]
     public async Task ManagerPlans_ListSendsDurationAndFreezeFiltersWithExistingSearch()
     {
         using var api = CreateClient(request =>
@@ -109,8 +127,7 @@ public sealed partial class MembershipPlanApiClientTests
 
     private static async Task<string> RenderManagerPageAsync<TPage>(MembershipPlanApiClient api) where TPage : IComponent
     {
-        var services = new ServiceCollection().AddLogging().AddSingleton(api);
-        await using var provider = services.BuildServiceProvider();
+        await using var provider = TransactionPageServices(api);
         await using var renderer = new HtmlRenderer(provider, provider.GetRequiredService<ILoggerFactory>());
         return await renderer.Dispatcher.InvokeAsync(async () =>
             WebUtility.HtmlDecode((await renderer.RenderComponentAsync<TPage>()).ToHtmlString()));

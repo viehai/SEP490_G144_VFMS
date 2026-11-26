@@ -83,7 +83,8 @@
             <Authorized>
                 @if (data.MyReviewStatus is { } status)
                 {
-                    <p role="status" class="text-sm font-semibold">@StatusMessage(status)</p>
+                    <p role="status" class="text-sm font-semibold">@StatusMessage</p>
+                    <a href="/gym-review" class="text-sm font-bold text-vfms-primary hover:underline">Sửa hoặc xóa đánh giá của bạn</a>
                 }
                 else if (data.CanReview)
                 {
@@ -182,12 +183,7 @@
     }
 
     private static string Stars(int rating) => new string('★', rating) + new string('☆', 5 - rating);
-    private static string StatusMessage(string status) => status switch
-    {
-        "Pending" => "Đánh giá của bạn đang chờ duyệt.",
-        "Approved" => "Đánh giá của bạn đã được duyệt.",
-        _ => "Đánh giá của bạn đã bị từ chối."
-    };
+    private const string StatusMessage = "Bạn đã gửi đánh giá. Đánh giá được hiển thị công khai.";
 
     public void Dispose() { _lifetime.Cancel(); _lifetime.Dispose(); }
 }

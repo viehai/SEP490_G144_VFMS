@@ -78,4 +78,4 @@ public sealed record VoucherCapacity(int Confirmed = 0, int Reserved = 0, int Pu
 public sealed record StaffPackageOrderFilter(
     string? Search, OrderStatus? Status, ComponentType? ServiceType, PaymentMethod? Method,
     PaymentStatus? PaymentStatus, bool WithoutMethod, bool WithoutPaymentStatus,
-    DateTime? FromUtc, DateTime? BeforeUtc, int Page, int PageSize);
+    DateTime? FromUtc, DateTime? BeforeUtc, int Page, int PageSize, bool NewestFirst = false);

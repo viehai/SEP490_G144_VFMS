@@ -1,106 +1,35 @@
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Sections
 @inject NavigationManager Navigation
-@inject AuthenticationStateProvider AuthStateProvider
 
-<div class="workspace-shell workspace-shell--@Variant">
+<div class="workspace-shell workspace-shell--@CurrentVariant">
+    @if (Variant != "member")
+    {
+        <a class="workspace-skip-link" href="@(new Uri(Navigation.Uri).PathAndQuery + "#workspace-main")"
+           @onclick="FocusMainAsync">Đến nội dung chính</a>
+    }
     <aside class="workspace-sidebar" aria-label="Điều hướng không gian làm việc">
         <a href="/" class="workspace-logo"><img src="/brand/logo-remove.png" alt="Victor Fitness - Trang chủ" class="brightness-0" /></a>
         <div class="workspace-sidebar-label">V-FITNESS MANAGEMENT</div>
         <div class="workspace-role"><span aria-hidden="true">@RoleMark</span><div><strong>@RoleName</strong><small>KHÔNG GIAN LÀM VIỆC</small></div></div>
-        <p class="workspace-sidebar-label workspace-sidebar-label--menu">ĐIỀU HƯỚNG</p>
-        <nav class="workspace-nav">
-            @if (Variant is not ("pt" or "member"))
-            {
-                <NavLink href="@DashboardRoute" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">01</span> Tổng quan <span aria-hidden="true">↗</span></NavLink>
-                <a href="@(DashboardRoute + "#quick-actions")" class="workspace-nav-link"><span aria-hidden="true">02</span> Truy cập nhanh <span aria-hidden="true">↗</span></a>
-                @foreach (var (href, label) in FeatureLinks)
-                {
-                    <NavLink href="@href" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">◼</span> @label <span aria-hidden="true">↗</span></NavLink>
-                }
-            }
-            <NavLink href="/profile" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">03</span> Hồ sơ cá nhân <span aria-hidden="true">↗</span></NavLink>
-            @if (Variant is "manager" or "admin")
-            {
-                <NavLink href="/manager/competitions" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">04</span> Quản lý cuộc thi <span aria-hidden="true">↗</span></NavLink>
-            }
-            else
-            {
-                <NavLink href="@(Variant == "staff" ? "/staff/competitions" : "/competitions")" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">04</span> Cuộc thi <span aria-hidden="true">↗</span></NavLink>
-            }
-            <a href="/" class="workspace-nav-link"><span aria-hidden="true">05</span> Trang chủ <span aria-hidden="true">↗</span></a>
-            @if (Variant == "manager")
-            {
-                <AuthorizeView Roles="Manager">
-                    <NavLink href="/manager/customers/create" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">◼</span> Tạo tài khoản khách hàng <span aria-hidden="true">↗</span></NavLink>
-                    <NavLink href="/manager/membership-plans" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">05</span> Gói hội viên <span aria-hidden="true">↗</span></NavLink>
-                    <NavLink href="/manager/membership-freeze-policy" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">06</span> Chính sách bảo lưu <span aria-hidden="true">↗</span></NavLink>
-                    <NavLink href="/manager/general-policies" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">07</span> Chính sách chung <span aria-hidden="true">↗</span></NavLink>
-                    <NavLink href="/manager/business-reports" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">08</span> Báo cáo kinh doanh <span aria-hidden="true">↗</span></NavLink>
-                    <NavLink href="/manager/equipment" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">09</span> Thiết bị <span aria-hidden="true">↗</span></NavLink>
-                    <NavLink href="/manager/exercises" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">◼</span> Bài tập <span aria-hidden="true">↗</span></NavLink>
-                    <NavLink href="/manager/equipment-issues" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">10</span> Sửa chữa thiết bị <span aria-hidden="true">↗</span></NavLink>
-                    <NavLink href="/manager/purchase-proposals" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">11</span> Đề xuất mua sắm <span aria-hidden="true">↗</span></NavLink>
-                    <NavLink href="/manager/supplement-products" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">12</span> Sản phẩm bổ sung <span aria-hidden="true">↗</span></NavLink>
-                    <NavLink href="/manager/supplement-orders" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">13</span> Đơn bổ sung <span aria-hidden="true">↗</span></NavLink>
-                    <NavLink href="/manager/membership-freeze-requests" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">14</span> Duyệt bảo lưu <span aria-hidden="true">↗</span></NavLink>
-                    <NavLink href="/manager/trainer-applications" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">15</span> Hồ sơ huấn luyện viên <span aria-hidden="true">↗</span></NavLink>
-                    <NavLink href="/manager/pt-packages" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">16</span> Quản lý gói PT <span aria-hidden="true">↗</span></NavLink>
-                    <NavLink href="/manager/pt-freeze-requests" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">17</span> Duyệt bảo lưu PT <span aria-hidden="true">↗</span></NavLink>
-                    <NavLink href="/manager/pt-attendance-disputes" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">18</span> Tranh chấp điểm danh <span aria-hidden="true">↗</span></NavLink>
-                    <p class="workspace-sidebar-label mt-4 px-3">MARKETING</p>
-                    <NavLink href="/manager/promotions" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">15</span> Khuyến mãi <span aria-hidden="true">↗</span></NavLink>
-                    <p class="workspace-sidebar-label mt-4 px-3">KHÁCH HÀNG</p>
-                    <NavLink href="/manager/feedback" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">16</span> Phản hồi khách hàng <span aria-hidden="true">↗</span></NavLink>
-                    <NavLink href="/manager/consultations" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">17</span> Tư vấn trực tuyến <span aria-hidden="true">↗</span></NavLink>
-                    <NavLink href="/manager/promotions" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">18</span> Khuyến mãi <span aria-hidden="true">↗</span></NavLink>
-                </AuthorizeView>
-            }
-            @if (Variant == "pt")
-            {
-                @* UC 3.3: PT and Yoga trainers share the profile page; the rest is Trainer Role PT only (feature 4). *@
-                <AuthorizeView Roles="PT,YogaInstructor">
-                    <NavLink href="/pt/trainer-profile" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active">Hồ sơ huấn luyện viên</NavLink>
-                </AuthorizeView>
-                <AuthorizeView Roles="YogaInstructor">
-                    <NavLink href="/pt/yoga" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active">Lớp Yoga của tôi</NavLink>
-                </AuthorizeView>
-                <AuthorizeView Roles="PT">
-                    <NavLink href="/pt/availability" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active">Lịch tuần PT</NavLink>
-                    <NavLink href="/pt/assigned-members" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active">Hội viên được phân công</NavLink>
-                    <NavLink href="/pt/teaching-schedule" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active">Lịch dạy PT</NavLink>
-                </AuthorizeView>
-            }
-            @if (Variant == "member")
-            {
+        @if (Variant == "member")
+        {
+            <p class="workspace-sidebar-label workspace-sidebar-label--menu">ĐIỀU HƯỚNG</p>
+            <nav class="workspace-nav" aria-label="Điều hướng hội viên">
+                <NavLink href="/profile" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">03</span> Hồ sơ cá nhân <span aria-hidden="true">↗</span></NavLink>
+                <NavLink href="/competitions" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">04</span> Cuộc thi <span aria-hidden="true">↗</span></NavLink>
+                <a href="/" class="workspace-nav-link"><span aria-hidden="true">05</span> Trang chủ <span aria-hidden="true">↗</span></a>
                 <AuthorizeView Roles="Customer,Member">
                     <NavLink href="/my-vouchers" class="workspace-nav-link" ActiveClass="workspace-nav-link--active">Voucher của tôi</NavLink>
-                </AuthorizeView>
-                <AuthorizeView Roles="Member">
                     <NavLink href="/my-memberships" Match="NavLinkMatch.Prefix" class="workspace-nav-link" ActiveClass="workspace-nav-link--active">Gói của tôi</NavLink>
                     <NavLink href="/my-pt-packages" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active">Gói PT</NavLink>
                 </AuthorizeView>
-            }
-            @if (Variant == "staff")
-            {
-                <AuthorizeView Roles="Staff">
-                    <NavLink href="/staff/customers/create" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">◼</span> Tạo tài khoản khách hàng <span aria-hidden="true">↗</span></NavLink>
-                    <NavLink href="/staff/equipment-issues" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">06</span> Sự cố thiết bị <span aria-hidden="true">↗</span></NavLink>
-                    <NavLink href="/staff/purchase-proposals" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">07</span> Đề xuất mua sắm <span aria-hidden="true">↗</span></NavLink>
-                    <NavLink href="/staff/supplement-orders" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">08</span> Đơn bổ sung <span aria-hidden="true">↗</span></NavLink>
-                    <NavLink href="/staff/membership-cash-receipt" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">09</span> Đơn gói tập <span aria-hidden="true">↗</span></NavLink>
-                    <p class="workspace-sidebar-label mt-4 px-3">KHÁCH HÀNG</p>
-                    <NavLink href="/staff/feedback" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">10</span> Phản hồi khách hàng <span aria-hidden="true">↗</span></NavLink>
-                    <NavLink href="/staff/consultations" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">11</span> Tư vấn trực tuyến <span aria-hidden="true">↗</span></NavLink>
-                </AuthorizeView>
-            }
-            @if (Variant == "admin")
-            {
-                <AuthorizeView Roles="Admin">
-                    <NavLink href="/admin/business-reports" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">06</span> Báo cáo kinh doanh <span aria-hidden="true">↗</span></NavLink>
-                    <NavLink href="/admin/banned-words" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">07</span> Từ khóa cấm <span aria-hidden="true">↗</span></NavLink>
-                    <NavLink href="/admin/audit-logs" Match="NavLinkMatch.All" class="workspace-nav-link" ActiveClass="workspace-nav-link--active"><span aria-hidden="true">08</span> Nhật ký hệ thống <span aria-hidden="true">↗</span></NavLink>
-                </AuthorizeView>
-            }
-        </nav>
+            </nav>
+        }
+        else
+        {
+            <WorkspaceNavigation Variant="@CurrentVariant" User="@_user" />
+        }
         <div class="workspace-sidebar-bottom">
             <p class="workspace-sidebar-label">VICTOR FITNESS / VFMS</p>
             <p>Vận hành có kỷ luật.<br />Phát triển có định hướng.</p>
@@ -109,13 +38,25 @@
     <div class="workspace-content">
         <header class="workspace-topbar">
             <div class="workspace-breadcrumb"><a href="/">VFMS</a><span aria-hidden="true">/</span><strong>@RoleName</strong></div>
-            <AuthorizeView><LogoutButton Class="border border-[#D8D1CD] bg-[#F8F5F2] hover:bg-[#ECE8E4] text-[#242424] px-3.5 py-2 text-xs font-bold rounded-lg transition-colors" /></AuthorizeView>
+            @if (Variant == "member")
+            {
+                <AuthorizeView><LogoutButton Class="border border-[#D8D1CD] bg-[#F8F5F2] hover:bg-[#ECE8E4] text-[#242424] px-3.5 py-2 text-xs font-bold rounded-lg transition-colors" /></AuthorizeView>
+            }
+            else
+            {
+                <div class="dash-account-bar"><SectionOutlet SectionName="dashboard-notifications" />
+                <AuthorizeView><details class="dash-account">
+                    <summary><span class="dash-avatar" aria-hidden="true">@RoleMark</span><strong>@context.User.Identity?.Name</strong><span aria-hidden="true">⌄</span></summary>
+                    <div class="dash-popover"><a href="/profile">Hồ sơ cá nhân</a><LogoutButton>Đăng xuất</LogoutButton></div>
+                </details></AuthorizeView>
+                </div>
+            }
         </header>
         @if (IsPreview)
         {
             <div class="workspace-demo-note"><span aria-hidden="true">◼</span> BẢN XEM TRƯỚC <span aria-hidden="true">/</span> Dữ liệu minh họa, chưa phản ánh hoạt động thực tế.</div>
         }
-        <main class="workspace-main">@ChildContent</main>
+        <main class="workspace-main" id="workspace-main" tabindex="-1" @ref="_main">@ChildContent</main>
         <footer class="workspace-footer"><span>© @DateTime.Now.Year VICTOR FITNESS</span><span>V-FITNESS MANAGEMENT SYSTEM</span></footer>
     </div>
 </div>
@@ -124,14 +65,24 @@
     [Parameter] public string Variant { get; set; } = "staff";
     [Parameter] public bool IsPreview { get; set; } = true;
     [Parameter] public RenderFragment? ChildContent { get; set; }
-    private string RoleName => Variant switch { "admin" => "ADMIN", "manager" => "MANAGER", "pt" => "HUẤN LUYỆN VIÊN", "member" => "HỘI VIÊN", _ => "STAFF" };
-    private string RoleMark => Variant switch { "admin" => "AD", "manager" => "MG", "pt" => "HL", "member" => "HV", _ => "ST" };
-    private string DashboardRoute => Variant switch { "admin" => "/admin/dashboard", "manager" => "/manager/dashboard", "pt" => "/pt/dashboard", _ => "/staff/dashboard" };
-    private (string Href, string Label)[] FeatureLinks => Variant switch
+    private string RoleName => CurrentVariant switch { "admin" => "ADMIN", "manager" => "MANAGER", "pt" => "HUẤN LUYỆN VIÊN", "member" => "HỘI VIÊN", _ => "STAFF" };
+    private string RoleMark => CurrentVariant switch { "admin" => "AD", "manager" => "MG", "pt" => "PT", "member" => "HV", _ => "ST" };
+    [CascadingParameter] private Task<AuthenticationState> Authentication { get; set; } = default!;
+    private ClaimsPrincipal _user = new(new ClaimsIdentity());
+    private string CurrentVariant { get; set; } = "staff";
+    private ElementReference _main;
+    private static readonly (string Role, string Variant)[] RoleWorkspaces =
+        [("Admin", "admin"), ("Manager", "manager"), ("Staff", "staff"), ("PT", "pt"), ("YogaInstructor", "pt")];
+
+    protected override async Task OnParametersSetAsync()
     {
-        "manager" => [("/manager/yoga", "Quản lý Yoga"), ("/staff/check-ins", "Lễ tân check-in"), ("/kiosk", "Kiosk check-in")],
-        "pt" => [("/pt/yoga", "Lớp Yoga của tôi")],
-        "staff" => [("/staff/check-ins", "Lễ tân check-in"), ("/staff/yoga", "Điểm danh Yoga"), ("/kiosk", "Kiosk check-in")],
-        _ => []
-    };
+        _user = (await Authentication).User;
+        var workspaces = RoleWorkspaces.Where(workspace => _user.IsInRole(workspace.Role));
+        // Shared pages can be reached through another role's URL, e.g. Manager at /staff/check-ins.
+        CurrentVariant = Variant == "member" || workspaces.Any(workspace => workspace.Variant == Variant)
+            ? Variant : workspaces.Select(workspace => workspace.Variant).FirstOrDefault() ?? Variant;
+    }
+
+    private Task FocusMainAsync(MouseEventArgs e) =>
+        e.CtrlKey || e.MetaKey || e.ShiftKey || e.AltKey ? Task.CompletedTask : _main.FocusAsync().AsTask();
 }

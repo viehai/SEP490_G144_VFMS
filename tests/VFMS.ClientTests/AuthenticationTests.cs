@@ -5,6 +5,7 @@ using Microsoft.JSInterop;
 using VFMS.Client.Auth;
 using VFMS.Client.Services;
 using VFMS.Contracts.Auth;
+using VFMS.Contracts.Memberships;
 using VFMS.Contracts.Users;
 using Xunit;
 
@@ -57,6 +58,66 @@ public sealed class AuthenticationTests
         var tokens = await Task.WhenAll(Enumerable.Range(0, 5).Select(_ => session.GetAccessTokenAsync()));
         Assert.All(tokens, token => Assert.Equal("rotated", token));
         Assert.Equal(1, calls);
+    }
+
+    [Fact]
+    public async Task TwoTabsRestoreTheSameLoginAndRotateAnExpiredTokenOnce()
+    {
+        var storage = new FakeStorage();
+        int refreshes = 0;
+        using var api = Api(async request =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/api/auth/login") return Json(User());
+            Assert.Equal("/api/auth/refresh", request.RequestUri.AbsolutePath);
+            Assert.Equal("refresh", (await request.Content!.ReadFromJsonAsync<RefreshTokenRequest>())!.RefreshToken);
+            refreshes++;
+            await Task.Yield();
+            return Json(User("new-access") with { RefreshToken = "new-refresh" });
+        });
+        using var first = new AuthSession(storage, api);
+        using var second = new AuthSession(storage, api);
+        await first.WatchBrowserSessionAsync();
+        await first.SignInAsync(new("member@example.com", "Test-Password1", false));
+        await second.WatchBrowserSessionAsync();
+        Assert.True((await second.GetAuthenticationStateAsync()).User.IsInRole("Customer"));
+        storage.Json = JsonSerializer.Serialize(new StoredAuthSession(User(), DateTimeOffset.UtcNow, false));
+
+        Assert.All(await Task.WhenAll(first.GetAccessTokenAsync(), second.GetAccessTokenAsync()),
+            token => Assert.Equal("new-access", token));
+        Assert.Equal(1, refreshes);
+    }
+
+    [Theory]
+    [InlineData("Customer", "Pending", true, false)]
+    [InlineData("Customer", "Paid", false, false)]
+    [InlineData("Customer", "Paid", true, true)]
+    [InlineData("Member", "Paid", true, false)]
+    [InlineData("Member", "Pending", true, false)]
+    [InlineData("Member", "Paid", false, false)]
+    public async Task PaidPersonalCheckoutNotifiesOtherTabsEvenWhenTheRoleIsUnchanged(string role, string status, bool forSelf, bool promoted)
+    {
+        var buyer = User() with { Roles = [role] };
+        var storage = new FakeStorage { Json = JsonSerializer.Serialize(new StoredAuthSession(buyer, DateTimeOffset.UtcNow.AddMinutes(20), false)) };
+        var refreshes = 0;
+        using var authApi = Api(_ =>
+        {
+            refreshes++;
+            return Task.FromResult(Json(User("member-access") with { Roles = ["Member"], RefreshToken = "member-refresh" }));
+        });
+        using var session = new AuthSession(storage, authApi);
+        var now = DateTimeOffset.UtcNow;
+        var order = new MembershipPurchaseResponse("ORD-SELF", status, status, "Cash", now, now.AddDays(1), now, 100, 100,
+            [new(1, "Gym", forSelf, null, 100, true)], null, null, null, null);
+        using var client = new MembershipPlanApiClient(new HttpClient(new FakeHandler(_ => Task.FromResult(Json(order))))
+            { BaseAddress = new Uri("https://api.example.test/") }, session, storage);
+        Task<Microsoft.AspNetCore.Components.Authorization.AuthenticationState>? published = null;
+        session.AuthenticationStateChanged += state => published = state;
+        await client.GetPurchaseAsync(order.OrderNumber);
+
+        Assert.Equal(promoted, published is not null && (await published).User.IsInRole("Member"));
+        Assert.Equal(promoted ? 1 : 0, refreshes);
+        Assert.Equal(status == "Paid" && forSelf ? 1 : 0, storage.PurchaseNotifications);
+        Assert.Equal(promoted ? "member-access" : "access", await session.GetAccessTokenAsync());
     }
 
     [Fact]
@@ -280,15 +341,20 @@ public sealed class AuthenticationTests
 
     private sealed class FakeStorage : IJSRuntime
     {
+        private readonly SemaphoreSlim _browserLock = new(1, 1);
         public string? Json { get; set; }
         public bool RememberMe { get; private set; }
+        public int PurchaseNotifications { get; private set; }
         public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args) => InvokeAsync<TValue>(identifier, default, args);
-        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args)
+        public async ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args)
         {
-            if (identifier == "vfmsAuthStorage.read") return ValueTask.FromResult((TValue)(object?)Json!);
+            if (identifier == "vfmsAuthStorage.lock") await _browserLock.WaitAsync(cancellationToken);
+            if (identifier == "vfmsAuthStorage.unlock") _browserLock.Release();
+            if (identifier == "vfmsAuthStorage.read") return (TValue)(object?)Json!;
             if (identifier == "vfmsAuthStorage.write") { Json = (string)args![0]!; RememberMe = (bool)args[1]!; }
             if (identifier == "vfmsAuthStorage.clear") Json = null;
-            return ValueTask.FromResult(default(TValue)!);
+            if (identifier == "vfmsMembershipUpdates.publish") PurchaseNotifications++;
+            return default!;
         }
     }
 }

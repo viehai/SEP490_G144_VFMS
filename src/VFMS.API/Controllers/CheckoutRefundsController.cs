@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using VFMS.API.Extensions;
 using VFMS.Application.Interfaces;
+using VFMS.Application.Services;
 using VFMS.Contracts.Common;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
@@ -81,7 +82,8 @@ public sealed class CheckoutRefundsController(VfmsDbContext db, IMembershipPurch
 
     private IQueryable<PaymentTransaction> RefundRequests => db.PaymentTransactions
         .Where(p => p.RefundStatus != null && p.RefundAmount > 0 && p.PaidAt != null &&
-            p.RefundReason != "DailyDepositReturn" && p.GatewayTransactionReference != null)
+            p.RefundReason != LockerService.DepositReturnReason && p.RefundReason != "DailyDepositReturn" &&
+            p.GatewayTransactionReference != null)
         .Include(p => p.Order).Include(p => p.SourcePaymentTransaction).ThenInclude(p => p!.Order);
 
     private static CheckoutRefundView View(PaymentTransaction refund) =>

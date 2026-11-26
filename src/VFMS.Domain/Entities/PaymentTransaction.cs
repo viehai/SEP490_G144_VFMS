@@ -23,6 +23,8 @@ public class PaymentTransaction : BaseEntity
     public int? SourcePaymentTransactionId { get; set; }
     public DateTime? HoldExpiresAt { get; set; }
     public DateTime? PaymentExpiresAt { get; set; }
+    /// <summary>GBR-109: when the Member clicked 'Proceed to Payment' on an online locker rental.</summary>
+    public DateTime? PaymentStartedAt { get; set; }
     public DateTime? RentalExpiryAtQuote { get; set; }
     public int? RenewalMonths { get; set; }
     public decimal? OverdueFees { get; set; }

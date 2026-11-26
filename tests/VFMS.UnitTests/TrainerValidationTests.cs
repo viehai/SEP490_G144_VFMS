@@ -1,5 +1,6 @@
 using VFMS.Contracts.Trainers;
 using VFMS.Application.Services;
+using VFMS.Domain.Entities;
 
 namespace VFMS.UnitTests;
 
@@ -39,17 +40,16 @@ public class TrainerValidationTests
         Assert.Equal(valid, TrainerFileRules.IsCertificateUrl(url));
 
     [Fact]
-    public void Hire_requires_verified_identity_and_valid_level()
+    public void Hire_requires_valid_level()
     {
         var validator = new ReviewTrainerApplicationValidator();
-        Assert.False(validator.Validate(new ReviewTrainerApplicationRequest("Hire", "Interview completed", "Master", null, false)).IsValid);
-        Assert.False(validator.Validate(new ReviewTrainerApplicationRequest("Hire", "Interview completed", "Unknown", null, true)).IsValid);
-        Assert.True(validator.Validate(new ReviewTrainerApplicationRequest("Hire", "Interview completed", "Master", IdentityVerified: true)).IsValid);
+        Assert.False(validator.Validate(new ReviewTrainerApplicationRequest("Hire", "Interview completed", "Unknown")).IsValid);
+        Assert.True(validator.Validate(new ReviewTrainerApplicationRequest("Hire", "Interview completed", "Master")).IsValid);
     }
     [Fact]
     public void Application_requires_consent_and_certificate()
     {
-        var r = new SubmitTrainerApplicationRequest("Test Applicant", "applicant@example.test", "0900000000", "000000000001", new DateOnly(2000, 1, 1), "Other", "Strength", 3, "Coach", false, [], TrainerRole: "PT");
+        var r = new SubmitTrainerApplicationRequest("Test Applicant", "applicant@example.test", "0900000000", new DateOnly(2000, 1, 1), "Other", "Strength", 3, "Coach", false, [], TrainerRole: "PT");
         var v = new SubmitTrainerApplicationValidator(); Assert.False(v.Validate(r).IsValid);
         Assert.True(v.Validate(r with { Consent = true, Certificates = [new("proof.pdf", "%PDF-1.7"u8.ToArray())] }).IsValid);
     }
@@ -57,7 +57,7 @@ public class TrainerValidationTests
     public void Profile_update_accepts_new_or_replacement_https_certificate_links()
     {
         var request = new SubmitTrainerApplicationRequest("Test Applicant", "applicant@example.test", "0900000000",
-            "000000000001", new(2000, 1, 1), "Other", "PT", 3, "Coach", true, [], "ProfileUpdate",
+            new(2000, 1, 1), "Other", "PT", 3, "Coach", true, [], "ProfileUpdate",
             CertificateLinks: [new("https://certificates.example.test/new"),
                 new("https://certificates.example.test/revised", "old-certificate")]);
         var validator = new SubmitTrainerApplicationValidator();
@@ -83,7 +83,7 @@ public class TrainerValidationTests
     public void Recruitment_needs_a_trainer_role_and_free_text_specialization(string type, string? role, string specialty, bool valid)
     {
         var request = new SubmitTrainerApplicationRequest("Test Applicant", "applicant@example.test", "0900000000",
-            "000000000001", new(2000, 1, 1), "Other", specialty, 3, "Coach", true,
+            new(2000, 1, 1), "Other", specialty, 3, "Coach", true,
             [new("proof.pdf", "%PDF-1.7"u8.ToArray())], type, TrainerRole: role);
         Assert.Equal(valid, new SubmitTrainerApplicationValidator().Validate(request).IsValid);
         Assert.False(new SubmitTrainerApplicationValidator().Validate(request with { Specialty = new string('x', 201) }).IsValid);
@@ -110,7 +110,6 @@ public class TrainerValidationTests
             FullName = "Applicant",
             Email = "a@example.test",
             PhoneNumber = "0900000000",
-            CitizenId = "000000000001",
             Specialty = "PT",
             InterviewNote = "private",
             ApplicationStatus = VFMS.Domain.Enums.TrainerApplicationStatus.Interviewing,
@@ -151,7 +150,7 @@ public class TrainerValidationTests
     [InlineData("", false)]
     public void Application_type_is_explicit_and_profile_update_needs_only_certificates_and_consent(string type, bool valid)
     {
-        var request = new SubmitTrainerApplicationRequest("Test Applicant", "applicant@example.test", "0900000000", "000000000001",
+        var request = new SubmitTrainerApplicationRequest("Test Applicant", "applicant@example.test", "0900000000",
             new(2000, 1, 1), "Other", "Strength", 3, "Coach", true, [new("proof.pdf", "%PDF-1.7"u8.ToArray())], type,
             TrainerRole: "PT");
         var validator = new SubmitTrainerApplicationValidator();
@@ -162,7 +161,6 @@ public class TrainerValidationTests
         Assert.True(validator.Validate(request with
         {
             ApplicationType = "ProfileUpdate",
-            CitizenId = "",
             PhoneNumber = "",
             FullName = "",
             Bio = "",
@@ -170,7 +168,117 @@ public class TrainerValidationTests
             Gender = "",
             Specialty = ""
         }).IsValid);
-        Assert.False(validator.Validate(request with { ApplicationType = "Recruitment", CitizenId = "" }).IsValid);
+        Assert.False(validator.Validate(request with { ApplicationType = "Recruitment", Email = "" }).IsValid);
+        Assert.False(validator.Validate(request with { ApplicationType = "Recruitment", PhoneNumber = "" }).IsValid);
+    }
+
+    // UC 3.1 applicant field rules.
+    private static SubmitTrainerApplicationRequest Applicant => new("Nguyễn Văn An", "an.nguyen@example.vn", "0912345678",
+        new(2000, 1, 1), "Male", "Strength", 3, "Coach", true, [new("proof.pdf", "%PDF-1.7"u8.ToArray())], TrainerRole: "PT");
+
+    private static bool Valid(SubmitTrainerApplicationRequest request) => new SubmitTrainerApplicationValidator().Validate(request).IsValid;
+
+    [Theory]
+    [InlineData("Nguyễn Văn An", true)]
+    [InlineData("O'Brien-Smith Jr.", true)]
+    [InlineData("", false)]
+    [InlineData("12345", false)]
+    [InlineData("@@@", false)]
+    [InlineData("An 2", false)]
+    [InlineData(" An", true)]
+    public void Name_has_letters_only(string name, bool valid) => Assert.Equal(valid, Valid(Applicant with { FullName = name }));
+
+    [Fact]
+    public void Name_is_at_most_50_characters()
+    {
+        Assert.True(Valid(Applicant with { FullName = new string('a', 50) }));
+        Assert.False(Valid(Applicant with { FullName = new string('a', 51) }));
+    }
+
+    [Theory]
+    [InlineData("a.b@gmail.com", true)]
+    [InlineData("ab@gmail.com", true)]
+    [InlineData("an@school.edu.vn", true)]
+    [InlineData("an@b-c.com", true)]
+    [InlineData("an@localhost", false)]
+    [InlineData("an@b.c", false)]
+    [InlineData("an@b.123", false)]
+    [InlineData("an@-b.com", false)]
+    [InlineData("an@b-.com", false)]
+    [InlineData("an@b..com", false)]
+    [InlineData("an@.com", false)]
+    [InlineData("an@b.com.", false)]
+    public void Email_domain_needs_a_dot_and_a_letters_only_top_level_domain(string email, bool valid) =>
+        Assert.Equal(valid, Valid(Applicant with { Email = email }));
+
+    [Theory]
+    [InlineData("0912345678", "0912345678")]
+    [InlineData("+84912345678", "0912345678")]
+    [InlineData("84912345678", "0912345678")]
+    [InlineData("0912 345 678", "0912345678")]
+    [InlineData("0912-345-678", "0912345678")]
+    [InlineData("0212345678", null)]
+    [InlineData("091234567", null)]
+    [InlineData("09123456789", null)]
+    [InlineData("(0912) 345-678", null)]
+    [InlineData("+1912345678", null)]
+    public void Phone_is_a_vietnamese_number_stored_as_a_leading_zero(string phone, string? canonical)
+    {
+        Assert.Equal(canonical != null, Valid(Applicant with { PhoneNumber = phone }));
+        Assert.Equal(canonical != null, TrainerApplicantRules.TryNormalizePhone(phone, out var normalized));
+        Assert.Equal(canonical ?? "", normalized);
+    }
+
+    [Fact]
+    public void Phone_variants_cover_every_spelling_of_the_same_number()
+    {
+        Assert.Equal(["0912345678", "+84912345678", "84912345678"], TrainerApplicantRules.PhoneVariants("+84 912 345 678"));
+        Assert.Equal(["+15551234"], TrainerApplicantRules.PhoneVariants("+1 555 1234"));
+    }
+
+    [Fact]
+    public void Applicant_must_be_at_least_18_years_old()
+    {
+        var eighteenToday = TrainerApplicantRules.Today().AddYears(-18);
+        Assert.True(Valid(Applicant with { DateOfBirth = eighteenToday, ExperienceYears = 0 }));
+        Assert.False(Valid(Applicant with { DateOfBirth = eighteenToday.AddDays(1), ExperienceYears = 0 }));
+        Assert.False(Valid(Applicant with { DateOfBirth = new DateOnly(1899, 12, 31) }));
+    }
+
+    [Theory]
+    [InlineData(30, 0, true)]
+    [InlineData(30, 12, true)]
+    [InlineData(30, 13, false)]
+    [InlineData(30, -1, false)]
+    [InlineData(18, 0, true)]
+    [InlineData(18, 1, false)]
+    public void Experience_cannot_start_before_the_applicant_turned_18(int age, int experience, bool valid) =>
+        Assert.Equal(valid, Valid(Applicant with { DateOfBirth = TrainerApplicantRules.Today().AddYears(-age), ExperienceYears = experience }));
+
+    [Fact]
+    public void Experience_error_is_reported_on_the_experience_field_for_the_form()
+    {
+        var result = new SubmitTrainerApplicationValidator().Validate(Applicant with { ExperienceYears = 40 });
+        Assert.Equal(["ExperienceYears"], result.Errors.Select(e => e.PropertyName));
+    }
+
+    [Fact]
+    public void Tracking_code_filter_is_bounded()
+    {
+        var validator = new TrainerApplicationFilterValidator();
+        Assert.True(validator.Validate(new TrainerApplicationFilter(TrackingCode: "TR-abc")).IsValid);
+        Assert.False(validator.Validate(new TrainerApplicationFilter(TrackingCode: new string('x', 65))).IsValid);
+    }
+
+    [Fact]
+    public void Tracking_link_uses_the_configured_page_or_the_reset_site()
+    {
+        var configured = new VFMS.Application.Settings.TrainerSetupLinkSettings { TrackingPageUrl = "https://gym.example.test/careers/trainer/status" };
+        Assert.Equal("https://gym.example.test/careers/trainer/status?code=TR-1", configured.TryBuildTracking("TR-1"));
+        var fallback = new VFMS.Application.Settings.TrainerSetupLinkSettings { ResetUrl = "https://gym.example.test/auth/reset?x=1" };
+        Assert.Equal("https://gym.example.test/careers/trainer/status?code=TR-1", fallback.TryBuildTracking("TR-1"));
+        Assert.Null(new VFMS.Application.Settings.TrainerSetupLinkSettings().TryBuildTracking("TR-1"));
+        Assert.Null(new VFMS.Application.Settings.TrainerSetupLinkSettings { TrackingPageUrl = "http://gym.example.test/status" }.TryBuildTracking("TR-1"));
     }
 
     [Fact]
@@ -179,17 +287,21 @@ public class TrainerValidationTests
         var validator = new ReviewTrainerApplicationValidator();
         Assert.True(validator.Validate(new ReviewTrainerApplicationRequest("Approve", "Verified certificates")).IsValid);
         Assert.True(validator.Validate(new ReviewTrainerApplicationRequest("Approve", "")).IsValid);
-        Assert.True(validator.Validate(new ReviewTrainerApplicationRequest("Hire", null, "Junior", IdentityVerified: true)).IsValid);
+        Assert.True(validator.Validate(new ReviewTrainerApplicationRequest("Hire", null, "Junior")).IsValid);
         Assert.False(validator.Validate(new ReviewTrainerApplicationRequest("Reject", " ")).IsValid);
         Assert.False(validator.Validate(new ReviewTrainerApplicationRequest("Interview", "")).IsValid);
     }
 
     [Fact]
-    public void Trainer_loses_the_role_only_after_more_than_60_not_accepting_days()
+    public void Trainer_loses_the_role_only_after_more_than_60_accumulated_not_accepting_days()
     {
-        var today = new DateOnly(2026, 11, 15);
-        Assert.False(TrainerReadinessRules.HasExpired(null, today));
-        Assert.False(TrainerReadinessRules.HasExpired(today.AddDays(-60), today));
-        Assert.True(TrainerReadinessRules.HasExpired(today.AddDays(-61), today));
+        var profile = new TrainerProfile();
+        Assert.False(TrainerReadinessRules.HasExpired(profile));
+        profile.NotAcceptingAccumulatedDays = 60;
+        Assert.False(TrainerReadinessRules.HasExpired(profile));
+        profile.NotAcceptingAccumulatedDays = 61;
+        Assert.True(TrainerReadinessRules.HasExpired(profile));
+        profile.AcceptingNewMembers = true;
+        Assert.False(TrainerReadinessRules.HasExpired(profile));
     }
 }

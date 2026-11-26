@@ -24,6 +24,7 @@ public sealed partial class MembershipPlanApiClientTests
         Assert.Contains("Từ ngày <span", html);
         Assert.Contains("Đến hết ngày <span", html);
         Assert.Contains("Lý do bảo lưu <span", html);
+        Assert.Matches("<textarea[^>]*resize-none[^>]*maxlength=\"4000\"", html);
         Assert.Contains("Tài liệu minh chứng", html);
         Assert.DoesNotContain("không bắt buộc", html);
         Assert.Matches("<input[^>]*id=\"freeze-7-0-document\"[^>]* required", html);
@@ -154,6 +155,38 @@ public sealed partial class MembershipPlanApiClientTests
         Assert.Contains("03/12/2026", html);
         Assert.True(html.IndexOf(active.PlanName, StringComparison.Ordinal) < html.IndexOf(pending.PlanName, StringComparison.Ordinal));
         Assert.True(html.IndexOf(pending.PlanName, StringComparison.Ordinal) < html.IndexOf(rejected.PlanName, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task FreezeHistory_ShowsTenRequestsOnTheFirstPage()
+    {
+        var requests = Enumerable.Range(1, 11).Select(id => PendingFreezeRequest() with
+        {
+            FreezeRequestId = id, PlanName = $"Gói [{id}]", Status = "Completed", CanEdit = false, CanCancel = false
+        }).ToArray();
+        var html = WebUtility.HtmlDecode(await RenderTransactionPageAsync<MyFreezeRequests>(requests, role: "Member"));
+
+        Assert.Contains("Trang 1 / 2 · 11 yêu cầu", html);
+        foreach (var request in requests.Skip(1))
+            Assert.Contains(request.PlanName, html);
+        Assert.DoesNotContain(requests[0].PlanName, html);
+    }
+
+    [Fact]
+    public async Task MembershipDetails_ShowTenHistoryRowsOnTheFirstPage()
+    {
+        var membership = FrozenMembership() with { ComponentType = MembershipPlanServiceTypes.Yoga };
+        var start = new DateOnly(2026, 11, 26);
+        var periods = Enumerable.Range(1, 11).Select(id => new MembershipFreezePeriodResponse(
+            start.AddDays(id), start.AddDays(id), null, null, "Rejected", ReviewNote: $"Lý do [{id}]")).ToArray();
+        var detail = new MembershipDetailResponse(membership, null, null, new(0, 0, periods));
+        var html = WebUtility.HtmlDecode(await RenderTransactionPageAsync<MembershipDetail>(detail, role: "Member",
+            parameters: new() { [nameof(MembershipDetail.MembershipId)] = membership.MembershipId }));
+
+        Assert.Contains("Trang 1 / 2 · 11 yêu cầu", html);
+        foreach (var period in periods.Skip(1))
+            Assert.Contains(period.ReviewNote!, html);
+        Assert.DoesNotContain(periods[0].ReviewNote!, html);
     }
 
     [Fact]

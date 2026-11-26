@@ -1,0 +1,35 @@
+@inject VfmsApiClient Api
+@implements IDisposable
+<details class="dash-inbox">
+    <summary aria-label="@Label" title="@Label"><DashboardIcon Name="bell" />
+        @if (_inbox is { Unread: > 0 }) { <span class="dash-count">@_inbox.Unread</span> }
+    </summary>
+    <div class="dash-popover"><strong>Thông báo</strong>
+        @if (_error is not null) { <p role="alert">@_error</p><button type="button" @onclick="Load">Thử lại</button> }
+        else if (_inbox is null) { <p role="status">Đang tải…</p> }
+        else if (_inbox.Recent.Count == 0) { <p>Chưa có thông báo.</p> }
+        else
+        {
+            @foreach (var n in _inbox.Recent)
+            {
+                <article><strong>@n.Title</strong><small>@n.SentAt.AddHours(7).ToString("dd/MM HH:mm") @(!n.Read ? "· Chưa đọc" : "")</small><p>@n.Message</p></article>
+            }
+        }
+    </div>
+</details>
+
+@code {
+    private DashboardInbox? _inbox;
+    private string? _error;
+    private readonly CancellationTokenSource _lifetime = new();
+    private string Label => _inbox is { Unread: > 0 } ? $"Thông báo, {_inbox.Unread} chưa đọc" : "Thông báo";
+    protected override Task OnInitializedAsync() => Load();
+    private async Task Load()
+    {
+        _error = null;
+        try { _inbox = await Api.GetAsync<DashboardInbox>("api/dashboards/notifications", _lifetime.Token); }
+        catch (ApiException ex) { _error = ex.Message; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+    }
+    public void Dispose() { _lifetime.Cancel(); _lifetime.Dispose(); }
+}

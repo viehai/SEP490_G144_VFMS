@@ -179,7 +179,7 @@ public enum PTSessionStatus
     MakeUpPending,
     RescheduleRequested,
     TrainerAbsentReported,
-    /// <summary>Nobody recorded attendance by the end of the session day; counts as used (GBR-97).</summary>
+    /// <summary>Nobody recorded attendance by the end of the session day; counts as used (GBR-103).</summary>
     AutoCompleted,
     /// <summary>PT recorded Present but the Member reported PT Absent; the Manager decides (UC 4.11).</summary>
     Disputed,
@@ -280,7 +280,9 @@ public enum LockerStatus
     Rented,
     Maintenance,
     Damaged,
-    Reserved
+    Reserved,
+    /// <summary>UC 5.7: hidden from the grid and catalog; contract history is kept.</summary>
+    Inactive
 }
 
 public enum LockerType

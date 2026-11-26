@@ -16,7 +16,6 @@
 else
 {
 <AuthorizeView>
-    <Authorizing><p role="status">Đang kiểm tra phiên đăng nhập...</p></Authorizing>
     <Authorized Context="auth">
         <div class="auth-success-mark" aria-hidden="true">✓</div>
         <span class="auth-overline-card">TÀI KHOẢN CỦA BẠN</span>
@@ -62,6 +61,7 @@ else
 @code {
     [SupplyParameterFromQuery(Name = "returnUrl")] public string? ReturnUrl { get; set; }
     [SupplyParameterFromQuery(Name = "email")] public string? Email { get; set; }
+    [CascadingParameter] private Task<AuthenticationState> Authentication { get; set; } = default!;
     private readonly LoginModel _model = new();
     private readonly LoginRequestValidator _validator = new();
     private ContractValidation<LoginRequest>? _validation;
@@ -73,7 +73,8 @@ else
     protected override void OnInitialized() => _model.Email = Email ?? string.Empty;
     protected override async Task OnParametersSetAsync()
     {
-        var state = await Session.GetAuthenticationStateAsync();
+        if (_busy || _redirecting) return;
+        var state = await Authentication;
         if (AuthNavigation.DefaultRoute(state.User) != "/")
             await NavigateAsync(state.User);
         _checkingSession = false;

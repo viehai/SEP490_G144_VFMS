@@ -5,7 +5,7 @@ namespace VFMS.Domain.Entities;
 
 /// <summary>
 /// A single scheduled or completed one-on-one PT session.
-/// Self check-in within [-30 mins, +15 mins] of a scheduled PT session automatically marks it Completed (GBR-92).
+/// Self check-in within [-30 mins, +15 mins] of a scheduled PT session marks it 'Present' (GBR-92, GBR-103).
 /// </summary>
 public class PTSession : BaseEntity
 {
@@ -40,8 +40,14 @@ public class PTSession : BaseEntity
     /// <summary>The Manager who decided the attendance dispute (UC 4.11 step 5).</summary>
     public string? TrainerAbsenceReviewedByUserId { get; set; }
     public bool? TrainerAbsenceApproved { get; set; }
-    /// <summary>When the 20:00 attendance reminder was sent to the PT (GBR-97).</summary>
+    /// <summary>No longer written: the 20:00 attendance reminder was removed from GBR-103. Kept because columns are never dropped.</summary>
     public DateTime? AttendanceReminderSentAt { get; set; }
+    /// <summary>When the PT last recorded attendance (UC 4.6 step 6); null when the PT has not recorded it.</summary>
+    public DateTime? AttendanceRecordedAt { get; set; }
+    /// <summary>What the PT recorded: true = 'Present', false = 'Absent' (shown on UC 4.11).</summary>
+    public bool? AttendanceRecordedPresent { get; set; }
+    /// <summary>When the Member's self check-in marked the session 'Present' (UC 4.6 step 7, GBR-92); a PT record clears it.</summary>
+    public DateTime? CheckInCompletedAt { get; set; }
     /// <summary>The freeze whose post-freeze schedule created this session, so withdrawing it restores only its own moves (UC 4.8).</summary>
     public int? PTFreezeId { get; set; }
 

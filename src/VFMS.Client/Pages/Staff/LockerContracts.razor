@@ -1,0 +1,153 @@
+@page "/staff/locker-contracts"
+@layout StaffPTLayout
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components
+@using VFMS.Client.Components.Operations
+@using VFMS.Client.Components.Lockers
+@using VFMS.Contracts.Lockers
+@attribute [Authorize(Roles = "Staff")]
+@inject LockerApiClient Api
+@implements IDisposable
+
+<PageTitle>Hợp đồng tủ | Victor Fitness</PageTitle>
+
+<section class="workspace-page space-y-6 font-['Inter',sans-serif] text-[#242424]" aria-labelledby="locker-contracts-title" aria-busy="@_loading.ToString().ToLowerInvariant()">
+    <PageHeader Overline="VFMS / LỄ TÂN" Title="Hợp đồng tủ" Description="Giao chìa, gia hạn, trả tủ, theo dõi tủ quá hạn và thu khoản phí còn nợ.">
+        <div class="flex flex-wrap gap-2">
+            <a href="/staff/lockers" class="@Ui.PrimaryButton">Sơ đồ tủ</a>
+            <a href="/staff/dashboard" class="@Ui.Button">← Tổng quan</a>
+        </div>
+    </PageHeader>
+    <Alerts Error="@_error" />
+
+    <div class="flex flex-wrap items-end justify-between gap-3 border-b border-[#D8D1CD]">
+        <div class="flex gap-6" role="tablist" aria-label="Nhóm hợp đồng">
+            @foreach (var (key, label) in Tabs)
+            {
+                <button type="button" role="tab" aria-selected="@(_tab == key ? "true" : "false")" class="@TabClass(key)" @onclick="() => SwitchAsync(key)">@label</button>
+            }
+        </div>
+        <form class="mb-2 flex flex-wrap items-center gap-2" @onsubmit="LoadAsync" @onsubmit:preventDefault>
+            <input class="@Ui.Field !mt-0 w-64" aria-label="Tìm hợp đồng" placeholder="Số tủ, tên hội viên, mã hợp đồng" maxlength="100" @bind="_search" />
+            @if (_tab == "contracts")
+            {
+                <label class="flex items-center gap-1 text-xs"><input type="checkbox" @bind="_overdueOnly" @bind:after="LoadAsync" /> Chỉ tủ quá hạn</label>
+            }
+            <button type="submit" class="@Ui.Button" disabled="@_loading">Tìm</button>
+        </form>
+    </div>
+
+    <div class="@Ui.ListCard">
+        @if (_loading)
+        {
+            <p role="status" class="px-6 py-8 text-sm text-[#6F6966]">Đang tải…</p>
+        }
+        else if (Visible.Count == 0)
+        {
+            <p role="status" class="px-6 py-8 text-sm text-[#6F6966]">Không tìm thấy hợp đồng phù hợp.</p>
+        }
+        else
+        {
+            <div class="overflow-x-auto">
+                <table class="workspace-table w-full min-w-[720px] text-left text-sm">
+                    <caption class="sr-only">Danh sách hợp đồng tủ</caption>
+                    <thead class="workspace-heading bg-[#ECE8E4] text-[10px] tracking-wider"><tr>
+                        <th scope="col" class="px-4 py-3">TỦ</th><th scope="col" class="px-4 py-3">HỘI VIÊN</th><th scope="col" class="px-4 py-3">LOẠI</th>
+                        <th scope="col" class="px-4 py-3">HẠN</th><th scope="col" class="px-4 py-3">QUÁ HẠN</th><th scope="col" class="px-4 py-3">TRẠNG THÁI</th><th scope="col" class="px-4 py-3"><span class="sr-only">Thao tác</span></th>
+                    </tr></thead>
+                    <tbody class="divide-y divide-[#ECE8E4]">
+                        @foreach (var item in Visible.Skip((_page - 1) * PageSize).Take(PageSize))
+                        {
+                            var r = item.Rental;
+                            <tr @key="r.Id" class="hover:bg-[#F3EDEA]">
+                                <th scope="row" class="px-4 py-3 font-semibold">@r.Locker.Number</th>
+                                <td class="px-4 py-3">@item.MemberName<span class="block text-xs text-[#6F6966]">@item.Phone</span></td>
+                                <td class="px-4 py-3">@(r.Type == "Daily" ? "Theo ngày" : $"{r.TermMonths} tháng")</td>
+                                <td class="px-4 py-3 text-xs">@(r.ExpiresAt is { } e ? (r.Type == "Daily" ? LockerText.Local(e) : LockerText.LastDay(e)) : r.CollectBy is { } c ? $"Nhận chìa trước {LockerText.Local(c)}" : "—")</td>
+                                <td class="px-4 py-3 text-xs">@(r.OverdueDays > 0 ? $"{r.OverdueDays} ngày · {OperationsText.Money(r.OverdueFees)}" : "—")</td>
+                                <td class="px-4 py-3"><StatusBadge Status="@LockerText.ContractTone(r.Status)" Label="@LockerText.Contract(r.Status)" /></td>
+                                <td class="px-4 py-3 text-right"><button type="button" class="@(_selected?.Rental.Id == r.Id ? Ui.PrimaryButton : Ui.Button)" @onclick="() => _selected = item">Xử lý</button></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <Pager Page="_page" PageSize="PageSize" TotalCount="Visible.Count" Noun="hợp đồng" Disabled="_loading" OnPage="page => _page = page" />
+        }
+    </div>
+
+    @if (_selected is { } selected)
+    {
+        <div class="@Ui.Card">
+            <LockerContractPanel @key="selected.Rental.Id" Item="selected" Policies="_policies" OnChanged="LoadAsync" />
+        </div>
+    }
+</section>
+
+@code {
+    private const int PageSize = 10;
+    private int _page = 1;
+    private static readonly (string Key, string Label)[] Tabs =
+    [
+        ("contracts", "Hợp đồng đang thuê"),
+        ("pickup", "Chờ nhận chìa"),
+        ("unpaid", "Nợ phí chưa thu")
+    ];
+
+    [SupplyParameterFromQuery(Name = "search")] public string? SearchQuery { get; set; }
+
+    private readonly CancellationTokenSource _lifetime = new();
+    private LockerStaffRental[] _items = [];
+    private LockerPolicy[] _policies = [];
+    private LockerStaffRental? _selected;
+    private string _tab = "contracts";
+    private string _search = "";
+    private bool _overdueOnly;
+    private bool _loading = true;
+    private string? _error;
+
+    private IReadOnlyList<LockerStaffRental> Visible => _tab == "pickup" ? _items.Where(i => i.Rental.Status == "PendingHandover").ToArray() : _items;
+
+    private string TabClass(string key) => "border-b-2 px-1 pb-2 text-xs font-bold uppercase tracking-wide " +
+        (key == _tab ? "border-[#B83A3A] text-[#B83A3A]" : "border-transparent text-[#6F6966] hover:text-[#242424]");
+
+    protected override async Task OnInitializedAsync()
+    {
+        _search = SearchQuery ?? "";
+        try { _policies = await Api.DeskPricingAsync(_lifetime.Token); }
+        catch (ApiException ex) { _error = ex.Message; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        await LoadAsync();
+    }
+
+    private async Task SwitchAsync(string tab)
+    {
+        _tab = tab;
+        _selected = null;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _page = 1;
+        _loading = true;
+        try
+        {
+            var ct = _lifetime.Token;
+            var search = string.IsNullOrWhiteSpace(_search) ? null : _search.Trim();
+            _items = _tab == "unpaid" ? await Api.UnpaidAsync(search, ct) : await Api.RegistryAsync(search, _tab == "contracts" && _overdueOnly, ct);
+            // Keep the open contract in sync after an action; drop it when it left the list.
+            _selected = _selected is null ? null : _items.FirstOrDefault(i => i.Rental.Id == _selected.Rental.Id);
+            _error = null;
+        }
+        catch (ApiException ex) { _error = ex.Message; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        finally { _loading = false; }
+    }
+
+    public void Dispose()
+    {
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+    }
+}
