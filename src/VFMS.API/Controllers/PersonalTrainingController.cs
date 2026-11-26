@@ -204,11 +204,6 @@ public sealed class PersonalTrainingController(IPersonalTrainingService service)
     public Task<IActionResult> ChangeFreezeSlots(int id, PTFreezeSlotChange request, CancellationToken ct) =>
         AsUser(actor => service.ChangeFreezeSlots(actor, id, request, ct));
 
-    [HttpGet("contracts/{id:int}/replacement-trainers")]
-    [Authorize(Roles = "Customer,Member")]
-    public Task<IActionResult> ReplacementTrainers(int id, CancellationToken ct) =>
-        AsUser(actor => service.ReplacementTrainers(actor, id, ct));
-
     [HttpPost("contracts/{id:int}/freeze-slot-options")]
     [Authorize(Roles = "Customer,Member")]
     public Task<IActionResult> FreezeSlotOptions(int id, PTFreezeSlotOptionsRequest request, CancellationToken ct) =>

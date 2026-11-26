@@ -35,9 +35,6 @@ public interface IPersonalTrainingRepository : IAuditedRepository
     /// <summary>The active profile of a trainer whose Trainer Role is PT.</summary>
     Task<TrainerProfile?> GetPTProfileAsync(string trainerUserId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<TrainerProfile>> GetNotAcceptingProfilesAsync(CancellationToken cancellationToken = default);
-    /// <summary>GBR-105: active PTs of the gym and level who accept new members and teach no Yoga class.</summary>
-    Task<IReadOnlyList<PTReplacementTrainer>> GetReplacementTrainersAsync(int gymId, TrainerLevel? level, string excludingTrainerId,
-        CancellationToken cancellationToken = default);
 
     // ── Schedule ─────────────────────────────────────────────────
     /// <summary>The trainer's published weekly slots.</summary>
@@ -167,7 +164,6 @@ public interface IPersonalTrainingService
     Task<Result<PTSessionResponse>> DecideDispute(string actor, int id, PTAttendanceDisputeDecision request, CancellationToken ct);
     Task<Result<PTSessionResponse>> Note(string actor, int id, PTNoteRequest request, CancellationToken ct);
     Task<Result<int>> Review(string actor, int id, PTReviewRequest request, CancellationToken ct);
-    Task<Result<IReadOnlyList<PTReplacementTrainer>>> ReplacementTrainers(string actor, int contractId, CancellationToken ct);
 
     // Background jobs (PersonalTrainingWorker)
     Task<Result<int>> RemindPendingFreezes(CancellationToken ct);

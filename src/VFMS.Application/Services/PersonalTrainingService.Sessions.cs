@@ -293,8 +293,9 @@ public sealed partial class PersonalTrainingService
         if (!InRescheduleWindow(s, request.Date))
             return Invalid<PTSessionResponse>("Chỉ được đổi sang ca trong tuần của buổi tập hoặc tuần kế tiếp.");
         var end = request.StartTime.Add(s.EndTime - s.StartTime);
-        if (await AdjustError<PTSessionResponse>(p, s, request.Date, request.StartTime, end, now, ct) is { } error)
-            return error;
+        if (await FindRescheduleTemplate(p, s, request.Date, request.StartTime, end, now, ct) is null)
+            return await ScheduleConflict<PTSessionResponse>(p, id, request.Date, request.StartTime, end, now, ct) ??
+                Conflict<PTSessionResponse>("Khung giờ đã chọn không khả dụng hoặc không đủ điều kiện đổi lịch.");
         s.ProposedDate = request.Date;
         s.ProposedStartTime = request.StartTime;
         s.ProposedEndTime = end;
@@ -376,16 +377,15 @@ public sealed partial class PersonalTrainingService
             valid = false;
         if (request.Accept && valid)
         {
-            valid = await CanAdjust(p, s, s.ProposedDate!.Value, s.ProposedStartTime!.Value,
+            var template = await FindRescheduleTemplate(p, s, s.ProposedDate!.Value, s.ProposedStartTime!.Value,
                 s.ProposedEndTime!.Value, now, ct);
+            valid = template is not null;
             if (valid)
             {
                 s.SessionDate = s.ProposedDate.Value;
                 s.StartTime = s.ProposedStartTime.Value;
                 s.EndTime = s.ProposedEndTime.Value;
-                s.PTAvailabilityId = (await Templates(s.PTUserId, ct)).Where(x =>
-                            x.DayOfWeek == s.SessionDate.DayOfWeek && x.StartTime == s.StartTime)
-                        .Select(x => (int?)x.Id).FirstOrDefault();
+                s.PTAvailabilityId = template;
             }
         }
         ClearProposal(s);

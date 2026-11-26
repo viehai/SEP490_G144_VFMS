@@ -148,10 +148,9 @@ public sealed partial class MembershipPurchaseApiTests
             new EphemeralDataProtectionProvider(), new ConfigurationBuilder().Build()), new PasswordHasher(), new Mapper(mapping));
     }
 
-    // Feature 4 serves Trainer Role PT only: a Yoga trainer neither sells packages nor takes over a contract,
-    // even if the account also holds the PT login role.
+    // Feature 4 serves Trainer Role PT only, even if a Yoga trainer also holds the PT login role.
     [Fact]
-    public async Task OnlyTrainerRolePTSellsPackagesAndTakesOverContracts()
+    public async Task OnlyTrainerRolePTSellsPackagesAndTrainerTransferLookupIsRemoved()
     {
         using var member = Client("member", "Member");
         var (id, contract) = await ActivatedPTContract(member);
@@ -170,7 +169,8 @@ public sealed partial class MembershipPurchaseApiTests
             });
             await db.SaveChangesAsync();
         }
-        Assert.Empty((await member.GetFromJsonAsync<PTReplacementTrainer[]>($"/api/pt/contracts/{id}/replacement-trainers"))!);
+        using var removedTransferLookup = await member.GetAsync($"/api/pt/contracts/{id}/replacement-trainers");
+        Assert.Equal(HttpStatusCode.NotFound, removedTransferLookup.StatusCode);
 
         var packageId = (await member.GetFromJsonAsync<PTPackageResponse[]>("/api/pt/packages"))!.Single().Id;
         await using (var scope = _app.Services.CreateAsyncScope())

@@ -92,21 +92,6 @@ public sealed class PersonalTrainingRepository(VfmsDbContext db) : AuditedReposi
         await Context.TrainerProfiles.Where(p => p.IsActive && !p.AcceptingNewMembers && p.NotAcceptingSince != null)
             .ToListAsync(cancellationToken);
 
-    public async Task<IReadOnlyList<PTReplacementTrainer>> GetReplacementTrainersAsync(int gymId, TrainerLevel? level,
-        string excludingTrainerId, CancellationToken cancellationToken = default)
-    {
-        var yoga = ActiveYogaAssignments.Select(c => c.InstructorUserId);
-        return await (from profile in PTProfiles
-                      join user in ActiveUsers on profile.PTUserId equals user.UserId
-                      where profile.AcceptingNewMembers &&
-                          profile.Level == level && profile.PTUserId != excludingTrainerId &&
-                          user.GymId == gymId && !yoga.Contains(profile.PTUserId) &&
-                          user.UserRoles.Any(r => r.Role.RoleName == nameof(UserRole.PT))
-                      orderby user.FullName
-                      select new PTReplacementTrainer(user.UserId, profile.Id, user.FullName, profile.Level.ToString(),
-                          profile.Specialty)).ToListAsync(cancellationToken);
-    }
-
     // ── Schedule ─────────────────────────────────────────────────
 
     public async Task<IReadOnlyList<PTAvailability>> GetPublishedSlotsAsync(string trainerUserId, CancellationToken cancellationToken = default) =>

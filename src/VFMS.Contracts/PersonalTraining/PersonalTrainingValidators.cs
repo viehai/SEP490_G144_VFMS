@@ -114,8 +114,6 @@ public sealed class PTFreezeRequestValidator : AbstractValidator<PTFreezeRequest
         RuleFor(x => x.Moves).Must(moves => moves == null ||
                 moves.All(m => m is not null) && moves.Select(m => m.SessionId).Distinct().Count() == moves.Length)
             .WithMessage("Mỗi buổi chỉ được chọn một ca sau bảo lưu.");
-        RuleFor(x => x.ReplacementTemplateIds).Must(ids => ids is { Length: >= 1 and <= 7 } && ids.Distinct().Count() == ids.Length)
-            .When(x => x.ReplacementTrainerId != null).WithMessage("Chọn từ 1 đến 7 ca khác nhau của huấn luyện viên mới.");
     }
 }
 

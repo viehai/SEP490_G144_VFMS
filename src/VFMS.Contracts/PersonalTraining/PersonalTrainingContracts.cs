@@ -104,8 +104,8 @@ public sealed record PTContractResponse(int Id, string TrainerId, string MemberI
 public sealed record PTAssignedMember(int ContractId, string MemberId, string FullName, string? AvatarUrl,
     string Email, string Phone, int TotalCredits, int RemainingCredits, DateOnly ExpiresOn, DateOnly? LastTrainedOn);
 /// <summary>
-/// UC 4.8: Moves override the suggested post-freeze slot of a frozen session (same trainer). With a replacement
-/// trainer, ReplacementTemplateIds is that trainer's weekly pattern for all remaining sessions (GBR-105).
+/// UC 4.8: Moves override the suggested post-freeze slot of a frozen session. ReplacementTemplateIds retains its legacy
+/// name for the assigned trainer's weekly pattern; ReplacementTrainerId is accepted only to reject retired transfer requests.
 /// </summary>
 public sealed record PTFreezeRequest(DateOnly StartDate, DateOnly ResumeDate, string Reason,
     PTEarlyResumeMove[]? Moves = null, string? ReplacementTrainerId = null, int[]? ReplacementTemplateIds = null);
@@ -113,8 +113,6 @@ public sealed record PTFreezeRequest(DateOnly StartDate, DateOnly ResumeDate, st
 public sealed record PTFreezeProposal(DateOnly ExpiresOn, IReadOnlyList<PTPlannedSession> Sessions,
     IReadOnlyList<int> SessionsNeedingSlot);
 public sealed record PTPlannedSession(int OriginalSessionId, DateOnly Date, TimeOnly StartTime, TimeOnly EndTime, string TrainerId);
-/// <summary>Trainer a member may pick when asking to freeze (UC 4.8).</summary>
-public sealed record PTReplacementTrainer(string UserId, int ProfileId, string FullName, string Level, string Specialty);
 public sealed record PTFreezeDecision(bool Approve, string? Reason);
 public sealed record PTFreezeResponse(int Id, int ContractId, string MemberId, string TrainerId, DateOnly StartDate,
     DateOnly ResumeDate, string Status, string? Reason, string? ReviewNote,
@@ -146,8 +144,9 @@ public sealed record PTFreezePreview(DateOnly ExpiresOn, IReadOnlyList<PTCalenda
     /// <summary>UC 4.9: sessions outside the freeze window that stay as scheduled.</summary>
     public IReadOnlyList<PTCalendarSlot> Kept { get; init; } = [];
 }
-/// <summary>Free and busy slots of the trainer (or a replacement trainer) from a date, to pick a session's new slot.</summary>
-public sealed record PTFreezeSlotOptionsRequest(DateOnly From, string? TrainerId = null);
+/// <summary>Assigned trainer's slots; an optional pending-freeze/session pair excludes that session's own hold.</summary>
+public sealed record PTFreezeSlotOptionsRequest(DateOnly From, string? TrainerId = null,
+    int? FreezeId = null, int? OriginalSessionId = null);
 /// <summary>One frozen session when a freeze is withdrawn: its original slot, where it is now, and whether it goes back.</summary>
 public sealed record PTWithdrawItem(DateOnly OriginalDate, TimeOnly OriginalStart, DateOnly CurrentDate,
     TimeOnly CurrentStart, bool Restored, string? Reason);

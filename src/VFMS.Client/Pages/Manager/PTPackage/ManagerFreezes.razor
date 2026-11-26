@@ -9,7 +9,7 @@
 
 <section class="workspace-page trainer-page trainer-stack">
     <PageHeader Overline="VFMS / HUẤN LUYỆN CÁ NHÂN" Title="Duyệt bảo lưu PT"
-                Description="Xem khoảng bảo lưu, lịch giữ chỗ sau bảo lưu và huấn luyện viên thay thế trước khi duyệt." />
+                Description="Xem khoảng bảo lưu và lịch giữ chỗ với huấn luyện viên hiện tại trước khi duyệt." />
     <TrainerFeedback Error="@_error" />
     <div class="trainer-row" role="group" aria-label="Trạng thái xử lý đơn bảo lưu">
         <button type="button" class="trainer-button" aria-pressed="@(!_processed ? "true" : "false")"
@@ -23,7 +23,7 @@
     else if (_requests is { } requests)
     {
         <div class="trainer-panel trainer-list-card trainer-scroll"><table class="workspace-table">
-            <thead><tr><th>Hợp đồng</th><th>Hội viên</th><th>PT</th><th>Yêu cầu</th><th>Bắt đầu</th><th>Kết thúc</th><th>Số ngày</th><th class="pt-reason-col">Lý do</th><th>HLV thay thế</th><th>@(_processed ? "Kết quả" : "Thao tác")</th></tr></thead>
+            <thead><tr><th>Hợp đồng</th><th>Hội viên</th><th>PT</th><th>Yêu cầu</th><th>Bắt đầu</th><th>Kết thúc</th><th>Số ngày</th><th class="pt-reason-col">Lý do</th><th>Đổi PT trước đây</th><th>@(_processed ? "Kết quả" : "Thao tác")</th></tr></thead>
             <tbody>@foreach (var item in requests.Items)
             {
                 <tr @key="item.Id"><td>#@item.ContractId</td><td>@(item.MemberName ?? item.MemberId)</td><td>@(item.TrainerName ?? item.TrainerId)</td><td>@RequestLabel(item)</td>
@@ -56,6 +56,10 @@
             <p>@Date(selected.StartDate) đến @Date(selected.ResumeDate.AddDays(-1)) · @(selected.ResumeDate.DayNumber - selected.StartDate.DayNumber) ngày</p>
             <p class="trainer-muted">Chính sách bảo lưu của hợp đồng: tối thiểu @selected.MinimumDays ngày, tối đa @selected.MaximumDays ngày, một lần cho mỗi hợp đồng.</p>
             <p class="trainer-copy">@selected.Reason</p>
+            @if (LegacyTransferBlocked)
+            {
+                <p class="trainer-feedback" role="status">Yêu cầu cũ có đổi huấn luyện viên không còn được duyệt. Hãy từ chối để hội viên gửi lại bảo lưu với PT hiện tại.</p>
+            }
             @if (selected.ChangeRequestStatus == "Pending")
             {
                 <p class="trainer-feedback" role="status">Hội viên xin <strong>@RequestLabel(selected)</strong>. Bảo lưu giữ nguyên cho đến khi bạn duyệt.</p>
@@ -79,7 +83,7 @@
                 <p>Hạn hợp đồng sau khi duyệt: <strong>@Date(preview.ExpiresOn)</strong></p>
                 @if (preview.ReplacementTrainerName is { } replacement)
                 {
-                    <p>Huấn luyện viên thay thế cho các buổi còn lại: <strong>@replacement</strong></p>
+                    <p>Dữ liệu đổi PT trước đây: <strong>@replacement</strong></p>
                 }
                 <h3>Lịch tổng quan</h3>
                 <p class="trainer-muted">Ca <strong>giữ nguyên</strong>: buổi ngoài thời gian bảo lưu. Ca <strong>ban đầu</strong>: buổi trong thời gian bảo lưu sẽ bị dời. Ca <strong>dời đến</strong>: lịch được giữ chỗ sau bảo lưu.</p>
@@ -105,7 +109,7 @@
             }
             <label>Lý do từ chối<textarea class="trainer-input" rows="3" maxlength="1000" @bind="_reason" @bind:event="oninput" disabled="@_busy"></textarea></label>
             <div class="trainer-row">
-                <button class="trainer-button trainer-primary" disabled="@(_busy || _preview is null && _change is null)" @onclick="() => DecideAsync(true)">@(_selected.ChangeRequestStatus == "Pending" ? "Duyệt yêu cầu" : "Duyệt bảo lưu")</button>
+                <button class="trainer-button trainer-primary" disabled="@(_busy || LegacyTransferBlocked || _preview is null && _change is null)" @onclick="() => DecideAsync(true)">@(_selected.ChangeRequestStatus == "Pending" ? "Duyệt yêu cầu" : "Duyệt bảo lưu")</button>
                 <button class="trainer-button" disabled="@(_busy || string.IsNullOrWhiteSpace(_reason))" @onclick="() => DecideAsync(false)">Từ chối</button>
                 <button class="trainer-button" disabled="@_busy" @onclick="() => _selected = null">Đóng</button>
             </div>
@@ -118,6 +122,8 @@
     private PTFreezeResponse? _selected;
     private PTFreezePreview? _preview;
     private PTFreezeChangePreview? _change;
+    private bool LegacyTransferBlocked => _selected is { Status: "Pending", ReplacementTrainerId: not null } &&
+        _selected.ChangeRequestType != "Withdraw";
 
     private static string RequestLabel(PTFreezeResponse f) => f.ChangeRequestStatus == "Pending"
         ? f.ChangeRequestType == "Withdraw" ? "Rút bảo lưu" : $"Tập lại sớm từ {Date(f.ChangeResumeDate ?? f.ResumeDate)}"

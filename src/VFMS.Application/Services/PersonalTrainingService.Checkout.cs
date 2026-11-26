@@ -53,7 +53,8 @@ public sealed partial class PersonalTrainingService
             return Invalid<Booking>("Chọn một ca đã công bố cho mỗi ngày tập.");
         var count = terms.SessionCount.GetValueOrDefault();
         var candidates = Candidates(request.StartDate, pattern, count, now);
-        var (dates, skipped) = Schedule(candidates, await ConflictingSlots(request.TrainerId, actor, candidates, now, ct), count);
+        var (dates, skipped) = Schedule(request.StartDate, candidates,
+            await ConflictingSlots(request.TrainerId, actor, candidates, now, ct), count);
         // Busy in the start week (or too often to move): keep the plain schedule so the hold reports the conflict (MSG-30).
         if (dates.Length == 0)
             dates = candidates.Take(count).ToArray();
@@ -75,12 +76,13 @@ public sealed partial class PersonalTrainingService
         count <= 0 ? [] : ProposedDates(start, pattern, count * 2 + pattern.Length)
             .Where(slot => PersonalTrainingRules.HasBookingNotice(slot.Date, slot.StartTime, now)).Take(count * 2).ToArray();
 
-    private static (PTCalendarSlot[] Dates, PTCalendarSlot[] Skipped) Schedule(PTCalendarSlot[] candidates,
+    private static (PTCalendarSlot[] Dates, PTCalendarSlot[] Skipped) Schedule(DateOnly start, PTCalendarSlot[] candidates,
         IReadOnlySet<PTCalendarSlot> busy, int count)
     {
         var dates = candidates.Where(slot => !busy.Contains(slot)).Take(count).ToArray();
-        var startWeekEnds = candidates.Length == 0 ? DateOnly.MinValue : candidates[0].Date.AddDays(7);
-        if (count <= 0 || dates.Length < count || candidates.Any(slot => slot.Date < startWeekEnds && busy.Contains(slot)))
+        // The start week ends on Sunday, even if the 24-hour notice moves its first session into the following week.
+        var startWeekEnds = start.DayNumber + 7 - (((int)start.DayOfWeek + 6) % 7);
+        if (count <= 0 || dates.Length < count || candidates.Any(slot => slot.Date.DayNumber < startWeekEnds && busy.Contains(slot)))
             return ([], []);
         return (dates, candidates.Where(slot => busy.Contains(slot) && slot.Date <= dates[^1].Date).ToArray());
     }
@@ -164,7 +166,7 @@ public sealed partial class PersonalTrainingService
         var conflicts = await ConflictingSlots(request.TrainerId, actor,
             candidates.Values.SelectMany(slots => slots).Distinct().ToArray(), now, ct);
         // GBR-12: busy dates move to the end, so a slot is blocked only when the schedule cannot be completed.
-        var patterns = candidates.ToDictionary(item => item.Key, item => Schedule(item.Value, conflicts, count).Dates);
+        var patterns = candidates.ToDictionary(item => item.Key, item => Schedule(request.StartDate, item.Value, conflicts, count).Dates);
         var dates = candidates.Values.SelectMany(slots => slots).ToArray();
         var through = dates.Length == 0 ? request.StartDate : dates.Max(s => s.Date);
         var trainerBusy = await repo.GetOccupyingSessionsAsync(now, request.StartDate, through, request.TrainerId, null,

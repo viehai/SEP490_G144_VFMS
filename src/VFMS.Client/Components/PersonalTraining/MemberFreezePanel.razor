@@ -25,18 +25,8 @@
                 </fieldset>
                 <p class="trainer-muted">Số ngày bảo lưu: @Math.Max(0, Days). Ngày bắt đầu và ngày kết thúc đều tính vào kỳ bảo lưu.</p>
                 <label>Lý do<textarea class="trainer-input" rows="3" maxlength="1000" @bind="_reason" required disabled="@_busy" aria-invalid="@Invalid("Reason")"></textarea>@FieldError("Reason")</label>
-                <label class="trainer-row"><input type="checkbox" @bind="_changeTrainer" @bind:after="ClearProposal" disabled="@_busy" />
-                    Đổi huấn luyện viên cho các buổi còn lại (không phát sinh thanh toán)</label>
-                @if (_changeTrainer)
-                {
-                    <ReplacementTrainerPicker ContractId="Contract.Id" Disabled="_busy" Changed="TrainerChosen" />
-                    @FieldError("ReplacementTrainerId")
-                }
-                else
-                {
-                    <p class="trainer-muted">Chọn ca tập sau bảo lưu (mỗi ngày một ca). Không chọn thì giữ lịch tuần hiện tại.</p>
-                    <PTWeeklyGrid Slots="_ownSlots" SelectedIds="_ownSelected.Values" SlotSelected="OwnSlotSelected" Disabled="_busy" />
-                }
+                <p class="trainer-muted">Chọn ca tập sau bảo lưu (mỗi ngày một ca). Không chọn thì giữ lịch tuần hiện tại.</p>
+                <PTWeeklyGrid Slots="_ownSlots" SelectedIds="_ownSelected.Values" SlotSelected="OwnSlotSelected" Disabled="_busy" />
                 <div class="trainer-row">
                     <button type="button" class="trainer-button" disabled="@_busy" @onclick="PreviewRequestAsync">Xem lịch sau bảo lưu</button>
                     @if (_proposal is not null)
@@ -57,7 +47,7 @@
                                     var status = kept?.Status ?? "Scheduled";
                                 }
                                 <div class="@(moved ? "pt-calendar-slot pt-teaching-slot pt-slot-choice pt-proposed-slot" : "pt-calendar-slot pt-teaching-slot pt-slot-choice")">
-                                    <strong>@(_changeTrainer && moved ? "Huấn luyện viên mới" : Contract.TrainerName ?? "Huấn luyện viên")</strong>
+                                    <strong>@(Contract.TrainerName ?? "Huấn luyện viên")</strong>
                                     <span>@Time(slot.StartTime) – @Time(slot.EndTime)</span>
                                     <span class="pt-pills"><span class="pt-status-pill" data-tone="@(moved ? "amber" : StatusTone(status))">@(moved ? "Dời đến" : Status(status))</span></span>
                                 </div>
@@ -71,7 +61,7 @@
                         {
                             <div class="trainer-stack" @key="id">
                                 <h5>Buổi #@id@(proposal.SessionsNeedingSlot.Contains(id) ? " · cần chọn ca" : "")@(DraftSlot(draft) is { } picked ? $" · đã chọn {Date(picked.Date)} {Time(picked.Start)}" : "")</h5>
-                                <FreezeSlotPicker ContractId="Contract.Id" From="Resume" Disabled="@(_busy || _changeTrainer)"
+                                <FreezeSlotPicker ContractId="Contract.Id" From="Resume" Disabled="@_busy"
                                                   Current="DraftSlot(draft)" Picked="slot => PickMove(draft, slot, true)" />
                             </div>
                         }
@@ -93,7 +83,10 @@
                 </div>
                 <p class="trainer-copy">@freeze.Reason</p>
                 @if (!string.IsNullOrWhiteSpace(freeze.ReviewNote)) { <p class="trainer-copy">Phản hồi Quản lý: @freeze.ReviewNote</p> }
-                @if (freeze.ReplacementTrainerId is not null) { <p class="trainer-muted">Kèm đổi huấn luyện viên cho các buổi còn lại.</p> }
+                @if (freeze.ReplacementTrainerId is not null)
+                {
+                    <p class="trainer-muted">Dữ liệu đổi PT trước đây.@(freeze.Status == "Pending" ? " Yêu cầu này không còn được duyệt; hãy rút hoặc nhờ Quản lý từ chối rồi gửi lại." : "")</p>
+                }
                 @if (freeze.ChangeRequestStatus == "Pending")
                 {
                     <p class="trainer-feedback" role="status">Đang chờ Quản lý duyệt yêu cầu @(freeze.ChangeRequestType == "Withdraw" ? "rút bảo lưu" : $"tập lại sớm từ {Date(freeze.ChangeResumeDate ?? freeze.ResumeDate)}"). Bảo lưu hiện giữ nguyên cho đến khi được duyệt.</p>
@@ -107,7 +100,7 @@
                     {
                         <button class="trainer-button" disabled="@_busy" @onclick="() => OpenEarlyResume(freeze)">Tập lại sớm</button>
                     }
-                    @if (freeze.Status == "Pending")
+                    @if (freeze.Status == "Pending" && freeze.ReplacementTrainerId is null)
                     {
                         <button class="trainer-button" disabled="@_busy" @onclick="() => OpenSlotsAsync(freeze)">Đổi ca sau bảo lưu</button>
                     }
@@ -141,7 +134,8 @@
                             var draft = _slotDrafts[session.OriginalSessionId];
                             <div class="trainer-stack" @key="session.OriginalSessionId">
                                 <h5>Ca giữ @Date(session.Date) · @Time(session.StartTime)@(held.SessionsNeedingSlot.Contains(session.OriginalSessionId) ? " · cần chọn ca" : "")@(DraftSlot(draft) is { } picked ? $" · đã chọn {Date(picked.Date)} {Time(picked.Start)}" : "")</h5>
-                                <FreezeSlotPicker ContractId="Contract.Id" From="freeze.ResumeDate" TrainerId="@freeze.ReplacementTrainerId" Disabled="@_busy"
+                                <FreezeSlotPicker ContractId="Contract.Id" From="freeze.ResumeDate" FreezeId="freeze.Id"
+                                                  OriginalSessionId="session.OriginalSessionId" Disabled="@_busy"
                                                   Current="DraftSlot(draft)" Picked="slot => PickMove(draft, slot)" />
                             </div>
                         }
@@ -267,12 +261,10 @@
 
     private PTFreezeProposal? _proposal;
     private readonly Dictionary<int, MoveDraft> _moves = [];
-    private bool _changeTrainer, _edited;
-    private (string TrainerId, int[] TemplateIds) _replacement = ("", []);
+    private bool _edited;
 
     private void ClearProposal() { _proposal = null; _moves.Clear(); _edited = false; }
     private void MarkEdited() => _edited = true;
-    private void TrainerChosen((string TrainerId, int[] TemplateIds) choice) { _replacement = choice; ClearProposal(); }
 
     /// <summary>UC 4.8 steps 3-4: field errors shown under each field (MSG-02, MSG-07).</summary>
     private bool Validate()
@@ -286,8 +278,6 @@
             _fieldErrors["ResumeDate"] = $"Số ngày bảo lưu phải từ {Contract.FreezeMinimumDays} đến {Contract.FreezeMaxTotalDays}.";
         if (string.IsNullOrWhiteSpace(_reason))
             _fieldErrors["Reason"] = "Vui lòng nhập lý do bảo lưu.";
-        if (_changeTrainer && (_replacement.TrainerId.Length == 0 || _replacement.TemplateIds.Length == 0))
-            _fieldErrors["ReplacementTrainerId"] = "Chọn huấn luyện viên mới và ít nhất một ca trong tuần.";
         return _fieldErrors.Count == 0;
     }
 
@@ -297,9 +287,7 @@
         ? @<span class="mt-1 block text-xs font-normal text-red-700" role="alert">@message</span>
         : null;
 
-    private PTFreezeRequest BuildRequest() => _changeTrainer
-        ? new(_start, Resume, _reason.Trim(), null, _replacement.TrainerId, _replacement.TemplateIds)
-        : new(_start, Resume, _reason.Trim(), _moves.Where(m => m.Value.Date is not null && m.Value.Start is not null)
+    private PTFreezeRequest BuildRequest() => new(_start, Resume, _reason.Trim(), _moves.Where(m => m.Value.Date is not null && m.Value.Start is not null)
             .Select(m => new PTEarlyResumeMove(m.Key, m.Value.Date!.Value, m.Value.Start!.Value)).ToArray(),
             null, _ownSelected.Count > 0 ? _ownSelected.Values.ToArray() : null);
 
@@ -311,9 +299,8 @@
         // Only sessions the Member placed by hand are kept as explicit moves; the rest follow the chosen weekly slots.
         foreach (var id in _moves.Where(m => m.Value.Date is null || m.Value.Start is null).Select(m => m.Key).ToArray())
             _moves.Remove(id);
-        if (!_changeTrainer)
-            foreach (var id in _proposal.SessionsNeedingSlot)
-                _moves.TryAdd(id, new());
+        foreach (var id in _proposal.SessionsNeedingSlot)
+            _moves.TryAdd(id, new());
     });
 
     private PTFreezeResponse? _withdrawFor;

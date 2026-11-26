@@ -181,7 +181,7 @@ public sealed partial class MembershipPurchaseApiTests
     }
 
     [Fact]
-    public async Task FreezeWithAReplacementTrainerMovesTheRemainingSessionsAndCannotBeWithdrawnOnline()
+    public async Task FreezeWithAReplacementTrainerIsRejectedAndKeepsTheAssignedTrainer()
     {
         using var member = Client("member", "Member");
         using var manager = Client("manager", "Manager");
@@ -210,20 +210,11 @@ public sealed partial class MembershipPurchaseApiTests
 
         using var requested = await member.PostAsJsonAsync($"/api/pt/contracts/{id}/freezes",
             new PTFreezeRequest(contract.StartDate, contract.StartDate.AddDays(7), "Travel", null, "pt2", ids));
-        Assert.True(requested.StatusCode == HttpStatusCode.Created, await requested.Content.ReadAsStringAsync());
-        var freeze = (await requested.Content.ReadFromJsonAsync<PTFreezeResponse>())!;
-        var listed = (await manager.GetFromJsonAsync<VFMS.Contracts.Common.PagedResponse<PTFreezeResponse>>(
-            "/api/pt/manager/freezes/page?processed=false&page=1"))!.Items.Single();
-        Assert.NotNull(listed.ReplacementTrainerName);
-        using var approved = await manager.PostAsJsonAsync($"/api/pt/manager/freezes/{freeze.Id}/decision", new PTFreezeDecision(true, null));
-        Assert.True(approved.StatusCode == HttpStatusCode.OK, await approved.Content.ReadAsStringAsync());
-
+        Assert.Equal(HttpStatusCode.Conflict, requested.StatusCode);
         var after = await ContractOf(member, id);
-        Assert.Equal("pt2", after.TrainerId);
+        Assert.Equal("buyer", after.TrainerId);
         Assert.Equal(contract.TotalCredits, after.ReservedCredits);
-        Assert.All(after.Sessions.Where(s => s.Status == "Scheduled"), s => Assert.True(s.Date >= contract.StartDate.AddDays(7) &&
-            s.Date.DayOfWeek is DayOfWeek.Tuesday or DayOfWeek.Thursday));
-        using var withdraw = await member.PostAsync($"/api/pt/freezes/{freeze.Id}/withdraw", null);
-        Assert.Equal(HttpStatusCode.Conflict, withdraw.StatusCode);
+        Assert.Equal(contract.Sessions, after.Sessions);
+        Assert.False(after.HasPendingOrApprovedFreeze);
     }
 }

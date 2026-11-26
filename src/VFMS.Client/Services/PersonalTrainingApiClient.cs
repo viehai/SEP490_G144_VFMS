@@ -104,8 +104,6 @@ public sealed class PersonalTrainingApiClient(HttpClient http, AuthSession sessi
         Send<PTFreezeChangePreview>(HttpMethod.Get, $"manager/freezes/{id}/change-preview");
     public Task<PTFreezeResponse> DecideFreezeChangeAsync(int id, PTFreezeDecision request) =>
         Send<PTFreezeResponse>(HttpMethod.Post, $"manager/freezes/{id}/change-decision", request);
-    public Task<PTReplacementTrainer[]> ReplacementTrainersAsync(int contract) =>
-        Send<PTReplacementTrainer[]>(HttpMethod.Get, $"contracts/{contract}/replacement-trainers");
     public Task<PTFreezePreview> PreviewFreezeAsync(int id) =>
         Send<PTFreezePreview>(HttpMethod.Get, $"manager/freezes/{id}/preview");
     public Task<PTFreezeResponse> DecideFreezeAsync(int id, PTFreezeDecision request) =>

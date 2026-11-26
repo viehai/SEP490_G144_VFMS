@@ -132,9 +132,25 @@ public sealed partial class PersonalTrainingService
         var p = await MemberContract(actor, contractId, ct);
         if (p is null)
             return Missing<IReadOnlyList<PTRescheduleSlot>>();
-        var trainerId = input.TrainerId ?? p.PTUserId;
-        if (trainerId != p.PTUserId && !await ReplacementAllowed(p, trainerId, ct))
-            return Conflict<IReadOnlyList<PTRescheduleSlot>>("Huấn luyện viên thay thế phải cùng cấp với gói và đang nhận học viên mới.");
+        var trainerId = p.PTUserId;
+        if (input.TrainerId is { } requestedTrainer && requestedTrainer != trainerId)
+            return Conflict<IReadOnlyList<PTRescheduleSlot>>("Không còn hỗ trợ đổi huấn luyện viên của hợp đồng PT.");
+        PTSession? ownHold = null;
+        if (input.FreezeId is not null || input.OriginalSessionId is not null)
+        {
+            if (input.FreezeId is null || input.OriginalSessionId is null)
+                return Invalid<IReadOnlyList<PTRescheduleSlot>>("Chọn yêu cầu bảo lưu và buổi giữ chỗ cần đổi.");
+            var freeze = p.PTFreezes.SingleOrDefault(f => f.Id == input.FreezeId);
+            if (freeze is null)
+                return Missing<IReadOnlyList<PTRescheduleSlot>>();
+            if (freeze.RequestStatus != PTFreezeRequestStatus.Pending || freeze.ReplacementTrainerId is not null)
+                return Conflict<IReadOnlyList<PTRescheduleSlot>>("Chỉ đổi ca bảo lưu đang chờ duyệt với huấn luyện viên hiện tại.");
+            ownHold = p.Sessions.SingleOrDefault(s => s.PTFreezeId == freeze.Id &&
+                s.SessionStatus == PTSessionStatus.FreezeHold && s.ReplacementForSessionId == input.OriginalSessionId &&
+                s.PTUserId == trainerId);
+            if (ownHold is null)
+                return Missing<IReadOnlyList<PTRescheduleSlot>>();
+        }
         var trainer = await User(trainerId, UserRole.PT, ct);
         if (trainer is null)
             return Missing<IReadOnlyList<PTRescheduleSlot>>();
@@ -150,7 +166,7 @@ public sealed partial class PersonalTrainingService
         var occupying = await repo.GetOccupyingSessionsAsync(now, start, through, trainerId, p.MemberUserId, null, p.Id, ct);
         var yoga = await repo.GetYogaSessionsAsync(trainerId, p.MemberUserId, start, through, ct);
         // At most one PT session of the contract on a day.
-        var contractDays = p.Sessions.Where(s => s.SessionDate >= from &&
+        var contractDays = p.Sessions.Where(s => s != ownHold && s.SessionDate >= from &&
             (PersonalTrainingRules.Reserved(s.SessionStatus) || s.SessionStatus == PTSessionStatus.FreezeHold))
             .Select(s => s.SessionDate).ToHashSet();
 
