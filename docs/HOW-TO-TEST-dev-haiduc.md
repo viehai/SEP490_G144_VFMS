@@ -68,7 +68,7 @@ Demo Trung Bình (`yoga2@example.com`, phone `0900000022`) was added on 25/11/20
 | Account | Data | What to try | What you should see |
 |---|---|---|---|
 | Demo Gym Hết Hạn, `expired.gym@example.com`, phone `0900000023` | Gym "3 Tháng" (order ORD-20261125-BD35C7BB7890), membership 21, **Expired**, 20/08 to 17/11/2026 | `/kiosk` with its `/my-qr` code; front desk `/staff/check-ins`, search `0900000023`; `/my-memberships` | Kiosk: "Từ chối truy cập… Trạng thái gói: Hết hạn." Checked through the API. The front desk and `/my-memberships` should also show the plan as expired; not checked on screen. |
-| Demo Yoga Hết Hạn, `expired.yoga@example.com`, phone `0900000024` | "Yoga Trung bình 1 Tháng" (order ORD-20261125-42E6881D53E2), membership 22, **Expired**, 25/10 to 24/11/2026; booked **Vinyasa Dynamic** on mat 2 (booking 9, booked 20/11, while the plan was valid) | `/yoga/my-bookings`; `/my-memberships`; `/yoga/schedule`; book another class; the instructor's roster of session 18 (Vinyasa, 01/12 18:30, `/pt/yoga`, `yoga@test.vn`) | TC-YEXP / GBR-Y13 hold (section 5): under **Sắp tới**, Vinyasa keeps mat 2 with the **Tạm giữ** badge, the hold note and **Mua gói mới** (plans of level Trung bình); `/my-memberships` shows **Mua gói mới** on the expired plan; on the roster the member shows "Tạm giữ chỗ · gói yoga đã hết hạn" with no Có mặt / Vắng buttons, and a QR scan is refused (`YOGA_PLAN_ON_HOLD`); booking another class is refused with `MEMBERSHIP_REQUIRED`. Checked on 26/11 through the API (bookings `onHold: true`, level Intermediate; memberships level Intermediate; roster session 18 `onHold: true` for this member, `false` for Demo Trung Bình). Also checked on screen on 26/11: Sắp tới, **Mua gói mới** → plans of level Trung bình (banner "Các gói dưới đây đăng ký được lớp Trung bình."), and `/my-memberships`. The instructor roster was checked through the API only. Buying a new Trung bình or Nâng cao plan lifts the hold, and the demo then stops working; reset the dates with the SQL below and cancel the new membership. |
+| Demo Yoga Hết Hạn, `expired.yoga@example.com`, phone `0900000024` | "Yoga Trung bình 1 Tháng" (order ORD-20261125-42E6881D53E2), membership 22, **Expired**, 25/10 to 24/11/2026; booked **Vinyasa Dynamic** on mat 2 (booking 9, booked 20/11, while the plan was valid) | `/yoga/my-bookings`; `/my-memberships`; `/yoga/schedule`; book another class; the instructor's roster of session 18 (Vinyasa, 01/12 18:30, `/pt/yoga`, `yoga@test.vn`) | TC-YEXP / GBR-125 hold (section 5): under **Sắp tới**, Vinyasa keeps mat 2 with the **Tạm giữ** badge, the hold note and **Mua gói mới** (plans of level Trung bình); `/my-memberships` shows **Mua gói mới** on the expired plan; on the roster the member shows "Tạm giữ chỗ · gói yoga đã hết hạn" with no Có mặt / Vắng buttons, and a QR scan is refused (`YOGA_PLAN_ON_HOLD`); booking another class is refused with `MEMBERSHIP_REQUIRED`. Checked on 26/11 through the API (bookings `onHold: true`, level Intermediate; memberships level Intermediate; roster session 18 `onHold: true` for this member, `false` for Demo Trung Bình). Also checked on screen on 26/11: Sắp tới, **Mua gói mới** → plans of level Trung bình (banner "Các gói dưới đây đăng ký được lớp Trung bình."), and `/my-memberships`. The instructor roster was checked through the API only. Buying a new Trung bình or Nâng cao plan lifts the hold, and the demo then stops working; reset the dates with the SQL below and cancel the new membership. |
 
 To make them expired again after testing a renewal, rerun (SQL Server needs `-I`):
 ```powershell
@@ -178,7 +178,7 @@ How to tell which plan you got:
 | `/yoga/my-bookings` | Member | Upcoming (with cancel), past (Có mặt / Vắng) and waitlist tabs |
 | `/staff/yoga` | Staff | The day's sessions; **Điểm danh** opens the roster |
 
-**Yoga plan levels (25/11/2026; rules waiting for the BR list in `docs/BR-pending-yoga-plan-levels.md`):**
+**Yoga plan levels (25/11/2026; rules GBR-113…124 in the SRS BR table; messages MSG-50…53):**
 - Every yoga plan has a level: **Cơ bản**, **Trung bình** or **Nâng cao**. A higher level includes the lower ones: Cơ bản books Cơ bản classes, Trung bình books Cơ bản and Trung bình, Nâng cao books every class.
 - Manager, `/manager/membership-plans` → **Thêm gói mới** → **Loại dịch vụ: Yoga** shows a required **Cấp độ yoga** dropdown; its hint lists the classes the level books. Saving without a level is refused ("Hãy chọn cấp độ yoga…", `YOGA_LEVEL_REQUIRED`). The list shows **Yoga · Trung bình**.
 - **Buyers keep the level they bought.** Once a yoga plan has an order or a membership, its level can't be changed (`YOGA_LEVEL_LOCKED`, "Gói đã có người mua nên không đổi được cấp độ…"); create a new plan for another level. Name, price, term and status can still be edited.
@@ -226,13 +226,36 @@ How to tell which plan you got:
 
 **My next class, `/yoga/my-bookings` → Sắp tới (25/11/2026):** classes are sorted by their next session. The nearest one is a highlighted card, "Buổi yoga tiếp theo của bạn", with a red date block (weekday, day, month), a countdown in gym time ("Hôm nay · còn 3 giờ" or "Ngày mai" in amber; "Còn 6 ngày"), the time, the studio and the mat ("Thảm do phòng tập xếp" when none). Other bookings use the same layout in plain cards. Cancelling works as before. Try it as Demo Trung Bình (section 2): Vinyasa Dynamic, Thứ 3 01/12, Studio A, mat 1.
 
-**A booked class when the plan expires (decided 26/11/2026, GBR-Y13, "hold"):** the booking keeps its mat but is **on hold** on any session date the member has no usable yoga plan covering the class level.
+**A booked class when the plan expires (decided 26/11/2026, GBR-125, "hold"):** the booking keeps its mat but is **on hold** on any session date the member has no usable yoga plan covering the class level.
 - **Member, `/yoga/my-bookings` → Sắp tới:** badge **Tạm giữ**, note "Gói yoga của bạn đã hết hạn nên chỗ đang được tạm giữ…", no countdown, and **Mua gói mới** (opens `/membership-plans?type=yoga&level=…`, only plans that book that level, banner "Các gói dưới đây đăng ký được lớp …"). A held class is never the highlighted "Buổi yoga tiếp theo".
 - **Instructor roster:** the member shows "Tạm giữ chỗ · gói yoga đã hết hạn. Không điểm danh, không tính vắng." instead of Có mặt / Vắng; the roster submits without a mark for them, and no row is written (not counted absent). A QR scan, or a "Có mặt" sent anyway, is refused with `YOGA_PLAN_ON_HOLD`.
 - **Late cancel while held:** not a no-show. **Waitlist:** a member without a covering plan is skipped when a seat frees.
 - **`/my-memberships`:** an expired yoga plan has **Mua gói mới** (yoga plans are never extended), filtered to its level; an old plan without a level opens the plain yoga tab.
 - **Buying a covering plan** lifts the hold once that plan is usable (nothing is stored): a paid plan first waits for activation, so activate it on `/my-memberships` (**Chọn ngày kích hoạt**); from its start date the hold is gone. Until then Sắp tới still shows **Tạm giữ**. A lower-level plan does not lift it.
-- Test cases TC-YEXP-01…07 are in `docs/BR-pending-yoga-plan-levels.md`; the automated test is `YogaPersistenceTests.ExpiredYogaPlanHoldsTheBookingUntilANewPlanIsBought`. Demo account: `expired.yoga@example.com`.
+- Test cases TC-YEXP-01…07 are below; the automated test is `YogaPersistenceTests.ExpiredYogaPlanHoldsTheBookingUntilANewPlanIsBought`. Demo account: `expired.yoga@example.com`.
+
+**Setup for every case:** member M has a usable yoga plan, books class C (sessions run past the plan's end date), then
+the plan reaches its end date (status Expired). C still has sessions after that date.
+
+| ID | Steps | Expected |
+|---|---|---|
+| TC-YEXP-01 | M opens `/yoga/my-bookings` → **Sắp tới** | Booking still Confirmed with its mat, badge **Tạm giữ**, note "Gói yoga của bạn đã hết hạn nên chỗ đang được tạm giữ…" and a **Mua gói mới** button (plans of the class level). It is never the highlighted "Buổi yoga tiếp theo". |
+| TC-YEXP-02 | Instructor opens the roster of C's next session; M shows their QR | M is listed with "Tạm giữ chỗ · gói yoga đã hết hạn" instead of the Có mặt / Vắng buttons. The scan is refused with `YOGA_PLAN_ON_HOLD`; a submitted "Có mặt" for M is refused too |
+| TC-YEXP-03 | M tries to book another class (or C again after cancelling) | Refused, `MEMBERSHIP_REQUIRED` |
+| TC-YEXP-04 | M was on C's waitlist; a seat frees after M's plan ended | M is skipped; the next waiting member with a covering plan is offered the seat |
+| TC-YEXP-05 | M buys a covering plan, then the next session comes | The hold is lifted once the new plan is usable: after payment the plan waits for activation ("Chọn ngày kích hoạt" on `/my-memberships`), and from its start date Sắp tới shows the normal card and countdown and the scan marks Có mặt. Until then the card still says Tạm giữ. A plan of a lower level than the class does not lift it |
+| TC-YEXP-06 | No-show counting for sessions while held | The roster submits without a mark for M and writes no row, so M is not counted absent; a late cancel while held is not a no-show |
+| TC-YEXP-07 | M opens `/my-memberships` | The expired yoga plan shows **Mua gói mới** (no **Gia hạn gói**), which opens the yoga plans filtered to its level |
+
+**Still open:** how long a hold may last. Today a held booking keeps its mat until the class ends, so a class can look
+full because of held members who never come back. If that becomes a problem, add a deadline (e.g. release the mat after
+N days on hold).
+
+**Known limits of yoga plan levels:**
+
+- The plans page `/membership-plans` lists from `api/packages`, which hides yoga plans without a level but does not check that a class the plan covers can be booked (it never checked bookable classes, even before levels). Such a plan shows there but is refused at checkout with `PLAN_NOT_PURCHASABLE`. The home page catalog and the details page do apply the full rule.
+- The "N lớp cùng giờ" chip appears only for classes with the same start time; classes that overlap but start at different times sit in different rows.
+
 
 **Book (Member, on `/yoga/schedule`):**
 - Each session shows **Đặt chỗ**, or **Vào danh sách chờ (miễn phí)** when the class is full, when your yoga plan's level covers the class (see "Yoga plan levels" above for the other cases).
