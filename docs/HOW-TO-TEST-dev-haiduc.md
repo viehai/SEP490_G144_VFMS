@@ -320,15 +320,14 @@ Try it: book a mat someone else just took, cancel a yoga booking less than 2 hou
   dotnet test tests/VFMS.IntegrationTests --filter "FullyQualifiedName!~InvoicePdfPreservesMaximumPersistedDecimalPrecision"
   ```
 
-- **Three teammates' integration tests still fail (25/11/2026, after merging main into this branch).** Main's latest changes fixed most of the phone-number failures from 23/11. These three are left to their owners:
+- **Two teammates' integration tests still fail (26/11/2026, after merging main into this branch).** Main's latest changes fixed most of the phone-number failures from 23/11 and the duplicate user-role failure. These two are left to their owners:
   - `ConsultationPersistenceTests`: a duplicate phone number (`UNIQUE constraint failed: ApplicationUsers.PhoneNumber`).
   - `InvoicePdfPreservesMaximumPersistedDecimalPrecision…`: SQLite decimal precision, see above.
-  - `TransactionHistoryRetainsPaidPurchases…`: a duplicate user-role row.
 
-  Expected result now (25/11/2026, after merging main again):
-  - Unit: 722 pass.
-  - Client: 538 pass.
-  - Integration: 631 pass, 3 fail, 50 skipped. `WalkInCustomerOnboardingApiTests` (teammate's concurrency tests) failed once on 26/11 while Visual Studio was running and passed on rerun.
+  Expected result now (26/11/2026, after merging main again):
+  - Unit: 786 pass.
+  - Client: 590 pass.
+  - Integration: 689 pass, 2 fail, 51 skipped. `WalkInCustomerOnboardingApiTests` (teammate's concurrency tests) failed once on 26/11 while Visual Studio was running and passed on rerun.
 - **PR #21 to main is open (25/11/2026):** https://github.com/viehai/SEP490_G144_VFMS/pull/21. Once it is merged, teammates who pull main get the migration `YogaPlanLevelReplacesClassType`. It drops `PackageComponents.YogaClassTypeId` and `YogaWaitlists.YogaClassTypeId`, so code or tests that still use `YogaClassType` on a plan no longer build, and yoga plans in test seeds need `YogaDifficultyLevel`.
 
 - **Yoga plans can't be renewed yet.** Renewal (`/my-memberships` → gia hạn) still only covers gym plans, so a yoga member buys a new yoga plan instead; it starts after the current one ends.
