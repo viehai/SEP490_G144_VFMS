@@ -205,6 +205,20 @@
     }
 </div>
 
+@if (_confirmKeyLoss)
+{
+    <WorkspaceModal Open="true" Title="Xác nhận mất cọc" Eyebrow="VFMS / TRẢ TỦ" OnClose="() => _confirmKeyLoss = false">
+        <div class="space-y-4">
+            <p>Ghi nhận chìa khóa Tủ @Item.Rental.Locker.Number bị mất hoặc hỏng? Tiền cọc <strong>@OperationsText.Money(Item.Rental.KeyDeposit > 0 ? Item.Rental.KeyDeposit : Item.Rental.DepositHeld)</strong> sẽ không được hoàn lại.</p>
+            <p class="text-sm text-vfms-text-secondary">Khi kết thúc hợp đồng, tủ chuyển sang bảo trì để kiểm tra và thay khóa.</p>
+            <div class="flex flex-wrap gap-3">
+                <button type="button" class="@Ui.Button" @onclick="() => _confirmKeyLoss = false">Hủy</button>
+                <button type="button" class="@Ui.DangerButton" disabled="@_busy" @onclick="ConfirmKeyLossReturnAsync">Xác nhận mất cọc &amp; ghi nhận trả tủ</button>
+            </div>
+        </div>
+    </WorkspaceModal>
+}
+
 @code {
     [Parameter, EditorRequired] public LockerStaffRental Item { get; set; } = null!;
     [Parameter] public IReadOnlyList<LockerPolicy> Policies { get; set; } = [];
@@ -215,6 +229,7 @@
     private readonly CancellationTokenSource _lifetime = new();
     private DateTime _now = DateTime.UtcNow;
     private bool _identity, _terms, _lockerEmpty, _keyLost, _noBelongings, _busy;
+    private bool _confirmKeyLoss;
     private int _renewPolicy;
     private string _settleMethod = "Cash", _refundMethod = "Cash", _refundRef = "";
     private LockerCheckout? _renewal, _settlement, _rentalOrder;
@@ -310,7 +325,25 @@
         _settlement = await Api.StartSettlementAsync(Item.Rental.Id, new(_keyLost, _settleMethod), _lifetime.Token);
         Toasts.Show("Đã tạo đơn thu phí quá hạn.");
     });
-    private Task RecordReturnAsync() => RunAsync(async () =>
+    private Task RecordReturnAsync()
+    {
+        if (_busy) return Task.CompletedTask;
+        if (_keyLost)
+        {
+            _confirmKeyLoss = true;
+            return Task.CompletedTask;
+        }
+        return RecordReturnCoreAsync();
+    }
+
+    private Task ConfirmKeyLossReturnAsync()
+    {
+        if (!_confirmKeyLoss || _busy) return Task.CompletedTask;
+        _confirmKeyLoss = false;
+        return RecordReturnCoreAsync();
+    }
+
+    private Task RecordReturnCoreAsync() => RunAsync(async () =>
     {
         _quote = await Api.ReturnAsync(Item.Rental.Id, new(_lockerEmpty, _keyLost), _lifetime.Token);
         Toasts.Show("Đã ghi nhận trả tủ. Kiểm tra phí và tiền cọc để tất toán.");

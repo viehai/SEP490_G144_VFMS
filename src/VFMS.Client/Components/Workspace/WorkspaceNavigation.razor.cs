@@ -32,6 +32,7 @@ public partial class WorkspaceNavigation
         new("Tủ đồ",
             new("Khu và tủ", "/manager/lockers", "Manager"),
             new("Bảng giá thuê tủ", "/manager/locker-pricing", "Manager"),
+            new("Quá hạn & bảo trì", "/manager/locker-operations", "Manager"),
             new("Xác nhận dọn tủ", "/manager/locker-clearances", "Manager")),
         new("Bán hàng & Marketing",
             new("Sản phẩm bổ sung", "/manager/supplement-products", "Manager"),

@@ -22,9 +22,9 @@
         "manager/equipment", "manager/equipment-issues", "manager/purchase-proposals",
         "manager/supplement-products", "manager/supplement-orders", "manager/promotions",
         "manager/yoga", "manager/dashboard", "admin/dashboard", "manager/competitions", "staff/competitions",
-        "manager/lockers", "manager/locker-pricing", "manager/locker-clearances", "manager/feedback", "manager/consultations", "staff/feedback", "staff/consultations"
+        "manager/lockers", "manager/locker-pricing", "manager/locker-operations", "manager/locker-clearances", "manager/feedback", "manager/consultations", "staff/feedback", "staff/consultations"
     ];
 
-    private bool IsPreview => !LivePages.Contains(Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].TrimEnd('/'),
-        StringComparer.OrdinalIgnoreCase);
+    private bool IsPreview => !Navigation.ToBaseRelativePath(Navigation.Uri).StartsWith("manager/locker-contracts/", StringComparison.OrdinalIgnoreCase) &&
+        !LivePages.Contains(Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].TrimEnd('/'), StringComparer.OrdinalIgnoreCase);
 }

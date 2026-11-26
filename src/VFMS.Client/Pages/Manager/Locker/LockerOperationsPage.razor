@@ -1,0 +1,94 @@
+@page "/manager/locker-operations"
+@layout ManagerAdminLayout
+@using Microsoft.AspNetCore.Authorization
+@using VFMS.Client.Components.Lockers
+@using VFMS.Client.Components.Operations
+@using VFMS.Contracts.Lockers
+@attribute [Authorize(Roles = "Manager")]
+@inject LockerApiClient Api
+@implements IDisposable
+
+<PageTitle>Quá hạn và bảo trì tủ | Victor Fitness</PageTitle>
+<section class="workspace-page locker-page space-y-6">
+    <PageHeader Overline="VFMS / QUẢN LÝ TỦ" Title="Quá hạn & bảo trì" Description="Theo dõi hợp đồng quá hạn, kiểm tra tình trạng tủ và xác nhận bảo trì.">
+        <div class="flex flex-wrap gap-2"><a href="/manager/lockers" class="@Ui.Button">Khu và tủ</a><a href="/manager/locker-clearances" class="@Ui.PrimaryButton">Xác nhận dọn tủ</a></div>
+    </PageHeader>
+    <Alerts Error="@_error" />
+    <div class="@Ui.Card space-y-4">
+        <h2 class="font-heading text-lg font-bold">Sơ đồ tủ</h2>
+        <LockerGrid Slots="_grid" SelectedId="_selected?.Id" OnSelect="slot => _selected = slot" />
+        @if (_selected is { } slot)
+        {
+            @if (slot.Status is "Available" or "Occupied" or "Maintenance")
+            {
+                <LockerMaintenancePanel @key="slot.Id" Slot="slot" OnDone="LoadAsync" />
+            }
+            else { <p class="text-sm">Tủ @slot.Number đang giữ chỗ hoặc quá hạn. Cần xử lý hợp đồng trước khi thay đổi trạng thái bảo trì.</p> }
+        }
+    </div>
+    <div class="@Ui.ListCard">
+        <form class="@Ui.ListHeader flex flex-wrap items-end gap-3" @onsubmit="SearchAsync" @onsubmit:preventDefault>
+            <label class="@Ui.Label flex-1">Tìm hợp đồng<input class="@Ui.Field" placeholder="Tên, SĐT, email, số tủ, mã hợp đồng" maxlength="100" @bind="_search" /></label>
+            <label class="flex items-center gap-2 text-sm"><input type="checkbox" @bind="_overdueOnly" /> Chỉ tủ quá hạn</label>
+            <button type="submit" class="@Ui.Button" disabled="@_loading">Tìm</button>
+        </form>
+        @if (_loading) { <p role="status" class="p-5">Đang tải…</p> }
+        else if (_items.Length == 0) { <p role="status" class="p-5 text-sm">Không tìm thấy hợp đồng phù hợp.</p> }
+        else
+        {
+            <div class="overflow-x-auto">
+                <table class="workspace-table w-full text-left text-sm">
+                    <caption class="sr-only">Hợp đồng tủ của cơ sở</caption>
+                    <thead><tr><th>Tủ</th><th>Hội viên</th><th>Trạng thái</th><th>Quá hạn</th><th>Phí quá hạn</th><th>Thao tác</th></tr></thead>
+                    <tbody>
+                        @foreach (var item in _items.Skip((_page - 1) * PageSize).Take(PageSize))
+                        {
+                            <tr @key="item.Rental.Id"><td>@item.Rental.Locker.Number</td><td>@item.MemberName<span class="block text-xs text-vfms-text-secondary">@item.Phone</span></td><td>@LockerText.Contract(item.Rental.Status)</td><td>@item.Rental.OverdueDays ngày</td><td>@OperationsText.Money(item.Rental.OverdueFees)</td><td><a class="@Ui.Button" href="@DetailsUrl(item.Rental.Id)">Xem chi tiết</a></td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <Pager Page="_page" PageSize="PageSize" TotalCount="_items.Length" Noun="hợp đồng" OnPage="p => _page = p" />
+        }
+    </div>
+</section>
+
+@code {
+    [SupplyParameterFromQuery(Name = "search")] public string? Search { get; set; }
+    [SupplyParameterFromQuery(Name = "overdueOnly")] public bool? OverdueOnly { get; set; }
+    [SupplyParameterFromQuery(Name = "page")] public int? Page { get; set; }
+    private const int PageSize = 10;
+    private readonly CancellationTokenSource _lifetime = new();
+    private LockerSlot[] _grid = [];
+    private LockerStaffRental[] _items = [];
+    private LockerSlot? _selected;
+    private string _search = "";
+    private bool _overdueOnly = true, _loading = true;
+    private string? _error;
+    private int _page = 1;
+    private string DetailsUrl(int id) => $"/manager/locker-contracts/{id}?search={Uri.EscapeDataString(_search)}&overdueOnly={_overdueOnly.ToString().ToLowerInvariant()}&page={_page}";
+    protected override async Task OnParametersSetAsync()
+    {
+        _search = Search ?? "";
+        _overdueOnly = OverdueOnly ?? true;
+        _page = Math.Max(1, Page ?? 1);
+        await LoadAsync();
+    }
+    private async Task SearchAsync() { _page = 1; await LoadAsync(); }
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _grid = await Api.DeskGridAsync(_lifetime.Token);
+            _items = await Api.RegistryAsync(string.IsNullOrWhiteSpace(_search) ? null : _search.Trim(), _overdueOnly, _lifetime.Token);
+            _selected = _grid.FirstOrDefault(s => s.Id == _selected?.Id);
+            _page = Math.Min(_page, Math.Max(1, (int)Math.Ceiling(_items.Length / (double)PageSize)));
+            _error = null;
+        }
+        catch (ApiException ex) { _error = ex.Message; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        finally { _loading = false; }
+    }
+    public void Dispose() { _lifetime.Cancel(); _lifetime.Dispose(); }
+}
