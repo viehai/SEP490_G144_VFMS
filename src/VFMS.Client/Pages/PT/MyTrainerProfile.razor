@@ -231,10 +231,7 @@
         {
             var status = await Api.SetReadinessAsync(!detail.Profile.IsAcceptingNewMembers);
             await LoadProfileAsync();
-            Toasts.Show(status.IsAcceptingNewMembers ? "Đã chuyển sang nhận học viên mới."
-                : status.ContractsNotified > 0
-                    ? $"Đã ngừng nhận học viên mới. {status.ContractsNotified} hội viên chưa bắt đầu tập được mời đổi huấn luyện viên trong 1 tuần."
-                    : "Đã ngừng nhận học viên mới.");
+            Toasts.Show(status.IsAcceptingNewMembers ? "Đã chuyển sang nhận học viên mới." : "Đã ngừng nhận học viên mới.");
         }
         catch (AuthApiException ex) { _error = ex.Message; }
         finally { _saving = false; }

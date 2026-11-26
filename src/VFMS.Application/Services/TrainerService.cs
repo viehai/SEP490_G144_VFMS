@@ -673,7 +673,7 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
 
     private static Result<bool> InvalidSetupToken() => Error<bool>("TRAINER_SETUP_INVALID", "Liên kết thiết lập mật khẩu không hợp lệ hoặc đã hết hạn.", 400);
 
-    /// <summary>UC 4.12 / GBR-104: the change applies immediately; members of untouched contracts get one week to change trainer.</summary>
+    /// <summary>UC 4.12 / GBR-104: the change applies immediately.</summary>
     public Task<Result<TrainerReadinessStatus>> SetReadiness(bool accepting, string actor, CancellationToken ct) =>
         repo.RunExclusiveAsync(async () =>
         {
@@ -684,43 +684,15 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
                 return Error<TrainerReadinessStatus>("TRAINER_NOT_FOUND", "Không tìm thấy hồ sơ huấn luyện viên đang hoạt động.", 404);
             var now = DateTime.UtcNow;
             var today = DateOnly.FromDateTime(now.AddHours(7));
-            var notified = 0;
             if (profile.AcceptingNewMembers != accepting)
             {
                 var before = profile.AcceptingNewMembers.ToString();
                 var running = accepting && await repo.HasRunningPTContractAsync(actor, today, ct);
                 TrainerReadinessRules.SetAccepting(profile, accepting, today, running);
-                if (!accepting)
-                    notified = await OfferTrainerChange(actor, now, today, ct);
-                else
-                    // GBR-104: switching back to 'Accepting' closes the one-week window to change trainer.
-                    foreach (var contract in await repo.GetContractsWithTrainerChangeDeadlineAsync(actor, ct))
-                        contract.TrainerChangeDeadline = null;
                 Audit(actor, nameof(TrainerProfile), profile.Id, "SetReadiness", before, accepting.ToString());
             }
-            return Result<TrainerReadinessStatus>.Success(new(profile.AcceptingNewMembers, notified));
+            return Result<TrainerReadinessStatus>.Success(new(profile.AcceptingNewMembers));
         }, ct);
-
-    private async Task<int> OfferTrainerChange(string trainerId, DateTime now, DateOnly today, CancellationToken ct)
-    {
-        var untouched = await repo.GetUntouchedRunningContractsAsync(trainerId, today, ct);
-        foreach (var contract in untouched)
-        {
-            contract.TrainerChangeDeadline = now.AddDays(7);
-            repo.Add(new Notification
-            {
-                RecipientUserId = contract.MemberUserId,
-                SenderUserId = trainerId,
-                NotificationType = "PersonalTraining",
-                Title = "Bạn có thể đổi huấn luyện viên",
-                Message = "Huấn luyện viên của bạn tạm ngừng nhận học viên mới. Bạn có 1 tuần để chọn huấn luyện viên khác cho các buổi còn lại.",
-                EntityType = nameof(PTPurchase),
-                EntityId = contract.Id,
-                NotifiedAt = now
-            });
-        }
-        return untouched.Count;
-    }
 
     public async Task<Result<PagedResponse<TrainerProfileResponse>>> Search(TrainerSearch r, CancellationToken ct)
     {

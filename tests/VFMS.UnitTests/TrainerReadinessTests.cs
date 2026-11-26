@@ -142,8 +142,6 @@ public class TrainerReadinessTests
             "RunExclusiveAsync" => ((Delegate)args![0]!).DynamicInvoke(),
             "UserHasActiveRoleAsync" => Task.FromResult(true),
             "GetProfileByUserAsync" => Task.FromResult<TrainerProfile?>(Profile),
-            "GetContractsWithTrainerChangeDeadlineAsync" or "GetUntouchedRunningContractsAsync" =>
-                Task.FromResult<IReadOnlyList<PTPurchase>>([]),
             "HasRunningPTContractAsync" or "HasRunningContractAsync" => Task.FromResult(Running),
             "GetNotAcceptingProfilesAsync" => Task.FromResult<IReadOnlyList<TrainerProfile>>(
                 Profile.AcceptingNewMembers || !Profile.IsActive ? [] : [Profile]),

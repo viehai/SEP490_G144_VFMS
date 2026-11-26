@@ -31,13 +31,6 @@
     <p class="trainer-muted">
         Bảo lưu: @(Contract.FreezeUsed ? "đã dùng lượt bảo lưu" : Contract.HasPendingOrApprovedFreeze ? "đang chờ duyệt" : $"còn dùng được (tối đa {Contract.FreezeMaxTotalDays} ngày)")
     </p>
-    @if (!IsTrainer && Contract.TrainerChangeDeadline is { } changeDeadline)
-    {
-        <div class="trainer-feedback trainer-row trainer-between" role="status">
-            <span>Huấn luyện viên đã ngừng nhận học viên mới. Bạn có thể chọn huấn luyện viên khác đến @LocalTime(changeDeadline).</span>
-            <a class="trainer-button trainer-primary" href="@($"/my-pt-packages/{Contract.Id}/change-trainer")">Đổi huấn luyện viên</a>
-        </div>
-    }
     @if (Contract.Status == "PendingPayment" && !IsTrainer && Contract.OrderNumber is { } orderNumber)
     {
         var canPay = Contract.PaymentExpiresAt > DateTime.UtcNow;

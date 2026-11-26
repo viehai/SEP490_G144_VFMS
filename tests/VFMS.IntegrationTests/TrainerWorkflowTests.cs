@@ -424,17 +424,12 @@ public class TrainerWorkflowTests
         fixture.Db.Add(contract);
         await fixture.Db.SaveChangesAsync();
 
-        // UC 4.12 step 4: the Member of an untouched contract gets one week to change trainer.
         var stopped = TrainerTestDatabase.Success(await service.SetReadiness(false, stored.PTUserId, default));
         Assert.False(stopped.IsAcceptingNewMembers);
-        Assert.Equal(1, stopped.ContractsNotified);
         Assert.Equal(today, (await fixture.Db.TrainerProfiles.AsNoTracking().SingleAsync()).NotAcceptingSince);
-        Assert.NotNull((await fixture.Db.PTPurchases.AsNoTracking().SingleAsync()).TrainerChangeDeadline);
 
-        // GBR-104: switching back to 'Accepting' closes that window early.
         var accepting = TrainerTestDatabase.Success(await service.SetReadiness(true, stored.PTUserId, default));
         Assert.True(accepting.IsAcceptingNewMembers);
-        Assert.Null((await fixture.Db.PTPurchases.AsNoTracking().SingleAsync()).TrainerChangeDeadline);
         var profile = TrainerTestDatabase.Success(await service.Mine(stored.PTUserId, default)).Profile;
         Assert.True(profile.IsAcceptingNewMembers);
         Assert.Null(profile.NotAcceptingSince);

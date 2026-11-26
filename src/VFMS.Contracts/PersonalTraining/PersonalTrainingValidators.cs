@@ -119,16 +119,6 @@ public sealed class PTFreezeRequestValidator : AbstractValidator<PTFreezeRequest
     }
 }
 
-public sealed class PTTrainerChangeRequestValidator : AbstractValidator<PTTrainerChangeRequest>
-{
-    public PTTrainerChangeRequestValidator()
-    {
-        RuleFor(x => x.TrainerId).NotEmpty().WithMessage("Mã huấn luyện viên không được để trống.").MaximumLength(450).WithMessage("Mã huấn luyện viên không được vượt quá {MaxLength} ký tự.");
-        RuleFor(x => x.TemplateIds).NotNull().WithMessage("Vui lòng cung cấp danh sách ca tập.").Must(ids => ids.Length is >= 1 and <= 7 && ids.Distinct().Count() == ids.Length)
-            .WithMessage("Chọn từ 1 đến 7 ca khác nhau của huấn luyện viên mới.");
-    }
-}
-
 public sealed class PTFreezeSlotChangeValidator : AbstractValidator<PTFreezeSlotChange>
 {
     public PTFreezeSlotChangeValidator() => RuleFor(x => x.Moves).Must(moves => moves is { Length: > 0 } &&

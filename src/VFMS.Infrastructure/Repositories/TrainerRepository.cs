@@ -399,19 +399,6 @@ public sealed class TrainerRepository(VfmsDbContext db, IDataProtectionProvider 
         Context.PTPurchases.Where(p => p.PTUserId == trainerUserId).Where(PersonalTrainingRules.StillRunning(today))
             .AnyAsync(cancellationToken);
 
-    public async Task<IReadOnlyList<PTPurchase>> GetContractsWithTrainerChangeDeadlineAsync(string trainerUserId,
-        CancellationToken cancellationToken = default) =>
-        await Context.PTPurchases.Where(p => p.PTUserId == trainerUserId && p.TrainerChangeDeadline != null)
-            .ToListAsync(cancellationToken);
-
-    public async Task<IReadOnlyList<PTPurchase>> GetUntouchedRunningContractsAsync(string trainerUserId, DateOnly today,
-        CancellationToken cancellationToken = default) =>
-        await Context.PTPurchases.Where(p => p.PTUserId == trainerUserId &&
-            p.Status == PTPurchaseStatus.Active && !p.IsCompleted && p.EndDate >= today &&
-            !p.Sessions.Any(s => s.SessionStatus == PTSessionStatus.Completed || s.SessionStatus == PTSessionStatus.AutoCompleted ||
-                s.SessionStatus == PTSessionStatus.NoShow || s.SessionStatus == PTSessionStatus.Disputed))
-            .ToListAsync(cancellationToken);
-
     // ── Files and email queue ────────────────────────────────────
 
     public async Task<TrainerStoredFile> SaveFileAsync(TrainerFileInput file, CancellationToken cancellationToken = default)

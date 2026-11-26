@@ -168,7 +168,6 @@ public sealed partial class MembershipPurchaseApiTests
                 AcceptingNewMembers = true,
                 TrainerRoleId = _yogaTrainerRole
             });
-            (await db.PTPurchases.SingleAsync(p => p.Id == id)).TrainerChangeDeadline = _clock.Now.UtcDateTime.AddDays(7);
             await db.SaveChangesAsync();
         }
         Assert.Empty((await member.GetFromJsonAsync<PTReplacementTrainer[]>($"/api/pt/contracts/{id}/replacement-trainers"))!);

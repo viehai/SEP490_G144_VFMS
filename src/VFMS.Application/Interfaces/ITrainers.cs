@@ -91,11 +91,6 @@ public interface ITrainerRepository : IAuditedRepository
     // ── Readiness (UC 4.12) ──────────────────────────────────────
     Task<bool> HasRunningPTContractAsync(string trainerUserId, DateOnly today,
         CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<PTPurchase>> GetContractsWithTrainerChangeDeadlineAsync(string trainerUserId,
-        CancellationToken cancellationToken = default);
-    /// <summary>Active contracts of the trainer with no session taught, completed or disputed yet.</summary>
-    Task<IReadOnlyList<PTPurchase>> GetUntouchedRunningContractsAsync(string trainerUserId, DateOnly today,
-        CancellationToken cancellationToken = default);
 
     // ── Files and email queue ────────────────────────────────────
     /// <summary>Stores the file privately; it is deleted again if the surrounding exclusive work does not commit.</summary>

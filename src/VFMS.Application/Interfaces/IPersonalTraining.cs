@@ -168,8 +168,6 @@ public interface IPersonalTrainingService
     Task<Result<PTSessionResponse>> Note(string actor, int id, PTNoteRequest request, CancellationToken ct);
     Task<Result<int>> Review(string actor, int id, PTReviewRequest request, CancellationToken ct);
     Task<Result<IReadOnlyList<PTReplacementTrainer>>> ReplacementTrainers(string actor, int contractId, CancellationToken ct);
-    Task<Result<PTTrainerChangePreview>> PreviewTrainerChange(string actor, int contractId, PTTrainerChangeRequest request, CancellationToken ct);
-    Task<Result<PTContractResponse>> ChangeTrainer(string actor, int contractId, PTTrainerChangeRequest request, CancellationToken ct);
 
     // Background jobs (PersonalTrainingWorker)
     Task<Result<int>> RemindPendingFreezes(CancellationToken ct);

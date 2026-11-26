@@ -122,8 +122,6 @@ public sealed partial class PersonalTrainingService
             FreezeUsed = p.PTFreezes.Any(Approved),
             CanReview = FinalTaughtSession(p) is not null,
             TrainerLevel = p.TrainerLevelSnapshot?.ToString(),
-            TrainerChangeDeadline = p.TrainerChangeDeadline > Now
-                ? DateTime.SpecifyKind(p.TrainerChangeDeadline.Value, DateTimeKind.Utc) : null,
             GymOpenTime = p.PTUser.Gym?.OpenTime,
             GymCloseTime = p.PTUser.Gym?.CloseTime
         };

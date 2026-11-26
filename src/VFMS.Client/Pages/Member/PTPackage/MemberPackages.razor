@@ -43,10 +43,6 @@
                     <div class="trainer-row">
                         <a class="trainer-button" href="@($"/my-pt-packages/{selected.Id}/reschedule")">Xin đổi lịch</a>
                         <a class="trainer-button" href="@($"/my-pt-packages/{selected.Id}/freeze")">Bảo lưu PT</a>
-                        @if (selected.TrainerChangeDeadline is not null)
-                        {
-                            <a class="trainer-button trainer-primary" href="@($"/my-pt-packages/{selected.Id}/change-trainer")">Đổi huấn luyện viên</a>
-                        }
                     </div>
                     <ContractPanel @key="selected.Id" Contract="selected" TrainerName="@(selected.TrainerName ?? "Huấn luyện viên")" Changed="ReloadAsync"
                                    OpenReview="_completed" />

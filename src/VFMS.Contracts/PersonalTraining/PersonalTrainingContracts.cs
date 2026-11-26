@@ -91,7 +91,6 @@ public sealed record PTContractResponse(int Id, string TrainerId, string MemberI
     public DateOnly? MakeUpDeadline { get; init; }
     public bool FreezeUsed { get; init; }
     /// <summary>Open one-week window to choose another trainer (GBR-104).</summary>
-    public DateTime? TrainerChangeDeadline { get; init; }
     /// <summary>UC 4.10: the Member already reviewed this contract.</summary>
     public bool HasReview { get; init; }
     /// <summary>UC 4.10: completed and its final session was held, so it can be reviewed once.</summary>
@@ -114,10 +113,7 @@ public sealed record PTFreezeRequest(DateOnly StartDate, DateOnly ResumeDate, st
 public sealed record PTFreezeProposal(DateOnly ExpiresOn, IReadOnlyList<PTPlannedSession> Sessions,
     IReadOnlyList<int> SessionsNeedingSlot);
 public sealed record PTPlannedSession(int OriginalSessionId, DateOnly Date, TimeOnly StartTime, TimeOnly EndTime, string TrainerId);
-/// <summary>UC 4.13: move the remaining sessions to another trainer with a new weekly pattern from StartDate.</summary>
-public sealed record PTTrainerChangeRequest(string TrainerId, DateOnly StartDate, int[] TemplateIds);
-public sealed record PTTrainerChangePreview(DateOnly ExpiresOn, IReadOnlyList<PTPlannedSession> Sessions,
-    IReadOnlyList<PTPlannedSession> Conflicts);
+/// <summary>Trainer a member may pick when asking to freeze (UC 4.8).</summary>
 public sealed record PTReplacementTrainer(string UserId, int ProfileId, string FullName, string Level, string Specialty);
 public sealed record PTFreezeDecision(bool Approve, string? Reason);
 public sealed record PTFreezeResponse(int Id, int ContractId, string MemberId, string TrainerId, DateOnly StartDate,

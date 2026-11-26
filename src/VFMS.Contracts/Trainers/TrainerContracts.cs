@@ -62,8 +62,7 @@ public sealed record TrainerProfileResponse(int Id, string UserId, string FullNa
     /// <summary>PT or Yoga. Only a PT sells packages and publishes a weekly timetable (UC 3.4).</summary>
     public string TrainerRole { get; init; } = "";
 }
-/// <summary>ContractsNotified: members told they may change trainer within one week (GBR-104).</summary>
-public sealed record TrainerReadinessStatus(bool IsAcceptingNewMembers, int ContractsNotified);
+public sealed record TrainerReadinessStatus(bool IsAcceptingNewMembers);
 public sealed record SetTrainerReadinessRequest(bool IsAcceptingNewMembers);
 public sealed record TrainerReviewResponse(int Rating, string? Comment, string MemberName = "");
 public sealed record TrainerPublicDetail(TrainerProfileResponse Profile, IReadOnlyList<TrainerDocumentResponse> Certificates,
