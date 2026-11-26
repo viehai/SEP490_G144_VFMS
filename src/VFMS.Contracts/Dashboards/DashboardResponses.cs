@@ -8,7 +8,7 @@ public sealed record DashboardOrder(string Number, string Customer, string Produ
 public sealed record GymVisit(string Member, DateTime ArrivedAt, bool CheckedOut);
 public sealed record TrainingSlot(TimeOnly Start, TimeOnly End, string Type, string Name, string Place, string Status);
 public sealed record MemberProgress(int ContractId, string Member, string Package, int Total, int Remaining);
-public sealed record DashboardNotice(string Title, string Message, DateTime SentAt, bool Read);
+public sealed record DashboardNotice(string Title, string Message, DateTime SentAt, bool Read, int? Id = null);
 public sealed record DashboardInbox(int Unread, IReadOnlyList<DashboardNotice> Recent);
 
 public sealed record AdminOverview(DateOnly Today, int Accounts, int Active, int NewAccounts, int Locked,

@@ -1,0 +1,14 @@
+@inherits LayoutComponentBase
+
+<WorkspaceShell Variant="@_variant" IsPreview="false">@Body</WorkspaceShell>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState> Authentication { get; set; } = default!;
+    private string _variant = "member";
+    protected override async Task OnParametersSetAsync()
+    {
+        var user = (await Authentication).User;
+        _variant = user.IsInRole("Admin") ? "admin" : user.IsInRole("Manager") ? "manager" :
+            user.IsInRole("Staff") ? "staff" : user.IsInRole("PT") || user.IsInRole("YogaInstructor") ? "pt" : "member";
+    }
+}

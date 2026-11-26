@@ -25,7 +25,7 @@
 .dash-inbox .dash-popover { width: 310px; }
 .dash-popover article { padding-top: 10px; margin-top: 10px; border-top: 1px solid #eee8e7; }
 .dash-popover small, .dash-popover p { display: block; font-size: .82rem; color: #615758; margin: 4px 0; }
-.dash-account .dash-popover :is(a,button), .dash-inbox button { display: block; width: 100%; padding: 10px; min-height: 44px; text-align: left; font-size: .875rem; }
+.dash-account .dash-popover :is(a,button), .dash-inbox :is(a,button) { display: block; width: 100%; padding: 10px; min-height: 44px; text-align: left; font-size: .875rem; }
 .role-dashboard { --ink: #221e20; --muted: #665e60; --edge: #e0dada; --accent: #a92830; color: var(--ink); font-family: 'Inter', sans-serif; display: grid; gap: 18px; min-width: 0; }
 .role-dashboard h1, .role-dashboard h2, .role-dashboard p { margin: 0; }
 .dash-heading, .dash-panel > header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; }

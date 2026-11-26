@@ -46,8 +46,44 @@ public sealed class DashboardsController(DashboardQueries queries, TimeProvider 
     public async Task<IActionResult> Trainer(CancellationToken ct) => User.GetUserId() is { } id
         ? Ok(await queries.TrainerAsync(id, User.IsInRole("YogaInstructor"), clock.GetUtcNow().UtcDateTime, ct)) : Unauthorized();
 
-    [Authorize(Roles = "Admin,Manager,Staff,PT")]
+    [Authorize(Roles = "Admin,Manager,Staff,PT,YogaInstructor,Customer,Member")]
     [HttpGet("notifications")]
-    public async Task<IActionResult> Notifications(CancellationToken ct) => User.GetUserId() is { } id
-        ? Ok(await queries.InboxAsync(id, ct)) : Unauthorized();
+    public async Task<IActionResult> Notifications(CancellationToken ct)
+    {
+        if (User.GetUserId() is not { } id) return Unauthorized();
+        if (!await queries.IsActiveUserAsync(id, ct)) return Forbid();
+        return Ok(await queries.InboxAsync(id, clock.GetUtcNow().UtcDateTime.AddDays(-90), ct));
+    }
+
+    [Authorize(Roles = "Admin,Manager,Staff,PT,YogaInstructor,Customer,Member")]
+    [HttpGet("notifications/history")]
+    public async Task<IActionResult> NotificationHistory([FromQuery] int page = 1, CancellationToken ct = default)
+    {
+        if (User.GetUserId() is not { } id) return Unauthorized();
+        if (!await queries.IsActiveUserAsync(id, ct)) return Forbid();
+        if (page < 1 || page > int.MaxValue / 10) return BadRequest();
+        return Ok(await queries.NotificationHistoryAsync(id, clock.GetUtcNow().UtcDateTime.AddDays(-90), page, ct));
+    }
+
+    [Authorize(Roles = "Admin,Manager,Staff,PT,YogaInstructor,Customer,Member")]
+    [HttpPost("notifications/{notificationId:int}/read")]
+    public async Task<IActionResult> ReadNotification(int notificationId, CancellationToken ct)
+    {
+        if (User.GetUserId() is not { } id) return Unauthorized();
+        if (!await queries.IsActiveUserAsync(id, ct)) return Forbid();
+        var now = clock.GetUtcNow().UtcDateTime;
+        if (!await queries.MarkNotificationReadAsync(id, notificationId, now, ct)) return NotFound();
+        return Ok(await queries.InboxAsync(id, now.AddDays(-90), ct));
+    }
+
+    [Authorize(Roles = "Admin,Manager,Staff,PT,YogaInstructor,Customer,Member")]
+    [HttpPost("notifications/read-all")]
+    public async Task<IActionResult> ReadAllNotifications(CancellationToken ct)
+    {
+        if (User.GetUserId() is not { } id) return Unauthorized();
+        if (!await queries.IsActiveUserAsync(id, ct)) return Forbid();
+        var now = clock.GetUtcNow().UtcDateTime;
+        await queries.MarkAllNotificationsReadAsync(id, now, ct);
+        return Ok(await queries.InboxAsync(id, now.AddDays(-90), ct));
+    }
 }

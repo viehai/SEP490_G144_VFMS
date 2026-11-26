@@ -1,0 +1,98 @@
+@page "/notifications"
+@layout NotificationLayout
+@using Microsoft.AspNetCore.Authorization
+@using VFMS.Client.Components.Dashboards
+@using VFMS.Client.Components.Operations
+@using VFMS.Contracts.Dashboards
+@attribute [Authorize(Roles = "Admin,Manager,Staff,PT,YogaInstructor,Customer,Member")]
+@inject VfmsApiClient Api
+@inject ToastService Toast
+@implements IDisposable
+
+<PageTitle>Thông báo | Victor Fitness</PageTitle>
+<div class="role-dashboard" aria-busy="@(Busy ? "true" : "false")">
+    <header class="dash-heading">
+        <div><h1>Thông báo</h1><p>Lịch sử thông báo trong 90 ngày gần nhất.</p></div>
+        <div class="dash-heading-end"><DashboardNotifications @ref="_dropdown" OnRead="Reload" OnSavingChanged="SetDropdownSaving" Disabled="@(_loading || _saving)" /></div>
+    </header>
+    <section class="dash-panel" aria-label="Lịch sử thông báo">
+        <header><h2>Thông báo của tôi</h2>
+            <button type="button" class="@Ui.Button" disabled="@(Busy || _history is null || _history.TotalCount == 0)" @onclick="MarkAllRead">Đánh dấu tất cả đã đọc</button>
+        </header>
+        @if (_loading) { <p role="status">Đang tải thông báo…</p> }
+        else if (_error is not null)
+        {
+            <p class="dash-error" role="alert">@_error</p><button type="button" class="@Ui.Button" disabled="@Busy" @onclick="() => LoadPage(_page)">Thử lại</button>
+        }
+        else if (_history is { Items.Count: 0 }) { <p role="status">Chưa có thông báo.</p> }
+        else if (_history is not null)
+        {
+            @foreach (var notice in _history.Items)
+            {
+                <article class="notification-row" @key="notice.Id">
+                    <h3>@notice.Title</h3>
+                    <small>@notice.SentAt.AddHours(7).ToString("dd/MM/yyyy HH:mm") · @(notice.Read ? "Đã đọc" : "Chưa đọc")</small>
+                    <p>@notice.Message</p>
+                    @if (!notice.Read && notice.Id is { } id)
+                    {
+                        <button type="button" class="@Ui.Button" disabled="@Busy" @onclick="() => MarkRead(id)" aria-label="@($"Đánh dấu đã đọc: {notice.Title}")">Đánh dấu đã đọc</button>
+                    }
+                </article>
+            }
+        }
+        @if (_history is { TotalCount: > 10 } && _error is null)
+        {
+            <nav class="dash-tabs" aria-label="Phân trang thông báo">
+                <button type="button" disabled="@(Busy || _page <= 1)" @onclick="() => LoadPage(_page - 1)">Trước</button>
+                <span>Trang @_page / @((_history.TotalCount + 9) / 10)</span>
+                <button type="button" disabled="@(Busy || (long)_page * 10 >= _history.TotalCount)" @onclick="() => LoadPage(_page + 1)">Sau</button>
+            </nav>
+        }
+    </section>
+</div>
+
+@code {
+    private PagedResponse<DashboardNotice>? _history;
+    private DashboardNotifications? _dropdown;
+    private int _page = 1;
+    private bool _loading, _saving, _dropdownSaving;
+    private bool Busy => _loading || _saving || _dropdownSaving;
+    private string? _error;
+    private readonly CancellationTokenSource _lifetime = new();
+
+    protected override Task OnInitializedAsync() => LoadPage(1);
+    private void SetDropdownSaving(bool saving) => _dropdownSaving = saving;
+    private Task Reload() => LoadPageCore(_page);
+    private Task LoadPage(int page) => Busy ? Task.CompletedTask : LoadPageCore(page);
+    private async Task LoadPageCore(int page)
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _history = await Api.GetAsync<PagedResponse<DashboardNotice>>($"api/dashboards/notifications/history?page={page}", _lifetime.Token);
+            _page = page;
+        }
+        catch (ApiException ex) { _error = ex.Message; }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        finally { _loading = false; }
+    }
+    private Task MarkRead(int id) => Save($"api/dashboards/notifications/{id}/read", "Đã đánh dấu thông báo là đã đọc.");
+    private Task MarkAllRead() => Save("api/dashboards/notifications/read-all", "Đã đánh dấu tất cả thông báo là đã đọc.");
+    private async Task Save(string path, string message)
+    {
+        if (Busy) return;
+        _saving = true;
+        try
+        {
+            await Api.PostAsync<DashboardInbox>(path, cancellationToken: _lifetime.Token);
+            Toast.Show(message);
+            await Reload();
+            if (_dropdown is not null) await _dropdown.RefreshAsync();
+        }
+        catch (ApiException ex) { Toast.ShowError(ex.Message); }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        finally { _saving = false; }
+    }
+    public void Dispose() { _lifetime.Cancel(); _lifetime.Dispose(); }
+}

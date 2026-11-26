@@ -2,6 +2,7 @@
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
 @inject AuthSession Session
+@using VFMS.Client.Components.Dashboards
 @implements IAsyncDisposable
 
 <div class="min-h-screen flex flex-col bg-[#F2EFEC] text-[#252323] font-['Inter',sans-serif] w-full max-w-full overflow-x-hidden">
@@ -76,6 +77,10 @@
                                  class="@MyMembershipsClass">
                             Đánh giá
                         </NavLink>
+                    }
+                    @if (auth.User.IsInRole("Member") || auth.User.IsInRole("Customer") || auth.User.IsInRole("YogaInstructor"))
+                    {
+                        <DashboardNotifications />
                     }
                     <NavLink href="/profile" Match="NavLinkMatch.All" ActiveClass="text-[#B83A3A] underline underline-offset-4"
                              class="@ProfileLinkClass"

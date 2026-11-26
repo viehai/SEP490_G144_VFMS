@@ -17,11 +17,14 @@ public sealed partial class DashboardQueries(VfmsDbContext db, IMembershipPurcha
     public Task<int?> GymAsync(string user, CancellationToken ct) =>
         db.ApplicationUsers.Where(u => u.UserId == user).Select(u => (int?)u.GymId).SingleOrDefaultAsync(ct);
 
-    public async Task<DashboardInbox> InboxAsync(string user, CancellationToken ct)
+    public Task<bool> IsActiveUserAsync(string user, CancellationToken ct) =>
+        db.ApplicationUsers.AnyAsync(u => u.UserId == user && u.AccountStatus == AccountStatus.Active, ct);
+
+    public async Task<DashboardInbox> InboxAsync(string user, DateTime since, CancellationToken ct)
     {
-        var rows = db.Notifications.Where(n => n.RecipientUserId == user);
+        var rows = db.Notifications.Where(n => n.RecipientUserId == user && n.NotifiedAt >= since);
         return new(await rows.CountAsync(n => !n.IsRead, ct), await rows.OrderByDescending(n => n.NotifiedAt)
-            .ThenByDescending(n => n.Id).Take(8).Select(n => new DashboardNotice(n.Title, n.Message, n.NotifiedAt, n.IsRead)).ToListAsync(ct));
+            .ThenByDescending(n => n.Id).Take(8).Select(n => new DashboardNotice(n.Title, n.Message, n.NotifiedAt, n.IsRead, n.Id)).ToListAsync(ct));
     }
 
     public async Task<AdminOverview> AdminAsync(DateTime now, int days, CancellationToken ct)

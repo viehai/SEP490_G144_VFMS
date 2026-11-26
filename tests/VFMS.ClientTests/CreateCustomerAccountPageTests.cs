@@ -450,7 +450,9 @@ public sealed class CreateCustomerAccountPageTests
         {
             BaseAddress = new Uri("https://api.example.test/")
         };
-        var apiHttp = new HttpClient(new StubHandler(handler))
+        var apiHttp = new HttpClient(new StubHandler(request => request.RequestUri!.AbsolutePath == "/api/dashboards/notifications"
+            ? Task.FromResult(JsonResponse(new { unread = 0, recent = Array.Empty<object>() }))
+            : handler(request)))
         {
             BaseAddress = new Uri("https://api.example.test/")
         };

@@ -334,10 +334,15 @@ public sealed partial class MembershipPlanApiClientTests
     private static async Task<string> RenderTransactionLayoutAsync(string html, string role)
     {
         var storage = new ReadOnlyStorage(null);
-        using var http = new HttpClient();
+        using var http = new HttpClient(new FakeHandler(_ => Task.FromResult(Json(new { unread = 0, recent = Array.Empty<object>() }))))
+        {
+            BaseAddress = new Uri("https://api.example.test/")
+        };
         var session = new AuthSession(storage, new AuthApiClient(http));
         await using var services = new ServiceCollection().AddLogging().AddAuthorizationCore()
             .AddSingleton<IJSRuntime>(storage).AddSingleton(session)
+            .AddSingleton(new VfmsApiClient(http, session))
+            .AddSingleton(new ToastService())
             .AddSingleton<NavigationManager>(new TransactionPreviewNavigation()).BuildServiceProvider();
         await using var renderer = new HtmlRenderer(services, services.GetRequiredService<ILoggerFactory>());
         var identity = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Role, role), new Claim(ClaimTypes.Name, "Hội viên")], "Test"));

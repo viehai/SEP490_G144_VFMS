@@ -133,3 +133,7 @@
         transition: none;
     }
 }
+
+.public-navbar__actions ::deep .dash-popover {
+    white-space: normal;
+}
