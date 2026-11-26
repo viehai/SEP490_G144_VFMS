@@ -129,11 +129,91 @@ public sealed class YogaPersistenceTests : IAsyncLifetime
         var rows = await db.YogaAttendances.AsNoTracking().OrderBy(a => a.MemberUserId).ToListAsync();
         Assert.Equal([("a1", YogaAttendanceStatus.NoShow), ("a2", YogaAttendanceStatus.Present)],
             rows.Select(r => (r.MemberUserId, r.AttendanceStatus)));
-        Assert.False(await db.QRCodes.AnyAsync(q => q.IsActive));   // the scanned code is used up
+        Assert.True(await db.QRCodes.AnyAsync(q => q.IsActive && q.UserId == "a2"));   // the day-long code still works after the scan
         var listed = (await new YogaClassService(new YogaRepository(db), TimeProvider.System).GetClassSessionsAsync(classId)).Data!.Single();
         Assert.True(listed.AttendanceSubmittedLate);   // the Manager sees the late roster (GBR-86)
         Assert.Equal("ATTENDANCE_CLOSED", (await attendance.SubmitAsync(session.Id, "yi-1", false,
             new SubmitYogaAttendanceRequest([new YogaAttendanceMark(noShow, true)]))).ErrorCode);
+    }
+
+    /// <summary>
+    /// TC-YEXP, option B (SRS GBR-125): when the yoga plan ends before the class does,
+    /// the booking is held. The mat stays the member's, but they can't attend, aren't counted absent and aren't offered
+    /// waitlist seats until they buy a new plan that covers the class.
+    /// </summary>
+    [Fact]
+    public async Task ExpiredYogaPlanHoldsTheBookingUntilANewPlanIsBought()
+    {
+        await using var db = new SqliteTestContext(_options);
+        var gym = await db.Gyms.FirstAsync();
+        foreach (var id in new[] { "e1", "e2", "x1" })
+            db.AddRange(new ApplicationUser { UserId = id, Gym = gym, Email = id + "@example.com", FullName = id, PhoneNumber = "090100004" + (id == "x1" ? '9' : id[1]), PasswordHash = "x", AccountStatus = AccountStatus.Active },
+                TestSeed.Membership(id, ComponentType.YOGA, "Advanced"));
+        await db.SaveChangesAsync();
+        var classId = await CreatePublishedClassAsync(db, max: 2);   // runs from tomorrow to day 40, one session on day 10
+        var bookings = new YogaBookingService(new YogaBookingRepository(db), TimeProvider.System);
+        var booked = await bookings.BookAsync("e1", new YogaBookingRequest(classId));
+        Assert.True(booked.IsSuccess, booked.ErrorMessage);
+        Assert.True((await bookings.BookAsync("x1", new YogaBookingRequest(classId))).IsSuccess);
+        Assert.Equal("Waitlisted", (await bookings.BookAsync("e2", new YogaBookingRequest(classId))).Data!.Status);
+
+        // The plans of e1 and e2 end yesterday, the way the membership worker leaves them.
+        var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7));
+        async Task ExpirePlansAsync()
+        {
+            foreach (var plan in await db.MemberMemberships.Where(m => m.MemberUserId == "e1" || m.MemberUserId == "e2").ToListAsync())
+                (plan.EndDate, plan.MembershipStatus) = (today.AddDays(-1), MembershipStatus.Expired);
+            await db.SaveChangesAsync();
+        }
+        await ExpirePlansAsync();
+
+        // TC-YEXP-01: the booking keeps its mat (still Confirmed) and "Sắp tới" shows it on hold, with the class level for "Mua gói mới".
+        Assert.Equal(YogaBookingStatus.Confirmed, (await db.YogaBookings.AsNoTracking().SingleAsync(b => b.MemberUserId == "e1")).BookingStatus);
+        var upcoming = Assert.Single((await bookings.GetMyBookingsAsync("e1")).Data!.Upcoming);
+        Assert.True(upcoming.OnHold);
+        Assert.Equal("Beginner", upcoming.DifficultyLevel);
+
+        // TC-YEXP-03: a new booking needs a usable plan.
+        await using (var other = new SqliteTestContext(_options))
+            Assert.Equal("MEMBERSHIP_REQUIRED", (await new YogaBookingService(new YogaBookingRepository(other), TimeProvider.System)
+                .BookAsync("e1", new YogaBookingRequest(classId))).ErrorCode);
+
+        // TC-YEXP-04: a freed seat skips the waitlisted member whose plan ended.
+        var x1Booking = (await db.YogaBookings.AsNoTracking().SingleAsync(b => b.MemberUserId == "x1")).Id;
+        Assert.True((await bookings.CancelAsync("x1", x1Booking, new CancelYogaBookingRequest())).IsSuccess);
+        Assert.Null((await db.YogaWaitlists.AsNoTracking().SingleAsync(w => w.MemberUserId == "e2")).NotifiedAt);
+
+        // TC-YEXP-02/06: on the roster but held; the QR scan and a "Có mặt" mark are refused, and no mark is needed to submit.
+        var session = await db.YogaClassSchedules.AsNoTracking().SingleAsync();
+        var start = new DateTimeOffset(session.ScheduledDate.ToDateTime(session.StartTime), TimeSpan.FromHours(7));
+        var checkIns = new CheckInRepository(db);
+        var token = (await new MemberQrService(checkIns, TimeProvider.System).GetOrIssueAsync("e1")).Data!.Token;
+        var attendance = new YogaAttendanceService(new YogaBookingRepository(db), new MemberQrService(checkIns, TimeProvider.System), new At(start.AddMinutes(5)));
+        var row = Assert.Single((await attendance.GetRosterAsync(session.Id, "yi-1", false)).Data!.Roster);
+        Assert.True(row.OnHold);
+        Assert.Equal("YOGA_PLAN_ON_HOLD", (await attendance.ScanQrAsync(session.Id, "yi-1", false, new YogaAttendanceQrRequest(token))).ErrorCode);
+        Assert.Equal("YOGA_PLAN_ON_HOLD", (await attendance.SubmitAsync(session.Id, "yi-1", false,
+            new SubmitYogaAttendanceRequest([new YogaAttendanceMark(row.BookingId, true)]))).ErrorCode);
+        var submitted = await attendance.SubmitAsync(session.Id, "yi-1", false, new SubmitYogaAttendanceRequest([]));
+        Assert.True(submitted.IsSuccess, submitted.ErrorMessage);
+        Assert.False(await db.YogaAttendances.AnyAsync(a => a.MemberUserId == "e1"));   // not counted absent
+
+        // TC-YEXP-05: buying a new plan that covers the class lifts the hold at once.
+        db.Add(TestSeed.Membership("e1", ComponentType.YOGA, "Beginner"));
+        await db.SaveChangesAsync();
+        Assert.False(Assert.Single((await bookings.GetMyBookingsAsync("e1")).Data!.Upcoming).OnHold);
+
+        // A late cancel of a held booking is not a no-show either (it could not have been attended).
+        await ExpirePlansAsync();
+        var late = new YogaBookingService(new YogaBookingRepository(db), new At(start.AddDays(7).AddHours(-1)));
+        db.Add(new YogaClassSchedule
+        {
+            YogaClassId = classId, YogaStudioId = session.YogaStudioId, InstructorUserId = session.InstructorUserId,
+            ScheduledDate = session.ScheduledDate.AddDays(7), StartTime = session.StartTime, EndTime = session.EndTime
+        });
+        await db.SaveChangesAsync();
+        Assert.True((await late.CancelAsync("e1", row.BookingId, new CancelYogaBookingRequest(ConfirmLateCancellation: true))).IsSuccess);
+        Assert.False(await db.YogaAttendances.AnyAsync(a => a.MemberUserId == "e1"));
     }
 
     private sealed class At(DateTimeOffset now) : TimeProvider
@@ -157,6 +237,11 @@ public sealed class YogaPersistenceTests : IAsyncLifetime
         var flow = await NewClass("Morning Flow");
         var other = await NewClass("Evening Flow");
         var weekly = new YogaWeeklySessionsRequest(studio, [DayOfWeek.Monday, DayOfWeek.Wednesday], new(9, 0));
+
+        // The class has 2 sessions a week, so exactly 2 weekdays must be picked.
+        DayOfWeek[][] wrongCounts = [[DayOfWeek.Monday], [DayOfWeek.Monday, DayOfWeek.Wednesday, DayOfWeek.Friday]];
+        foreach (var days in wrongCounts)
+            Assert.Equal("YOGA_SESSION_DAYS_COUNT", (await classes.CreateWeeklySessionsAsync(flow, weekly with { Days = days }, "manager", null)).ErrorCode);
 
         // Another class already holds the studio on the second Wednesday: nothing is saved, the message names the date.
         Assert.True((await classes.CreateSessionAsync(new YogaSessionRequest(other, studio, start.AddDays(9), new(9, 30), new(10, 30)), "manager", null)).IsSuccess);

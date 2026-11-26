@@ -8,6 +8,7 @@ public sealed record OwnedMembership(
 {
     public int PackageComponentId { get; init; }
     public string? ComponentTermsSnapshot { get; init; }
+    public string? YogaDifficultyLevel { get; init; }
 }
 
 public sealed record OwnedMembershipDetail(

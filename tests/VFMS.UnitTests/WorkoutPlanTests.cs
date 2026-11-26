@@ -77,6 +77,57 @@ public sealed class WorkoutPlanTests
     }
 
     [Fact]
+    public async Task AiPicksWorkingMachinesAndUnknownOrBrokenOnesAreDropped()
+    {
+        var (service, repo, generator) = Create(CompleteProfile());
+        repo.Equipment.AddRange([
+            new Equipment { Id = 1, EquipmentName = "Xe đạp tập", EquipmentCode = "BK-0001" },
+            new Equipment { Id = 2, EquipmentName = "Xe đạp tập", EquipmentCode = "BK-0002" },
+            new Equipment { Id = 3, EquipmentName = "Máy đạp đùi", EquipmentStatus = EquipmentStatus.UnderMaintenance }]);
+        generator.Reply = new GeneratedPlan("p", [
+            new(1, 1, 11, null, null, 20, null, EquipmentId: 1),
+            new(1, 2, 10, 3, 12, null, null, EquipmentId: 3),     // broken machine
+            new(2, 1, 10, 3, 12, null, null, EquipmentId: 99)]);  // not a machine
+
+        var result = await service.GenerateAsync("u1", new GenerateWorkoutPlanRequest(true));
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+        Assert.Equal([new CatalogEquipment(1, "Xe đạp tập")], generator.LastEquipment);   // one per machine name, working only
+        var plan = Assert.Single(repo.Plans, p => !p.IsTemplate);
+        Assert.Equal([1, null, null], plan.PlanItems.OrderBy(i => i.DayNumber).ThenBy(i => i.OrderInDay).Select(i => i.EquipmentId));
+    }
+
+    [Fact]
+    public async Task FallbackPlanKeepsTheTemplateMachineWhileItWorks()
+    {
+        var (service, repo, generator) = Create(CompleteProfile());
+        repo.Equipment.AddRange([
+            new Equipment { Id = 1, EquipmentName = "Máy đạp đùi" },
+            new Equipment { Id = 2, EquipmentName = "Xe đạp tập", EquipmentStatus = EquipmentStatus.Damaged }]);
+        var template = repo.Plans.Single(p => p.IsTemplate).PlanItems.OrderBy(i => i.DayNumber).ToArray();
+        (template[0].EquipmentId, template[1].EquipmentId) = (1, 2);
+        generator.Reply = null;
+
+        await service.GenerateAsync("u1", new GenerateWorkoutPlanRequest(true));
+
+        var plan = Assert.Single(repo.Plans, p => !p.IsTemplate);
+        Assert.Equal([1, null], plan.PlanItems.OrderBy(i => i.DayNumber).Select(i => i.EquipmentId));
+    }
+
+    [Theory]
+    [InlineData("Leg Press", "Legs", "Beginner", null, null)]
+    [InlineData("", "Legs", "Beginner", null, "Tên bài tập")]
+    [InlineData("Leg Press", "Legs muscles", "Beginner", null, "nhóm cơ")]
+    [InlineData("Leg Press", "Legs", "Expert", null, "độ khó")]
+    [InlineData("Leg Press", "Legs", "Beginner", "ftp://x", "http(s)")]
+    public void ExerciseCatalogFieldRules(string name, string group, string level, string? image, string? error)
+    {
+        var message = ExerciseCatalogService.FieldError(new ExerciseRequest(name, group, level, ImageUrl: image));
+        if (error is null) Assert.Null(message);
+        else Assert.Contains(error, message);
+    }
+
+    [Fact]
     public async Task AiSurveyContainsNoPersonalIdentifiers()
     {
         var (service, _, generator) = Create(CompleteProfile());
@@ -264,12 +315,15 @@ public sealed class WorkoutPlanTests
         public bool Throw { get; set; }
         public int Calls { get; private set; }
         public AnonymisedSurvey? LastSurvey { get; private set; }
+        public IReadOnlyList<CatalogEquipment>? LastEquipment { get; private set; }
         public string ModelName => "gemini-test";
 
-        public Task<GeneratedPlan?> GenerateAsync(AnonymisedSurvey survey, IReadOnlyList<CatalogExercise> catalog, CancellationToken cancellationToken = default)
+        public Task<GeneratedPlan?> GenerateAsync(AnonymisedSurvey survey, IReadOnlyList<CatalogExercise> catalog,
+            IReadOnlyList<CatalogEquipment> equipment, CancellationToken cancellationToken = default)
         {
             Calls++;
             LastSurvey = survey;
+            LastEquipment = equipment;
             return Throw ? throw new HttpRequestException("down") : Task.FromResult(Reply);
         }
     }

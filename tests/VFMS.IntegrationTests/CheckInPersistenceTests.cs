@@ -41,30 +41,30 @@ public sealed class CheckInPersistenceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task KioskQrCheckInSavesVisitUsesTokenAndBlocksSecondOpenVisit()   // SCRUM-44
+    public async Task KioskQrCheckInSavesVisitKeepsDayCodeAndBlocksSecondOpenVisit()   // SCRUM-44
     {
         await using var db = new SqliteTestContext(_options);
         var (service, qr) = Services(db);
-        var token = (await qr.IssueAsync("m1")).Data!.Token;
+        var token = (await qr.GetOrIssueAsync("m1")).Data!.Token;
+        var scan = new KioskScanRequest(null, token);   // one code all day: in, out and back in
 
-        var result = await service.KioskCheckInAsync(new KioskScanRequest(null, token));
-        var replay = await service.KioskCheckInAsync(new KioskScanRequest(null, token));
-        var again = await service.KioskCheckInAsync(new KioskScanRequest(null, (await qr.IssueAsync("m1")).Data!.Token));
+        var result = await service.KioskCheckInAsync(scan);
+        var again = await service.KioskCheckInAsync(scan);
 
         Assert.True(result.IsSuccess, result.ErrorMessage);
         var visit = await db.CheckIns.AsNoTracking().SingleAsync();
         Assert.Equal((CheckInMethod.QRCode, CheckInStatus.Active), (visit.CheckinMethod, visit.Status));
         Assert.NotNull(visit.MemberMembershipId);
-        Assert.Equal(403, replay.StatusCode);              // the token was used up
-        Assert.Equal("ALREADY_CHECKED_IN", again.ErrorCode);   // still inside; no cooldown after check-out
+        Assert.Equal("ALREADY_CHECKED_IN", again.ErrorCode);   // still inside; the code itself still works
+        Assert.Equal(token, (await qr.GetOrIssueAsync("m1")).Data!.Token);   // saved, so reopening /my-qr shows it again
 
-        var checkedOut = await service.KioskCheckOutAsync(new KioskScanRequest(null, (await qr.IssueAsync("m1")).Data!.Token));   // SCRUM-45
+        var checkedOut = await service.KioskCheckOutAsync(scan);   // SCRUM-45
         Assert.True(checkedOut.IsSuccess, checkedOut.ErrorMessage);
         var closed = await db.CheckIns.AsNoTracking().SingleAsync();
         Assert.Equal((CheckInStatus.CheckedOut, CheckInMethod.QRCode), (closed.Status, closed.CheckoutMethod!.Value));
         Assert.Equal("An Member", checkedOut.Data!.MemberName);
 
-        var reEntry = await service.KioskCheckInAsync(new KioskScanRequest(null, (await qr.IssueAsync("m1")).Data!.Token));
+        var reEntry = await service.KioskCheckInAsync(scan);
         Assert.True(reEntry.IsSuccess, reEntry.ErrorMessage);   // right after check-out: no cooldown
     }
 

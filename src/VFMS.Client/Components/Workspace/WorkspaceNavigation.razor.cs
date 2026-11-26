@@ -27,6 +27,7 @@ public partial class WorkspaceNavigation
             new("Tranh chấp điểm danh", "/manager/pt-attendance-disputes", "Manager")),
         new("Thiết bị & mua sắm",
             new("Thiết bị", "/manager/equipment", "Manager"),
+            new("Bài tập", "/manager/exercises", "Manager"),
             new("Sửa chữa thiết bị", "/manager/equipment-issues", "Manager"),
             new("Đề xuất mua sắm", "/manager/purchase-proposals", "Manager")),
         new("Tủ đồ",

@@ -72,6 +72,13 @@
             </button>
         </div>
 
+        @if (ForClass is null && ForLevel is { } onlyLevel && CurrentType == "yoga")
+        {
+            <div class="mb-8 flex flex-wrap items-center justify-between gap-3 border-l-4 border-[#B83A3A] pl-4" role="status">
+                <p class="text-sm text-[#242424]">Các gói dưới đây đăng ký được lớp <strong>@YogaRules.LevelLabel(onlyLevel)</strong>.</p>
+                <a href="/membership-plans?type=yoga" class="inline-flex min-h-[44px] items-center text-sm font-bold text-[#B83A3A] hover:underline">Xem tất cả gói Yoga</a>
+            </div>
+        }
         @if (ForClass is { } wanted && CurrentType == "yoga")
         {
             <div class="mb-8 flex flex-wrap items-center justify-between gap-3 border-l-4 border-[#B83A3A] pl-4" role="status">
@@ -348,7 +355,7 @@
             <!-- ============================================================== -->
             <!-- 5. PAGINATION                                                  -->
             <!-- ============================================================== -->
-            @if (_catalog.TotalCount > PageSize && ForClass is null)
+            @if (_catalog.TotalCount > PageSize && ForLevel is null)
             {
                 var totalPages = (int)Math.Ceiling((double)_catalog.TotalCount / PageSize);
                 <nav aria-label="Phân trang gói tập" class="mt-12 flex flex-wrap items-center justify-center gap-3 font-['Inter',sans-serif] text-sm">
@@ -391,6 +398,9 @@
     [SupplyParameterFromQuery(Name = "date")] public string? DateQuery { get; set; }
     [SupplyParameterFromQuery(Name = "className")] public string? ClassNameQuery { get; set; }
 
+    // A level on its own (from "Mua gói mới" on an expired or held yoga plan) filters the same way, without a class.
+    private string? ForLevel => ForClass?.Level ?? (YogaRules.IsDifficulty(LevelQuery) ? LevelQuery!.Trim() : null);
+
     private PendingYogaClass? ForClass =>
         ClassIdQuery is { } id && YogaRules.IsDifficulty(LevelQuery) && DateOnly.TryParse(DateQuery, out var date)
             ? new PendingYogaClass(id, string.IsNullOrWhiteSpace(ClassNameQuery) ? "đã chọn" : ClassNameQuery.Trim(), LevelQuery!.Trim(), date)
@@ -399,7 +409,7 @@
     // Yoga plans by level (lowest first); for a picked class only the plans that cover it.
     private IEnumerable<PackageCatalogItemResponse> Shown => CurrentType != "yoga" ? _catalog!.Items
         : _catalog!.Items
-            .Where(p => ForClass is not { } wanted || (p.YogaDifficultyLevel is not null && YogaRules.PlanCovers(p.YogaDifficultyLevel, wanted.Level)))
+            .Where(p => ForLevel is not { } level || (p.YogaDifficultyLevel is not null && YogaRules.PlanCovers(p.YogaDifficultyLevel, level)))
             .OrderBy(p => YogaRules.LevelRank(p.YogaDifficultyLevel)).ThenBy(p => p.Price);
 
     private string CurrentType => NormalizeType(TypeQuery);
@@ -414,7 +424,7 @@
 
     private string LoginUrl => $"/auth/login?returnUrl={Uri.EscapeDataString(Navigation.Uri)}";
 
-    private string EmptyStateMessage => ForClass is not null && CurrentType == "yoga" ? "Hiện chưa có gói Yoga đăng ký được lớp này." : CurrentType switch
+    private string EmptyStateMessage => ForLevel is not null && CurrentType == "yoga" ? "Hiện chưa có gói Yoga đăng ký được lớp ở cấp độ này." : CurrentType switch
     {
         "yoga" => "Hiện chưa có gói Yoga đang mở bán.",
         "pt" => "Hiện chưa có gói PT đang mở bán.",
@@ -427,7 +437,7 @@
         var targetPage = CurrentPage;
 
         // Tránh gọi lại API nếu parameters không thay đổi
-        if (_catalog is not null && _loadedType == targetType && _loadedPage == targetPage && _loadedAll == (ForClass is not null) && _errorMessage is null)
+        if (_catalog is not null && _loadedType == targetType && _loadedPage == targetPage && _loadedAll == (ForLevel is not null) && _errorMessage is null)
         {
             return;
         }
@@ -446,10 +456,10 @@
         {
             // A picked class filters on the client, so load every yoga plan in one page.
             // shortcut: 100 yoga plans at most when filtering, add a level filter to api/packages if a gym ever has more.
-            _catalog = ForClass is null ? await PlanApi.GetPackagesAsync(type, page, PageSize) : await PlanApi.GetPackagesAsync(type, 1, 100);
+            _catalog = ForLevel is null ? await PlanApi.GetPackagesAsync(type, page, PageSize) : await PlanApi.GetPackagesAsync(type, 1, 100);
             _loadedType = type;
             _loadedPage = page;
-            _loadedAll = ForClass is not null;
+            _loadedAll = ForLevel is not null;
         }
         catch (Exception)
         {

@@ -59,7 +59,7 @@
             <p>Camera tự quét liên tục, không cần bấm nút.</p>
             <p><b>FaceID:</b> nhìn thẳng vào camera.</p>
             <p><b>Mã QR:</b> mở trang Mã QR của tôi trên điện thoại và đưa mã vào giữa khung hình.</p>
-            <p class="text-xs text-[#6F6966]">Sau mỗi lượt quét thành công, hãy rời khỏi khung hình để người tiếp theo quét. Mã QR dùng một lần và hết hạn sau 2 phút.</p>
+            <p class="text-xs text-[#6F6966]">Sau mỗi lượt quét thành công, hãy rời khỏi khung hình để người tiếp theo quét. Mã QR dùng được cả ngày (đến 24:00) cho cả vào và ra. Kiosk kêu bíp một tiếng khi check-in, hai tiếng khi check-out.</p>
         </section>
     </div>
 </div>
@@ -106,13 +106,15 @@
     /// <summary>Looks at the camera a few times a second and sends what it finds, one scan at a time.</summary>
     private async Task RunScanLoop(CancellationToken ct)
     {
-        string? lastQr = null;   // a QR token is single-use: sending it twice only shows "invalid"
+        string? lastQr = null;   // don't resend a code still held up after its scan; cleared once no code is in view
         try
         {
             while (!ct.IsCancellationRequested)
             {
                 await SetStatus(Waiting);
                 var look = await JS.InvokeAsync<Look?>("vfmsKiosk.look", ct, _video);
+                if (look?.Qr is null)
+                    lastQr = null;   // the day-long code can be shown again, e.g. to check out
                 if (look is null || (look.Qr is null && look.Face is null) || (look.Qr is not null && look.Qr == lastQr))
                 {
                     await Task.Delay(250, ct);
@@ -168,15 +170,23 @@
                 Show(true, $"CHECK-IN. {entry.Message}{(entry.CompletedPtSessionId is null ? "" : " Buổi PT đã được ghi nhận hoàn thành.")}");
             else if (r.CheckOut is { } exit)
                 Show(true, $"CHECK-OUT. Tạm biệt, {exit.MemberName}! Thời gian tập: {exit.MinutesInside / 60}h {exit.MinutesInside % 60}m.");
+            await Beep(r.CheckOut is null ? 1 : 2);
             return true;
         }
         catch (ApiException ex)
         {
             Show(false, ex.Message);
             if (isQr && ex.ErrorCode == "SCAN_NOT_RECOGNISED")
-                _result += " Đã đọc được mã QR nhưng mã không hợp lệ: mã chỉ dùng một lần, hết hạn sau 2 phút và bị thay khi mở lại trang Mã QR của tôi. Hãy tạo mã mới rồi quét lại.";
+                _result += " Đã đọc được mã QR nhưng mã không hợp lệ: mã hết hạn lúc 24:00 và bị thay khi bấm Tạo mã mới. Hãy mở lại trang Mã QR của tôi rồi quét lại.";
             return false;
         }
+    }
+
+    /// <summary>One beep for check-in, two for check-out. A sound problem must never stop the scan loop.</summary>
+    private async Task Beep(int times)
+    {
+        try { await JS.InvokeVoidAsync("vfmsKiosk.beep", times); }
+        catch (JSException ex) { Log.LogDebug(ex, "Kiosk: beep failed"); }
     }
 
     private async Task StopCamera()

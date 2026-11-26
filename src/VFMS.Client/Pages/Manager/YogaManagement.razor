@@ -184,14 +184,20 @@
                                             @* New sessions: pick weekdays; one session per chosen day from the class start to end date. *@
                                             <fieldset class="sm:col-span-6">
                                                 <legend class="text-xs font-semibold">Thứ trong tuần <span class="font-normal text-[#6F6966]">(lớp @c.SessionsPerWeek buổi/tuần, @c.StartDate.ToString("dd/MM/yyyy") → @c.EndDate.ToString("dd/MM/yyyy"))</span></legend>
+                                                @{ var full = _session.Days.Count >= c.SessionsPerWeek; }
                                                 <div class="mt-1 flex flex-wrap gap-2">
                                                     @foreach (var (day, label) in WeekDays)
                                                     {
                                                         var on = _session.Days.Contains(day);
-                                                        <button type="button" aria-pressed="@(on ? "true" : "false")" @onclick="() => ToggleDay(day)"
-                                                                class="@($"min-h-[44px] min-w-[52px] rounded-lg border px-3 text-xs font-bold transition-colors {(on ? "border-[#B83A3A] bg-[#B83A3A] text-white" : "border-[#C9C0BB] bg-[#F8F5F2] text-[#242424] hover:bg-[#F3EDEA]")}")">@label</button>
+                                                        var locked = full && !on;   // the class's days are all picked: unpick one to change
+                                                        <button type="button" aria-pressed="@(on ? "true" : "false")" disabled="@locked" aria-describedby="days-count-@c.Id" @onclick="() => ToggleDay(c, day)"
+                                                                class="@($"min-h-[44px] min-w-[52px] rounded-lg border px-3 text-xs font-bold transition-colors {(on ? "border-[#B83A3A] bg-[#B83A3A] text-white" : locked ? "cursor-not-allowed border-[#D8D1CD] bg-[#ECE8E4] text-[#9A928E] opacity-60" : "border-[#C9C0BB] bg-[#F8F5F2] text-[#242424] hover:bg-[#F3EDEA]")}")">@label</button>
                                                     }
                                                 </div>
+                                                <p id="days-count-@c.Id" class="mt-2 text-xs @(full ? "text-[#15803D]" : "text-[#6F6966]")" aria-live="polite">
+                                                    Đã chọn @_session.Days.Count/@c.SessionsPerWeek ngày.
+                                                    @(full ? "Đủ số buổi; bỏ chọn một ngày nếu muốn đổi ngày khác." : $"Chọn thêm {c.SessionsPerWeek - _session.Days.Count} ngày.")
+                                                </p>
                                             </fieldset>
                                         }
                                         else
@@ -212,7 +218,7 @@
                                             </select>
                                         </label>
                                         <p class="text-xs text-[#6F6966]">Kết thúc: @_session.Start.AddMinutes(c.DurationMinutes).ToString("HH:mm")</p>
-                                        <button type="submit" disabled="@_busy" class="bg-[#B83A3A] hover:bg-[#9F3030] px-4 py-2 text-xs font-bold uppercase text-white rounded-lg">@(_sessionEditId is null ? "Tạo lịch" : "Lưu buổi")</button>
+                                        <button type="submit" disabled="@(_busy || (_sessionEditId is null && _session.Days.Count != c.SessionsPerWeek))" class="bg-[#B83A3A] hover:bg-[#9F3030] px-4 py-2 text-xs font-bold uppercase text-white rounded-lg disabled:cursor-not-allowed disabled:opacity-50">@(_sessionEditId is null ? "Tạo lịch" : "Lưu buổi")</button>
                                     </form>
                                 }
                                 <table class="w-full text-left text-sm">
@@ -410,9 +416,9 @@
         (DayOfWeek.Friday, "T6"), (DayOfWeek.Saturday, "T7"), (DayOfWeek.Sunday, "CN")
     ];
 
-    private void ToggleDay(DayOfWeek day)
+    private void ToggleDay(YogaClassResponse c, DayOfWeek day)
     {
-        if (!_session.Days.Remove(day)) _session.Days.Add(day);
+        if (!_session.Days.Remove(day) && _session.Days.Count < c.SessionsPerWeek) _session.Days.Add(day);
     }
 
     private async Task SaveWeekly(YogaClassResponse c)

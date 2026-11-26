@@ -48,6 +48,12 @@ public sealed class MemberQrController : ControllerBase
 
     public MemberQrController(IMemberQrService service) => _service = service;
 
+    /// <summary>Today's code: the same one each time the page opens, until midnight gym time.</summary>
+    [HttpGet]
+    public async Task<IActionResult> Today(CancellationToken cancellationToken) =>
+        User.GetUserId() is { } userId ? this.ToActionResult(await _service.GetOrIssueAsync(userId, cancellationToken)) : Unauthorized();
+
+    /// <summary>A new code; the old one stops working (for a leaked screenshot).</summary>
     [HttpPost]
     public async Task<IActionResult> Issue(CancellationToken cancellationToken) =>
         User.GetUserId() is { } userId ? this.ToActionResult(await _service.IssueAsync(userId, cancellationToken)) : Unauthorized();

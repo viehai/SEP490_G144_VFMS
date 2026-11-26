@@ -138,7 +138,8 @@ public sealed partial class MembershipPurchaseRepository(VfmsDbContext context) 
                 membership.OrderItem.Order.PaymentTransaction!.PaidAt ?? membership.OrderItem.Order.CompletedAt)
             {
                 PackageComponentId = membership.PackageComponentId,
-                ComponentTermsSnapshot = membership.OrderItem.ComponentTermsSnapshot
+                ComponentTermsSnapshot = membership.OrderItem.ComponentTermsSnapshot,
+                YogaDifficultyLevel = membership.PackageComponent.YogaDifficultyLevel
             })
             .ToListAsync(ct);
 

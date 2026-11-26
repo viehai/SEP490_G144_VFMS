@@ -19,8 +19,8 @@ builder.Services.AddScoped<AuthSession>();
 builder.Services.AddScoped<AuthenticationStateProvider>(sp => sp.GetRequiredService<AuthSession>());
 builder.Services.AddScoped(sp => new MembershipPlanApiClient(CreateApiHttpClient(), sp.GetRequiredService<AuthSession>(),
     sp.GetRequiredService<IJSRuntime>()));
-// 40 s: AI workout plan generation can take longer than the 30 s default.
-builder.Services.AddScoped(sp => new VfmsApiClient(CreateApiHttpClient(40), sp.GetRequiredService<AuthSession>(),
+// 130 s: AI workout plan generation may try two Gemini models, 60 s each (Gemini:TimeoutSeconds).
+builder.Services.AddScoped(sp => new VfmsApiClient(CreateApiHttpClient(130), sp.GetRequiredService<AuthSession>(),
     sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<VfmsApiClient>>()));
 builder.Services.AddScoped(sp => new SystemAdministrationApiClient(CreateApiHttpClient(), sp.GetRequiredService<AuthSession>()));
 builder.Services.AddScoped(sp => new OperationsApiClient(CreateApiHttpClient(), sp.GetRequiredService<AuthSession>()));

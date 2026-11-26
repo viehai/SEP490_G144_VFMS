@@ -16,7 +16,42 @@
         return code && code.data ? code.data.trim() : null;
     }
 
+    // Beep with WebAudio, so no sound file is needed. The kiosk starts by itself, so the browser may keep audio
+    // suspended until someone touches the screen or a key; resume on the first touch and stay silent until then.
+    let audio = null;
+    function audioContext() {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!audio && Ctx) audio = new Ctx();
+        return audio;
+    }
+    ["pointerdown", "keydown"].forEach(type =>
+        window.addEventListener(type, () => { const a = audioContext(); if (a && a.state === "suspended") a.resume(); }, { once: true }));
+
     window.vfmsKiosk = {
+        // Short 880 Hz beeps: 1 = check-in, 2 = check-out. Never throws.
+        beep(times) {
+            try {
+                const a = audioContext();
+                if (!a) return false;
+                if (a.state === "suspended") a.resume();
+                for (let i = 0; i < times; i++) {
+                    const start = a.currentTime + i * 0.25;
+                    const tone = a.createOscillator();
+                    const gain = a.createGain();
+                    tone.frequency.value = 880;
+                    gain.gain.setValueAtTime(0.0001, start);
+                    gain.gain.exponentialRampToValueAtTime(0.3, start + 0.01);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.15);
+                    tone.connect(gain).connect(a.destination);
+                    tone.start(start);
+                    tone.stop(start + 0.16);
+                }
+                return true;
+            } catch (e) {
+                return false;
+            }
+        },
+
         // Loads the QR reader so look() can use it.
         async ready() {
             await window.vfmsQr.loadScanner();
