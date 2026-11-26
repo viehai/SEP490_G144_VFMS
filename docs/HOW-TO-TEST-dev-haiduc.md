@@ -328,7 +328,7 @@ Try it: book a mat someone else just took, cancel a yoga booking less than 2 hou
   - Unit: 786 pass.
   - Client: 590 pass.
   - Integration: 689 pass, 2 fail, 51 skipped. `WalkInCustomerOnboardingApiTests` (teammate's concurrency tests) failed once on 26/11 while Visual Studio was running and passed on rerun.
-- **PR #21 to main is open (25/11/2026):** https://github.com/viehai/SEP490_G144_VFMS/pull/21. Once it is merged, teammates who pull main get the migration `YogaPlanLevelReplacesClassType`. It drops `PackageComponents.YogaClassTypeId` and `YogaWaitlists.YogaClassTypeId`, so code or tests that still use `YogaClassType` on a plan no longer build, and yoga plans in test seeds need `YogaDifficultyLevel`.
+- **PR #23 to main is open (26/11/2026):** https://github.com/viehai/SEP490_G144_VFMS/pull/23 (machine per exercise, Manager exercise page `/manager/exercises`, yoga plan hold, Gemini backup model). No new migrations. PR #21 (yoga plan levels, migration `YogaPlanLevelReplacesClassType`) was merged on 24/11/2026.
 
 - **Yoga plans can't be renewed yet.** Renewal (`/my-memberships` → gia hạn) still only covers gym plans, so a yoga member buys a new yoga plan instead; it starts after the current one ends.
 - **Old SQL yoga parts removed (20/11/2026).** Before yoga plans existed, a YOGA part was added by SQL to the gym package "Gym 1 Month", so its buyers (the member and the three demo members) also got a yoga membership. That part and those 4 yoga memberships are now soft-deleted (`IsDeleted = 1`, by SQL, because no API removes a membership); nothing used them. The 4 accounts bought "Yoga 1 Tháng" through the real flow instead, so `/my-memberships` shows one Gym card and one Yoga card.
