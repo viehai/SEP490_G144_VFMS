@@ -864,6 +864,8 @@ public class TrainerWorkflowTests
         await AddUser(db, "staff", "staff@example.test", "0900000050", "Staff");
         // GBR-107: Staff email (any Gmail dot variant included) cannot apply.
         Assert.Equal("TRAINER_NOT_ELIGIBLE", (await service.Submit(request with { Email = "staff@example.test" }, null, default)).ErrorCode);
+        // GBR-107: a signed-in Staff account is ineligible with the same code, whatever contacts the form carries.
+        Assert.Equal("TRAINER_NOT_ELIGIBLE", (await service.Submit(request with { Email = "other-staff@example.test", PhoneNumber = "0900000051" }, "staff", default)).ErrorCode);
 
         TrainerTestDatabase.Success(await service.Submit(request, null, default));
         var first = await db.TrainerApplications.SingleAsync();

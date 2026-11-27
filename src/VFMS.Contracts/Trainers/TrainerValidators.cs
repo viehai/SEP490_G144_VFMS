@@ -141,6 +141,7 @@ public sealed class TrainerApplicationFilterValidator : AbstractValidator<Traine
         RuleFor(x => x.Page).InclusiveBetween(1, 10000).WithMessage("Số trang phải từ {From} đến {To}.");
         RuleFor(x => x.PageSize).InclusiveBetween(1, 100).WithMessage("Số mục mỗi trang phải từ {From} đến {To}.");
         RuleFor(x => x.TrackingCode).MaximumLength(64).WithMessage("Mã theo dõi không được vượt quá {MaxLength} ký tự.");
+        RuleFor(x => x.Name).MaximumLength(200).WithMessage("Tên tìm kiếm không được vượt quá {MaxLength} ký tự.");
         RuleFor(x => x.TrainerRole).Must(x => string.IsNullOrEmpty(x) || TrainerRoleNames.IsValid(x)).WithMessage("Vị trí huấn luyện viên không hợp lệ. Vui lòng kiểm tra lại.");
         RuleFor(x => x.Status).Must(x => x == null || x is "Pending" or "Interviewing" or "Hired" or "Rejected" or "UnderReview" or "Approved" or "Blacklisted").WithMessage("Trạng thái không hợp lệ. Vui lòng kiểm tra lại.");
         RuleFor(x => x).Must(x => x.From == null || x.To == null || x.From <= x.To).WithMessage("Ngày kết thúc phải bằng hoặc sau ngày bắt đầu.");

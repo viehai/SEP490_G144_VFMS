@@ -22,6 +22,7 @@
             <label>Loại hồ sơ<select class="trainer-input" @bind="_type"><option value="">Tất cả</option><option value="Recruitment">Tuyển dụng</option><option value="ProfileUpdate">Cập nhật chứng chỉ</option></select></label>
             <label>Trạng thái<select class="trainer-input" @bind="_status"><option value="">Tất cả</option><option value="Pending">Chờ duyệt</option><option value="Interviewing">Đang phỏng vấn</option><option value="Hired">Đã tuyển</option><option value="Approved">Đã duyệt</option><option value="Rejected">Từ chối</option></select></label>
             <label>Vị trí<select class="trainer-input" @bind="_trainerRole"><option value="">Tất cả</option><option value="PT">PT</option><option value="Yoga">Yoga</option></select></label>
+            <label>Tên ứng viên<input class="trainer-input" maxlength="200" placeholder="Nhập tên" @bind="_name" /></label>
             <label>Mã theo dõi<input class="trainer-input" maxlength="64" placeholder="TR-…" @bind="_trackingCode" /></label>
             <label>Từ ngày<input type="date" class="trainer-input" @bind="_from" /></label>
             <label>Đến ngày<input type="date" class="trainer-input" @bind="_to" /></label>
@@ -207,7 +208,7 @@
     private PagedResponse<TrainerApplicationResponse>? _list;
     private TrainerApplicationResponse? _selected;
     private TrainerApplicationFilter _filter = new();
-    private string _type = "", _status = "", _trainerRole = "", _trackingCode = "", _action = "", _note = "", _level = "Junior";
+    private string _type = "", _status = "", _trainerRole = "", _trackingCode = "", _name = "", _action = "", _note = "", _level = "Junior";
     private DateOnly? _from, _to;
     private bool _loading, _opening, _saving;
     private TrainerRecruitmentStatus? _recruitmentStatus;
@@ -245,7 +246,7 @@
         }
         _filter = new(_status, _trainerRole,
             _from?.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc).AddHours(-7),
-            _to?.ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc).AddHours(-7), ApplicationType: _type, TrackingCode: _trackingCode.Trim());
+            _to?.ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc).AddHours(-7), ApplicationType: _type, TrackingCode: _trackingCode.Trim(), Name: _name.Trim());
         return LoadAsync(1);
     }
 

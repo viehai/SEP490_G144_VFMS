@@ -60,7 +60,7 @@ public sealed class TrainerApiClient(HttpClient http, AuthSession session) : IDi
     public Task<PagedResponse<TrainerApplicationResponse>> ApplicationsAsync(TrainerApplicationFilter filter, bool mine = false) =>
         Send<PagedResponse<TrainerApplicationResponse>>(HttpMethod.Get, $"{Root}/{(mine ? "me/" : "")}applications" + Query(
             ("Status", filter.Status), ("TrainerRole", filter.TrainerRole), ("ApplicationType", filter.ApplicationType),
-            ("TrackingCode", filter.TrackingCode),
+            ("TrackingCode", filter.TrackingCode), ("Name", filter.Name),
             ("From", filter.From?.ToString("O", CultureInfo.InvariantCulture)),
             ("To", filter.To?.ToString("O", CultureInfo.InvariantCulture)),
             ("Page", filter.Page.ToString(CultureInfo.InvariantCulture))), auth: true);

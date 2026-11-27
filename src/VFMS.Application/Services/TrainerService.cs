@@ -170,6 +170,9 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
         var trainer = await IsTrainer(actor, ct);
         if (update && !trainer)
             return Error<TrainerApplicationReceipt>("TRAINER_FORBIDDEN", "Cần quyền huấn luyện viên để thực hiện thao tác này.", 403);
+        // GBR-107: a signed-in Staff, Manager or Admin is not eligible (not a role error).
+        if (!update && actor != null && (await repo.GetUsersWithAnyRoleAsync([actor], StaffRoles, ct)).Count > 0)
+            return Error<TrainerApplicationReceipt>("TRAINER_NOT_ELIGIBLE", "Tài khoản nhân viên, quản lý, quản trị viên và huấn luyện viên đang hoạt động không được ứng tuyển.");
         // UC 3.1: a signed-in Customer or Member may apply; members who only hold the Member role are included.
         if (!update && actor != null && !trainer && !await HasRole(actor, "Customer", ct) && !await HasRole(actor, "Member", ct))
             return Error<TrainerApplicationReceipt>("TRAINER_FORBIDDEN", "Cần tài khoản khách hàng hoặc hội viên để thực hiện thao tác này.", 403);
@@ -198,9 +201,7 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
         var now = DateTime.UtcNow;
         if (!update && !TrainerApplicantRules.TryNormalizePhone(r.PhoneNumber, out phoneNumber))
             return Error<TrainerApplicationReceipt>("TRAINER_VALIDATION", "Số điện thoại không hợp lệ.", 400);
-        if (!update && (trainer ||
-            actor != null && (await repo.GetUsersWithAnyRoleAsync([actor], StaffRoles, ct)).Count > 0 ||
-            await IsEmployee(email, phoneNumber, ct)))
+        if (!update && (trainer || await IsEmployee(email, phoneNumber, ct)))
             return Error<TrainerApplicationReceipt>("TRAINER_NOT_ELIGIBLE", "Tài khoản nhân viên, quản lý, quản trị viên và huấn luyện viên đang hoạt động không được ứng tuyển.");
         int? trainerRoleId;
         if (update)

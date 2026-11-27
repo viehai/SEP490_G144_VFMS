@@ -134,6 +134,17 @@ public sealed class TrainerApiClientTests
         Assert.Empty((await api.ApplicationsAsync(new(TrackingCode: "TR-abc"))).Items);
     }
 
+    [Fact]
+    public async Task ManagerListFiltersByApplicantName()
+    {
+        using var api = CreateClient(request =>
+        {
+            Assert.Equal("?Name=An%20Nguyen&Page=1", request.RequestUri!.Query);
+            return Task.FromResult(Json(new PagedResponse<TrainerApplicationResponse>(1, 10, 0, [])));
+        }, authenticated: true);
+        Assert.Empty((await api.ApplicationsAsync(new(Name: "An Nguyen"))).Items);
+    }
+
     [Theory]
     [InlineData("You can submit again after 2026-11-13T18:09:23.2543535.")]
     [InlineData("Bạn có thể nộp lại hồ sơ sau 2026-11-13T18:09:23.2543535.")]

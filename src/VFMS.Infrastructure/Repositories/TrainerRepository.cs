@@ -152,6 +152,11 @@ public sealed class TrainerRepository(VfmsDbContext db, IDataProtectionProvider 
             var trackingCode = filter.TrackingCode.Trim();
             query = query.Where(x => x.TrackingCode == trackingCode);
         }
+        if (!string.IsNullOrWhiteSpace(filter.Name))
+        {
+            var name = filter.Name.Trim();
+            query = query.Where(x => x.FullName.Contains(name));
+        }
         if (filter.From != null)
             query = query.Where(x => x.SubmittedAt >= filter.From);
         if (filter.To != null)

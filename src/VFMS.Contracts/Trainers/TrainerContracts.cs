@@ -16,7 +16,7 @@ public sealed record TrainerRecruitmentStatus(bool IsAcceptingApplications);
 public sealed record SetTrainerRecruitmentStatusRequest(bool IsAcceptingApplications);
 public sealed record TrainerApplicationFilter(string? Status = null, string? TrainerRole = null,
     DateTime? From = null, DateTime? To = null, int Page = 1, int PageSize = 10, string? ApplicationType = null,
-    string? TrackingCode = null);
+    string? TrackingCode = null, string? Name = null);
 /// <summary>UC 3.1: what the public status page shows for a tracking code. The reason appears only for a rejected application.</summary>
 public sealed record TrainerApplicationTracking(string TrackingCode, string ApplicationType, string Status,
     DateTime SubmittedAt, string? TrainerRole, string? RejectionReason);
