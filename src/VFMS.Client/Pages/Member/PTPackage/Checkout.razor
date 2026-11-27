@@ -33,18 +33,13 @@
                 }
                 else if (order.Status == "Pending" && CanChoose(order))
                 {
-                    <p>Còn <strong>@Remaining(order.ProceedBefore!.Value)</strong> để chọn cách thanh toán (trước @LocalTime(order.ProceedBefore.Value)). Sau khi chọn, số tiền được chốt.</p>
+                    <p>Còn <strong>@Remaining(order.ExpiresAt)</strong> để chọn cách thanh toán (trước @LocalTime(order.ExpiresAt)). Sau khi chọn, số tiền được chốt.</p>
                     <CheckoutPaymentOptions OrderNumber="@order.OrderNumber" Busy="_busy" OnChoose="PayAsync" />
                     <small class="trainer-muted">VietQR: chuyển khoản trong 15 phút kể từ lúc giữ lịch. Tại quầy: trả tiền mặt trong 24 giờ kể từ lúc giữ lịch.</small>
                 }
-                else if (order.Status == "Pending" && order.ProceedBefore is not null)
-                {
-                    <p>Đã quá 10 phút mà chưa chọn cách thanh toán. Lịch đang giữ sẽ được trả lại lúc @LocalTime(order.HoldExpiresAt).</p>
-                    <a class="trainer-button" href="/trainers">Chọn lịch khác</a>
-                }
                 else
                 {
-                    <p>Đã hết thời gian chuyển khoản. Hệ thống đang chờ xác nhận giao dịch đã thực hiện đúng hạn (đến @LocalTime(order.HoldExpiresAt)).</p>
+                    <p>Đã hết thời gian thanh toán. Nếu bạn đã chuyển khoản đúng hạn, hệ thống đang chờ xác nhận giao dịch (đến @LocalTime(order.HoldExpiresAt)); nếu chưa, lịch đang giữ sẽ được trả lại lúc đó.</p>
                 }
             }
             else if (order.Status == "Paid")
@@ -64,13 +59,13 @@
             @if (order.Refunds is { Count: > 0 } refunds)
             {
                 <section class="trainer-stack">
-                    <h3>Các khoản hoàn tiền</h3>
+                    <h3>Các khoản chuyển chưa được áp dụng</h3>
                     <ul class="trainer-list">
                         @foreach (var refund in refunds)
                         {
                             <li @key="refund.Id" class="trainer-row trainer-between">
                                 <span>@Money(refund.Amount) · @LocalTime(refund.ReceivedAt)</span>
-                                <TrainerStatus Status="@(refund.Status switch { "Pending" => "RefundPending", "Failed" => "RefundFailed", var s => s })" />
+                                <TrainerStatus Status="RefundPending" />
                             </li>
                         }
                     </ul>
@@ -103,9 +98,8 @@
             _ = PollAsync(ct);
     }
 
-    // GBR-102: the payment choice must be made within 10 minutes of holding the slots.
-    private static bool CanChoose(PTCheckoutResponse order) =>
-        order.ProceedBefore is { } before && DateTime.UtcNow < before && DateTime.UtcNow < order.ExpiresAt;
+    // GBR-102: the payment choice can be made until the 15-minute payment deadline.
+    private static bool CanChoose(PTCheckoutResponse order) => DateTime.UtcNow < order.ExpiresAt;
 
     private async Task RefreshAsync()
     {

@@ -89,9 +89,6 @@ public sealed partial class LockerService
         charge.LockerPurpose == LockerPaymentPurpose.Rental && charge.Order.Channel == OrderChannel.Online &&
         charge.PaymentStartedAt is null;
 
-    private static DateTime ProceedDeadline(PaymentTransaction charge) =>
-        (charge.PaymentExpiresAt ?? HoldDeadline(charge)) - PaymentWindow + ProceedWindow;
-
     public Task<Result<LockerCheckout>> Proceed(string actor, string number, CancellationToken ct) =>
         Write(async () =>
         {
@@ -109,29 +106,14 @@ public sealed partial class LockerService
             {
                 if (!Pending(charge, now))
                     return Conflict<LockerCheckout>("Đơn không còn chờ thanh toán.");
-                if (ProceedDeadline(charge) <= now)
-                {
-                    await CancelUnstarted(charge, now, ct);
-                    await repo.SaveChangesAsync(ct);
-                    return Result<LockerCheckout>.Failure(
-                        "Đã quá 10 phút để bắt đầu thanh toán. Đơn đã bị hủy, vui lòng thuê lại.",
-                        "LOCKER_PAYMENT_WINDOW_CLOSED", 409);
-                }
+                if (PaymentDeadline(charge) <= now)
+                    return Conflict<LockerCheckout>("Đã quá hạn thanh toán. Đơn sẽ hết hạn, vui lòng thuê lại.");
                 charge.PaymentStartedAt = now;
                 await repo.SaveChangesAsync(ct);
             }
             var qr = Pending(charge, now) && PaymentDeadline(charge) > now ? Qr(charge) : null;
             return Result<LockerCheckout>.Success(Checkout(charge, now, qr));
         }, ct);
-
-    private async Task CancelUnstarted(PaymentTransaction charge, DateTime now, CancellationToken ct)
-    {
-        charge.Order.OrderStatus = OrderStatus.Cancelled;
-        charge.PaymentStatus = PaymentStatus.Cancelled;
-        ReleaseVoucher(charge);
-        await ReleaseInitialHold(charge, now, ct);
-        Audit(null, charge.LockerRentalContract!, $"LockerProceedWindowExpired:{charge.Order.OrderNumber}", now);
-    }
 
     public async Task<Result<LockerCheckout>> GetCheckout(string actor, UserRole role, string number, CancellationToken ct)
     {
@@ -355,13 +337,13 @@ public sealed partial class LockerService
             charge.RefundStatus == "Failed" ? "RefundFailed" :
             charge.RefundStatus == "Pending" ? "RefundPending" :
             order.OrderStatus == OrderStatus.Pending && HoldDeadline(charge) <= now ? "Expired" :
-            order.OrderStatus == OrderStatus.Pending && PaymentDeadline(charge) <= now ? "AwaitingConfirmation" :
+            order.OrderStatus == OrderStatus.Pending && PaymentDeadline(charge) <= now && !ChoosingPayment(charge) ? "AwaitingConfirmation" :
             order.OrderStatus.ToString();
         return new(charge.LockerRentalContractId!.Value, order.OrderNumber, status, charge.AmountDue, Utc(PaymentDeadline(charge)),
             qr, charge.Invoice?.InvoiceNumber, charge.RefundAmount ?? 0, charge.RefundReason,
             charge.RefundStatus == "Refunded" && charge.RefundResolvedAt is { } refunded ? Utc(refunded) : null,
             Utc(HoldDeadline(charge)),
-            NeedsProceed(charge) && order.OrderStatus == OrderStatus.Pending ? Utc(ProceedDeadline(charge)) : null,
+            NeedsProceed(charge) && order.OrderStatus == OrderStatus.Pending ? Utc(PaymentDeadline(charge)) : null,
             charge.PaymentMethod.ToString(), ChoosingPayment(charge) && Pending(charge, now) && PaymentDeadline(charge) > now,
             Discount(charge), order.VoucherRedemption?.VoucherCodeSnapshot);
     }

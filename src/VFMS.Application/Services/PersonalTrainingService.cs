@@ -25,8 +25,6 @@ public sealed partial class PersonalTrainingService(IPersonalTrainingRepository 
     private Task<ApplicationUser?> User(string id, UserRole role, CancellationToken ct) =>
         repo.GetActiveUserInRoleAsync(id, role.ToString(), ct);
 
-    private Task<bool> TeachesYoga(string userId, CancellationToken ct) => repo.HasActiveYogaAssignmentsAsync(userId, ct);
-
     private Task<IReadOnlyList<PTAvailability>> Templates(string trainerId, CancellationToken ct) =>
         repo.GetPublishedSlotsAsync(trainerId, ct);
 

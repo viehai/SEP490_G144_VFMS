@@ -108,8 +108,7 @@ public sealed partial class MembershipPurchaseRepository
 
             var deadline = row.Method == PaymentMethod.Cash
                 ? row.HoldUntil ?? row.CreatedAt.AddHours(PackageOrderTiming.CounterPaymentHours)
-                : row.CreatedAt.AddMinutes(row.IsPt && row.Method is null
-                    ? PackageOrderTiming.PtChoosePaymentMinutes : PackageOrderTiming.OnlinePaymentMinutes);
+                : row.CreatedAt.AddMinutes(PackageOrderTiming.OnlinePaymentMinutes);
             var canConfirm = row.Status == OrderStatus.Pending && row.Method == PaymentMethod.Cash &&
                 row.PaymentStatus == PaymentStatus.Pending && row.AmountDue > 0 &&
                 (row.IsPt ? !row.HasPayment && row.PtStatus == PTPurchaseStatus.PendingPayment && row.HoldUntil > nowUtc : row.HasPayment);

@@ -260,15 +260,6 @@ public sealed class LockerRepository(VfmsDbContext db) : AuditedRepositoryBase(d
                 p.LockerPurpose == LockerPaymentPurpose.Rental && p.LockerRentalContract!.ContractStatus == LockerContractStatus.PendingPayment &&
                 p.Order.OrderStatus == OrderStatus.Expired)).OrderBy(p => p.Id).Take(take).ToListAsync(cancellationToken);
 
-    // GBR-109: PaymentExpiresAt is 15 minutes after creation, so the 10-minute window ended when it is within 5 minutes.
-    public async Task<IReadOnlyList<PaymentTransaction>> GetUnstartedChargesAsync(DateTime now, int take,
-        CancellationToken cancellationToken = default) =>
-        await Context.PaymentTransactions.Include(p => p.LockerRentalContract!).ThenInclude(r => r.Locker)
-            .Include(p => p.Order).Where(p => p.LockerPurpose == LockerPaymentPurpose.Rental &&
-                p.Order.Channel == OrderChannel.Online && p.Order.OrderStatus == OrderStatus.Pending &&
-                p.PaymentStartedAt == null && p.PaymentExpiresAt <= now.AddMinutes(5))
-            .OrderBy(p => p.Id).Take(take).ToListAsync(cancellationToken);
-
     public Task<bool> IsTransferRecordedAsync(PaymentTransaction payment, string reference, CancellationToken cancellationToken = default) =>
         CheckoutRefunds.IsRecorded(Context, payment, reference, cancellationToken);
 

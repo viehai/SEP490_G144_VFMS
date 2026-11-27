@@ -18,29 +18,6 @@ public sealed partial class PersonalTrainingService
         return Result<IReadOnlyList<PTWeeklySlot>>.Success(slots);
     }
 
-    public async Task<Result<IReadOnlyList<PTCalendarSlot>>> Calendar(string trainerId, DateOnly from, CancellationToken ct)
-    {
-        if (from.DayNumber > DateOnly.MaxValue.DayNumber - 13)
-            return Invalid<IReadOnlyList<PTCalendarSlot>>("Ngày xem lịch không hợp lệ.");
-        var trainer = await User(trainerId, UserRole.PT, ct);
-        if (trainer is null)
-            return Missing<IReadOnlyList<PTCalendarSlot>>();
-        var through = from.AddDays(13);
-        var templates = await Templates(trainerId, ct);
-        var booked = await repo.GetOccupyingSessionsAsync(Now, from, through, trainerId, null, cancellationToken: ct);
-        var yoga = await repo.GetYogaSessionsAsync(trainerId, null, from, through, ct);
-        var slots = PersonalTrainingRules.Occurrences(from, through, templates, int.MaxValue)
-            .Select(x => new PTCalendarSlot(x.Slot.Id, x.Date, x.Slot.StartTime, x.Slot.EndTime,
-                booked.Any(s => s.SessionDate == x.Date && PersonalTrainingRules.Overlaps(x.Slot.StartTime, x.Slot.EndTime, s.StartTime, s.EndTime)) ||
-                yoga.Any(s => s.ScheduledDate == x.Date && PersonalTrainingRules.Overlaps(x.Slot.StartTime, x.Slot.EndTime, s.StartTime, s.EndTime))
-                    ? "Booked" : Utc(x.Date, x.Slot.StartTime) <= Now ? "Past" : "Available")).ToList();
-        slots.AddRange(booked.Where(s => !slots.Any(x => x.Date == s.SessionDate &&
-                x.StartTime == s.StartTime && x.EndTime == s.EndTime))
-            .Select(s => new PTCalendarSlot(s.PTAvailabilityId ?? 0, s.SessionDate, s.StartTime, s.EndTime, "Booked"))
-            .ToArray());
-        return Result<IReadOnlyList<PTCalendarSlot>>.Success(slots.OrderBy(s => s.Date).ThenBy(s => s.StartTime).ToArray());
-    }
-
     public async Task<Result<IReadOnlyList<PTSlotInput>>> Template(string actor, CancellationToken ct)
     {
         if (await User(actor, UserRole.PT, ct) is null)
@@ -63,8 +40,6 @@ public sealed partial class PersonalTrainingService
         var trainer = await User(actor, UserRole.PT, ct);
         if (trainer is null)
             return Forbidden<bool>();
-        if (await TeachesYoga(actor, ct))
-            return Conflict<bool>("Huấn luyện viên đang phụ trách lớp Yoga.");
         if (request.Slots.Any(s => s is null))
             return Invalid<bool>("Mẫu lịch chứa ca không hợp lệ.");
         var desired = request.Slots.Distinct().ToArray();

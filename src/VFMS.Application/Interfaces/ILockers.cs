@@ -74,8 +74,6 @@ public interface ILockerRepository : IAuditedRepository
     Task<PaymentTransaction?> GetCheckoutAsync(string orderNumber, int gymId, string? customerId, CancellationToken cancellationToken = default);
     /// <summary>Locker charges whose hold expired unpaid, with the rental's locker and the order loaded.</summary>
     Task<IReadOnlyList<PaymentTransaction>> GetStaleChargesAsync(DateTime now, int take, CancellationToken cancellationToken = default);
-    /// <summary>GBR-109: online rental charges whose 10-minute 'Proceed to Payment' window passed unstarted.</summary>
-    Task<IReadOnlyList<PaymentTransaction>> GetUnstartedChargesAsync(DateTime now, int take, CancellationToken cancellationToken = default);
     Task<bool> IsTransferRecordedAsync(PaymentTransaction payment, string reference, CancellationToken cancellationToken = default);
     void RecordExtraTransfer(PaymentTransaction payment, SepayTransfer transfer, DateTime now);
     void RecordUnappliedTransfer(PaymentTransaction payment, SepayTransfer transfer, DateTime now);

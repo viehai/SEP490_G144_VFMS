@@ -75,12 +75,6 @@ public sealed class PersonalTrainingRepository(VfmsDbContext db) : AuditedReposi
     public Task<ApplicationUserRole?> GetRoleAssignmentAsync(string userId, int roleId, CancellationToken cancellationToken = default) =>
         Context.ApplicationUserRoles.SingleOrDefaultAsync(role => role.UserId == userId && role.RoleId == roleId, cancellationToken);
 
-    private IQueryable<YogaClass> ActiveYogaAssignments => Context.YogaClasses.Where(c =>
-        c.ClassStatus == YogaClassStatus.Draft || c.ClassStatus == YogaClassStatus.Published);
-
-    public Task<bool> HasActiveYogaAssignmentsAsync(string userId, CancellationToken cancellationToken = default) =>
-        ActiveYogaAssignments.AnyAsync(c => c.InstructorUserId == userId, cancellationToken);
-
     // Feature 4 serves trainers whose Trainer Role is PT only; Yoga trainers never sell or take over PT contracts.
     private IQueryable<TrainerProfile> PTProfiles => Context.TrainerProfiles
         .Where(p => p.IsActive && p.TrainerRole!.RoleName == TrainerRole.PT);

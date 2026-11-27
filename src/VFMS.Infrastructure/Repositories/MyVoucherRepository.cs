@@ -53,7 +53,6 @@ public sealed class MyVoucherRepository(VfmsDbContext db) : IMyVoucherRepository
 
     public async Task<decimal?> GetCheckoutSubtotalAsync(string userId, string orderNumber, DateTime now, CancellationToken ct)
     {
-        var ptCutoff = now.AddMinutes(-PackageOrderTiming.PtChoosePaymentMinutes);
         var onlineCutoff = now.AddMinutes(-PackageOrderTiming.OnlinePaymentMinutes);
         var cashCutoff = now.AddHours(-PackageOrderTiming.CounterPaymentHours);
         var orders = db.Orders.Where(o => o.PurchaserUserId == userId && o.OrderNumber == orderNumber &&
@@ -69,7 +68,7 @@ public sealed class MyVoucherRepository(VfmsDbContext db) : IMyVoucherRepository
                 : o.PaymentTransaction.AmountDue - (o.PaymentTransaction.OverdueFees ?? 0))).SingleOrDefaultAsync(ct);
         if (lockerFee is > 0) return lockerFee;
         var prices = await orders.Where(o => db.PTPurchases.Any(p => p.OrderId == o.Id)
-            ? o.Channel == OrderChannel.Online && o.PaymentTransaction == null && o.CreatedAt > ptCutoff &&
+            ? o.Channel == OrderChannel.Online && o.PaymentTransaction == null && o.CreatedAt > onlineCutoff &&
                 db.PTPurchases.Any(p => p.OrderId == o.Id && p.Status == PTPurchaseStatus.PendingPayment)
             : o.PaymentTransaction != null && o.PaymentTransaction.PaymentStatus == PaymentStatus.Pending &&
                 (o.PaymentTransaction.PaymentMethod == PaymentMethod.Cash || o.PaymentTransaction.PaymentMethod == PaymentMethod.VietQR) &&

@@ -46,8 +46,6 @@ public sealed partial class LockerService
                 return charge.PaymentMethod == method && string.Equals(order.VoucherRedemption?.VoucherCodeSnapshot, code, StringComparison.OrdinalIgnoreCase)
                     ? Result<LockerCheckout>.Success(Checkout(charge, now.UtcDateTime, Qr(charge)))
                     : Conflict<LockerCheckout>("Đơn đã chốt phương thức và voucher. Hủy đơn còn chờ nếu cần chọn lại.");
-            if (NeedsProceed(charge) && ProceedDeadline(charge) <= now.UtcDateTime)
-                return Conflict<LockerCheckout>("Đã quá 10 phút để chọn thanh toán. Vui lòng thuê lại.");
 
             VoucherRedemption? redemption = null;
             if (code is not null)

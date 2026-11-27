@@ -18,7 +18,7 @@ public sealed record LockerHandoverRequest(bool TermsAccepted, bool IdentityVeri
 public sealed record LockerCashRequest(decimal Amount);
 public sealed record LockerRenewalRequest(int PolicyId, string? PaymentMethod, bool ChooseAtCheckout = false);
 public sealed record LockerPaymentRequest(string PaymentMethod, string? VoucherCode = null);
-// ProceedBy: the Member must click 'Proceed to Payment' before this time (GBR-109); null once payment started or not applicable.
+// ProceedBy: the Member can continue to payment until this time (the 15-minute payment deadline, GBR-102); null once payment started or not applicable.
 public sealed record LockerCheckout(int RentalId, string OrderNumber, string Status, decimal AmountDue,
     DateTime ExpiresAt, VietQrPaymentResponse? VietQr, string? InvoiceNumber,
     decimal RefundAmount, string? RefundReason, DateTime? RefundedAt, DateTime HoldExpiresAt = default,

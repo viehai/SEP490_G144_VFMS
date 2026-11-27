@@ -187,7 +187,7 @@ public partial class MembershipCashReceipt : IDisposable
 
     private static string? RefundLabel(string? status) => status switch
     {
-        "Pending" => "Chờ hoàn tiền",
+        "Pending" => "Chờ lễ tân xử lý",
         "Refunded" => "Đã hoàn tiền",
         "Failed" => "Hoàn tiền chưa thành công",
         _ => null

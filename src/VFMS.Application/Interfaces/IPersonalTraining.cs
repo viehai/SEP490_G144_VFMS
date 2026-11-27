@@ -30,8 +30,6 @@ public interface IPersonalTrainingRepository : IAuditedRepository
     Task<string?> GetUserNameAsync(string userId, CancellationToken cancellationToken = default);
     Task<int?> GetRoleIdAsync(string roleName, CancellationToken cancellationToken = default);
     Task<ApplicationUserRole?> GetRoleAssignmentAsync(string userId, int roleId, CancellationToken cancellationToken = default);
-    /// <summary>True while the user teaches a Draft or Published Yoga class.</summary>
-    Task<bool> HasActiveYogaAssignmentsAsync(string userId, CancellationToken cancellationToken = default);
     /// <summary>The active profile of a trainer whose Trainer Role is PT.</summary>
     Task<TrainerProfile?> GetPTProfileAsync(string trainerUserId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<TrainerProfile>> GetNotAcceptingProfilesAsync(CancellationToken cancellationToken = default);
@@ -115,7 +113,6 @@ public interface IPersonalTrainingRepository : IAuditedRepository
 public interface IPersonalTrainingService
 {
     Task<Result<IReadOnlyList<PTWeeklySlot>>> WeeklyTemplate(string trainerId, CancellationToken ct);
-    Task<Result<IReadOnlyList<PTCalendarSlot>>> Calendar(string trainerId, DateOnly from, CancellationToken ct);
     Task<Result<IReadOnlyList<PTSlotInput>>> Template(string actor, CancellationToken ct);
     Task<Result<PTOperatingHours>> OperatingHours(string actor, CancellationToken ct);
     Task<Result<bool>> Publish(string actor, PTPublishRequest request, CancellationToken ct);

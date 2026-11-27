@@ -45,8 +45,6 @@ public sealed partial class LockerService
                 ReleaseReplacement(rental);
                 Audit(null, rental, "LockerReplacementExpired", now);
             }
-            foreach (var charge in await repo.GetUnstartedChargesAsync(now, 100, ct))
-                await CancelUnstarted(charge, now, ct);
 
             // GBR-106: a Daily key is collected on the paid day, an online monthly key by the pickup deadline.
             foreach (var rental in await repo.GetAwaitingHandoverAsync(100, ct))

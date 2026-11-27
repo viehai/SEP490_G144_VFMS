@@ -58,7 +58,9 @@ public static class CheckoutRefunds
         if (!notify)
             return;
         var order = payment.SourcePaymentTransaction?.Order ?? payment.Order;
-        Notify(db, order, $"Đã tạo yêu cầu hoàn toàn bộ {payment.RefundAmount:N0} VND cho đơn {order.OrderNumber}.", now);
+        Notify(db, order, "Thanh toán chưa được áp dụng",
+            $"Đã nhận {payment.RefundAmount:N0} VND cho đơn {order.OrderNumber} nhưng chưa thể xác nhận đơn. " +
+            "Vui lòng liên hệ quầy lễ tân để được xử lý.", now);
     }
 
     public static void Resolve(VfmsDbContext db, PaymentTransaction payment, string actor, bool succeeded,
@@ -84,17 +86,17 @@ public static class CheckoutRefunds
             OccurredAt = now
         });
         var order = payment.SourcePaymentTransaction?.Order ?? payment.Order;
-        Notify(db, order, succeeded
+        Notify(db, order, "Hoàn tiền", succeeded
             ? $"Đã hoàn {payment.RefundAmount:N0} VND cho đơn {order.OrderNumber}."
             : $"Chưa thể hoàn tiền cho đơn {order.OrderNumber}.", now);
     }
 
-    private static void Notify(VfmsDbContext db, Order order, string message, DateTime now) =>
+    private static void Notify(VfmsDbContext db, Order order, string title, string message, DateTime now) =>
         db.Notifications.Add(new Notification
         {
             RecipientUserId = order.PurchaserUserId,
             NotificationType = "Payment",
-            Title = "Hoàn tiền",
+            Title = title,
             Message = message,
             NotifiedAt = now,
             EntityType = nameof(Order),

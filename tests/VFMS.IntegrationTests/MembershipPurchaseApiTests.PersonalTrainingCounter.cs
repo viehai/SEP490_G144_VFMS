@@ -78,7 +78,7 @@ public sealed partial class MembershipPurchaseApiTests
     }
 
     [Fact]
-    public async Task PTCounterOrderExpiresAfterADayAndPaymentChoiceClosesAfterTenMinutes()
+    public async Task PTCounterOrderExpiresAfterADayAndPaymentChoiceClosesAtThePaymentDeadline()
     {
         var booking = await PreparePTCheckout();
         using var member = Client("member", "Member");
@@ -100,13 +100,25 @@ public sealed partial class MembershipPurchaseApiTests
             "/api/pt/contracts/page?page=1"))!.Items);
 
         // Use another future schedule after the first checkout has expired.
+        // GBR-102: there is no 10-minute limit; the payment choice is open until the 15-minute payment deadline.
         var second = await HoldPT(member, booking with { StartDate = booking.StartDate.AddDays(7) });
-        Assert.NotNull(second.ProceedBefore);
-        _clock.Now = new DateTimeOffset(second.ProceedBefore!.Value).AddSeconds(1);
-        using var tooLate = await member.PostAsJsonAsync($"/api/pt/purchases/{second.OrderNumber}/payment",
+        _clock.Now = new DateTimeOffset(second.ExpiresAt).AddMinutes(-4);
+        using var chosen = await member.PostAsJsonAsync($"/api/pt/purchases/{second.OrderNumber}/payment",
+            new PTPaymentRequest(null, MembershipPaymentMethods.VietQr));
+        Assert.Equal(HttpStatusCode.OK, chosen.StatusCode);
+        Assert.NotNull((await chosen.Content.ReadFromJsonAsync<PTCheckoutResponse>())!.VietQr);
+
+        // The unpaid hold ends at minute 20; the same schedule can then be held again.
+        _clock.Now = new DateTimeOffset(second.HoldExpiresAt).AddSeconds(1);
+        await using (var scope = _app.Services.CreateAsyncScope())
+            await scope.ServiceProvider.GetRequiredService<VFMS.Application.Interfaces.IPersonalTrainingService>().ExpirePending(CancellationToken.None);
+        var third = await HoldPT(member, booking with { StartDate = booking.StartDate.AddDays(7) });
+        _clock.Now = new DateTimeOffset(third.ExpiresAt).AddSeconds(1);
+        using var tooLate = await member.PostAsJsonAsync($"/api/pt/purchases/{third.OrderNumber}/payment",
             new PTPaymentRequest(null, MembershipPaymentMethods.Cash));
         Assert.Equal(HttpStatusCode.Conflict, tooLate.StatusCode);
-        Assert.Contains("PT_PAYMENT_WINDOW_CLOSED", await tooLate.Content.ReadAsStringAsync());
+        // Nothing was paid, so there is no transfer to wait for: the order is still Pending until the hold ends.
+        Assert.Equal("Pending", (await member.GetFromJsonAsync<PTCheckoutResponse>($"/api/pt/purchases/{third.OrderNumber}"))!.Status);
     }
 
     private static async Task<PTCheckoutResponse> HoldPT(HttpClient member, PTBookingRequest booking)

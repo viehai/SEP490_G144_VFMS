@@ -58,7 +58,7 @@ public static class LockerText
         "Paid" => "Đã thanh toán",
         "Expired" => "Hết hạn",
         "Cancelled" => "Đã hủy",
-        "RefundPending" => "Chờ xử lý hoàn tiền",
+        "RefundPending" => "Chờ lễ tân xử lý",
         "Refunded" => "Đã hoàn tiền",
         "RefundFailed" => "Hoàn tiền thất bại",
         _ => status

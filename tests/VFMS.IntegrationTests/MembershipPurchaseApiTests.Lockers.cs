@@ -170,43 +170,53 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Equal(amount, automatic.GetProperty("amount").GetDecimal());
         Assert.Equal("Pending", automatic.GetProperty("status").GetString());
         Assert.Equal(orderNumber, automatic.GetProperty("orderNumber").GetString());
-        var refundPath = $"/api/checkout-refunds/{automatic.GetProperty("id").GetInt32()}/outcome";
-        using var failed = await staff.PostAsJsonAsync(refundPath, new { succeeded = false });
-        Assert.Equal(HttpStatusCode.OK, failed.StatusCode);
-        var failedRefund = await failed.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("Failed", failedRefund.GetProperty("status").GetString());
-        using var completed = await staff.PostAsJsonAsync(refundPath, new { succeeded = true, reference = "TRANSFER-REFUND" });
-        Assert.True(completed.StatusCode == HttpStatusCode.OK, await completed.Content.ReadAsStringAsync());
-        var result = await completed.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("Refunded", result.GetProperty("status").GetString());
+        // There is no refund processing: the front desk settles the transfer outside the system (GBR-102).
+        using var refundPath = await staff.PostAsJsonAsync(
+            $"/api/checkout-refunds/{automatic.GetProperty("id").GetInt32()}/outcome", new { succeeded = true });
+        Assert.Equal(HttpStatusCode.NotFound, refundPath.StatusCode);
         using var replay = await NotifyTransferAsync(transferContent, amount, 911, transfer);
         Assert.Equal(HttpStatusCode.OK, replay.StatusCode);
-        Assert.Empty((await staff.GetFromJsonAsync<JsonElement>("/api/checkout-refunds/pending")).EnumerateArray());
+        Assert.Single((await staff.GetFromJsonAsync<JsonElement>("/api/checkout-refunds/pending")).EnumerateArray());
     }
 
     [Fact]
-    public async Task LockerProceedToPaymentMustBeClickedWithinTenMinutes()
+    public async Task LockerProceedToPaymentIsOpenUntilThePaymentDeadlineAndTheHoldEndsAtMinuteTwenty()
     {
         var (lockerId, policyId) = await PrepareLocker();
         using var member = Client("member", "Member");
         var request = new { lockerId, policyId };
-        var first = await CreateLockerCheckout(member, "/api/lockers/rentals", request);
-        _clock.Now = _clock.Now.AddMinutes(10).AddSeconds(1);
-        using var closed = await member.PostAsync($"/api/lockers/orders/{first.GetProperty("orderNumber").GetString()}/proceed", null);
-        Assert.Equal(HttpStatusCode.Conflict, closed.StatusCode);
-        Assert.Contains("LOCKER_PAYMENT_WINDOW_CLOSED", await closed.Content.ReadAsStringAsync());
-        Assert.Equal("Available", Assert.Single((await member.GetFromJsonAsync<JsonElement>("/api/lockers")).EnumerateArray())
-            .GetProperty("status").GetString());
 
-        // The job cancels an order that was never started and releases the locker at minute 10.
-        var second = await CreateLockerCheckout(member, "/api/lockers/rentals", request);
-        Assert.Equal("Reserved", Assert.Single((await member.GetFromJsonAsync<JsonElement>("/api/lockers")).EnumerateArray())
-            .GetProperty("status").GetString());
+        // GBR-102: there is no 10-minute limit. The job keeps the locker held until minute 20.
+        var first = await CreateLockerCheckout(member, "/api/lockers/rentals", request);
         _clock.Now = _clock.Now.AddMinutes(10).AddSeconds(1);
         await using (var scope = _app.Services.CreateAsyncScope())
             await scope.ServiceProvider.GetRequiredService<ILockerService>().Expire(CancellationToken.None);
-        var order = await member.GetFromJsonAsync<JsonElement>($"/api/lockers/orders/{second.GetProperty("orderNumber").GetString()}");
-        Assert.Equal("Cancelled", order.GetProperty("status").GetString());
+        Assert.Equal("Reserved", Assert.Single((await member.GetFromJsonAsync<JsonElement>("/api/lockers")).EnumerateArray())
+            .GetProperty("status").GetString());
+        using var proceeded = await member.PostAsync($"/api/lockers/orders/{first.GetProperty("orderNumber").GetString()}/proceed", null);
+        Assert.Equal(HttpStatusCode.OK, proceeded.StatusCode);
+
+        _clock.Now = _clock.Now.AddMinutes(20);
+        await using (var scope = _app.Services.CreateAsyncScope())
+            await scope.ServiceProvider.GetRequiredService<ILockerService>().Expire(CancellationToken.None);
+        Assert.Equal("Available", Assert.Single((await member.GetFromJsonAsync<JsonElement>("/api/lockers")).EnumerateArray())
+            .GetProperty("status").GetString());
+
+        // An order that never proceeded: after minute 15 it cannot proceed any more but still holds the locker
+        // (nothing was paid, so it is not "AwaitingConfirmation"); the job releases the locker at minute 20.
+        var second = await CreateLockerCheckout(member, "/api/lockers/rentals", request);
+        var number = second.GetProperty("orderNumber").GetString();
+        _clock.Now = _clock.Now.AddMinutes(16);
+        await using (var scope = _app.Services.CreateAsyncScope())
+            await scope.ServiceProvider.GetRequiredService<ILockerService>().Expire(CancellationToken.None);
+        using var late = await member.PostAsync($"/api/lockers/orders/{number}/proceed", null);
+        Assert.Equal(HttpStatusCode.Conflict, late.StatusCode);
+        Assert.Equal("Pending", (await member.GetFromJsonAsync<JsonElement>($"/api/lockers/orders/{number}")).GetProperty("status").GetString());
+        Assert.Equal("Reserved", Assert.Single((await member.GetFromJsonAsync<JsonElement>("/api/lockers")).EnumerateArray())
+            .GetProperty("status").GetString());
+        _clock.Now = _clock.Now.AddMinutes(4);
+        await using (var scope = _app.Services.CreateAsyncScope())
+            await scope.ServiceProvider.GetRequiredService<ILockerService>().Expire(CancellationToken.None);
         Assert.Equal("Available", Assert.Single((await member.GetFromJsonAsync<JsonElement>("/api/lockers")).EnumerateArray())
             .GetProperty("status").GetString());
     }

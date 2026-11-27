@@ -48,12 +48,12 @@
             {
                 @if (_now < by)
                 {
-                    <p class="text-sm">Tủ đang được giữ cho bạn. Còn <strong>@LockerText.Remaining(by, _now)</strong> để bấm "Tiếp tục thanh toán", quá hạn đơn sẽ bị hủy và tủ được nhả.</p>
+                    <p class="text-sm">Tủ đang được giữ cho bạn. Còn <strong>@LockerText.Remaining(by, _now)</strong> để bấm "Tiếp tục thanh toán" và chuyển khoản; quá hạn mà chưa thanh toán thì tủ được nhả.</p>
                     <button type="button" class="@Ui.PrimaryButton" disabled="@_busy" @onclick="ProceedAsync">@(_busy ? "Đang tạo mã…" : "Tiếp tục thanh toán")</button>
                 }
                 else
                 {
-                    <p role="alert" class="@Ui.Error">Thanh toán không thành công hoặc đã bị hủy. Đã quá 10 phút mà chưa bấm tiếp tục thanh toán, đơn sẽ được hủy và tủ nhả lại. Vui lòng thử lại.</p>
+                    <p role="alert" class="@Ui.Error">Đã quá hạn thanh toán. Nếu bạn chưa thanh toán thì tủ sẽ được nhả lại; vui lòng thuê lại.</p>
                 }
             }
             else if (order.Status == "Pending")

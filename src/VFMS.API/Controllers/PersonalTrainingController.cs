@@ -19,11 +19,6 @@ public sealed class PersonalTrainingController(IPersonalTrainingService service)
 
     private async Task<IActionResult> Reply<T>(Task<Result<T>> result) => this.ToActionResult(await result);
 
-    [HttpGet("trainers/{trainerId}/calendar")]
-    [AllowAnonymous]
-    public Task<IActionResult> Calendar(string trainerId, [FromQuery, BindRequired] DateOnly from, CancellationToken ct) =>
-        Reply(service.Calendar(trainerId, from, ct));
-
     [HttpGet("trainers/{trainerId}/weekly-template")]
     [AllowAnonymous]
     public Task<IActionResult> WeeklyTemplate(string trainerId, CancellationToken ct) =>

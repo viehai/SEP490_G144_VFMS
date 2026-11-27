@@ -697,36 +697,6 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
-    public async Task ActiveYogaInstructorCannotSellNewPTSessions()
-    {
-        var request = await PreparePTCheckout();
-        await using var scope = _app.Services.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
-        var yogaClass = new YogaClass
-        {
-            ClassName = "Yoga",
-            YogaClassType = new YogaClassType { TypeName = "Yoga" },
-            InstructorUserId = request.TrainerId,
-            ClassStatus = YogaClassStatus.Published,
-            MinParticipants = 1,
-            MaxParticipants = 10,
-            DurationMinutes = 60
-        };
-        db.YogaClasses.Add(yogaClass);
-        await db.SaveChangesAsync();
-
-        using var member = Client("member", "Member");
-        using var hold = await member.PostAsJsonAsync("/api/pt/purchases", request);
-        Assert.Equal(HttpStatusCode.Conflict, hold.StatusCode);
-        Assert.Empty(await db.PTPurchases.ToListAsync());
-
-        yogaClass.ClassStatus = YogaClassStatus.Completed;
-        await db.SaveChangesAsync();
-        using var available = await member.PostAsJsonAsync("/api/pt/purchases", request);
-        Assert.True(available.StatusCode == HttpStatusCode.Created, await available.Content.ReadAsStringAsync());
-    }
-
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -913,9 +883,9 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.True(published.StatusCode == HttpStatusCode.OK, await published.Content.ReadAsStringAsync());
         // Use a future Monday as a stable recurring fixture; real bookings may start on any weekday.
         var start = NextMonday(Today.AddDays(3));
-        var calendar = (await trainer.GetFromJsonAsync<PTCalendarSlot[]>($"/api/pt/trainers/buyer/calendar?from={start:yyyy-MM-dd}"))!;
-        var pattern = calendar.Where(s => s.StartTime.Hour == 18 &&
-            s.Date.DayOfWeek is DayOfWeek.Monday or DayOfWeek.Wednesday or DayOfWeek.Friday)
+        var weekly = (await trainer.GetFromJsonAsync<PTWeeklySlot[]>("/api/pt/trainers/buyer/weekly-template"))!;
+        var pattern = weekly.Where(s => s.StartTime.Hour == 18 &&
+            s.DayOfWeek is DayOfWeek.Monday or DayOfWeek.Wednesday or DayOfWeek.Friday)
             .Select(s => s.TemplateId).Distinct().ToArray();
         Assert.Equal(3, pattern.Length);
         return new("buyer", package.Id, start, pattern);

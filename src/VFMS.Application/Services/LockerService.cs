@@ -12,8 +12,6 @@ public sealed partial class LockerService(ILockerRepository repo, TimeProvider c
     private static readonly TimeSpan LocalOffset = TimeSpan.FromHours(7);
     private static readonly TimeSpan PaymentWindow = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan HoldWindow = TimeSpan.FromMinutes(20);
-    // GBR-109: the Member must click 'Proceed to Payment' within the first 10 minutes of an online rental.
-    private static readonly TimeSpan ProceedWindow = TimeSpan.FromMinutes(10);
 
     /// <summary>RefundReason of the key deposit paid back at termination (UC 5.3); not a checkout refund.</summary>
     public const string DepositReturnReason = "KeyDepositReturn";

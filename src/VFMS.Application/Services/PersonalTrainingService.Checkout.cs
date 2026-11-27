@@ -12,8 +12,6 @@ public sealed partial class PersonalTrainingService
 {
     private static readonly TimeSpan PaymentDuration = TimeSpan.FromMinutes(PackageOrderTiming.OnlinePaymentMinutes);
     private static readonly TimeSpan HoldDuration = TimeSpan.FromMinutes(PackageOrderTiming.PtOnlineHoldMinutes);
-    // GBR-96: the Member must click 'Proceed to Payment' within the first 10 minutes of the order.
-    private static readonly TimeSpan ProceedWindow = TimeSpan.FromMinutes(PackageOrderTiming.PtChoosePaymentMinutes);
     // Counter (cash) orders hold the slots as long as a membership cash order (NewScope: UC 4.4).
     private static readonly TimeSpan CounterHold = TimeSpan.FromHours(PackageOrderTiming.CounterPaymentHours);
     private static DateTime PaymentDeadline(Order order) =>
@@ -36,10 +34,8 @@ public sealed partial class PersonalTrainingService
         if (member is null)
             return Forbidden<Booking>();
         var trainer = await User(request.TrainerId, UserRole.PT, ct);
-        if (trainer is null || trainer.GymId != member.GymId || actor == request.TrainerId)
+        if (trainer is null || actor == request.TrainerId)
             return Missing<Booking>();
-        if (await TeachesYoga(request.TrainerId, ct))
-            return Conflict<Booking>("Huấn luyện viên đang phụ trách lớp Yoga.");
         var profile = await repo.GetPTProfileAsync(request.TrainerId, ct);
         var package = await repo.GetPTPackageAsync(request.PackageId, activeOnly: true, ct);
         if (profile is null || package is null || package.Components.Single().ApplicableTrainerLevel != profile.Level)
@@ -145,7 +141,7 @@ public sealed partial class PersonalTrainingService
         if (member is null)
             return Forbidden<PTWeeklySlot[]>();
         var trainer = await User(request.TrainerId, UserRole.PT, ct);
-        if (trainer is null || trainer.GymId != member.GymId || actor == request.TrainerId)
+        if (trainer is null || actor == request.TrainerId)
             return Missing<PTWeeklySlot[]>();
 
         var level = (await repo.GetPTProfileAsync(request.TrainerId, ct))?.Level;
@@ -171,19 +167,18 @@ public sealed partial class PersonalTrainingService
         var through = dates.Length == 0 ? request.StartDate : dates.Max(s => s.Date);
         var trainerBusy = await repo.GetOccupyingSessionsAsync(now, request.StartDate, through, request.TrainerId, null,
             cancellationToken: ct);
-        var yogaAssigned = await TeachesYoga(request.TrainerId, ct);
 
         return Result<PTWeeklySlot[]>.Success(templates.Select(slot =>
         {
             var pattern = patterns[slot.Id];
             var proposed = pattern.Where(s => s.TemplateId == slot.Id).ToArray();
             // A slot that can still complete the schedule is available; its busy dates are moved to the end.
-            if (pattern.Length > 0 && !yogaAssigned &&
+            if (pattern.Length > 0 &&
                 PersonalTrainingRules.HasBookingNotice(pattern[0].Date, pattern[0].StartTime, now) && proposed.All(s =>
                     InHours(trainer.Gym, s.StartTime, s.EndTime)))
                 return new PTWeeklySlot(slot.Id, slot.DayOfWeek!.Value, slot.StartTime, slot.EndTime, null);
             proposed = candidates[slot.Id].Take(count).Where(s => s.TemplateId == slot.Id).ToArray();
-            var reason = yogaAssigned || proposed.Length == 0 || proposed.Any(s =>
+            var reason = proposed.Length == 0 || proposed.Any(s =>
                 !InHours(trainer.Gym, s.StartTime, s.EndTime) || !PersonalTrainingRules.HasBookingNotice(s.Date, s.StartTime, now))
                 ? "Không khả dụng"
                 : proposed.Any(d => trainerBusy.Any(s => s.SessionStatus != PTSessionStatus.CheckoutHold &&
@@ -281,10 +276,6 @@ public sealed partial class PersonalTrainingService
             }
             if (order.Channel == OrderChannel.Counter)
                 return Result<PTCheckoutResponse>.Success(CheckoutResponse(purchase, order, null, now));
-            if (order.PaymentTransaction is null && order.CreatedAt.Add(ProceedWindow) <= now)
-                return Result<PTCheckoutResponse>.Failure(
-                    "Đã quá 10 phút để bắt đầu thanh toán. Vui lòng đặt lại lịch.", "PT_PAYMENT_WINDOW_CLOSED", 409);
-
             if (order.PaymentTransaction is { } issued)
             {
                 var existingQr = gateway.CreateVietQr(orderNumber, issued.AmountDue);
@@ -406,7 +397,6 @@ public sealed partial class PersonalTrainingService
         var trainer = await User(contract.PTUserId, UserRole.PT, ct);
         return slots.Length > 0 && slots.Length == contract.TotalSessions && trainer is not null &&
             !slots.Any(s => Utc(s.Date, s.StartTime) <= now || !InHours(trainer.Gym, s.StartTime, s.EndTime)) &&
-            !await TeachesYoga(contract.PTUserId, ct) &&
             !await HasConflict(contract.PTUserId, contract.MemberUserId, slots, now, ct, ignorePurchase: contract.Id);
     }
 
@@ -437,17 +427,16 @@ public sealed partial class PersonalTrainingService
         new(purchase.Id, order.OrderNumber,
             order.PaymentTransaction?.RefundStatus switch
             {
-                "Pending" => "RefundPending",
-                "Refunded" => "Refunded",
-                "Failed" => "RefundFailed",
+                "Pending" => "RefundPending", // GBR-102: the transfer was received but not applied; the front desk settles it
                 _ when order.OrderStatus == OrderStatus.Pending && purchase.HoldExpiresAt <= now => "Expired",
-                _ when order.OrderStatus == OrderStatus.Pending && PaymentDeadline(order) <= now => "AwaitingConfirmation",
+                // Only an order that issued a payment can have a transfer to confirm after the 15-minute deadline.
+                _ when order.OrderStatus == OrderStatus.Pending && order.PaymentTransaction is not null &&
+                    PaymentDeadline(order) <= now => "AwaitingConfirmation",
                 _ => order.OrderStatus.ToString()
             },
             order.PaymentTransaction?.AmountDue ?? purchase.PurchasePrice,
             DateTime.SpecifyKind(PaymentDeadline(order), DateTimeKind.Utc),
             qr, order.PaymentTransaction?.Invoice?.InvoiceNumber, DateTime.SpecifyKind(purchase.HoldExpiresAt!.Value, DateTimeKind.Utc),
-            ProceedBefore: DateTime.SpecifyKind(order.CreatedAt.Add(ProceedWindow), DateTimeKind.Utc),
             PayAtCounter: order.Channel == OrderChannel.Counter);
 
     private async Task<bool> RestoreReleasedVoucher(Order order, VoucherRedemption redemption, DateTime now, CancellationToken ct)
@@ -496,7 +485,6 @@ public sealed partial class PersonalTrainingService
             trainer is null || slots.Any(s => Utc(s.Date, s.StartTime) <= now.UtcDateTime ||
                 !InHours(trainer.Gym, s.StartTime, s.EndTime)) ||
             (contract.HoldExpiresAt <= now.UtcDateTime && !await OriginalTemplatesAvailable(contract.PTUserId, slots, ct)) ||
-            await TeachesYoga(contract.PTUserId, ct) ||
             await HasConflict(contract.PTUserId, contract.MemberUserId, slots, now.UtcDateTime, ct, ignorePurchase: contract.Id) ||
             (redemption?.RedemptionStatus == VoucherRedemptionStatus.Released &&
                 !await RestoreReleasedVoucher(order, redemption, now.UtcDateTime, ct)))
@@ -510,7 +498,7 @@ public sealed partial class PersonalTrainingService
             Audit(null, nameof(PTPurchase), contract.Id, "PT_REFUND_REQUESTED");
             Notify(contract.MemberUserId, "Thanh toán PT chưa được áp dụng",
                 $"Đã nhận {transfer.Amount:N0} VND cho đơn {order.OrderNumber} nhưng không thể xác nhận lịch tập. " +
-                "Vui lòng liên hệ quầy lễ tân để được hoàn tiền.", nameof(PTPurchase), contract.Id);
+                "Vui lòng liên hệ quầy lễ tân để được xử lý.", nameof(PTPurchase), contract.Id);
             await repo.SaveChangesAsync(ct);
             return Result<SepayWebhookResponse>.Success(new(true));
         }

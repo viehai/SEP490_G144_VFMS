@@ -53,7 +53,7 @@
         {
             <div class="@Ui.Card space-y-3">
                 <p class="text-sm">Tổng thanh toán: <strong>@OperationsText.Money(chosen.RentalFee + chosen.Deposit)</strong> (phí thuê + cọc chìa, cọc được hoàn khi trả chìa đúng hạn).</p>
-                <p class="text-xs text-vfms-text-secondary">Tủ được giữ 20 phút. Bạn cần bấm "Tiếp tục thanh toán" trong 10 phút đầu, sau đó chuyển khoản trước 15 phút.</p>
+                <p class="text-xs text-vfms-text-secondary">Tủ được giữ 20 phút. Bạn cần bấm "Tiếp tục thanh toán" và chuyển khoản trong 15 phút kể từ lúc đặt.</p>
                 <button type="button" class="@Ui.PrimaryButton" disabled="@(_busy || _lockerId is null)" @onclick="RentAsync">@(_busy ? "Đang giữ tủ…" : "Giữ tủ và tiếp tục")</button>
             </div>
         }
