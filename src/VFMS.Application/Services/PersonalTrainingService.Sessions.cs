@@ -83,15 +83,8 @@ public sealed partial class PersonalTrainingService
                 ? new(s.ProposedDate!.Value, s.ProposedStartTime!.Value, s.ProposedEndTime!.Value,
                     s.ProposedAdjustmentType!.Value.ToString(),
                     DateTime.SpecifyKind(s.ProposalExpiresAt!.Value, DateTimeKind.Utc)) : null,
-            s.TrainerAbsenceReportedAt, s.TrainerAbsenceApproved, s.TrainerAbsenceReviewNote)
-        {
-            CompletedByCheckIn = CheckInOnly(s)
-        };
+            s.TrainerAbsenceReportedAt, s.TrainerAbsenceApproved, s.TrainerAbsenceReviewNote);
     }
-
-    /// <summary>UC 4.6 step 7: 'Present' set by the Member's check-in that no PT record has replaced.</summary>
-    private static bool CheckInOnly(PTSession s) =>
-        s.SessionStatus == PTSessionStatus.Completed && s.CheckInCompletedAt is not null && s.AttendanceRecordedAt is null;
 
     private PTContractResponse ContractResponse(PTPurchase p)
     {
@@ -253,6 +246,9 @@ public sealed partial class PersonalTrainingService
             };
             if (!IsWholeHour(request.StartTime))
                 return Invalid<PTSessionResponse>("Buổi bù phải bắt đầu vào giờ tròn.");
+            // GBR-14: a make-up appointment is also sent at least 12 hours ahead of its start.
+            if (LeadTimeError<PTSessionResponse>(session, now) is { } late)
+                return late;
             if (await AdjustError<PTSessionResponse>(contract, session, session.SessionDate, session.StartTime,
                     session.EndTime, now, ct, isMakeUp: true) is { } error)
                 return error;
@@ -516,7 +512,6 @@ public sealed partial class PersonalTrainingService
         // UC 4.6 step 6: the PT's record replaces a 'Present' set by check-in.
         s.AttendanceRecordedAt = now;
         s.AttendanceRecordedPresent = attended;
-        s.CheckInCompletedAt = null;
         SettleCredits(p);
         Audit(actor, nameof(PTSession), s.Id, attended ? "AttendancePresent" : "AttendanceAbsent");
         await repo.SaveChangesAsync(ct);
@@ -544,8 +539,8 @@ public sealed partial class PersonalTrainingService
         session.TrainerAbsenceReason = string.IsNullOrWhiteSpace(request.Reason) ? null : request.Reason.Trim();
         session.TrainerAbsenceReportedAt = now;
         string message, trainerMessage;
-        // GBR-103: a PT record (Present or Absent) disagrees with the report; a 'Present' set only by check-in is not one.
-        var trainerRecorded = session.SessionStatus is PTSessionStatus.Completed or PTSessionStatus.NoShow && !CheckInOnly(session);
+        // GBR-103: a PT record (Present or Absent) disagrees with the report.
+        var trainerRecorded = session.SessionStatus is PTSessionStatus.Completed or PTSessionStatus.NoShow;
         if (trainerRecorded)
         {
             var recorded = session.SessionStatus == PTSessionStatus.Completed ? "có mặt" : "vắng mặt";

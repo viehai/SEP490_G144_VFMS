@@ -73,8 +73,6 @@ public sealed record PTSessionResponse(int Id, DateOnly Date, TimeOnly StartTime
 {
     /// <summary>Cancelled without penalty and not rebooked yet: a make-up can be proposed from it (GBR-14).</summary>
     public bool IsMakeUpUnit { get; init; }
-    /// <summary>'Present' set by the Member's self check-in; the PT has not recorded attendance (UC 4.6 step 7).</summary>
-    public bool CompletedByCheckIn { get; init; }
     /// <summary>A make-up unit from a 'PT Absent' report that waits for the PT: usable from this time (UTC, GBR-103).</summary>
     public DateTime? MakeUpAvailableAt { get; init; }
 }

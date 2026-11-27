@@ -167,7 +167,7 @@
         {
             var r = await Api.PostAsync<KioskScanResultResponse>("api/kiosk/scan", request);
             if (r.CheckIn is { } entry)
-                Show(true, $"CHECK-IN. {entry.Message}{(entry.CompletedPtSessionId is null ? "" : " Buổi PT đã được ghi nhận hoàn thành.")}");
+                Show(true, $"CHECK-IN. {entry.Message}");
             else if (r.CheckOut is { } exit)
                 Show(true, $"CHECK-OUT. Tạm biệt, {exit.MemberName}! Thời gian tập: {exit.MinutesInside / 60}h {exit.MinutesInside % 60}m.");
             await Beep(r.CheckOut is null ? 1 : 2);

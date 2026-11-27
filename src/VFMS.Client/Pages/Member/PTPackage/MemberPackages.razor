@@ -22,7 +22,7 @@
     @if (_loading) { <p role="status">Đang tải hợp đồng…</p> }
     else if (_contracts is null && _selected is null) { <button class="trainer-button" @onclick="() => LoadAsync()">Tải lại</button> }
     else if (_contracts is { TotalCount: 0 } && _selected is null && _completed) { <p class="trainer-panel">Chưa có hợp đồng PT đã hoàn thành.</p> }
-    else if (_contracts is { TotalCount: 0 } && _selected is null) { <p class="trainer-panel">Chưa có hợp đồng PT để hiển thị. <a class="trainer-link" href="/trainers">Khám phá gói PT</a></p> }
+    else if (_contracts is { TotalCount: 0 } && _selected is null) { <p class="trainer-panel">Không tìm thấy kết quả phù hợp. <a class="trainer-link" href="/trainers">Khám phá gói PT</a></p> }
     else
     {
         <div class="pt-workspace">

@@ -15,10 +15,10 @@ public sealed record FaceProfileResponse(bool IsRegistered, DateTime? Registered
 /// <summary>A kiosk scan: either the 128-number face descriptor computed in the kiosk browser, or a member's QR token.</summary>
 public sealed record KioskScanRequest(IReadOnlyList<float>? Descriptor, string? QrToken);
 
-/// <summary>MSG-35 data. CompletedPtSessionId is set when the entry auto-completed a PT session (GBR-92, MSG-38).</summary>
+/// <summary>MSG-35 data.</summary>
 public sealed record CheckInResultResponse(
     int CheckInId, string MemberUserId, string MemberName, DateOnly ValidThrough, DateTime CheckinTime,
-    string Message, int? CompletedPtSessionId);
+    string Message);
 
 public sealed record CheckOutResultResponse(
     int CheckInId, string MemberUserId, string MemberName, DateTime CheckinTime, DateTime CheckoutTime, int MinutesInside);

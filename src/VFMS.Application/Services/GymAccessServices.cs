@@ -306,25 +306,11 @@ public sealed class CheckInService : ICheckInService
         };
         _repository.Add(checkIn);
 
-        int? ptSessionId = null;
-        if (staffUserId is null)   // GBR-92 only for self check-in
-        {
-            var due = (await _repository.GetScheduledPtSessionsAsync(userId, today, now, cancellationToken))
-                .FirstOrDefault(s => now >= YogaTime.ToUtc(s.SessionDate, s.StartTime) - TimeSpan.FromMinutes(30) &&
-                                     now <= YogaTime.ToUtc(s.SessionDate, s.StartTime) + TimeSpan.FromMinutes(15));
-            // UC 4.6 step 7: 'Present' set by check-in; the PT has not recorded anything (GBR-103).
-            // shortcut: this update is saved before the visit below, so a failed visit save leaves the session 'Present'; wrap both in one transaction if that is ever seen.
-            if (due is not null && await _repository.CompletePtSessionByCheckInAsync(due, now, cancellationToken))
-            {
-                PersonalTrainingRules.Settle(due.PTPurchase);   // the final session also completes the contract
-                ptSessionId = due.Id;
-            }
-        }
-
-        await _repository.SaveChangesAsync(cancellationToken);   // one save: check-in, stale close, PT contract, QR use, face LastUsedAt
+        // GBR-92: a visit never sets PT attendance or consumes a PT session; the PT records it (UC 4.6).
+        await _repository.SaveChangesAsync(cancellationToken);   // one save: check-in, stale close, QR use, face LastUsedAt
         return Result<CheckInResultResponse>.Success(new CheckInResultResponse(
             checkIn.Id, userId, user.FullName, membership.EndDate, now,
-            GymAccessMessages.Welcome(user.FullName, membership.EndDate), ptSessionId), 201);
+            GymAccessMessages.Welcome(user.FullName, membership.EndDate)), 201);
     }
 
     private static bool InAccessWindow(PackageComponent component, TimeOnly time) =>

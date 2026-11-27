@@ -95,13 +95,6 @@ public static class PersonalTrainingRules
         }
     }
 
-    /// <summary>GBR-92 / UC 4.6 step 7: a confirmed session a self check-in may mark 'Present'. A change request past its
-    /// answer deadline is no longer pending even though its status is cleared only later; 'Pending Freeze' never qualifies.</summary>
-    public static Expression<Func<PTSession, bool>> CheckInCanComplete(DateTime now) => s =>
-        s.SessionStatus == PTSessionStatus.Scheduled ||
-        (s.SessionStatus == PTSessionStatus.ReschedulePending || s.SessionStatus == PTSessionStatus.RescheduleRequested) &&
-        s.ProposalExpiresAt <= now;
-
     /// <summary>GBR-103: after a 'PT Absent' report the PT can still record attendance until the end of the next day;
     /// the make-up unit becomes usable after that day.</summary>
     public static DateOnly TrainerResponseLastDay(DateOnly sessionDate) => sessionDate.AddDays(1);

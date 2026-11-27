@@ -42,39 +42,6 @@ public sealed partial class MembershipPurchaseApiTests
     }
 
     [Fact]
-    public async Task CheckInCompletesAnExpiredRequestSessionButNeverOverwritesAReportSavedFirst()   // UC 4.6 step 7 / GBR-92
-    {
-        using var member = Client("member", "Member");
-        var (_, contract) = await ActivatedPTContract(member);
-        var (expired, reported) = (contract.Sessions[0], contract.Sessions[1]);
-        var now = LocalTime(expired.Date, expired.StartTime).UtcDateTime;
-        await using var scope = _app.Services.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
-        var repository = new VFMS.Infrastructure.Repositories.CheckInRepository(db);
-
-        // A request whose answer deadline passed is no longer pending: the check-in completes the session and clears it.
-        var withRequest = await db.PTSessions.SingleAsync(s => s.Id == expired.Id);
-        withRequest.SessionStatus = PTSessionStatus.RescheduleRequested;
-        withRequest.ProposedAdjustmentType = PTAdjustmentType.Reschedule;
-        withRequest.ProposalExpiresAt = now.AddHours(-4);
-        await db.SaveChangesAsync();
-        var due = Assert.Single(await repository.GetScheduledPtSessionsAsync("member", expired.Date, now), s => s.Id == expired.Id);
-        Assert.True(await repository.CompletePtSessionByCheckInAsync(due, now));
-        Assert.Equal((PTSessionStatus.Completed, (DateTime?)now, (DateTime?)null), (due.SessionStatus, due.CheckInCompletedAt, due.ProposalExpiresAt));
-
-        // The kiosk loaded the session, then a 'PT Absent' report was saved first: the check-in leaves it alone.
-        var loaded = await db.PTSessions.SingleAsync(s => s.Id == reported.Id);
-        await using (var other = _app.Services.CreateAsyncScope())
-        {
-            var otherDb = other.ServiceProvider.GetRequiredService<VfmsDbContext>();
-            await otherDb.PTSessions.Where(s => s.Id == reported.Id)
-                .ExecuteUpdateAsync(u => u.SetProperty(s => s.SessionStatus, PTSessionStatus.Cancelled));
-        }
-        Assert.False(await repository.CompletePtSessionByCheckInAsync(loaded, now));
-        Assert.Equal((PTSessionStatus.Cancelled, (DateTime?)null), (loaded.SessionStatus, loaded.CheckInCompletedAt));
-    }
-
-    [Fact]
     public async Task ThePTCanAnswerAReportUntilTheEndOfTheNextDay()
     {
         using var member = Client("member", "Member");
@@ -103,7 +70,7 @@ public sealed partial class MembershipPurchaseApiTests
     }
 
     [Fact]
-    public async Task ACheckInPresentIsNotAPTRecordAndTheManagerSeesTheMembersVisits()
+    public async Task AMemberVisitIsNotAPTRecordAndTheManagerSeesTheMembersVisits()   // GBR-92
     {
         using var member = Client("member", "Member");
         using var trainer = Client("buyer", "PT");
@@ -114,9 +81,6 @@ public sealed partial class MembershipPurchaseApiTests
         await using (var scope = _app.Services.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
-            var stored = await db.PTSessions.SingleAsync(s => s.Id == session.Id);
-            stored.SessionStatus = PTSessionStatus.Completed;   // UC 4.6 step 7, as the kiosk sets it
-            stored.CheckInCompletedAt = start.AddMinutes(-10);
             db.CheckIns.Add(new CheckIn
             {
                 MemberUserId = "member", CheckinTime = start.AddMinutes(-10), CheckinMethod = CheckInMethod.QRCode,
@@ -129,9 +93,10 @@ public sealed partial class MembershipPurchaseApiTests
             });
             await db.SaveChangesAsync();
         }
-        Assert.True((await ContractOf(member, contract.Id)).Sessions.Single(s => s.Id == session.Id).CompletedByCheckIn);
+        // GBR-92: the visit alone leaves the session unrecorded.
+        Assert.Equal("Scheduled", (await ContractOf(member, contract.Id)).Sessions.Single(s => s.Id == session.Id).Status);
 
-        // GBR-103: only a check-in 'Present' and no PT record, so the report gives a make-up unit, not a dispute.
+        // GBR-103: no PT record, so the report gives a make-up unit, not a dispute.
         _clock.Now = LocalTime(session.Date, session.EndTime).AddMinutes(5);
         using var reported = await member.PostAsJsonAsync($"/api/pt/sessions/{session.Id}/trainer-absence", new PTTrainerAbsenceReportRequest());
         Assert.Equal("Cancelled", (await reported.Content.ReadFromJsonAsync<PTSessionResponse>())!.Status);

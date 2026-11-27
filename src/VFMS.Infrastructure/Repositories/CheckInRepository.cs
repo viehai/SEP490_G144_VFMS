@@ -47,28 +47,6 @@ public sealed class CheckInRepository : AuditedRepositoryBase, ICheckInRepositor
     public Task<CheckIn?> GetCheckInAsync(int id, CancellationToken cancellationToken = default) =>
         Context.CheckIns.FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
 
-    public async Task<IReadOnlyList<PTSession>> GetScheduledPtSessionsAsync(string userId, DateOnly date, DateTime now,
-        CancellationToken cancellationToken = default) =>
-        await Context.PTSessions.Include(s => s.PTPurchase).ThenInclude(p => p.Sessions)
-            .Where(s => s.MemberUserId == userId && s.SessionDate == date)
-            .Where(PersonalTrainingRules.CheckInCanComplete(now))
-            .ToListAsync(cancellationToken);
-
-    public async Task<bool> CompletePtSessionByCheckInAsync(PTSession session, DateTime now, CancellationToken cancellationToken = default)
-    {
-        var done = await Context.PTSessions.Where(s => s.Id == session.Id).Where(PersonalTrainingRules.CheckInCanComplete(now))
-            .ExecuteUpdateAsync(u => u
-                .SetProperty(s => s.SessionStatus, PTSessionStatus.Completed)
-                .SetProperty(s => s.CheckInCompletedAt, now)
-                .SetProperty(s => s.ProposedDate, (DateOnly?)null)
-                .SetProperty(s => s.ProposedStartTime, (TimeOnly?)null)
-                .SetProperty(s => s.ProposedEndTime, (TimeOnly?)null)
-                .SetProperty(s => s.ProposedAdjustmentType, (PTAdjustmentType?)null)
-                .SetProperty(s => s.ProposalExpiresAt, (DateTime?)null), cancellationToken) == 1;
-        await Context.Entry(session).ReloadAsync(cancellationToken);
-        return done;
-    }
-
     public async Task<IReadOnlyList<(ApplicationUser User, IReadOnlyList<MemberMembership> Memberships, bool IsCheckedIn)>> SearchMembersAsync(
         string term, CancellationToken cancellationToken = default)
     {
