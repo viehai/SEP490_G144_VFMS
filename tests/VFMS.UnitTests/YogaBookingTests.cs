@@ -7,7 +7,7 @@ using VFMS.Domain.Enums;
 
 namespace VFMS.UnitTests;
 
-public sealed class YogaBookingTests
+public sealed partial class YogaBookingTests
 {
     // 03:00 UTC = 10:00 gym time on 7 Nov 2026.
     private static readonly DateTimeOffset NowOffset = new(2026, 11, 7, 3, 0, 0, TimeSpan.Zero);

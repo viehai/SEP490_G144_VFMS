@@ -7,7 +7,7 @@ using VFMS.Domain.Enums;
 
 namespace VFMS.UnitTests;
 
-public sealed class WorkoutPlanTests
+public sealed partial class WorkoutPlanTests
 {
     private static readonly TimeProvider Clock = new FixedClock(new DateTimeOffset(2026, 11, 7, 2, 0, 0, TimeSpan.Zero));
 
