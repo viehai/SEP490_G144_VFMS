@@ -14,7 +14,7 @@ public sealed class WorkoutRepository : AuditedRepositoryBase, IWorkoutRepositor
         Context.PhysicalProfiles.FirstOrDefaultAsync(p => p.MemberUserId == userId, cancellationToken);
 
     public async Task<IReadOnlyList<Exercise>> GetActiveExercisesAsync(CancellationToken cancellationToken = default) =>
-        await Context.Exercises.Where(e => e.IsActive).OrderBy(e => e.MuscleGroup).ThenBy(e => e.Name).ToListAsync(cancellationToken);
+        await Context.Exercises.Include(e => e.Equipment).Where(e => e.IsActive).OrderBy(e => e.MuscleGroup).ThenBy(e => e.Name).ToListAsync(cancellationToken);
 
     public Task<WorkoutPlan?> GetFallbackTemplateAsync(string fitnessGoal, CancellationToken cancellationToken = default) =>
         Context.WorkoutPlans.AsNoTracking()

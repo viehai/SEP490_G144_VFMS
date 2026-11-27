@@ -86,11 +86,11 @@
                         <ul class="divide-y divide-[#D8D1CD]">
                             @foreach (var item in day)
                             {
-                                <li class="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
-                                    <label class="flex items-start gap-3">
-                                        <input type="checkbox" class="mt-1" checked="@item.IsCompleted" disabled="@_busy" @onchange="e => Toggle(item, (bool)(e.Value ?? false))" />
-                                        <span>
-                                            <span class="font-semibold @(item.IsCompleted ? "line-through text-[#8C8581]" : "")">@item.ExerciseName</span>
+                                <li class="flex flex-wrap items-start justify-between gap-3 px-5 py-3">
+                                    <div class="flex min-w-0 flex-1 items-start gap-3">
+                                        <input id="done-@item.Id" type="checkbox" class="mt-1" checked="@item.IsCompleted" disabled="@_busy" @onchange="e => Toggle(item, (bool)(e.Value ?? false))" />
+                                        <span class="min-w-0 flex-1">
+                                            <label for="done-@item.Id" class="cursor-pointer font-semibold @(item.IsCompleted ? "line-through text-[#8C8581]" : "")">@item.ExerciseName</label>
                                             <span class="block text-xs text-[#6F6966]">@Volume(item)@(item.MuscleGroup is null ? "" : $" · {ExerciseCatalog.MuscleGroupLabel(item.MuscleGroup)}")</span>
                                             @if (item.EquipmentName is not null)
                                             {
@@ -100,8 +100,32 @@
                                                 </span>
                                             }
                                             @if (item.Note is not null) { <span class="block text-xs text-[#6F6966]">@item.Note</span> }
+                                            @if (item.ImageUrl is not null)
+                                            {
+                                                @* Fixed box so the list does not jump while images load; object-contain shows the whole illustration.
+                                                   Pressing it opens the image full size. *@
+                                                <button type="button" class="group relative mt-2 block overflow-hidden rounded-lg border border-[#D8D1CD] bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B83A3A]"
+                                                        style="width: 240px; max-width: 100%;" @ref="_imageButtons[item.Id]"
+                                                        aria-label="Phóng to ảnh @item.ExerciseName" @onclick="() => OpenImage(item)">
+                                                    <img src="@item.ImageUrl" alt="Ảnh minh họa @item.ExerciseName" loading="lazy" width="240" height="180"
+                                                         class="block object-contain p-1" style="width: 100%; height: auto; aspect-ratio: 4 / 3;" />
+                                                    <span aria-hidden="true" class="absolute flex h-7 w-7 items-center justify-center rounded-full text-white" style="right: 4px; bottom: 4px; background: rgba(43, 41, 40, .8);">
+                                                        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+                                                    </span>
+                                                </button>
+                                            }
+                                            @if (item.VideoUrl is not null)
+                                            {
+                                                <a href="@item.VideoUrl" target="_blank" rel="noopener noreferrer"
+                                                   class="mt-2 inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-[#B83A3A] px-4 text-xs font-bold uppercase text-[#B83A3A] transition-colors hover:bg-[#B83A3A] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B83A3A]"
+                                                   aria-label="Xem video hướng dẫn @item.ExerciseName (mở tab mới)">
+                                                    <svg aria-hidden="true" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg>
+                                                    Xem video
+                                                    <svg aria-hidden="true" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
+                                                </a>
+                                            }
                                         </span>
-                                    </label>
+                                    </div>
                                     @if (_swapItemId == item.Id)
                                     {
                                         var sameGroup = SwapChoices(_exercises, item.ExerciseId, item.MuscleGroup, allGroups: false);
@@ -124,7 +148,7 @@
                                             }
                                             <div class="grid gap-3 sm:grid-cols-2">
                                                 <label class="text-xs font-semibold" for="swap-ex-@item.Id">Bài tập
-                                                    <select id="swap-ex-@item.Id" class="mt-1 block min-h-[44px] w-full rounded-lg border border-[#D8D1CD] bg-[#F8F5F2] px-3 text-sm font-normal" @bind="_swapExerciseId">
+                                                    <select id="swap-ex-@item.Id" class="mt-1 block min-h-[44px] w-full rounded-lg border border-[#D8D1CD] bg-[#F8F5F2] px-3 text-sm font-normal" @bind="_swapExerciseId" @bind:after="PickDefaultMachine">
                                                         @foreach (var group in choices.GroupBy(e => e.MuscleGroup))
                                                         {
                                                             <optgroup label="@ExerciseCatalog.MuscleGroupLabel(group.Key)">
@@ -173,6 +197,21 @@
     </div>
 </div>
 
+@if (_imageItem is { ImageUrl: not null } shown)
+{
+    @* Full-size image. Esc, the close button or a click outside the image closes it. *@
+    <div class="fixed inset-0 z-50 flex items-center justify-center p-4" style="background: rgba(0, 0, 0, .8);" role="dialog" aria-modal="true" aria-label="Ảnh @shown.ExerciseName"
+         tabindex="-1" @onclick="CloseImage" @onkeydown="ImageKey">
+        <figure class="relative m-0 max-w-3xl rounded-xl bg-white p-3 shadow-2xl" style="max-height: 100%;" @onclick:stopPropagation="true">
+            <img src="@shown.ImageUrl" alt="Ảnh minh họa @shown.ExerciseName" class="block w-auto max-w-full object-contain" style="max-height: 75vh;" />
+            <figcaption class="mt-2 flex items-center justify-between gap-3 text-sm font-semibold text-[#242424]">
+                <span>@shown.ExerciseName</span>
+                <button type="button" @ref="_closeImageButton" class="min-h-[44px] rounded-lg border border-[#C9C0BB] px-4 text-xs font-semibold hover:bg-[#ECE8E4] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#B83A3A]" @onclick="CloseImage">Đóng</button>
+            </figcaption>
+        </figure>
+    </div>
+}
+
 @code {
     private SurveyForm _survey = new();
     private bool _surveyComplete, _consent, _busy, _isError;
@@ -185,6 +224,34 @@
     private int _swapExerciseId;
     private int? _swapEquipmentId;
     private bool _swapAllGroups;
+    private WorkoutPlanItemResponse? _imageItem;
+    private ElementReference _closeImageButton;
+    private bool _focusClose;
+    private readonly Dictionary<int, ElementReference> _imageButtons = [];
+    private int? _returnFocusTo;
+
+    private void OpenImage(WorkoutPlanItemResponse item) { _imageItem = item; _focusClose = true; }
+    private void CloseImage()
+    {
+        _returnFocusTo = _imageItem?.Id;   // back to the picture that opened it, so keyboard users keep their place
+        _imageItem = null;
+    }
+    private void ImageKey(KeyboardEventArgs e) { if (e.Key == "Escape") CloseImage(); }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_focusClose && _imageItem is not null)
+        {
+            _focusClose = false;
+            await _closeImageButton.FocusAsync();   // keyboard users land in the viewer, so Esc works at once
+        }
+        else if (_returnFocusTo is { } id && _imageItem is null)
+        {
+            _returnFocusTo = null;
+            if (_imageButtons.TryGetValue(id, out var button))
+                await button.FocusAsync();
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -248,6 +315,16 @@
         // Keep the current machine while it still works (a swap without one would clear it).
         _swapEquipmentId = _equipment.Any(m => m.Id == item.EquipmentId) ? item.EquipmentId : null;
     }
+
+    /// <summary>A newly picked exercise preselects a working unit of its default machine; the member can still change it.</summary>
+    private void PickDefaultMachine() =>
+        _swapEquipmentId = DefaultMachine(_exercises, _equipment, _swapExerciseId) ?? _swapEquipmentId;
+
+    /// <summary>A working unit with the exercise's default machine name, or null. Public for tests.</summary>
+    public static int? DefaultMachine(IEnumerable<ExerciseResponse> exercises, IEnumerable<WorkoutEquipmentResponse> equipment, int exerciseId) =>
+        exercises.FirstOrDefault(e => e.Id == exerciseId)?.EquipmentName is { } name
+            ? equipment.FirstOrDefault(m => string.Equals(m.Name.Trim(), name.Trim(), StringComparison.OrdinalIgnoreCase))?.Id
+            : null;
 
     private void SetAllGroups(WorkoutPlanItemResponse item, bool all)
     {

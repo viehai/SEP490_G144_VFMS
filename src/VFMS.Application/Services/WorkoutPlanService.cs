@@ -75,7 +75,8 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
             return Result<WorkoutPlanResponse>.Failure(
                 "Hãy hoàn thành khảo sát thể lực trước khi tạo giáo án.", "WORKOUT_SURVEY_INCOMPLETE");   // GBR-93
 
-        var catalog = (await _repository.GetActiveExercisesAsync(cancellationToken))
+        var activeExercises = await _repository.GetActiveExercisesAsync(cancellationToken);
+        var catalog = activeExercises
             .Select(e => new CatalogExercise(e.Id, e.Name, e.MuscleGroup, e.DifficultyLevel))
             .ToArray();
         var survey = Anonymise(profile!);
@@ -84,6 +85,7 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
         // One entry per machine name keeps the prompt short; the AI only needs to know which kinds of machine exist.
         var machines = usableEquipment.GroupBy(e => e.EquipmentName.Trim(), StringComparer.OrdinalIgnoreCase)
             .Select(g => new CatalogEquipment(g.First().Id, g.Key)).ToArray();
+        var defaultMachines = DefaultMachines(activeExercises, usableEquipment);
 
         GeneratedPlan? generated = null;
         if (catalog.Length > 0)
@@ -118,7 +120,8 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
                 {
                     DayNumber = item.DayNumber, OrderInDay = item.OrderInDay, ExerciseId = item.ExerciseId,
                     Sets = item.Sets, Reps = item.Reps, DurationMinutes = item.DurationMinutes, Note = item.Note,
-                    EquipmentId = item.EquipmentId
+                    // The AI's machine wins; otherwise the Manager's default machine for the exercise.
+                    EquipmentId = item.EquipmentId ?? defaultMachines.GetValueOrDefault(item.ExerciseId)
                 });
         }
         else
@@ -138,8 +141,10 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
                 {
                     DayNumber = item.DayNumber, OrderInDay = item.OrderInDay, ExerciseId = item.ExerciseId,
                     Sets = item.Sets, Reps = item.Reps, DurationMinutes = item.DurationMinutes, Note = item.Note,
-                    // The template's machine, while it still works.
-                    EquipmentId = item.EquipmentId is { } machine && machineIds.Contains(machine) ? machine : null
+                    // The template's machine while it still works; otherwise the Manager's default machine for the exercise.
+                    EquipmentId = item.EquipmentId is { } machine && machineIds.Contains(machine)
+                        ? machine
+                        : defaultMachines.GetValueOrDefault(item.ExerciseId)
                 });
         }
 
@@ -287,7 +292,7 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
     {
         var exercises = await _repository.GetActiveExercisesAsync(cancellationToken);
         return Result<IReadOnlyList<ExerciseResponse>>.Success(exercises
-            .Select(e => new ExerciseResponse(e.Id, e.Name, e.MuscleGroup, e.DifficultyLevel, e.Description)).ToArray());
+            .Select(e => new ExerciseResponse(e.Id, e.Name, e.MuscleGroup, e.DifficultyLevel, e.Description, e.Equipment?.EquipmentName)).ToArray());
     }
 
     public async Task<Result<IReadOnlyList<WorkoutEquipmentResponse>>> GetEquipmentAsync(CancellationToken cancellationToken = default)
@@ -380,6 +385,26 @@ public sealed class WorkoutPlanService : IWorkoutPlanService
             ? null
             : plan.NutritionAdvice.Trim()[..Math.Min(plan.NutritionAdvice.Trim().Length, 1000)];
         return new GeneratedPlan(name, items, nutrition);
+    }
+
+    /// <summary>
+    /// Exercise id → a working unit of the Manager's default machine for it. The default stands for its machine name,
+    /// so one broken unit does not drop the machine while another unit with that name works. Public for tests.
+    /// </summary>
+    public static IReadOnlyDictionary<int, int?> DefaultMachines(IEnumerable<Exercise> exercises, IReadOnlyList<Equipment> usableEquipment)
+    {
+        var result = new Dictionary<int, int?>();
+        foreach (var exercise in exercises)
+        {
+            if (exercise.EquipmentId is not { } machineId)
+                continue;
+            var name = exercise.Equipment?.EquipmentName.Trim();
+            var unit = usableEquipment.FirstOrDefault(e => e.Id == machineId)
+                       ?? (name is null ? null : usableEquipment.FirstOrDefault(e => string.Equals(e.EquipmentName.Trim(), name, StringComparison.OrdinalIgnoreCase)));
+            if (unit is not null)
+                result[exercise.Id] = unit.Id;
+        }
+        return result;
     }
 
     /// <summary>Standard nutrition advice per goal, used for fallback plans or when the AI gives none (UC-49, GBR-95).</summary>

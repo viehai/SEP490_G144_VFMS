@@ -114,6 +114,53 @@ public sealed class WorkoutPlanTests
         Assert.Equal([1, null], plan.PlanItems.OrderBy(i => i.DayNumber).Select(i => i.EquipmentId));
     }
 
+    [Fact]
+    public async Task ExerciseDefaultMachineFillsInOnlyWhenTheAiGaveNone()
+    {
+        var (service, repo, generator) = Create(CompleteProfile());
+        var brokenBike = new Equipment { Id = 1, EquipmentName = "Xe đạp tập", EquipmentStatus = EquipmentStatus.Damaged };
+        var legPress = new Equipment { Id = 3, EquipmentName = "Máy đạp đùi" };
+        repo.Equipment.AddRange([brokenBike, new Equipment { Id = 2, EquipmentName = "Xe đạp tập" }, legPress]);
+        (repo.Exercises[0].EquipmentId, repo.Exercises[0].Equipment) = (3, legPress);     // Squat → leg press
+        (repo.Exercises[1].EquipmentId, repo.Exercises[1].Equipment) = (1, brokenBike);   // Bike → a broken bike
+        generator.Reply = new GeneratedPlan("p", [
+            new(1, 1, 11, null, null, 20, null),                 // no AI machine: a working bike stands in
+            new(1, 2, 10, 3, 12, null, null, EquipmentId: 2),    // the AI's machine wins over the default
+            new(2, 1, 10, 3, 12, null, null)]);                  // no AI machine: the default
+
+        await service.GenerateAsync("u1", new GenerateWorkoutPlanRequest(true));
+
+        var plan = Assert.Single(repo.Plans, p => !p.IsTemplate);
+        Assert.Equal([2, 2, 3], plan.PlanItems.OrderBy(i => i.DayNumber).ThenBy(i => i.OrderInDay).Select(i => i.EquipmentId));
+    }
+
+    [Fact]
+    public async Task FallbackPlanUsesTheExerciseDefaultWhenTheTemplateHasNoWorkingMachine()
+    {
+        var (service, repo, generator) = Create(CompleteProfile());
+        var legPress = new Equipment { Id = 3, EquipmentName = "Máy đạp đùi" };
+        repo.Equipment.AddRange([new Equipment { Id = 1, EquipmentName = "Xe đạp tập", EquipmentStatus = EquipmentStatus.Damaged }, legPress]);
+        (repo.Exercises[0].EquipmentId, repo.Exercises[0].Equipment) = (3, legPress);
+        repo.Plans.Single(p => p.IsTemplate).PlanItems.Single(i => i.ExerciseId == 10).EquipmentId = 1;   // broken
+        generator.Reply = null;
+
+        await service.GenerateAsync("u1", new GenerateWorkoutPlanRequest(true));
+
+        var plan = Assert.Single(repo.Plans, p => !p.IsTemplate);
+        Assert.Equal([3, null], plan.PlanItems.OrderBy(i => i.DayNumber).Select(i => i.EquipmentId));
+    }
+
+    [Fact]
+    public void MachineOptionsGroupUnitsByNameAndPreferAWorkingOne()
+    {
+        var options = ExerciseCatalogService.MachineOptions([
+            new Equipment { Id = 1, EquipmentName = "Xe đạp tập", EquipmentStatus = EquipmentStatus.Damaged },
+            new Equipment { Id = 2, EquipmentName = " xe đạp tập" },
+            new Equipment { Id = 3, EquipmentName = "Máy đạp đùi", EquipmentStatus = EquipmentStatus.UnderMaintenance }]);
+
+        Assert.Equal([new ExerciseMachineOption(3, "Máy đạp đùi", 1, 0), new ExerciseMachineOption(2, "Xe đạp tập", 2, 1)], options);
+    }
+
     [Theory]
     [InlineData("Leg Press", "Legs", "Beginner", null, null)]
     [InlineData("", "Legs", "Beginner", null, "Tên bài tập")]

@@ -23,6 +23,11 @@ public sealed class ExerciseCatalogController : ControllerBase
     public async Task<IActionResult> List(CancellationToken cancellationToken) =>
         this.ToActionResult(await _service.ListAsync(cancellationToken));
 
+    /// <summary>Machine names for the exercise's default-machine picker.</summary>
+    [HttpGet("machines")]
+    public async Task<IActionResult> Machines(CancellationToken cancellationToken) =>
+        this.ToActionResult(await _service.ListMachinesAsync(cancellationToken));
+
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] ExerciseRequest request, CancellationToken cancellationToken) =>
         User.GetUserId() is { } userId

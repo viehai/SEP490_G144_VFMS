@@ -101,4 +101,5 @@ public sealed record SetPlanItemCompletionRequest(
 public sealed record UpdatePlanItemRequest(
     int ExerciseId, int? Sets, int? Reps, int? DurationMinutes, string? Note = null, int? EquipmentId = null);
 
-public sealed record ExerciseResponse(int Id, string Name, string? MuscleGroup, string? DifficultyLevel, string? Description);
+/// <summary>EquipmentName: the Manager's default machine for the exercise, so "Đổi bài tập" can preselect a working unit of it.</summary>
+public sealed record ExerciseResponse(int Id, string Name, string? MuscleGroup, string? DifficultyLevel, string? Description, string? EquipmentName = null);

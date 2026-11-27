@@ -97,8 +97,8 @@ public sealed partial class RouterAuthenticationTests
     }
 
     [Theory]
-    [InlineData(typeof(StaffPTLayout), "/pt/yoga", "PT,YogaInstructor", "/pt/availability /pt/teaching-schedule /pt/yoga /pt/assigned-members /pt/trainer-profile")]
-    [InlineData(typeof(StaffPTLayout), "/pt/yoga", "YogaInstructor", "/profile /competitions / /pt/trainer-profile /pt/yoga")]
+    [InlineData(typeof(StaffPTLayout), "/pt/yoga", "PT,YogaInstructor", "/pt/availability /pt/teaching-schedule /pt/yoga /pt/yoga/class-requests /pt/assigned-members /pt/trainer-profile")]
+    [InlineData(typeof(StaffPTLayout), "/pt/yoga", "YogaInstructor", "/profile /competitions / /pt/trainer-profile /pt/yoga /pt/yoga/class-requests")]
     [InlineData(typeof(AccountLayout), "/my-pt-packages", "Member", "/profile /competitions / /my-vouchers /my-memberships /my-pt-packages")]
     [InlineData(typeof(AccountLayout), "/my-pt-packages", "Customer", "/profile /competitions / /my-vouchers /my-memberships /my-pt-packages")]
     public async Task SharedLayoutsOnlyShowTheLinksForTheAuthenticatedRoles(Type layout, string path, string roles, string expected)
