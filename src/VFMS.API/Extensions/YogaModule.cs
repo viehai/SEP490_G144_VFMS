@@ -17,6 +17,8 @@ public static class YogaModule
         services.AddScoped<IYogaBookingRepository, YogaBookingRepository>();
         services.AddScoped<IYogaBookingService, YogaBookingService>();
         services.AddScoped<IYogaAttendanceService, YogaAttendanceService>();
+        services.AddScoped<IYogaClassOpeningRepository, YogaClassOpeningRepository>();
+        services.AddScoped<IYogaClassOpeningService, YogaClassOpeningService>();
         return services;
     }
 }

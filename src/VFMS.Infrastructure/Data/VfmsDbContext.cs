@@ -76,6 +76,7 @@ public class VfmsDbContext : DbContext
     public DbSet<YogaBooking> YogaBookings { get; set; }
     public DbSet<YogaWaitlist> YogaWaitlists { get; set; }
     public DbSet<YogaAttendance> YogaAttendances { get; set; }
+    public DbSet<YogaClassOpeningRequest> YogaClassOpeningRequests { get; set; }
 
     // ─────────────────────────────────────────────────────────────
     //  Check-in / Biometrics (Module 8)
@@ -732,6 +733,26 @@ public class VfmsDbContext : DbContext
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
+        // ── YogaClassOpeningRequest (GBR-128..GBR-130) ────────────
+        modelBuilder.Entity<YogaClassOpeningRequest>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.InstructorUserId, e.RequestStatus });
+            entity.Property(e => e.ClassName).HasMaxLength(256).IsRequired();
+            entity.Property(e => e.Description).HasMaxLength(1000);
+            entity.Property(e => e.DifficultyLevel).HasMaxLength(20).IsRequired();
+            entity.Property(e => e.PreferredDays).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Note).HasMaxLength(1000);
+            entity.Property(e => e.RejectReason).HasMaxLength(500);
+            entity.Property(e => e.RequestStatus).HasConversion<string>().HasMaxLength(20);
+
+            entity.HasOne(e => e.Instructor).WithMany().HasForeignKey(e => e.InstructorUserId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(e => e.ReviewedByUserId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.YogaClassType).WithMany().HasForeignKey(e => e.YogaClassTypeId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.PreferredStudio).WithMany().HasForeignKey(e => e.PreferredStudioId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.YogaClass).WithMany().HasForeignKey(e => e.YogaClassId).OnDelete(DeleteBehavior.Restrict);
+        });
+
         // ── YogaWaitlist ──────────────────────────────────────────
         modelBuilder.Entity<YogaWaitlist>(entity =>
         {
@@ -981,6 +1002,11 @@ public class VfmsDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Name).HasMaxLength(256).IsRequired();
+
+            entity.HasOne(e => e.Equipment)
+                .WithMany()
+                .HasForeignKey(e => e.EquipmentId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         // ── PlanItem ──────────────────────────────────────────────
