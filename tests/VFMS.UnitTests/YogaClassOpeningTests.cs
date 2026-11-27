@@ -9,7 +9,7 @@ using VFMS.Domain.Enums;
 namespace VFMS.UnitTests;
 
 /// <summary>GBR-128..GBR-130: a Yoga Instructor asks to open a class; the Manager approves (creates the Draft class) or rejects.</summary>
-public sealed class YogaClassOpeningTests
+public sealed partial class YogaClassOpeningTests
 {
     // 2026-11-02 03:00 UTC = 10:00 Monday at the gym (UTC+7).
     private static readonly FixedClock Clock = new(new DateTimeOffset(2026, 11, 2, 3, 0, 0, TimeSpan.Zero));

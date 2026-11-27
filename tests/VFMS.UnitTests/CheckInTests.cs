@@ -8,7 +8,7 @@ using VFMS.Domain.Enums;
 
 namespace VFMS.UnitTests;
 
-public sealed class CheckInTests
+public sealed partial class CheckInTests
 {
     private static readonly TimeProvider Clock = new FixedClock(new DateTimeOffset(2026, 11, 7, 3, 0, 0, TimeSpan.Zero));
     private static float[] Descriptor(float v = 0.1f) => Enumerable.Repeat(v, 128).ToArray();
