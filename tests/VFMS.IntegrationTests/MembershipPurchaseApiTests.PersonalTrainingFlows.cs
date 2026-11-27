@@ -150,7 +150,7 @@ public sealed partial class MembershipPurchaseApiTests
     }
 
     [Fact]
-    public async Task FreezeRequestHoldsTheChosenSlotsAndWithdrawalReleasesThemWithoutUsingTheFreeze()
+    public async Task FreezeRequestHoldsTheChosenSlotsAndWithdrawalWaitsForManagerDecisionBeforeReleasingThem()
     {
         using var member = Client("member", "Member");
         var (id, contract) = await ActivatedPTContract(member);

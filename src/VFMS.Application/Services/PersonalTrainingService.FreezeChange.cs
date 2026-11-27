@@ -23,9 +23,7 @@ public sealed partial class PersonalTrainingService
         if (f.RequestStatus == PTFreezeRequestStatus.Pending && f.RequestedStartDate > Today)
             return null;
         if (f.RequestStatus == PTFreezeRequestStatus.Approved && f.ActualStartDate > Today)
-            return f.ReplacementTrainerId is not null
-                ? "Bảo lưu đã kèm đổi huấn luyện viên nên không thể rút. Vui lòng liên hệ quầy lễ tân."
-                : null;
+            return null;
         return "Chỉ rút được yêu cầu đang chờ hoặc đã duyệt trước ngày bắt đầu bảo lưu.";
     }
 

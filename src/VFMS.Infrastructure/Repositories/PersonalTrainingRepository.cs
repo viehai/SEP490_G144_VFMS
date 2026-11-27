@@ -34,7 +34,19 @@ public sealed class PersonalTrainingRepository(VfmsDbContext db) : AuditedReposi
         {
             return Result<T>.Failure("Dữ liệu vừa thay đổi. Vui lòng tải lại và thử lại.", "PT_CONFLICT", 409);
         }
+        // EF wraps a deadlock raised inside a user transaction in InvalidOperationException (execution strategy).
+        catch (InvalidOperationException ex) when (IsSqlConcurrencyConflict(ex))
+        {
+            return Result<T>.Failure("Lịch vừa thay đổi. Vui lòng tải lại và thử lại.", "PT_CONFLICT", 409);
+        }
     }
+
+    private static bool IsSqlConcurrencyConflict(Exception? ex) => ex switch
+    {
+        null => false,
+        SqlException { Number: 1205 or 2601 or 2627 } => true,
+        _ => IsSqlConcurrencyConflict(ex.InnerException)
+    };
 
     private static async Task<PTPage<T>> PageAsync<T>(IQueryable<T> query, int page, int pageSize, CancellationToken cancellationToken)
     {

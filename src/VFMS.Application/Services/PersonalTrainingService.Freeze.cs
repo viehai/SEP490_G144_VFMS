@@ -315,8 +315,6 @@ public sealed partial class PersonalTrainingService
             var f = purchase.PTFreezes.Single(x => x.Id == id);
             if (f.RequestStatus != PTFreezeRequestStatus.Pending)
                 return Conflict<PTFreezeResponse>("Yêu cầu đã được xử lý.");
-            if (input.Approve && (f.ReplacementTrainerId is not null || Holds(purchase).Any(h => h.PTUserId != purchase.PTUserId)))
-                return Conflict<PTFreezeResponse>("Yêu cầu cũ có đổi huấn luyện viên không còn được duyệt. Hãy từ chối để hội viên gửi lại bảo lưu với PT hiện tại.");
             if (ChangePending(f))
                 return Conflict<PTFreezeResponse>("Hội viên đã gửi yêu cầu rút bảo lưu. Hãy xử lý yêu cầu rút trước.");
             var now = Now;
@@ -347,7 +345,7 @@ public sealed partial class PersonalTrainingService
                         return hold;
                     }).ToArray();
                 }
-                else if (await UnavailableHolds(purchase, f, holds, now, ct) is { Count: > 0 } unavailable)
+                else if (await UnavailableHolds(purchase, holds, now, ct) is { Count: > 0 } unavailable)
                 {
                     // UC 4.9 'Proposed Slot No Longer Available': the request stays Pending and its sessions stay protected.
                     var dates = string.Join(", ", unavailable.Select(h => $"{h.SessionDate:dd/MM/yyyy} {h.StartTime:HH:mm}"));
@@ -404,10 +402,10 @@ public sealed partial class PersonalTrainingService
 
     /// <summary>
     /// UC 4.9 step 7: rechecks the held post-freeze slots before approval. A slot fails when its time has passed, it falls
-    /// outside opening hours, its trainer is no longer the assigned active PT, or another
+    /// outside opening hours, its trainer is no longer an active PT, or another
     /// booking now overlaps it (the same check used when the slots were planned).
     /// </summary>
-    private async Task<List<PTSession>> UnavailableHolds(PTPurchase purchase, PTFreeze freeze, PTSession[] holds,
+    private async Task<List<PTSession>> UnavailableHolds(PTPurchase purchase, PTSession[] holds,
         DateTime now, CancellationToken ct)
     {
         var unavailable = new List<PTSession>();
@@ -419,7 +417,7 @@ public sealed partial class PersonalTrainingService
                 continue; // attended while pending: the hold is dropped on approval
             var trainer = await User(hold.PTUserId, UserRole.PT, ct);
             var slot = new PTCalendarSlot(0, hold.SessionDate, hold.StartTime, hold.EndTime, "Held");
-            if (freeze.ReplacementTrainerId is not null || hold.PTUserId != purchase.PTUserId || trainer is null ||
+            if (trainer is null ||
                 Utc(hold.SessionDate, hold.StartTime) <= now ||
                 !InHours(trainer.Gym, hold.StartTime, hold.EndTime) ||
                 await HasConflict(hold.PTUserId, purchase.MemberUserId, [slot], now, ct, ignorePurchase: purchase.Id))
@@ -464,7 +462,7 @@ public sealed partial class PersonalTrainingService
         if (f.RequestStatus != PTFreezeRequestStatus.Pending)
             return Conflict<PTFreezeProposal>("Chỉ đổi ca được khi yêu cầu bảo lưu đang chờ duyệt.");
         var holds = Holds(p);
-        var unavailable = await UnavailableHolds(p, f, holds, Now, ct);
+        var unavailable = await UnavailableHolds(p, holds, Now, ct);
         var end = LastSessionDate(p);
         return Result<PTFreezeProposal>.Success(new(end, holds.Select(HeldSession).ToArray(),
             unavailable.Select(h => HeldSession(h).OriginalSessionId).ToArray()));
@@ -497,7 +495,7 @@ public sealed partial class PersonalTrainingService
             var moved = holds.Where(h => moves.ContainsKey(HeldSession(h).OriginalSessionId)).ToArray();
             if (moved.Length != moves.Count)
                 return Invalid<PTFreezeResponse>("Chỉ đổi được ca của các buổi đang giữ chỗ sau bảo lưu.");
-            if ((await UnavailableHolds(p, f, holds, now, ct)).Any(h => !moved.Contains(h)))
+            if ((await UnavailableHolds(p, holds, now, ct)).Any(h => !moved.Contains(h)))
                 return Result<PTFreezeResponse>.Failure("Còn buổi có ca không còn khả dụng. Hãy chọn ca khác cho các buổi đó.",
                     "PT_FREEZE_SLOT_REQUIRED", 409);
             var takenDays = p.Sessions.Where(s => !moved.Contains(s) &&

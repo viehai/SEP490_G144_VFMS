@@ -113,7 +113,7 @@ public sealed partial class MembershipPurchaseApiTests
     }
 
     [Fact]
-    public async Task PTFreezeSlotPickerDoesNotApproveAPreviouslyStoredTrainerTransfer()
+    public async Task PTFreezeSlotPickerApprovesAPreviouslyStoredTrainerTransferWithItsHeldSlots()
     {
         using var member = Client("member", "Member");
         using var manager = Client("manager", "Manager");
@@ -131,9 +131,12 @@ public sealed partial class MembershipPurchaseApiTests
                 hold.PTUserId = "pt2";
             await db.SaveChangesAsync();
         }
-        using var rejected = await manager.PostAsJsonAsync($"/api/pt/manager/freezes/{freeze.Id}/decision", new PTFreezeDecision(true, null));
-        Assert.Equal(HttpStatusCode.Conflict, rejected.StatusCode);
-        Assert.Equal("buyer", (await ContractOf(member, id)).TrainerId);
+        using var approved = await manager.PostAsJsonAsync($"/api/pt/manager/freezes/{freeze.Id}/decision", new PTFreezeDecision(true, null));
+        Assert.True(approved.IsSuccessStatusCode, await approved.Content.ReadAsStringAsync());
+        await using var check = _app.Services.CreateAsyncScope();
+        var verifyDb = check.ServiceProvider.GetRequiredService<VfmsDbContext>();
+        Assert.True(await verifyDb.PTSessions.AnyAsync(s => s.PTFreezeId == freeze.Id &&
+            s.SessionStatus == PTSessionStatus.Scheduled && s.PTUserId == "pt2"));
     }
 
     private async Task<int[]> AddFreezeReplacementTrainer()

@@ -217,4 +217,53 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Equal(contract.Sessions, after.Sessions);
         Assert.False(after.HasPendingOrApprovedFreeze);
     }
+
+    [Fact]
+    public async Task ConcurrentManagerApprovalsOfOnePTFreezeAcceptExactlyOneDecision()
+    {
+        // Real SQL Server transactions (Serializable) are needed: the default test host does not run concurrent writes.
+        await using var database = await LegacySchemaMigrationTests.DisposableMigrationDatabase.CreateAsync();
+        await _app.DisposeAsync();
+        await StartApplicationAsync(database.ConnectionString);
+        var request = await PreparePTCheckout();
+        using var member = Client("member", "Member");
+        using var order = await member.PostAsJsonAsync("/api/pt/purchases", request);
+        Assert.Equal(HttpStatusCode.Created, order.StatusCode);
+        var checkout = await IssueQr(member, (await order.Content.ReadFromJsonAsync<PTCheckoutResponse>())!);
+        var transferAt = new DateTimeOffset(checkout.ExpiresAt).AddMinutes(-14);
+        _clock.Now = transferAt.AddSeconds(1);
+        using var paid = await NotifyTransferAsync(checkout.VietQr!.TransferContent, checkout.AmountDue, 97, transferAt);
+        Assert.Equal(HttpStatusCode.OK, paid.StatusCode);
+
+        var contractPath = $"/api/pt/contracts/{checkout.ContractId}";
+        var start = (await member.GetFromJsonAsync<PTContractResponse[]>(contractPath))!.Single().Sessions[0].Date;
+        using var requested = await member.PostAsJsonAsync($"{contractPath}/freezes",
+            new PTFreezeRequest(start, start.AddDays(7), "Travel"));
+        Assert.Equal(HttpStatusCode.Created, requested.StatusCode);
+        var freeze = (await requested.Content.ReadFromJsonAsync<PTFreezeResponse>())!;
+
+        using var managerA = Client("manager", "Manager");
+        using var managerB = Client("manager", "Manager");
+        var path = $"/api/pt/manager/freezes/{freeze.Id}/decision";
+        var responses = await Task.WhenAll(
+            managerA.PostAsJsonAsync(path, new PTFreezeDecision(true, null)),
+            managerB.PostAsJsonAsync(path, new PTFreezeDecision(true, null)));
+        try
+        {
+            Assert.Single(responses, response => response.StatusCode == HttpStatusCode.OK);
+            Assert.Single(responses, response => response.StatusCode == HttpStatusCode.Conflict);
+        }
+        finally
+        {
+            foreach (var response in responses) response.Dispose();
+        }
+
+        await using var scope = _app.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+        Assert.Equal(PTFreezeRequestStatus.Approved, (await db.PTFreezes.SingleAsync(f => f.Id == freeze.Id)).RequestStatus);
+        Assert.Equal(0, await db.PTSessions.CountAsync(s => s.PTFreezeId == freeze.Id &&
+            s.SessionStatus == PTSessionStatus.FreezeHold));
+        Assert.Equal(1, await db.Notifications.CountAsync(n => n.RecipientUserId == "member" &&
+            n.EntityType == nameof(PTFreeze) && n.EntityId == freeze.Id && n.Title == "Kết quả bảo lưu PT"));
+    }
 }

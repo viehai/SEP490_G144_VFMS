@@ -306,10 +306,12 @@ public sealed class TrainerRepository(VfmsDbContext db, IDataProtectionProvider 
     // ── Public directory (UC 3.4) ────────────────────────────────
 
     // UC 3.4: the directory lists active PT and Yoga trainers; Yoga trainers teaching classes stay visible.
-    private IQueryable<TrainerProfileResponse> PublicProfiles() =>
+    // The level filter compares the enum column before projection: EF cannot translate Level.ToString() in a WHERE.
+    private IQueryable<TrainerProfileResponse> PublicProfiles(TrainerLevel? level = null) =>
         from profile in Context.TrainerProfiles
         join user in Context.ApplicationUsers on profile.PTUserId equals user.UserId
-        where profile.IsActive && user.AccountStatus == AccountStatus.Active && !user.IsBanned
+        where profile.IsActive && user.AccountStatus == AccountStatus.Active && !user.IsBanned &&
+            (level == null || profile.Level == level)
         select new TrainerProfileResponse
         {
             Id = profile.Id,
@@ -344,7 +346,14 @@ public sealed class TrainerRepository(VfmsDbContext db, IDataProtectionProvider 
     public async Task<(IReadOnlyList<TrainerProfileResponse> Items, int TotalCount)> SearchPublicProfilesAsync(TrainerSearch search,
         CancellationToken cancellationToken = default)
     {
-        var query = PublicProfiles();
+        TrainerLevel? level = null;
+        if (!string.IsNullOrEmpty(search.Level))
+        {
+            if (!Enum.TryParse<TrainerLevel>(search.Level, out var parsedLevel))
+                return ([], 0);
+            level = parsedLevel;
+        }
+        var query = PublicProfiles(level);
         if (search.Search != null)
             query = query.Where(x => x.FullName.Contains(search.Search) || x.Specialty.Contains(search.Search));
         if (!string.IsNullOrEmpty(search.TrainerRole))
@@ -353,8 +362,6 @@ public sealed class TrainerRepository(VfmsDbContext db, IDataProtectionProvider 
             query = query.Where(x => x.Gender == search.Gender);
         if (search.MinimumRating != null)
             query = query.Where(x => x.AverageRating >= search.MinimumRating);
-        if (!string.IsNullOrEmpty(search.Level))
-            query = query.Where(x => x.Level == search.Level);
         if (search.AcceptingNewMembers != null)
             query = query.Where(x => x.IsAcceptingNewMembers == search.AcceptingNewMembers);
         var total = await query.CountAsync(cancellationToken);

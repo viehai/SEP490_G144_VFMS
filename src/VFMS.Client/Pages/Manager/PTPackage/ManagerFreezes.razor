@@ -56,10 +56,6 @@
             <p>@Date(selected.StartDate) đến @Date(selected.ResumeDate.AddDays(-1)) · @(selected.ResumeDate.DayNumber - selected.StartDate.DayNumber) ngày</p>
             <p class="trainer-muted">Chính sách bảo lưu của hợp đồng: tối thiểu @selected.MinimumDays ngày, tối đa @selected.MaximumDays ngày, một lần cho mỗi hợp đồng.</p>
             <p class="trainer-copy">@selected.Reason</p>
-            @if (LegacyTransferBlocked)
-            {
-                <p class="trainer-feedback" role="status">Yêu cầu cũ có đổi huấn luyện viên không còn được duyệt. Hãy từ chối để hội viên gửi lại bảo lưu với PT hiện tại.</p>
-            }
             @if (selected.ChangeRequestStatus == "Pending")
             {
                 <p class="trainer-feedback" role="status">Hội viên xin <strong>@RequestLabel(selected)</strong>. Bảo lưu giữ nguyên cho đến khi bạn duyệt.</p>
@@ -109,7 +105,7 @@
             }
             <label>Lý do từ chối<textarea class="trainer-input" rows="3" maxlength="1000" @bind="_reason" @bind:event="oninput" disabled="@_busy"></textarea></label>
             <div class="trainer-row">
-                <button class="trainer-button trainer-primary" disabled="@(_busy || LegacyTransferBlocked || _preview is null && _change is null)" @onclick="() => DecideAsync(true)">@(_selected.ChangeRequestStatus == "Pending" ? "Duyệt yêu cầu" : "Duyệt bảo lưu")</button>
+                <button class="trainer-button trainer-primary" disabled="@(_busy || _preview is null && _change is null)" @onclick="() => DecideAsync(true)">@(_selected.ChangeRequestStatus == "Pending" ? "Duyệt yêu cầu" : "Duyệt bảo lưu")</button>
                 <button class="trainer-button" disabled="@(_busy || string.IsNullOrWhiteSpace(_reason))" @onclick="() => DecideAsync(false)">Từ chối</button>
                 <button class="trainer-button" disabled="@_busy" @onclick="() => _selected = null">Đóng</button>
             </div>
@@ -122,8 +118,6 @@
     private PTFreezeResponse? _selected;
     private PTFreezePreview? _preview;
     private PTFreezeChangePreview? _change;
-    private bool LegacyTransferBlocked => _selected is { Status: "Pending", ReplacementTrainerId: not null } &&
-        _selected.ChangeRequestType != "Withdraw";
 
     private static string RequestLabel(PTFreezeResponse f) => f.ChangeRequestStatus == "Pending"
         ? f.ChangeRequestType == "Withdraw" ? "Rút bảo lưu" : $"Tập lại sớm từ {Date(f.ChangeResumeDate ?? f.ResumeDate)}"
