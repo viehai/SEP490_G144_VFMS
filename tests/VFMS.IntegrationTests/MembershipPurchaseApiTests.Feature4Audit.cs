@@ -23,8 +23,6 @@ public sealed partial class MembershipPurchaseApiTests
         foreach (var session in contract.Sessions)
             session.SessionStatus = PTSessionStatus.Completed;
         contract.Status = PTPurchaseStatus.Completed;
-        contract.IsCompleted = true;
-        contract.RemainingSessions = 0;
         await db.SaveChangesAsync();
     }
 

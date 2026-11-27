@@ -89,7 +89,7 @@ public sealed partial class FeedbackRepository : IFeedbackRepository
             .Select(profile => new FeedbackTrainerResponse(
                 profile.PTUserId,
                 profile.PTUser.FullName,
-                profile.AvatarUrl,
+                profile.PTUser.AvatarUrl,
                 profile.Bio,
                 profile.Level.ToString()))
             .ToListAsync(cancellationToken);

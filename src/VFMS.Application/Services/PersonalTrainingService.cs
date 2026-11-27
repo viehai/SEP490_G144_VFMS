@@ -141,7 +141,7 @@ public sealed partial class PersonalTrainingService(IPersonalTrainingRepository 
             foreach (var session in proposals)
             {
                 var isMakeUp = session.SessionStatus is PTSessionStatus.MakeUpPending or PTSessionStatus.MakeUpRequested;
-                if (session.SessionStatus == PTSessionStatus.RescheduleRequested)
+                if (PersonalTrainingRules.PublicSessionStatus(session.SessionStatus) == PTSessionStatus.RescheduleRequested)
                     CloseMemberReschedule(session, null, "RescheduleExpired", "Yêu cầu đổi lịch đã hết hạn. Lịch cũ được giữ nguyên.");
                 else
                     ClearProposal(session);

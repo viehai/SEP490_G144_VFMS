@@ -96,7 +96,6 @@ public sealed partial class MembershipPurchaseService(
 
         order.PaymentTransaction = new PaymentTransaction
         {
-            UserId = order.PurchaserUserId,
             GatewayName = online ? "SePay" : "Cash",
             PaymentMethod = online ? PaymentMethod.VietQR : PaymentMethod.Cash,
             AmountDue = subtotal

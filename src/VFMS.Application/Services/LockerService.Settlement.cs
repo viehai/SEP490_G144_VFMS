@@ -229,7 +229,6 @@ public sealed partial class LockerService
             MarkReturned(actor, rental, now);
             rental.ContractStatus = LockerContractStatus.Terminated;
             rental.CancelledAt = now;
-            rental.SettledAt = now;
             rental.SettledByUserId = actor;
             rental.FineAmount = quote.OverdueFees + quote.ForfeitedDeposit;
             rental.Locker.LockerStatus = rental.KeyLossConfirmedAt is not null || !request.LockSafe

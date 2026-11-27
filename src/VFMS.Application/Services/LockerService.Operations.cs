@@ -161,7 +161,6 @@ public sealed partial class LockerService
             rental.OutstandingAmount = owed > 0 ? owed : null;
             rental.FineAmount = owed + rental.DepositAmount;
             ReleaseReplacement(rental);
-            rental.SettledAt = now;
             rental.SettledByUserId = actor;
             rental.CancelledAt = now;
             rental.ContractStatus = LockerContractStatus.Abandoned;

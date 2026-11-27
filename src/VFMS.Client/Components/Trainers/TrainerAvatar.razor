@@ -1,5 +1,5 @@
 @inject TrainerApiClient Api
-@if (Api.PublicAsset(Trainer.AvatarUrl) is { } url)
+@if (Api.AvatarSrc(Trainer.AvatarUrl) is { } url)
 {
     <img src="@url" alt="Ảnh của @Trainer.FullName" referrerpolicy="no-referrer" class="trainer-avatar" />
 }

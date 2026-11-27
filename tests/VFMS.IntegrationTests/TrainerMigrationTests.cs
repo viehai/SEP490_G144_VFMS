@@ -100,7 +100,7 @@ public class TrainerMigrationTests
         var rejected = Assert.Single(changes.Where(x => x.Specialty == "Pilates"));
         Assert.Equal(TrainerApplicationStatus.Rejected, rejected.ApplicationStatus); Assert.Equal("Original rejection", rejected.ReviewNote);
         var profile = await db.TrainerProfiles.SingleAsync();
-        Assert.Equal("Strength", profile.Specialty); Assert.Equal("Legacy biography", profile.Bio); Assert.Equal("Tier2", profile.CommissionTier);
+        Assert.Equal("Strength", profile.Specialty); Assert.Equal("Legacy biography", profile.Bio);
         var store = new TrainerRepository(db, fixture.Protection, fixture.Configuration);
         var preservedFiles = JsonSerializer.Deserialize<List<TrainerStoredFile>>(profile.CertificatesJson)!;
         Assert.Equal(4, preservedFiles.Count);

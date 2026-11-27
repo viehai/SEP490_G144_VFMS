@@ -65,7 +65,7 @@ public sealed partial class LegacySchemaMigrationTests
             OrderStatus = OrderStatus.Paid, CompletedAt = new DateTime(2026, 11, 1, 8, 0, 0, DateTimeKind.Utc),
             PaymentTransaction = new PaymentTransaction
             {
-                User = user, GatewayName = "SePay", GatewayTransactionReference = "legacy-migration-payment",
+                GatewayName = "SePay", GatewayTransactionReference = "legacy-migration-payment",
                 PaymentMethod = PaymentMethod.VietQR, PaymentStatus = PaymentStatus.Paid, AmountDue = 500000,
                 AmountReceived = 500000, PaidAt = new DateTime(2026, 11, 1, 8, 0, 0, DateTimeKind.Utc),
                 Invoice = new Invoice

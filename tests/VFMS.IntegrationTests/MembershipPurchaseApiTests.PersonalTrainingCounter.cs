@@ -84,7 +84,7 @@ public sealed partial class MembershipPurchaseApiTests
         using var member = Client("member", "Member");
         var hold = await HoldPT(member, booking);
         using var choose = await member.PostAsJsonAsync($"/api/pt/purchases/{hold.OrderNumber}/payment",
-            new PTPaymentRequest(null, MembershipPaymentMethods.Cash));
+            new PTPaymentRequest("PT-OFF", MembershipPaymentMethods.Cash));
         var counter = (await choose.Content.ReadFromJsonAsync<PTCheckoutResponse>())!;
 
         _clock.Now = new DateTimeOffset(counter.HoldExpiresAt).AddSeconds(1);
@@ -94,7 +94,11 @@ public sealed partial class MembershipPurchaseApiTests
         using var late = await staff.PostAsJsonAsync($"/api/pt/purchases/{hold.OrderNumber}/cash-confirmation",
             new PTCashConfirmationRequest(counter.AmountDue));
         Assert.Equal(HttpStatusCode.Conflict, late.StatusCode);
-        Assert.Equal("Expired", (await member.GetFromJsonAsync<PTCheckoutResponse>($"/api/pt/purchases/{hold.OrderNumber}"))!.Status);
+        var expired = (await member.GetFromJsonAsync<PTCheckoutResponse>($"/api/pt/purchases/{hold.OrderNumber}"))!;
+        Assert.Equal("Expired", expired.Status);
+        Assert.Equal(550_000m, expired.AmountDue);
+        var expiredStaffOrder = Assert.Single((await StaffOrdersAsync(staff, "?serviceType=PT&method=Cash&status=Expired")).Items);
+        Assert.Equal(550_000m, expiredStaffOrder.AmountDue);
         // UC 4.5: an expired unpaid checkout is not listed under "My PT Packages".
         Assert.Empty((await member.GetFromJsonAsync<VFMS.Contracts.Common.PagedResponse<PTContractResponse>>(
             "/api/pt/contracts/page?page=1"))!.Items);

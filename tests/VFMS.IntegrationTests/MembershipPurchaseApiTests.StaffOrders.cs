@@ -35,7 +35,7 @@ public sealed partial class MembershipPurchaseApiTests
             db.Orders.Add(new Order
             {
                 PurchaserUserId = "buyer", OrderNumber = "TEST-PAYMENT-WITHOUT-PACKAGE", Channel = OrderChannel.Online,
-                PaymentTransaction = new PaymentTransaction { UserId = "buyer", GatewayName = "SePay", AmountDue = 100_000m }
+                PaymentTransaction = new PaymentTransaction { GatewayName = "SePay", AmountDue = 100_000m }
             });
             await db.SaveChangesAsync();
         }

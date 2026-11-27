@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json;
 using VFMS.Domain.Common;
 using VFMS.Domain.Enums;
 
@@ -12,26 +14,43 @@ public class PTPurchase : BaseEntity
     public int? OrderId { get; set; }
     public Order? Order { get; set; }
     public PTPurchaseStatus Status { get; set; } = PTPurchaseStatus.Active;
-    public string? PackageNameSnapshot { get; set; }
     public TrainerLevel? TrainerLevelSnapshot { get; set; }
     public int FreezeMinimumDaysSnapshot { get; set; }
     public int FreezeMaxTotalDaysSnapshot { get; set; }
     public string? WeeklyPatternJson { get; set; }
     public DateTime? HoldExpiresAt { get; set; }
-    public DateTime? ReceiptEmailSentAt { get; set; }
-    public DateTime? ReceiptEmailRetryAt { get; set; }
     public int? MemberMembershipId { get; set; }
     public string MemberUserId { get; set; } = string.Empty;
     public string PTUserId { get; set; } = string.Empty;
-    public int TotalSessions { get; set; }
-    public int RemainingSessions { get; set; }
     public DateOnly StartDate { get; set; }
     public DateOnly EndDate { get; set; }
-    public decimal PurchasePrice { get; set; }
-    public DateOnly PurchaseDate { get; set; }
-    public bool IsCompleted { get; set; } = false;
-    /// <summary>End of the one-week window to change trainer after the trainer stops accepting members (GBR-104).</summary>
-    public DateTime? TrainerChangeDeadline { get; set; }
+
+    [NotMapped]
+    public OrderItem PurchasedItem => Order?.Items.SingleOrDefault()
+        ?? throw new InvalidOperationException($"PT purchase {Id} requires one purchased order item.");
+
+    [NotMapped]
+    public string PackageNameSnapshot => PurchasedItem.PackageNameSnapshot;
+
+    [NotMapped]
+    public int TotalSessions => ReadPurchasedSessionCount(PurchasedItem);
+
+    [NotMapped]
+    public decimal PurchasePrice => Order?.PaymentTransaction?.AmountDue
+        ?? PurchasedItem.UnitPriceSnapshot - (Order?.VoucherRedemption?.DiscountAmount ?? 0);
+
+    public static int ReadPurchasedSessionCount(OrderItem item)
+    {
+        var terms = item.ComponentTermsSnapshot is { } snapshot
+            ? JsonSerializer.Deserialize<PurchasedComponent[]>(snapshot)
+            : null;
+        var sessionCount = terms?.SingleOrDefault(component => component.Type == ComponentType.PT)?.SessionCount;
+        return sessionCount is >= 0
+            ? sessionCount.Value
+            : throw new InvalidOperationException($"PT order item {item.Id} requires purchased PT session terms.");
+    }
+
+    private sealed record PurchasedComponent(ComponentType Type, int? SessionCount);
 
     // ── Navigation Properties ──────────────────────────────────
     public MemberMembership? MemberMembership { get; set; }

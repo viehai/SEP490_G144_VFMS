@@ -15,7 +15,7 @@ public sealed class UpdateUserProfileRequestValidator : AbstractValidator<Update
 
         RuleFor(x => x.AvatarUrl)
             .MaximumLength(2048)
-            .Must(url => string.IsNullOrWhiteSpace(url) ||
+            .Must(url => string.IsNullOrWhiteSpace(url) || AvatarUrls.IsInternal(url) ||
                 Uri.TryCreate(url, UriKind.Absolute, out var parsed) &&
                 (parsed.Scheme == Uri.UriSchemeHttps || parsed.Scheme == Uri.UriSchemeHttp))
             .WithMessage("Avatar URL must be a valid HTTP or HTTPS URL.");

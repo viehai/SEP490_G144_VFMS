@@ -131,8 +131,11 @@ public sealed partial class MembershipPurchaseApiTests
         using var requested = await member.PostAsync($"/api/pt/sessions/{first.Id}/cancellation-request", null);
         Assert.True(requested.StatusCode == HttpStatusCode.OK, await requested.Content.ReadAsStringAsync());
         var pending = (await requested.Content.ReadFromJsonAsync<PTSessionResponse>())!;
+        Assert.Equal("RescheduleRequested", pending.Status);
         Assert.Equal("Cancellation", pending.Proposal!.Type);
+        Assert.Equal(first.EndTime, pending.Proposal.EndTime);
         Assert.Equal(LocalTime(first.Date, first.StartTime).AddHours(-4).UtcDateTime, pending.Proposal.ExpiresAt);
+        Assert.Equal(contract.ReservedCredits, (await ContractOf(member, id)).ReservedCredits);
         using var accepted = await trainer.PostAsJsonAsync($"/api/pt/sessions/{first.Id}/reschedule-request/decision",
             new PTRescheduleDecision(true, first.Date, first.StartTime, pending.Proposal.ExpiresAt));
         Assert.True(accepted.StatusCode == HttpStatusCode.OK, await accepted.Content.ReadAsStringAsync());

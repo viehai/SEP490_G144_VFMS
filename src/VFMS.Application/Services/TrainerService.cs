@@ -218,7 +218,7 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
             r = r with
             {
                 FullName = owner.FullName,
-                Gender = profile.Gender,
+                Gender = owner.PhysicalProfile?.Gender ?? "",
                 ExperienceYears = profile.ExperienceYears,
                 Bio = profile.Bio ?? ""
             };
@@ -569,16 +569,16 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
             profile.Specialty = a.Specialty;
             profile.TrainerRoleId = a.TrainerRoleId;
             profile.CertificatesJson = PublishCertificates(a.CertificatesJson);
-            profile.Gender = a.Gender;
+            user.PhysicalProfile ??= new PhysicalProfile { MemberUserId = user.UserId, DateOfBirth = a.DateOfBirth };
+            user.PhysicalProfile.Gender = a.Gender;
             profile.ExperienceYears = a.ExperienceYears;
             profile.Level = Enum.Parse<TrainerLevel>(r.Level!);
             profile.IsActive = true;
             // New and rehired trainers start 'Accepting New Members', so the GBR-104 60-day count does not run.
             profile.AcceptingNewMembers = true;
-            profile.NotAcceptingSince = null;
             profile.NotAcceptingCountFrom = null;
             profile.NotAcceptingAccumulatedDays = 0;
-            profile.AcceptingSince = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7));
+            profile.ReadinessSince = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7));
             if (previous == null)
                 repo.Add(profile);
             await repo.SaveChangesAsync(ct);
@@ -726,8 +726,6 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
         var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7));
         var stored = await repo.GetProfileAsync(id, ct);
         var certificates = Docs(stored!.CertificatesJson, $"/api/trainers/{id}", true);
-        if (Records<TrainerStoredFile>(stored.CertificatesJson).Count == 0 && !string.IsNullOrWhiteSpace(stored.CertificateUrl))
-            certificates = [new TrainerDocumentResponse("legacy", "Chứng chỉ", "application/octet-stream", stored.CertificateUrl)];
         // UC 3.4 step 7: a frozen contract is still the member's package, so its schedule stays reachable.
         var hasActiveContract = (await HasRole(actor, "Member", ct) || await HasRole(actor, "Customer", ct)) &&
             await repo.HasRunningContractWithTrainerAsync(actor!, p.UserId, today, ct);
@@ -764,6 +762,10 @@ public sealed class TrainerService(ITrainerRepository repo, IPasswordHasher pass
             d.IsAvatar = true;
             d.IsPublic = true;
             p.AvatarJson = JsonSerializer.Serialize(d);
+            var user = await repo.GetUserAsync(actor, ct);
+            if (user == null)
+                return Error<bool>("TRAINER_NOT_FOUND", "Không tìm thấy tài khoản huấn luyện viên.", 404);
+            user.AvatarUrl = $"/api/trainers/{p.Id}/avatar";
         }
         Audit(actor, nameof(TrainerProfile), p.Id, "UpdatePublicProfile", "Active", "Active");
         return Result<bool>.Success(true);

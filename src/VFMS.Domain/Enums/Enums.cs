@@ -186,7 +186,9 @@ public enum PTSessionStatus
     /// <summary>Post-freeze slot held while the freeze request awaits the Manager (GBR-09).</summary>
     FreezeHold,
     /// <summary>Make-up appointment proposed by the Member; the PT accepts or declines (UC 4.7).</summary>
-    MakeUpRequested
+    MakeUpRequested,
+    CancellationPending,
+    CancellationRequested
 }
 
 public enum PTPurchaseStatus
@@ -201,7 +203,7 @@ public enum PTPurchaseStatus
 public enum PTAdjustmentType
 {
     Reschedule,
-    // No longer offered (UC 4.7); kept so stored values and their order stay valid.
+    // No longer offered (UC 4.7).
     DoubleSession,
     Cancellation
 }
@@ -223,6 +225,17 @@ public enum PTFreezeRequestStatus
     Expired,
     /// <summary>Withdrawn by the Member before the freeze started; not counted as used (UC 4.8).</summary>
     Withdrawn
+}
+
+public enum PTFreezeChangeState
+{
+    None,
+    WithdrawPending,
+    WithdrawApproved,
+    WithdrawRejected,
+    EarlyResumePending,
+    EarlyResumeApproved,
+    EarlyResumeRejected
 }
 
 // ─────────────────────────────────────────────────────────────

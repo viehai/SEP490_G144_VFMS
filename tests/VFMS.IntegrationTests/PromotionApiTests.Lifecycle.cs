@@ -288,7 +288,7 @@ public sealed partial class PromotionApiTests
             Channel = OrderChannel.Online, OrderStatus = OrderStatus.Paid, CompletedAt = _clock.Now.UtcDateTime,
             PaymentTransaction = new PaymentTransaction
             {
-                UserId = CustomerId, GatewayName = "Test", PaymentStatus = PaymentStatus.Paid,
+                GatewayName = "Test", PaymentStatus = PaymentStatus.Paid,
                 PaymentMethod = PaymentMethod.VietQR, AmountDue = 490000, AmountReceived = 490000,
                 PaidAt = _clock.Now.UtcDateTime,
                 Invoice = new Invoice { InvoiceNumber = $"INV-{Guid.NewGuid():N}", IssuedAt = _clock.Now.UtcDateTime }

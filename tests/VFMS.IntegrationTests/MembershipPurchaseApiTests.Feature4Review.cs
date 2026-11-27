@@ -129,10 +129,11 @@ public sealed partial class MembershipPurchaseApiTests
         {
             MemberUserId = "member",
             PTUserId = "other-pt",
+            Order = TestSeed.PaidPTOrder("member", 1),
             MemberMembershipId = (await db.MemberMemberships.FirstAsync()).Id,
             StartDate = contract.StartDate,
             EndDate = contract.EndDate,
-            Sessions = [new PTSession { MemberUserId = "member", PTUserId = "other-pt", SessionDate = session.Date,
+            Sessions = [new PTSession { PTUserId = "other-pt", SessionDate = session.Date,
                 StartTime = free[0], EndTime = free[0].AddHours(1) }]
         });
         await db.SaveChangesAsync();
@@ -228,8 +229,9 @@ public sealed partial class MembershipPurchaseApiTests
         db.PTPurchases.Add(new PTPurchase
         {
             MemberUserId = "gift", PTUserId = "buyer", MemberMembershipId = membership.Id,
+            Order = TestSeed.PaidPTOrder("gift", 1),
             StartDate = slot.Date, EndDate = slot.Date, Status = PTPurchaseStatus.Active,
-            Sessions = [new PTSession { MemberUserId = "gift", PTUserId = "buyer", SessionDate = slot.Date,
+            Sessions = [new PTSession { PTUserId = "buyer", SessionDate = slot.Date,
                 StartTime = slot.StartTime, EndTime = slot.EndTime }]
         });
         await db.SaveChangesAsync();

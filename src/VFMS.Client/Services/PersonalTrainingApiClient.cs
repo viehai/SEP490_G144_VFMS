@@ -9,6 +9,8 @@ namespace VFMS.Client.Services;
 
 public sealed class PersonalTrainingApiClient(HttpClient http, AuthSession session) : IDisposable
 {
+    public string? AvatarSrc(string? path) => AssetUrls.Resolve(http.BaseAddress!, path);
+
     public Task<PTWeeklySlot[]> WeeklyTemplateAsync(string trainer) =>
         Send<PTWeeklySlot[]>(HttpMethod.Get, $"trainers/{Uri.EscapeDataString(trainer)}/weekly-template", anonymous: true);
     public Task<PTSlotInput[]> AvailabilityAsync() => Send<PTSlotInput[]>(HttpMethod.Get, "availability");

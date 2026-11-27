@@ -48,7 +48,7 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Equal(150_000, rental.DepositHeld);
         await using var verify = _app.Services.CreateAsyncScope();
         var context = verify.ServiceProvider.GetRequiredService<VfmsDbContext>();
-        var snapshot = await context.LockerRentalContracts.SingleAsync(r => r.Id == id);
+        var snapshot = await context.LockerRentalContracts.Include(r => r.LockerPricingPolicy).SingleAsync(r => r.Id == id);
         Assert.Equal(0, snapshot.RentalPrice);
     }
 
@@ -71,6 +71,6 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.All(policies, p => Assert.Equal(150_000, p.Deposit));
         await using var scope = _app.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
-        Assert.Equal(0, (await db.LockerPricingPolicies.SingleAsync(p => p.RentalType == RentalType.Daily)).RentalPrice);
+        Assert.Equal(0, (await db.LockerPricingPolicies.SingleAsync(p => p.DurationMonths == 0)).RentalPrice);
     }
 }

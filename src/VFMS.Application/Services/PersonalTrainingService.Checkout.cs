@@ -216,23 +216,17 @@ public sealed partial class PersonalTrainingService
                 PTUserId = request.TrainerId,
                 Status = PTPurchaseStatus.PendingPayment,
                 HoldExpiresAt = now.Add(HoldDuration),
-                PackageNameSnapshot = booking.Package.Name,
                 TrainerLevelSnapshot = booking.Trainer.Level,
-                PurchaseDate = Today,
-                FreezeMinimumDaysSnapshot = component.PTFreezeMinimumDays ?? 0,
-                FreezeMaxTotalDaysSnapshot = component.PTFreezeMaxTotalDays ?? 0,
+                FreezeMinimumDaysSnapshot = component.MinFreezeDaysPerRequest ?? 0,
+                FreezeMaxTotalDaysSnapshot = component.MaxFreezeDaysPerRequest ?? 0,
                 StartDate = request.StartDate,
                 EndDate = booking.Preview.ExpiresOn,
-                PurchasePrice = booking.Package.Price,
-                TotalSessions = booking.Preview.Sessions.Count,
-                RemainingSessions = booking.Preview.Sessions.Count,
                 WeeklyPatternJson = JsonSerializer.Serialize(new SessionBasedPattern(
                     booking.Pattern.Select(p => new PTSlotInput(p.DayOfWeek!.Value, p.StartTime)).ToArray())),
                 Sessions = booking.Preview.Sessions.Select(s => new PTSession
                 {
                     PTAvailabilityId = s.TemplateId,
                     PTUserId = request.TrainerId,
-                    MemberUserId = actor,
                     SessionDate = s.Date,
                     StartTime = s.StartTime,
                     EndTime = s.EndTime,
@@ -290,7 +284,7 @@ public sealed partial class PersonalTrainingService
                 if (campaign is null)
                     return Result<PTCheckoutResponse>.Failure("Không tìm thấy mã voucher.", "VOUCHER_NOT_FOUND");
                 var capacity = await payments.ReadVoucherCapacityAsync(campaign.Id, member, ct);
-                var check = VoucherCheckoutRules.Check(campaign, member.CreatedAt, now, capacity, purchase.PurchasePrice);
+                var check = VoucherCheckoutRules.Check(campaign, member.CreatedAt, now, capacity, purchase.PurchasedItem.UnitPriceSnapshot);
                 if (!check.IsSuccess)
                     return Result<PTCheckoutResponse>.Failure(check.ErrorMessage!, check.ErrorCode!, check.StatusCode);
                 voucher = new VoucherRedemption
@@ -303,7 +297,7 @@ public sealed partial class PersonalTrainingService
                     RedeemedAt = now
                 };
             }
-            var due = purchase.PurchasePrice - (voucher?.DiscountAmount ?? 0);
+            var due = purchase.PurchasedItem.UnitPriceSnapshot - (voucher?.DiscountAmount ?? 0);
             if (due == 0 && voucher is not null)
             {
                 if (!await HeldSlotsStillValid(purchase, now, ct))
@@ -311,9 +305,8 @@ public sealed partial class PersonalTrainingService
                 order.VoucherRedemption = voucher;
                 order.PaymentTransaction = new PaymentTransaction
                 {
-                    UserId = actor, GatewayName = "NoCharge", PaymentMethod = PaymentMethod.NoCharge, AmountDue = 0
+                    GatewayName = "NoCharge", PaymentMethod = PaymentMethod.NoCharge, AmountDue = 0
                 };
-                purchase.PurchasePrice = 0;
                 MembershipPurchaseService.RecordPaidOrder(order, 0, now, null, now);
                 ActivatePTContract(purchase);
                 Notify(actor, "Đã thanh toán gói PT", $"Hóa đơn {order.PaymentTransaction.Invoice!.InvoiceNumber}. Lịch tập đã được xác nhận.",
@@ -326,7 +319,6 @@ public sealed partial class PersonalTrainingService
                 // The payment row is created when Staff confirms the cash, so SePay and membership cash confirmation never match it.
                 order.Channel = OrderChannel.Counter;
                 order.VoucherRedemption = voucher;
-                purchase.PurchasePrice = due;
                 purchase.HoldExpiresAt = order.CreatedAt.Add(CounterHold);
                 await repo.SaveChangesAsync(ct);
                 return Result<PTCheckoutResponse>.Success(CheckoutResponse(purchase, order, null, now));
@@ -337,12 +329,10 @@ public sealed partial class PersonalTrainingService
             order.VoucherRedemption = voucher;
             order.PaymentTransaction = new PaymentTransaction
             {
-                UserId = actor,
                 GatewayName = "SePay",
                 PaymentMethod = PaymentMethod.VietQR,
                 AmountDue = due
             };
-            purchase.PurchasePrice = due;
             await repo.SaveChangesAsync(ct);
             return Result<PTCheckoutResponse>.Success(CheckoutResponse(purchase, order, qr, now));
         }, ct);
@@ -367,18 +357,18 @@ public sealed partial class PersonalTrainingService
                 contract.Status != PTPurchaseStatus.PendingPayment || contract.HoldExpiresAt <= now.UtcDateTime)
                 return Result<PTCheckoutResponse>.Failure(
                     "Đơn không chờ thanh toán tại quầy hoặc đã hết hạn giữ lịch.", "PT_CASH_NOT_PENDING", 409);
-            if (amount != contract.PurchasePrice)
+            var amountDue = contract.PurchasePrice;
+            if (amount != amountDue)
                 return Result<PTCheckoutResponse>.Failure(
-                    $"Số tiền nhận phải đúng {contract.PurchasePrice:N0} VND.", "PT_CASH_AMOUNT_MISMATCH", 409);
+                    $"Số tiền nhận phải đúng {amountDue:N0} VND.", "PT_CASH_AMOUNT_MISMATCH", 409);
             if (!await HeldSlotsStillValid(contract, now.UtcDateTime, ct))
                 return Conflict<PTCheckoutResponse>("Lịch PT không còn hợp lệ.");
 
             order.PaymentTransaction = new PaymentTransaction
             {
-                UserId = contract.MemberUserId,
                 GatewayName = "Cash",
                 PaymentMethod = PaymentMethod.Cash,
-                AmountDue = contract.PurchasePrice
+                AmountDue = amountDue
             };
             MembershipPurchaseService.RecordPaidOrder(order, amount, now, null, now);
             ActivatePTContract(contract);
@@ -434,7 +424,7 @@ public sealed partial class PersonalTrainingService
                     PaymentDeadline(order) <= now => "AwaitingConfirmation",
                 _ => order.OrderStatus.ToString()
             },
-            order.PaymentTransaction?.AmountDue ?? purchase.PurchasePrice,
+            purchase.PurchasePrice,
             DateTime.SpecifyKind(PaymentDeadline(order), DateTimeKind.Utc),
             qr, order.PaymentTransaction?.Invoice?.InvoiceNumber, DateTime.SpecifyKind(purchase.HoldExpiresAt!.Value, DateTimeKind.Utc),
             PayAtCounter: order.Channel == OrderChannel.Counter);
@@ -447,7 +437,7 @@ public sealed partial class PersonalTrainingService
         if (voucher is null) return false;
         var capacity = await payments.ReadVoucherCapacityAsync(voucher.Id, order.Purchaser, ct);
         var check = VoucherCheckoutRules.Check(voucher, order.Purchaser.CreatedAt, now, capacity,
-            order.Items.Sum(i => i.UnitPriceSnapshot));
+            order.Items.Single().UnitPriceSnapshot);
         if (!check.IsSuccess || check.Data != redemption.DiscountAmount) return false;
         redemption.VoucherGrantId = voucher.Audience == VoucherAudience.AssignedUsers ? capacity.AvailableGrantId : null;
         redemption.RedemptionStatus = VoucherRedemptionStatus.Reserved;

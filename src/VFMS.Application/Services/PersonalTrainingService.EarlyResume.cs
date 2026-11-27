@@ -34,7 +34,7 @@ public sealed partial class PersonalTrainingService
             return Result<PTContractResponse>.Failure("Yêu cầu của bạn đang chờ Quản lý duyệt.", "PT_FREEZE_CHANGE_PENDING", 409);
 
         // The freeze and the schedule stay in effect until the Manager approves (step 8.4).
-        StartChangeRequest(plan.Freeze, PTFreezeChangeTypes.EarlyResume, request.ResumeDate,
+        StartChangeRequest(plan.Freeze, PTFreezeChangeState.EarlyResumePending,
             System.Text.Json.JsonSerializer.Serialize(request));
         Audit(actor, nameof(PTFreeze), id,
             FormattableString.Invariant($"EarlyResumeRequested:{plan.Preview.CurrentResumeDate:yyyy-MM-dd}->{request.ResumeDate:yyyy-MM-dd}"));

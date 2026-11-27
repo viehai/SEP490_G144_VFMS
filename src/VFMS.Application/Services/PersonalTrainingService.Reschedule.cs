@@ -84,7 +84,8 @@ public sealed partial class PersonalTrainingService
         var session = contract.Sessions.Single(s => s.Id == id);
         var now = Now;
         var originalStart = Utc(session.SessionDate, session.StartTime);
-        if (session.SessionStatus == PTSessionStatus.ReschedulePending && session.ProposalExpiresAt <= now)
+        if (PersonalTrainingRules.PublicSessionStatus(session.SessionStatus) == PTSessionStatus.ReschedulePending &&
+            session.ProposalExpiresAt <= now)
             ClearProposal(session);
         if (session.SessionStatus != PTSessionStatus.Scheduled || originalStart <= now)
             return Conflict<PTSessionResponse>("Chỉ có thể xin đổi buổi sắp tới chưa có đề xuất chờ.");
@@ -102,8 +103,6 @@ public sealed partial class PersonalTrainingService
 
         session.ProposedDate = request.Date;
         session.ProposedStartTime = request.StartTime;
-        session.ProposedEndTime = end;
-        session.ProposedAdjustmentType = PTAdjustmentType.Reschedule;
         session.ProposalExpiresAt = ResponseDeadline(originalStart);
         session.SessionStatus = PTSessionStatus.RescheduleRequested;
         Audit(actor, nameof(PTSession), id, $"RescheduleRequested:{request.Date:yyyy-MM-dd}:{request.StartTime:HH:mm}");
@@ -123,13 +122,14 @@ public sealed partial class PersonalTrainingService
         if (contract is null)
             return Missing<PTSessionResponse>();
         var session = contract.Sessions.Single(s => s.Id == id);
-        if (session.SessionStatus != PTSessionStatus.RescheduleRequested || session.ProposedDate != request.Date ||
+        if (PersonalTrainingRules.PublicSessionStatus(session.SessionStatus) != PTSessionStatus.RescheduleRequested ||
+            session.ProposedDate != request.Date ||
             session.ProposedStartTime != request.StartTime || session.ProposalExpiresAt != request.ProposalExpiresAt)
             return Conflict<PTSessionResponse>("Yêu cầu đã thay đổi. Vui lòng tải lại.");
 
         var now = Now;
         var expired = session.ProposalExpiresAt <= now;
-        if (!expired && request.Accept && session.ProposedAdjustmentType == PTAdjustmentType.Cancellation)
+        if (!expired && request.Accept && session.SessionStatus == PTSessionStatus.CancellationRequested)
         {
             AcceptCancellation(session, contract, actor, now);
             await repo.SaveChangesAsync(ct);

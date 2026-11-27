@@ -64,7 +64,8 @@ public sealed class MyVoucherRepository(VfmsDbContext db) : IMyVoucherRepository
                 o.PaymentTransaction.PaymentExpiresAt > now && o.PaymentTransaction.HoldExpiresAt > now &&
                 (o.PaymentTransaction.LockerPurpose == LockerPaymentPurpose.Rental || o.PaymentTransaction.LockerPurpose == LockerPaymentPurpose.Renewal))
             .Select(o => (decimal?)(o.PaymentTransaction!.LockerPurpose == LockerPaymentPurpose.Rental
-                ? o.PaymentTransaction.LockerRentalContract!.RentalPrice
+                ? o.PaymentTransaction.LockerRentalContract!.LockerPricingPolicy.DurationMonths == 0 ? 0
+                    : o.PaymentTransaction.LockerRentalContract.LockerPricingPolicy.RentalPrice
                 : o.PaymentTransaction.AmountDue - (o.PaymentTransaction.OverdueFees ?? 0))).SingleOrDefaultAsync(ct);
         if (lockerFee is > 0) return lockerFee;
         var prices = await orders.Where(o => db.PTPurchases.Any(p => p.OrderId == o.Id)

@@ -54,8 +54,8 @@ public sealed partial class MembershipPurchaseApiTests
             db.AuditLogs.Add(new() { ActorUserId = "manager", ActionType = AuditActionType.Login, AuditEntity = "ApplicationUser", OccurredAt = _clock.Now.UtcDateTime });
             var membership = TestSeed.Membership("member");
             db.PTPurchases.Add(new PTPurchase { PTUserId = "buyer", MemberUserId = "member", MemberMembership = membership,
-                TotalSessions = 4, EndDate = Today.AddDays(14), StartDate = Today,
-                Sessions = [new PTSession { MemberUserId = "member", PTUserId = "buyer", SessionDate = Today,
+                Order = TestSeed.PaidPTOrder("member", 4), EndDate = Today.AddDays(14), StartDate = Today,
+                Sessions = [new PTSession { PTUserId = "buyer", SessionDate = Today,
                     StartTime = new(8,0), EndTime = new(9,0), SessionStatus = PTSessionStatus.Completed }] });
             await db.SaveChangesAsync();
         }

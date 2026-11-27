@@ -40,13 +40,14 @@ public static class PersonalTrainingRules
     public static Expression<Func<PTPurchase, bool>> StillRunning(DateOnly today)
     {
         var graceFrom = today.AddDays(-MakeUpGraceDays);
-        return p => !p.IsCompleted && (p.Status == PTPurchaseStatus.Active || p.Status == PTPurchaseStatus.Frozen) &&
+        return p => (p.Status == PTPurchaseStatus.Active || p.Status == PTPurchaseStatus.Frozen) &&
             (p.EndDate >= today || p.EndDate >= graceFrom && p.Sessions.Any(s =>
             s.SessionStatus == PTSessionStatus.Cancelled && s.CancelledAt != null && !s.IsCreditForfeited &&
             !p.Sessions.Any(r => r.ReplacementForSessionId == s.Id && r.SessionStatus != PTSessionStatus.Cancelled &&
                 r.SessionStatus != PTSessionStatus.MakeUpPending && r.SessionStatus != PTSessionStatus.MakeUpRequested) ||
             s.ReplacementForSessionId != null && (s.SessionStatus == PTSessionStatus.Scheduled ||
                 s.SessionStatus == PTSessionStatus.ReschedulePending || s.SessionStatus == PTSessionStatus.RescheduleRequested ||
+                s.SessionStatus == PTSessionStatus.CancellationPending || s.SessionStatus == PTSessionStatus.CancellationRequested ||
                 s.SessionStatus == PTSessionStatus.PendingFreeze || s.SessionStatus == PTSessionStatus.Disputed)));
     }
 
@@ -67,7 +68,15 @@ public static class PersonalTrainingRules
 
     public static bool Reserved(PTSessionStatus status) =>
         status is PTSessionStatus.Scheduled or PTSessionStatus.ReschedulePending or PTSessionStatus.RescheduleRequested
+            or PTSessionStatus.CancellationPending or PTSessionStatus.CancellationRequested
             or PTSessionStatus.PendingFreeze or PTSessionStatus.Disputed;
+
+    public static PTSessionStatus PublicSessionStatus(PTSessionStatus status) => status switch
+    {
+        PTSessionStatus.CancellationPending => PTSessionStatus.ReschedulePending,
+        PTSessionStatus.CancellationRequested => PTSessionStatus.RescheduleRequested,
+        _ => status
+    };
 
     public static bool Used(PTSessionStatus status) =>
         status is PTSessionStatus.Completed or PTSessionStatus.AutoCompleted or PTSessionStatus.NoShow;
@@ -76,23 +85,20 @@ public static class PersonalTrainingRules
         session.SessionStatus == PTSessionStatus.Scheduled ||
         session.SessionStatus == PTSessionStatus.ReschedulePending ||
         session.SessionStatus == PTSessionStatus.RescheduleRequested ||
+        session.SessionStatus == PTSessionStatus.CancellationPending ||
+        session.SessionStatus == PTSessionStatus.CancellationRequested ||
         session.SessionStatus == PTSessionStatus.PendingFreeze ||
         session.SessionStatus == PTSessionStatus.FreezeHold ||
         (session.SessionStatus == PTSessionStatus.CheckoutHold &&
             session.PTPurchase.Status == PTPurchaseStatus.PendingPayment &&
             session.PTPurchase.HoldExpiresAt > now);
 
-    /// <summary>Recounts the remaining sessions and completes the contract once nothing is left; needs p.Sessions loaded.
-    /// Shared by PT attendance and the check-in kiosk (GBR-92).</summary>
+    /// <summary>Completes the contract once nothing is left. Requires the sessions and purchased order item.</summary>
     public static void Settle(PTPurchase p)
     {
         var (used, reserved) = Credits(p.Sessions);
-        p.RemainingSessions = Math.Max(0, p.TotalSessions - used);
-        if (p.RemainingSessions == 0 && reserved == 0)
-        {
+        if (used >= p.TotalSessions && reserved == 0)
             p.Status = PTPurchaseStatus.Completed;
-            p.IsCompleted = true;
-        }
     }
 
     /// <summary>GBR-103: after a 'PT Absent' report the PT can still record attendance until the end of the next day;

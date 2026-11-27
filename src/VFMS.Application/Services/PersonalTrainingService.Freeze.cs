@@ -8,8 +8,7 @@ namespace VFMS.Application.Services;
 
 public sealed partial class PersonalTrainingService
 {
-    private static bool Approved(PTFreeze f) => f.RequestStatus is PTFreezeRequestStatus.Approved or
-        PTFreezeRequestStatus.Active or PTFreezeRequestStatus.Completed;
+    private static bool Approved(PTFreeze f) => f.ActualStartDate.HasValue;
 
     /// <summary>GBR-15: one freeze per contract, so nothing remains once a request is pending or the freeze is used.</summary>
     private static int RemainingFreezeDays(PTPurchase p) =>
@@ -21,17 +20,29 @@ public sealed partial class PersonalTrainingService
         if (Approved(f))
             state = Today >= f.ActualEndDate ? PTFreezeRequestStatus.Completed :
                 Today >= f.ActualStartDate ? PTFreezeRequestStatus.Active : PTFreezeRequestStatus.Approved;
+        var (changeType, changeStatus) = f.ChangeState switch
+        {
+            PTFreezeChangeState.WithdrawPending => (PTFreezeChangeTypes.Withdraw, "Pending"),
+            PTFreezeChangeState.WithdrawApproved => (PTFreezeChangeTypes.Withdraw, "Approved"),
+            PTFreezeChangeState.WithdrawRejected => (PTFreezeChangeTypes.Withdraw, "Rejected"),
+            PTFreezeChangeState.EarlyResumePending => (PTFreezeChangeTypes.EarlyResume, "Pending"),
+            PTFreezeChangeState.EarlyResumeApproved => (PTFreezeChangeTypes.EarlyResume, "Approved"),
+            PTFreezeChangeState.EarlyResumeRejected => (PTFreezeChangeTypes.EarlyResume, "Rejected"),
+            _ => ((string?)null, (string?)null)
+        };
         return new(f.Id, p.Id, p.MemberUserId, p.PTUserId, f.RequestedStartDate,
             f.ActualEndDate ?? f.RequestedEndDate, state.ToString(), f.Reason,
             f.ReviewNote, f.ReviewedAt, ReplacementTrainerId: f.ReplacementTrainerId)
         {
             // UC 4.9: the freeze policy snapshot the Manager reviews against.
-            MinimumDays = f.MinimumDaysSnapshot ?? p.FreezeMinimumDaysSnapshot,
-            MaximumDays = f.MaxDaysSnapshot ?? p.FreezeMaxTotalDaysSnapshot,
-            ChangeRequestType = f.ChangeRequestType,
-            ChangeRequestStatus = f.ChangeRequestStatus,
+            MinimumDays = p.FreezeMinimumDaysSnapshot,
+            MaximumDays = p.FreezeMaxTotalDaysSnapshot,
+            ChangeRequestType = changeType,
+            ChangeRequestStatus = changeStatus,
             ChangeRequestedAt = f.ChangeRequestedAt is { } at ? DateTime.SpecifyKind(at, DateTimeKind.Utc) : null,
-            ChangeResumeDate = f.ChangeResumeDate,
+            ChangeResumeDate = f.ChangePayloadJson is { } payload
+                ? JsonSerializer.Deserialize<PTEarlyResumeConfirmation>(payload)!.ResumeDate
+                : null,
             ChangeReviewNote = f.ChangeReviewNote,
             ChangeOutcome = f.ChangeOutcome
         };
@@ -215,12 +226,9 @@ public sealed partial class PersonalTrainingService
             var freeze = new PTFreeze
             {
                 PTPurchaseId = id,
-                RequestedByUserId = actor,
                 RequestedStartDate = input.StartDate,
                 RequestedEndDate = input.ResumeDate,
-                Reason = input.Reason.Trim(),
-                MinimumDaysSnapshot = p.FreezeMinimumDaysSnapshot,
-                MaxDaysSnapshot = p.FreezeMaxTotalDaysSnapshot
+                Reason = input.Reason.Trim()
             };
             repo.Add(freeze);
             await repo.SaveChangesAsync(ct);
@@ -235,7 +243,7 @@ public sealed partial class PersonalTrainingService
                 p.Sessions.Add(new PTSession
                 {
                     PTUserId = plan.TrainerId,
-                    MemberUserId = p.MemberUserId,
+                    PTPurchase = p,
                     SessionDate = slot.Date,
                     StartTime = slot.StartTime,
                     EndTime = slot.EndTime,
@@ -332,7 +340,7 @@ public sealed partial class PersonalTrainingService
                         var hold = new PTSession
                         {
                             PTUserId = purchase.PTUserId,
-                            MemberUserId = purchase.MemberUserId,
+                            PTPurchase = purchase,
                             SessionDate = r.Slot.Date,
                             StartTime = r.Slot.StartTime,
                             EndTime = r.Slot.EndTime,
@@ -377,7 +385,6 @@ public sealed partial class PersonalTrainingService
                         t.StartTime == hold.StartTime).Select(t => (int?)t.Id).FirstOrDefault();
                 }
                 purchase.EndDate = LastSessionDate(purchase);
-                f.ActualStartDate = f.RequestedStartDate;
                 f.ActualEndDate = f.RequestedEndDate;
                 f.RequestStatus = PTFreezeRequestStatus.Approved;
             }

@@ -33,12 +33,10 @@ public class ApplicationUser : BaseEntity
     public ICollection<OrderItem> BeneficiaryOrderItems { get; set; } = [];   // via OrderItem.BeneficiaryUserId
     public ICollection<MemberMembership> Memberships { get; set; } = [];
     public ICollection<MembershipFreeze> MembershipFreezeRequests { get; set; } = [];
-    public ICollection<PTSession> PTSessionsAsTrainee { get; set; } = [];
     public ICollection<PTSession> PTSessionsAsTrainer { get; set; } = [];
     public ICollection<PTPurchase> PTPurchasesAsMember { get; set; } = [];
     public ICollection<PTPurchase> PTPurchasesAsPT { get; set; } = [];
     public ICollection<PTAvailability> PTAvailabilities { get; set; } = [];
-    public ICollection<PTFreeze> PTFreezeRequestsAsMember { get; set; } = [];
     public ICollection<PTFreeze> PTFreezeRequestsAsPT { get; set; } = [];
     public ICollection<YogaBooking> YogaBookings { get; set; } = [];
     public ICollection<YogaWaitlist> YogaWaitlists { get; set; } = [];

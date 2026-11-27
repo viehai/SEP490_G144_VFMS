@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations.Schema;
 using VFMS.Domain.Common;
 using VFMS.Domain.Enums;
 
@@ -8,7 +9,8 @@ namespace VFMS.Domain.Entities;
 /// </summary>
 public class PaymentTransaction : BaseEntity
 {
-    public string UserId { get; set; } = string.Empty;
+    [NotMapped]
+    public string UserId => Order.PurchaserUserId;
     public int OrderId { get; set; }
     public string GatewayName { get; set; } = string.Empty;   // e.g. "SePay", "Cash"
     public string? GatewayTransactionReference { get; set; }
@@ -28,7 +30,6 @@ public class PaymentTransaction : BaseEntity
     public DateTime? RentalExpiryAtQuote { get; set; }
     public int? RenewalMonths { get; set; }
     public decimal? OverdueFees { get; set; }
-    public decimal? KeyReplacementFee { get; set; }
     public decimal? RefundAmount { get; set; }
     public string? RefundReason { get; set; }
     public string? RefundStatus { get; set; }
@@ -38,7 +39,8 @@ public class PaymentTransaction : BaseEntity
     public string? RefundReference { get; set; }
 
     // ── Navigation Properties ──────────────────────────────────
-    public ApplicationUser User { get; set; } = null!;
+    [NotMapped]
+    public ApplicationUser User => Order.Purchaser;
     public Order Order { get; set; } = null!;
     public Invoice? Invoice { get; set; }
     public LockerRentalContract? LockerRentalContract { get; set; }

@@ -17,8 +17,6 @@ public class PackageComponent : BaseEntity
     /// <summary>YOGA plans: the highest class level it books (Beginner / Intermediate / Advanced); lower levels are included. Null only on old plans = all levels.</summary>
     public string? YogaDifficultyLevel { get; set; }
     public TrainerLevel? ApplicableTrainerLevel { get; set; }
-    public int? PTFreezeMinimumDays { get; set; }
-    public int? PTFreezeMaxTotalDays { get; set; }
 
     // ── Freeze configuration (component-level overrides for GBR-40/41/42) ──
     public bool AllowFreeze { get; set; } = false;

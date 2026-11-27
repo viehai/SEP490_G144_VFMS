@@ -112,7 +112,7 @@ public sealed class TrainerRepository(VfmsDbContext db, IDataProtectionProvider 
         Context.Gyms.AnyAsync(gym => gym.IsAcceptingTrainerApplications, cancellationToken);
 
     public Task<ApplicationUser?> GetUserAsync(string userId, CancellationToken cancellationToken = default) =>
-        Context.ApplicationUsers.FirstOrDefaultAsync(x => x.UserId == userId, cancellationToken);
+        Context.ApplicationUsers.Include(x => x.PhysicalProfile).FirstOrDefaultAsync(x => x.UserId == userId, cancellationToken);
 
     public Task<TrainerProfile?> GetProfileAsync(int id, CancellationToken cancellationToken = default) =>
         Context.TrainerProfiles.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
@@ -240,7 +240,7 @@ public sealed class TrainerRepository(VfmsDbContext db, IDataProtectionProvider 
 
     public async Task<IReadOnlyList<ApplicationUser>> FindMatchingAccountsAsync(string email, string? phoneNumber,
         CancellationToken cancellationToken = default)
-        => await AccountsWithContacts(email, phoneNumber).ToListAsync(cancellationToken);
+        => await AccountsWithContacts(email, phoneNumber).Include(u => u.PhysicalProfile).ToListAsync(cancellationToken);
 
     public async Task<IReadOnlyList<string>> GetUsersWithAnyRoleAsync(IReadOnlyCollection<string> userIds,
         IReadOnlyCollection<string> roleNames, CancellationToken cancellationToken = default) =>
@@ -249,7 +249,7 @@ public sealed class TrainerRepository(VfmsDbContext db, IDataProtectionProvider 
 
     public Task<bool> HasUnfinishedPTContractAsync(string userId, DateTime now, DateOnly makeUpFrom,
         CancellationToken cancellationToken = default) =>
-        Context.PTPurchases.AnyAsync(p => p.MemberUserId == userId && !p.IsCompleted &&
+        Context.PTPurchases.AnyAsync(p => p.MemberUserId == userId && p.Status != PTPurchaseStatus.Completed &&
             (p.Status == PTPurchaseStatus.PendingPayment && p.HoldExpiresAt > now ||
              (p.Status == PTPurchaseStatus.Active || p.Status == PTPurchaseStatus.Frozen) && p.EndDate >= makeUpFrom), cancellationToken);
 
@@ -324,22 +324,20 @@ public sealed class TrainerRepository(VfmsDbContext db, IDataProtectionProvider 
             FullName = user.FullName,
             Level = profile.Level.ToString(),
             Specialty = profile.Specialty,
-            Gender = profile.Gender,
+            Gender = user.PhysicalProfile != null ? user.PhysicalProfile.Gender ?? "" : "",
             ExperienceYears = profile.ExperienceYears,
             Bio = profile.Bio,
-            AvatarUrl = profile.AvatarJson != null && profile.AvatarJson != ""
-                ? "/api/trainers/" + profile.Id + "/avatar"
-                : profile.AvatarUrl,
+            AvatarUrl = user.AvatarUrl,
             // Written inline: EF cannot translate a helper method call inside this projection.
             AverageRating = Context.TrainerReviews
                 .Where(r => r.TrainerUserId == profile.PTUserId && r.PTPurchaseId != null && r.IsVisible &&
                     r.ReviewStatus == TrainerReviewStatus.Approved)
                 .Select(r => (decimal?)r.Rating).Average() ?? 0,
             IsAcceptingNewMembers = profile.AcceptingNewMembers,
-            NotAcceptingSince = profile.NotAcceptingSince,
-            NotAcceptingCountFrom = profile.NotAcceptingCountFrom ?? profile.NotAcceptingSince,
+            NotAcceptingSince = profile.AcceptingNewMembers ? null : profile.ReadinessSince,
+            NotAcceptingCountFrom = profile.NotAcceptingCountFrom ?? (profile.AcceptingNewMembers ? null : profile.ReadinessSince),
             NotAcceptingAccumulatedDays = profile.NotAcceptingAccumulatedDays,
-            AcceptingSince = profile.AcceptingSince,
+            AcceptingSince = profile.AcceptingNewMembers ? profile.ReadinessSince : null,
             TrainerRole = profile.TrainerRole != null ? profile.TrainerRole.RoleName : ""
         };
 
@@ -382,7 +380,7 @@ public sealed class TrainerRepository(VfmsDbContext db, IDataProtectionProvider 
         CancellationToken cancellationToken = default) =>
         Context.PTPurchases.AnyAsync(x => x.MemberUserId == memberId && x.PTUserId == trainerUserId &&
             (x.Status == PTPurchaseStatus.Active || x.Status == PTPurchaseStatus.Frozen) &&
-            !x.IsCompleted && x.EndDate >= today, cancellationToken);
+            x.Status != PTPurchaseStatus.Completed && x.EndDate >= today, cancellationToken);
 
     public Task<int> CountPublishedReviewsAsync(string trainerUserId, CancellationToken cancellationToken = default) =>
         PublishedReviews(trainerUserId).CountAsync(cancellationToken);

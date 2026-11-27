@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations.Schema;
 using VFMS.Domain.Common;
 using VFMS.Domain.Enums;
 
@@ -11,7 +12,6 @@ public class PTSession : BaseEntity
 {
     public int PTPurchaseId { get; set; }
     public int? PTAvailabilityId { get; set; }
-    public string MemberUserId { get; set; } = string.Empty;
     public string PTUserId { get; set; } = string.Empty;
     public DateOnly SessionDate { get; set; }
     public TimeOnly StartTime { get; set; }
@@ -23,11 +23,9 @@ public class PTSession : BaseEntity
     public bool IsCreditForfeited { get; set; }
     public DateOnly? ProposedDate { get; set; }
     public TimeOnly? ProposedStartTime { get; set; }
-    public TimeOnly? ProposedEndTime { get; set; }
-    public PTAdjustmentType? ProposedAdjustmentType { get; set; }
+    [NotMapped]
+    public TimeOnly? ProposedEndTime => ProposedStartTime?.Add(EndTime - StartTime);
     public DateTime? ProposalExpiresAt { get; set; }
-    public DateTime? ProposalEmailSentAt { get; set; }
-    public DateTime? ProposalEmailRetryAt { get; set; }
     public DateTime? NoteUpdatedAt { get; set; }
     /// <summary>The PT who wrote the coaching note (UC 4.6 step 9).</summary>
     public string? NoteAuthorUserId { get; set; }
@@ -40,21 +38,20 @@ public class PTSession : BaseEntity
     /// <summary>The Manager who decided the attendance dispute (UC 4.11 step 5).</summary>
     public string? TrainerAbsenceReviewedByUserId { get; set; }
     public bool? TrainerAbsenceApproved { get; set; }
-    /// <summary>No longer written: the 20:00 attendance reminder was removed from GBR-103. Kept because columns are never dropped.</summary>
-    public DateTime? AttendanceReminderSentAt { get; set; }
     /// <summary>When the PT last recorded attendance (UC 4.6 step 6); null when the PT has not recorded it.</summary>
     public DateTime? AttendanceRecordedAt { get; set; }
     /// <summary>What the PT recorded: true = 'Present', false = 'Absent' (shown on UC 4.11).</summary>
     public bool? AttendanceRecordedPresent { get; set; }
-    /// <summary>When the Member's self check-in marked the session 'Present' (UC 4.6 step 7, GBR-92); a PT record clears it.</summary>
-    public DateTime? CheckInCompletedAt { get; set; }
     /// <summary>The freeze whose post-freeze schedule created this session, so withdrawing it restores only its own moves (UC 4.8).</summary>
     public int? PTFreezeId { get; set; }
 
     // ── Navigation Properties ──────────────────────────────────
     public PTPurchase PTPurchase { get; set; } = null!;
     public PTAvailability? PTAvailability { get; set; }
-    public ApplicationUser Member { get; set; } = null!;
+    [NotMapped]
+    public string MemberUserId => PTPurchase.MemberUserId;
+    [NotMapped]
+    public ApplicationUser Member => PTPurchase.Member;
     public ApplicationUser PTUser { get; set; } = null!;
 }
 

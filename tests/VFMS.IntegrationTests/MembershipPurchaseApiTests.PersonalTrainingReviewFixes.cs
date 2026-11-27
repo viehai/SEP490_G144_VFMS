@@ -226,7 +226,6 @@ public sealed partial class MembershipPurchaseApiTests
             var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
             var contract = await db.PTPurchases.SingleAsync(p => p.Id == id);
             contract.Status = PTPurchaseStatus.Completed;
-            contract.IsCompleted = true;
             await db.SaveChangesAsync();
         }
         await using (var scope = _app.Services.CreateAsyncScope())

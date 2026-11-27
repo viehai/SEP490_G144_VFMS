@@ -30,7 +30,7 @@ public sealed partial class PersonalTrainingService
 
     private PTPurchaseStatus EffectiveStatus(PTPurchase p)
     {
-        if (p.IsCompleted || p.Status == PTPurchaseStatus.Completed)
+        if (p.Status == PTPurchaseStatus.Completed)
             return PTPurchaseStatus.Completed;
         if (p.Status == PTPurchaseStatus.PendingPayment)
             return p.HoldExpiresAt <= Now ? PTPurchaseStatus.Expired : p.Status;
@@ -65,7 +65,8 @@ public sealed partial class PersonalTrainingService
 
     private static PTSessionResponse SessionResponse(PTSession s, DateTime now)
     {
-        var awaitingChange = s.SessionStatus is PTSessionStatus.ReschedulePending or PTSessionStatus.RescheduleRequested;
+        var status = PersonalTrainingRules.PublicSessionStatus(s.SessionStatus);
+        var awaitingChange = status is PTSessionStatus.ReschedulePending or PTSessionStatus.RescheduleRequested;
         var proposed = awaitingChange && s.ProposalExpiresAt > now;
         if (s.SessionStatus is PTSessionStatus.MakeUpPending or PTSessionStatus.MakeUpRequested)
         {
@@ -78,10 +79,11 @@ public sealed partial class PersonalTrainingService
                 s.TrainerAbsenceReportedAt, s.TrainerAbsenceApproved, s.TrainerAbsenceReviewNote);
         }
         return new(s.Id, s.SessionDate, s.StartTime, s.EndTime,
-            (awaitingChange && !proposed ? PTSessionStatus.Scheduled : s.SessionStatus).ToString(),
+            (awaitingChange && !proposed ? PTSessionStatus.Scheduled : status).ToString(),
             s.CreditUnits, s.Note, s.NoteUpdatedAt, proposed
                 ? new(s.ProposedDate!.Value, s.ProposedStartTime!.Value, s.ProposedEndTime!.Value,
-                    s.ProposedAdjustmentType!.Value.ToString(),
+                    s.SessionStatus is PTSessionStatus.CancellationPending or PTSessionStatus.CancellationRequested
+                        ? nameof(PTAdjustmentType.Cancellation) : nameof(PTAdjustmentType.Reschedule),
                     DateTime.SpecifyKind(s.ProposalExpiresAt!.Value, DateTimeKind.Utc)) : null,
             s.TrainerAbsenceReportedAt, s.TrainerAbsenceApproved, s.TrainerAbsenceReviewNote);
     }
@@ -90,11 +92,12 @@ public sealed partial class PersonalTrainingService
     {
         var status = EffectiveStatus(p);
         var (used, reserved) = PersonalTrainingRules.Credits(p.Sessions);
+        var total = p.TotalSessions;
         if (status == PTPurchaseStatus.PendingPayment)
             reserved = p.Sessions.Where(s => s.SessionStatus == PTSessionStatus.CheckoutHold).Sum(s => s.CreditUnits);
         return new(p.Id, p.PTUserId, p.MemberUserId, p.PackageNameSnapshot, status.ToString(), p.StartDate, p.EndDate,
-            p.TotalSessions, used, reserved, status == PTPurchaseStatus.Expired ? 0 : Math.Max(0, p.TotalSessions - used - reserved),
-            Math.Max(0, p.TotalSessions - used),
+            total, used, reserved, status == PTPurchaseStatus.Expired ? 0 : Math.Max(0, total - used - reserved),
+            Math.Max(0, total - used),
             p.FreezeMinimumDaysSnapshot, p.FreezeMaxTotalDaysSnapshot, RemainingFreezeDays(p),
             p.Sessions.OrderBy(s => s.SessionDate).ThenBy(s => s.StartTime)
                 .Select(s => SessionResponse(s, Now) with
@@ -155,11 +158,15 @@ public sealed partial class PersonalTrainingService
             AssignedResponse);
     }
 
-    private static PTAssignedMember AssignedResponse(PTPurchase p) => new(p.Id, p.MemberUserId,
-            p.Member.FullName, p.Member.AvatarUrl, p.Member.Email, p.Member.PhoneNumber, p.TotalSessions,
-            p.TotalSessions - PersonalTrainingRules.Credits(p.Sessions).Used, p.EndDate,
+    private static PTAssignedMember AssignedResponse(PTPurchase p)
+    {
+        var total = p.TotalSessions;
+        return new(p.Id, p.MemberUserId,
+            p.Member.FullName, p.Member.AvatarUrl, p.Member.Email, p.Member.PhoneNumber, total,
+            total - PersonalTrainingRules.Credits(p.Sessions).Used, p.EndDate,
             p.Sessions.Where(s => s.SessionStatus is PTSessionStatus.Completed or PTSessionStatus.AutoCompleted)
                 .Max(s => (DateOnly?)s.SessionDate));
+    }
 
     private Task<PTPurchase?> ContractForSession(string actor, int id, bool trainer, CancellationToken ct) =>
         repo.GetContractForSessionAsync(id, actor, trainer, ct);
@@ -168,8 +175,6 @@ public sealed partial class PersonalTrainingService
     {
         s.ProposedDate = null;
         s.ProposedStartTime = null;
-        s.ProposedEndTime = null;
-        s.ProposedAdjustmentType = null;
         s.ProposalExpiresAt = null;
         s.SessionStatus = PTSessionStatus.Scheduled;
     }
@@ -235,7 +240,7 @@ public sealed partial class PersonalTrainingService
 
             var session = new PTSession
             {
-                MemberUserId = contract.MemberUserId,
+                PTPurchase = contract,
                 PTUserId = contract.PTUserId,
                 SessionDate = request.Date,
                 StartTime = request.StartTime,
@@ -275,7 +280,7 @@ public sealed partial class PersonalTrainingService
         var s = p.Sessions.Single(x => x.Id == id);
         var now = Now;
         var oldStart = Utc(s.SessionDate, s.StartTime);
-        if (s.SessionStatus == PTSessionStatus.ReschedulePending && s.ProposalExpiresAt <= now)
+        if (PersonalTrainingRules.PublicSessionStatus(s.SessionStatus) == PTSessionStatus.ReschedulePending && s.ProposalExpiresAt <= now)
             ClearProposal(s);
         if (s.SessionStatus != PTSessionStatus.Scheduled || oldStart <= now)
             return Conflict<PTSessionResponse>("Chỉ có thể đề xuất cho buổi sắp tới chưa có yêu cầu chờ.");
@@ -294,8 +299,6 @@ public sealed partial class PersonalTrainingService
                 Conflict<PTSessionResponse>("Khung giờ đã chọn không khả dụng hoặc không đủ điều kiện đổi lịch.");
         s.ProposedDate = request.Date;
         s.ProposedStartTime = request.StartTime;
-        s.ProposedEndTime = end;
-        s.ProposedAdjustmentType = type;
         s.ProposalExpiresAt = ResponseDeadline(oldStart);
         s.SessionStatus = PTSessionStatus.ReschedulePending;
         Audit(actor, nameof(PTSession), s.Id, $"Proposed:{type}:{request.Date:yyyy-MM-dd}:{request.StartTime:HH:mm}");
@@ -323,10 +326,8 @@ public sealed partial class PersonalTrainingService
             return late;
         session.ProposedDate = session.SessionDate;
         session.ProposedStartTime = session.StartTime;
-        session.ProposedEndTime = session.EndTime;
-        session.ProposedAdjustmentType = PTAdjustmentType.Cancellation;
         session.ProposalExpiresAt = ResponseDeadline(Utc(session.SessionDate, session.StartTime));
-        session.SessionStatus = asTrainer ? PTSessionStatus.ReschedulePending : PTSessionStatus.RescheduleRequested;
+        session.SessionStatus = asTrainer ? PTSessionStatus.CancellationPending : PTSessionStatus.CancellationRequested;
         Audit(actor, nameof(PTSession), id, "CancellationRequested");
         Notify(asTrainer ? session.MemberUserId : session.PTUserId, "Yêu cầu hủy buổi PT",
             $"{(asTrainer ? "PT" : "Hội viên")} đề nghị hủy buổi {session.SessionDate:dd/MM/yyyy} {session.StartTime:HH:mm}. " +
@@ -357,30 +358,28 @@ public sealed partial class PersonalTrainingService
         var s = p.Sessions.Single(x => x.Id == id);
         if (s.SessionStatus == PTSessionStatus.MakeUpPending)
             return await DecideMakeUp(p, s, actor, request.Accept, request.ProposalExpiresAt, ct);
-        if (s.SessionStatus != PTSessionStatus.ReschedulePending || s.ProposalExpiresAt != request.ProposalExpiresAt)
+        if (PersonalTrainingRules.PublicSessionStatus(s.SessionStatus) != PTSessionStatus.ReschedulePending ||
+            s.ProposalExpiresAt != request.ProposalExpiresAt)
             return Conflict<PTSessionResponse>("Đề xuất đã thay đổi. Vui lòng tải lại.");
         var now = Now;
         var valid = s.ProposalExpiresAt > now;
-        var type = s.ProposedAdjustmentType!.Value;
-        if (valid && request.Accept && type == PTAdjustmentType.Cancellation)
+        if (valid && request.Accept && s.SessionStatus == PTSessionStatus.CancellationPending)
         {
             AcceptCancellation(s, p, actor, now);
             await repo.SaveChangesAsync(ct);
             return Result<PTSessionResponse>.Success(SessionResponse(s, now));
         }
-        // A double-session proposal left from before its removal can no longer be accepted.
-        if (type == PTAdjustmentType.DoubleSession)
-            valid = false;
         if (request.Accept && valid)
         {
+            var end = s.ProposedEndTime!.Value;
             var template = await FindRescheduleTemplate(p, s, s.ProposedDate!.Value, s.ProposedStartTime!.Value,
-                s.ProposedEndTime!.Value, now, ct);
+                end, now, ct);
             valid = template is not null;
             if (valid)
             {
                 s.SessionDate = s.ProposedDate.Value;
                 s.StartTime = s.ProposedStartTime.Value;
-                s.EndTime = s.ProposedEndTime.Value;
+                s.EndTime = end;
                 s.PTAvailabilityId = template;
             }
         }
@@ -438,7 +437,8 @@ public sealed partial class PersonalTrainingService
     private static void SettleCredits(PTPurchase p) => PersonalTrainingRules.Settle(p);
 
     private static bool AwaitingAttendance(PTSessionStatus status) =>
-        status is PTSessionStatus.Scheduled or PTSessionStatus.ReschedulePending or PTSessionStatus.RescheduleRequested;
+        PersonalTrainingRules.PublicSessionStatus(status) is PTSessionStatus.Scheduled or
+            PTSessionStatus.ReschedulePending or PTSessionStatus.RescheduleRequested;
 
     private Task<IReadOnlyList<string>> ManagerIds(string trainerId, CancellationToken ct) =>
         repo.GetGymManagerIdsAsync(trainerId, ct);
@@ -453,10 +453,7 @@ public sealed partial class PersonalTrainingService
     private static void ReopenIfCompleted(PTPurchase contract, DateOnly today)
     {
         if (contract.Status == PTPurchaseStatus.Completed && today <= PersonalTrainingRules.MakeUpDeadline(contract.EndDate))
-        {
             contract.Status = PTPurchaseStatus.Active;
-            contract.IsCompleted = false;
-        }
     }
 
     /// <summary>UC 4.6 / GBR-103: Present or Absent is recorded after the session ends, on the session day, and can be edited
@@ -498,7 +495,7 @@ public sealed partial class PersonalTrainingService
         }
         else if (AwaitingAttendance(s.SessionStatus) || s.SessionStatus is PTSessionStatus.Completed or PTSessionStatus.NoShow)
         {
-            if (s.SessionStatus == PTSessionStatus.RescheduleRequested)
+            if (PersonalTrainingRules.PublicSessionStatus(s.SessionStatus) == PTSessionStatus.RescheduleRequested)
                 CloseMemberReschedule(s, null, "RescheduleExpired", "Yêu cầu đổi lịch đã hết hạn.");
             else if (AwaitingAttendance(s.SessionStatus))
                 ClearProposal(s);

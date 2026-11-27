@@ -61,8 +61,7 @@ public sealed partial class PersonalTrainingService
             {
                 PTUserId = actor,
                 DayOfWeek = s.DayOfWeek,
-                StartTime = s.StartTime,
-                EndTime = s.StartTime.AddHours(1)
+                StartTime = s.StartTime
             });
         await repo.SaveChangesAsync(ct);
         return Result<bool>.Success(true);
@@ -87,7 +86,7 @@ public sealed partial class PersonalTrainingService
         var component = p.Components.Single();
         return new(p.Id, $"PT-{p.Id:D4}", p.Name, p.Description, component.SessionCount!.Value,
             p.Price, component.ApplicableTrainerLevel!.Value.ToString(),
-            component.PTFreezeMinimumDays ?? 0, component.PTFreezeMaxTotalDays ?? 0,
+            component.MinFreezeDaysPerRequest ?? 0, component.MaxFreezeDaysPerRequest ?? 0,
             p.PackageStatus == PackageStatus.Active, subscriberCount);
     }
 
@@ -174,12 +173,12 @@ public sealed partial class PersonalTrainingService
             component.SessionCount = request.Credits;
             component.DurationDays = null;
             component.ApplicableTrainerLevel = level;
-            if (id is not null && (component.PTFreezeMinimumDays != request.FreezeMinimumDays ||
-                component.PTFreezeMaxTotalDays != request.FreezeMaxTotalDays))
+            if (id is not null && (component.MinFreezeDaysPerRequest != request.FreezeMinimumDays ||
+                component.MaxFreezeDaysPerRequest != request.FreezeMaxTotalDays))
                 Audit(actor, nameof(PackageComponent), component.Id,
                     JsonSerializer.Serialize(new { request.FreezeMinimumDays, request.FreezeMaxTotalDays }));
-            component.PTFreezeMinimumDays = request.FreezeMinimumDays;
-            component.PTFreezeMaxTotalDays = request.FreezeMaxTotalDays;
+            component.MinFreezeDaysPerRequest = request.FreezeMinimumDays;
+            component.MaxFreezeDaysPerRequest = request.FreezeMaxTotalDays;
             if (id is null)
                 repo.Add(package);
             await repo.SaveChangesAsync(ct);

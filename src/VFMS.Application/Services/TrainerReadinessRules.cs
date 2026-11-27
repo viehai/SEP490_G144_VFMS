@@ -23,19 +23,16 @@ public static class TrainerReadinessRules
         if (accepting)
         {
             AccumulateInactiveDays(profile, today, hasRunningContract);
-            profile.AcceptingSince = today;
-            profile.NotAcceptingSince = null;
             profile.NotAcceptingCountFrom = null;
         }
         else
         {
             if (profile.AcceptingSince is { } since && today.DayNumber - since.DayNumber >= AcceptingResetDays)
                 profile.NotAcceptingAccumulatedDays = 0;
-            profile.AcceptingSince = null;
-            profile.NotAcceptingSince = today;
             profile.NotAcceptingCountFrom = today;
         }
         profile.AcceptingNewMembers = accepting;
+        profile.ReadinessSince = today;
     }
 
     public static bool HasExpired(TrainerProfile profile) =>

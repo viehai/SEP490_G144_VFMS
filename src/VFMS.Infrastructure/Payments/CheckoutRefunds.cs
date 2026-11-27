@@ -22,7 +22,6 @@ public static class CheckoutRefunds
         var extra = new PaymentTransaction
         {
             Order = order,
-            UserId = original.UserId,
             GatewayName = original.GatewayName,
             PaymentMethod = original.PaymentMethod,
             AmountDue = transfer.Amount,

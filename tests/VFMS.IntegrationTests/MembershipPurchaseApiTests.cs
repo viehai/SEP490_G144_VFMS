@@ -70,6 +70,7 @@ public sealed partial class MembershipPurchaseApiTests : IAsyncLifetime
         builder.Configuration["MembershipPayments:AccountName"] = "Test VFMS";
         builder.Configuration["MembershipPayments:WebhookSecret"] = Secret;
         builder.Services.AddMembershipPurchaseModule(builder.Configuration);
+        builder.Services.AddMembershipPlanModule();
         builder.Services.AddSystemAdministrationModule();
         builder.Services.AddSingleton<MapsterMapper.IMapper>(new MapsterMapper.Mapper());
         builder.Services.AddPersonalTrainingModule();

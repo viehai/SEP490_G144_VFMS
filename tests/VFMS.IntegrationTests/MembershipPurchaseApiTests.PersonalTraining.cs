@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using VFMS.Contracts.Packages;
 using VFMS.Contracts.PersonalTraining;
 using VFMS.Domain.Entities;
 using VFMS.Domain.Enums;
@@ -66,6 +67,46 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Equal(HttpStatusCode.OK, valid.StatusCode);
         using var tuesday = await member.PostAsJsonAsync("/api/pt/schedule/preview", request with { StartDate = request.StartDate.AddDays(1) });
         Assert.Equal(HttpStatusCode.OK, tuesday.StatusCode);
+    }
+
+    [Fact]
+    public async Task PTCatalogAndCheckoutReadTheSharedComponentFreezeLimits()
+    {
+        var booking = await PreparePTCheckout(credits: 3, minimum: 3, maximum: 10);
+        await using (var scope = _app.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+            var pt = await db.PackageComponents.SingleAsync(c => c.PackageId == booking.PackageId);
+            pt.MinFreezeDaysPerRequest = 4;
+            pt.MaxFreezeDaysPerRequest = 12;
+            var gym = await db.PackageComponents.SingleAsync(c => c.PackageId == _basic);
+            gym.MinFreezeDaysPerRequest = 8;
+            gym.MaxFreezeDaysPerRequest = 90;
+            await db.SaveChangesAsync();
+        }
+
+        using var member = Client("member", "Member");
+        var catalog = (await member.GetFromJsonAsync<PTPackageResponse[]>("/api/pt/packages"))!;
+        var package = Assert.Single(catalog, p => p.Id == booking.PackageId);
+        Assert.Equal(4, package.FreezeMinimumDays);
+        Assert.Equal(12, package.FreezeMaxTotalDays);
+        var detail = (await member.GetFromJsonAsync<PackageDetailResponse>($"/api/packages/pt/{booking.PackageId}"))!;
+        Assert.Equal(4, detail.Package.PTFreezeMinimumDays);
+        Assert.Equal(12, detail.Package.PTFreezeMaxTotalDays);
+
+        using var hold = await member.PostAsJsonAsync("/api/pt/purchases", booking);
+        Assert.Equal(HttpStatusCode.Created, hold.StatusCode);
+        var checkout = (await hold.Content.ReadFromJsonAsync<PTCheckoutResponse>())!;
+        var contracts = (await member.GetFromJsonAsync<PTContractResponse[]>($"/api/pt/contracts/{checkout.ContractId}"))!;
+        var contract = Assert.Single(contracts);
+        Assert.Equal(4, contract.FreezeMinimumDays);
+        Assert.Equal(12, contract.FreezeMaxTotalDays);
+
+        await using var verifyScope = _app.Services.CreateAsyncScope();
+        var verify = verifyScope.ServiceProvider.GetRequiredService<VfmsDbContext>();
+        var gymAfterCheckout = await verify.PackageComponents.SingleAsync(c => c.PackageId == _basic);
+        Assert.Equal(8, gymAfterCheckout.MinFreezeDaysPerRequest);
+        Assert.Equal(90, gymAfterCheckout.MaxFreezeDaysPerRequest);
     }
 
     [Fact]
@@ -264,11 +305,9 @@ public sealed partial class MembershipPurchaseApiTests
                 MemberMembershipId = gym.Id,
                 MemberUserId = "member",
                 PTUserId = request.TrainerId,
-                TotalSessions = 1,
-                RemainingSessions = 1,
+                Order = TestSeed.PaidPTOrder("member", 1),
                 StartDate = Today.AddDays(-2),
                 EndDate = Today.AddDays(-1),
-                PurchaseDate = Today.AddDays(-3),
                 Status = PTPurchaseStatus.Expired
             });
         }
@@ -403,7 +442,6 @@ public sealed partial class MembershipPurchaseApiTests
         db.ApplicationUsers.Add(User("other-pt", gym, roles["PT"]));
         var competing = new PTSession
         {
-            MemberUserId = "gift",
             PTUserId = "buyer",
             SessionDate = session.Date,
             StartTime = busyTime,
@@ -414,6 +452,7 @@ public sealed partial class MembershipPurchaseApiTests
         {
             MemberUserId = "gift",
             PTUserId = "buyer",
+            Order = TestSeed.PaidPTOrder("gift", 1),
             MemberMembershipId = membership.Id,
             StartDate = contract.StartDate,
             EndDate = contract.EndDate,
@@ -518,8 +557,11 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Equal(13, before.Sessions.Count);
         Assert.Equal(20, before.RemainingFreezeDays);
         using var edited = await manager.PutAsJsonAsync($"/api/pt/manager/packages/{request.PackageId}",
-            PackageInput(13, 5, 5));
+            PackageInput(14, 5, 5));
         Assert.True(edited.StatusCode == HttpStatusCode.OK, await edited.Content.ReadAsStringAsync());
+        var afterEdit = Assert.Single((await member.GetFromJsonAsync<PTContractResponse[]>(contractPath))!);
+        Assert.Equal("PT 13", afterEdit.PackageName);
+        Assert.Equal(13, afterEdit.TotalCredits);
         var start = before.Sessions[0].Date;
         using var missingReason = await member.PostAsJsonAsync($"{contractPath}/freezes",
             new PTFreezeRequest(start, start.AddDays(7), " "));
@@ -624,7 +666,6 @@ public sealed partial class MembershipPurchaseApiTests
         var membership = await db.MemberMemberships.SingleAsync();
         var occupied = new PTSession
         {
-            MemberUserId = "gift",
             PTUserId = "buyer",
             SessionDate = newResumeDate,
             StartTime = original.Sessions[1].StartTime,
@@ -634,6 +675,7 @@ public sealed partial class MembershipPurchaseApiTests
         {
             MemberUserId = "gift",
             PTUserId = "buyer",
+            Order = TestSeed.PaidPTOrder("gift", 1),
             MemberMembershipId = membership.Id,
             StartDate = start,
             EndDate = original.EndDate,
@@ -766,7 +808,7 @@ public sealed partial class MembershipPurchaseApiTests
         Assert.Equal(PTSessionStatus.Completed, recorded.SessionStatus);
         Assert.True(recorded.AttendanceRecordedPresent);
         Assert.NotNull(recorded.AttendanceRecordedAt);
-        Assert.Equal(11, await db.PTPurchases.Select(p => p.RemainingSessions).SingleAsync());
+        Assert.Equal(11, (await ContractOf(member, session.PTPurchaseId)).RemainingCredits);
     }
 
     private static object PackageInput(int credits, int minimum, int maximum) => new

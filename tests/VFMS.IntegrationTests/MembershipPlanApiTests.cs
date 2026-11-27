@@ -762,7 +762,6 @@ public sealed class MembershipPlanApiTests : IAsyncLifetime
                 PaymentTransaction = new PaymentTransaction
                 {
                     Order = order,
-                    UserId = MemberUserId,
                     GatewayName = "Test",
                     PaymentMethod = PaymentMethod.VietQR,
                     PaymentStatus = PaymentStatus.Paid,

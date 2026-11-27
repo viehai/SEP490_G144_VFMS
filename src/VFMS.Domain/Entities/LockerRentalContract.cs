@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations.Schema;
 using VFMS.Domain.Common;
 using VFMS.Domain.Enums;
 
@@ -16,21 +17,25 @@ public class LockerRentalContract : BaseEntity
     public string ContractNumber { get; set; } = string.Empty;
     public DateOnly StartDate { get; set; }
     public DateOnly EndDate { get; set; }
-    public decimal DepositAmount { get; set; }
-    public decimal RentalPrice { get; set; }
-    public RentalType? RentalTypeSnapshot { get; set; }
-    public int? TermMonthsSnapshot { get; set; }
-    public decimal? OverdueDailyFeeSnapshot { get; set; }
-    public decimal? KeyReplacementFeeSnapshot { get; set; }
+    [NotMapped]
+    public decimal DepositAmount => LockerPricingPolicy.DepositAmount;
+    [NotMapped]
+    public decimal RentalPrice => LockerPricingPolicy.RentalType == RentalType.Daily ? 0 : LockerPricingPolicy.RentalPrice;
+    [NotMapped]
+    public RentalType? RentalTypeSnapshot => LockerPricingPolicy.RentalType;
+    [NotMapped]
+    public int? TermMonthsSnapshot => LockerPricingPolicy.DurationMonths;
+    [NotMapped]
+    public decimal? OverdueDailyFeeSnapshot => LockerPricingPolicy.OverdueDailyFee;
     public DateTime? HandedOverAt { get; set; }
     public string? HandedOverByUserId { get; set; }
     public DateTime? ExpiresAt { get; set; }
     public DateTime? CollectBy { get; set; }
     public DateTime? FinalNoticeAt { get; set; }
-    public DateTime? FinalNoticeEmailSentAt { get; set; }
-    public DateTime? FinalNoticeRetryAt { get; set; }
     public DateTime? ReturnedAt { get; set; }
-    public DateTime? SettledAt { get; set; }
+    [NotMapped]
+    public DateTime? SettledAt => ContractStatus is LockerContractStatus.Terminated or LockerContractStatus.Abandoned
+        ? CancelledAt : null;
     public string? SettledByUserId { get; set; }
     public decimal? OutstandingAmount { get; set; }
     /// <summary>GBR-110: when Staff collected the OutstandingAmount; null while it is still unpaid.</summary>
@@ -42,7 +47,6 @@ public class LockerRentalContract : BaseEntity
     public Locker? ReplacementLocker { get; set; }
     public LockerContractStatus ContractStatus { get; set; } = LockerContractStatus.Active;
     public DateTime? CancelledAt { get; set; }
-    public string? Note { get; set; }
     /// <summary>Amount forfeited or refunded upon termination.</summary>
     public decimal? FineAmount { get; set; }
 

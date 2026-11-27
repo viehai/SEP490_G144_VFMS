@@ -95,7 +95,7 @@ public sealed class PersonalTrainingRepository(VfmsDbContext db) : AuditedReposi
         PTProfiles.SingleOrDefaultAsync(p => p.PTUserId == trainerUserId, cancellationToken);
 
     public async Task<IReadOnlyList<TrainerProfile>> GetNotAcceptingProfilesAsync(CancellationToken cancellationToken = default) =>
-        await Context.TrainerProfiles.Where(p => p.IsActive && !p.AcceptingNewMembers && p.NotAcceptingSince != null)
+        await Context.TrainerProfiles.Where(p => p.IsActive && !p.AcceptingNewMembers && p.ReadinessSince != null)
             .ToListAsync(cancellationToken);
 
     // ── Schedule ─────────────────────────────────────────────────
@@ -107,9 +107,10 @@ public sealed class PersonalTrainingRepository(VfmsDbContext db) : AuditedReposi
     public async Task<IReadOnlyList<PTSession>> GetOccupyingSessionsAsync(DateTime now, DateOnly from, DateOnly through,
         string? trainerUserId, string? memberUserId, int? ignoreSessionId = null, int? ignorePurchaseId = null,
         CancellationToken cancellationToken = default) =>
-        await Context.PTSessions.AsNoTracking().Where(PersonalTrainingRules.OccupiesTime(now))
+        await Context.PTSessions.AsNoTracking().Include(s => s.PTPurchase).Where(PersonalTrainingRules.OccupiesTime(now))
             .Where(s => s.SessionDate >= from && s.SessionDate <= through &&
-                ((trainerUserId != null && s.PTUserId == trainerUserId) || (memberUserId != null && s.MemberUserId == memberUserId)) &&
+                ((trainerUserId != null && s.PTUserId == trainerUserId) ||
+                    (memberUserId != null && s.PTPurchase.MemberUserId == memberUserId)) &&
                 (ignoreSessionId == null || s.Id != ignoreSessionId) &&
                 (ignorePurchaseId == null || s.PTPurchaseId != ignorePurchaseId))
             .ToListAsync(cancellationToken);
@@ -126,7 +127,7 @@ public sealed class PersonalTrainingRepository(VfmsDbContext db) : AuditedReposi
 
     public async Task<IReadOnlyList<PTSession>> GetTeachingSessionsAsync(string trainerUserId, DateOnly from, DateOnly through,
         CancellationToken cancellationToken = default) =>
-        await Context.PTSessions.AsNoTracking().Include(s => s.Member)
+        await Context.PTSessions.AsNoTracking().Include(s => s.PTPurchase).ThenInclude(p => p.Member)
             .Where(s => s.PTUserId == trainerUserId && s.SessionDate >= from && s.SessionDate <= through &&
                 s.SessionStatus != PTSessionStatus.CheckoutHold && s.SessionStatus != PTSessionStatus.Cancelled &&
                 s.SessionStatus != PTSessionStatus.MakeUpPending && s.SessionStatus != PTSessionStatus.MakeUpRequested &&
@@ -150,7 +151,7 @@ public sealed class PersonalTrainingRepository(VfmsDbContext db) : AuditedReposi
         CancellationToken cancellationToken = default) =>
         await (from purchase in Context.PTPurchases
                join item in Context.OrderItems on purchase.OrderId equals (int?)item.OrderId
-               where !purchase.IsCompleted && purchase.EndDate >= today &&
+               where purchase.EndDate >= today &&
                    (purchase.Status == PTPurchaseStatus.Active || purchase.Status == PTPurchaseStatus.Frozen)
                select new { item.PackageId, PurchaseId = purchase.Id })
             .Distinct().GroupBy(x => x.PackageId)
@@ -163,7 +164,10 @@ public sealed class PersonalTrainingRepository(VfmsDbContext db) : AuditedReposi
 
     // ── Contracts ────────────────────────────────────────────────
 
-    private IQueryable<PTPurchase> Contracts => Context.PTPurchases
+    private IQueryable<PTPurchase> ContractsWithOrder => Context.PTPurchases
+        .Include(p => p.Order!).ThenInclude(o => o.Items);
+
+    private IQueryable<PTPurchase> Contracts => ContractsWithOrder
         .Include(p => p.Sessions).Include(p => p.PTFreezes).Include(p => p.PTUser).ThenInclude(u => u.Gym).Include(p => p.Member)
         .AsSplitQuery();
 
@@ -183,11 +187,14 @@ public sealed class PersonalTrainingRepository(VfmsDbContext db) : AuditedReposi
             .FirstOrDefaultAsync(cancellationToken);
 
     public Task<PTPurchase?> GetContractForOrderAsync(int orderId, CancellationToken cancellationToken = default) =>
-        Context.PTPurchases.Include(p => p.Sessions).SingleOrDefaultAsync(p => p.OrderId == orderId, cancellationToken);
+        ContractsWithOrder.Include(p => p.Order!).ThenInclude(o => o.VoucherRedemption)
+            .Include(p => p.Order!).ThenInclude(o => o.PaymentTransaction)
+            .Include(p => p.Sessions).AsSplitQuery().SingleOrDefaultAsync(p => p.OrderId == orderId, cancellationToken);
 
     public Task<PTPurchase?> GetMemberContractByOrderNumberAsync(string memberId, string orderNumber,
         CancellationToken cancellationToken = default) =>
-        Context.PTPurchases.Include(p => p.Order!).ThenInclude(o => o.PaymentTransaction!).ThenInclude(t => t.Invoice)
+        ContractsWithOrder.Include(p => p.Order!).ThenInclude(o => o.PaymentTransaction!).ThenInclude(t => t.Invoice)
+            .Include(p => p.Order!).ThenInclude(o => o.VoucherRedemption)
             .SingleOrDefaultAsync(p => p.MemberUserId == memberId && p.Order!.OrderNumber == orderNumber, cancellationToken);
 
     // UC 4.5: an unpaid checkout is listed only while its hold is live; once it expires it is not a contract.
@@ -206,7 +213,7 @@ public sealed class PersonalTrainingRepository(VfmsDbContext db) : AuditedReposi
         int page, int pageSize, CancellationToken cancellationToken = default) =>
         PageAsync(VisibleContracts(memberId, now).Where(p => p.MemberUserId == memberId &&
                 (trainerId == null || p.PTUserId == trainerId) &&
-                (completed == null || (p.IsCompleted || p.Status == PTPurchaseStatus.Completed) == completed))
+                (completed == null || (p.Status == PTPurchaseStatus.Completed) == completed))
             .OrderByDescending(p => p.Id), page, pageSize, cancellationToken);
 
     public Task<PTPage<PTPurchase>> GetAssignedContractPageAsync(string trainerId, DateTime now, DateOnly today, string? search,
@@ -246,33 +253,39 @@ public sealed class PersonalTrainingRepository(VfmsDbContext db) : AuditedReposi
     // ── Sessions ─────────────────────────────────────────────────
 
     public async Task<IReadOnlyList<PTSession>> GetExpiredProposalsAsync(DateTime now, int take, CancellationToken cancellationToken = default) =>
-        await Context.PTSessions.Where(s =>
+        await Context.PTSessions.Include(s => s.PTPurchase).Where(s =>
                 (s.SessionStatus == PTSessionStatus.ReschedulePending || s.SessionStatus == PTSessionStatus.MakeUpPending ||
-                    s.SessionStatus == PTSessionStatus.MakeUpRequested || s.SessionStatus == PTSessionStatus.RescheduleRequested) &&
+                    s.SessionStatus == PTSessionStatus.MakeUpRequested || s.SessionStatus == PTSessionStatus.RescheduleRequested ||
+                    s.SessionStatus == PTSessionStatus.CancellationPending || s.SessionStatus == PTSessionStatus.CancellationRequested) &&
                 s.ProposalExpiresAt <= now)
             .OrderBy(s => s.Id).Take(take).ToListAsync(cancellationToken);
 
     public async Task<IReadOnlyList<PTSession>> GetUnrecordedPastSessionsAsync(DateOnly today, int take,
         CancellationToken cancellationToken = default) =>
         await Context.PTSessions.Include(s => s.PTPurchase).ThenInclude(p => p.Sessions)
+            .Include(s => s.PTPurchase).ThenInclude(p => p.Order!).ThenInclude(o => o.Items)
             .Where(s => s.SessionDate < today && (s.SessionStatus == PTSessionStatus.Scheduled ||
-                s.SessionStatus == PTSessionStatus.ReschedulePending || s.SessionStatus == PTSessionStatus.RescheduleRequested))
+                s.SessionStatus == PTSessionStatus.ReschedulePending || s.SessionStatus == PTSessionStatus.RescheduleRequested ||
+                s.SessionStatus == PTSessionStatus.CancellationPending || s.SessionStatus == PTSessionStatus.CancellationRequested))
+            .AsSplitQuery()
             .OrderBy(s => s.Id).Take(take).ToListAsync(cancellationToken);
 
     public Task<PTSession?> GetSessionWithContractAsync(int id, CancellationToken cancellationToken = default) =>
         Context.PTSessions.Include(s => s.PTPurchase).ThenInclude(p => p.Sessions)
             .Include(s => s.PTPurchase).ThenInclude(p => p.PTFreezes)
+            .Include(s => s.PTPurchase).ThenInclude(p => p.Order!).ThenInclude(o => o.Items)
             .AsSplitQuery().SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
 
     public Task<PTSession?> GetReportedSessionAsync(int id, CancellationToken cancellationToken = default) =>
-        Context.PTSessions.AsNoTracking().SingleOrDefaultAsync(s => s.Id == id && s.TrainerAbsenceReportedAt != null, cancellationToken);
+        Context.PTSessions.AsNoTracking().Include(s => s.PTPurchase)
+            .SingleOrDefaultAsync(s => s.Id == id && s.TrainerAbsenceReportedAt != null, cancellationToken);
 
     public Task<PTSession?> GetTrainerSessionAsync(int id, string trainerUserId, CancellationToken cancellationToken = default) =>
         Context.PTSessions.SingleOrDefaultAsync(s => s.Id == id && s.PTUserId == trainerUserId, cancellationToken);
 
     public Task<PTPage<PTSession>> GetDisputePageAsync(bool processed, int page, int pageSize,
         CancellationToken cancellationToken = default) =>
-        PageAsync(Context.PTSessions.AsNoTracking().Include(s => s.Member).Include(s => s.PTUser).AsSplitQuery()
+        PageAsync(Context.PTSessions.AsNoTracking().Include(s => s.PTPurchase).ThenInclude(p => p.Member).Include(s => s.PTUser)
             .Where(s => s.TrainerAbsenceReportedAt != null && (processed
                 ? s.TrainerAbsenceReviewedAt != null
                 : s.SessionStatus == PTSessionStatus.Disputed))
@@ -285,7 +298,7 @@ public sealed class PersonalTrainingRepository(VfmsDbContext db) : AuditedReposi
             .OrderBy(c => c.CheckinTime).ToListAsync(cancellationToken);
 
     public Task<string?> GetFreezeHoldTrainerIdAsync(int freezeId, string memberId, CancellationToken cancellationToken = default) =>
-        Context.PTSessions.Where(s => s.PTFreezeId == freezeId && s.MemberUserId == memberId &&
+        Context.PTSessions.Where(s => s.PTFreezeId == freezeId && s.PTPurchase.MemberUserId == memberId &&
             s.SessionStatus == PTSessionStatus.FreezeHold).Select(s => s.PTUserId).FirstOrDefaultAsync(cancellationToken);
 
     // ── Freezes (UC 4.8, UC 4.9) ─────────────────────────────────
@@ -295,7 +308,8 @@ public sealed class PersonalTrainingRepository(VfmsDbContext db) : AuditedReposi
     {
         var query = Context.PTFreezes.AsNoTracking().Where(f => gymId != null
             ? f.PTPurchase.PTUser.GymId == gymId &&
-                (f.RequestStatus != PTFreezeRequestStatus.Pending && f.ChangeRequestStatus != PTFreezeChangeStatuses.Pending) == processed
+                (f.RequestStatus != PTFreezeRequestStatus.Pending && f.ChangeState != PTFreezeChangeState.WithdrawPending &&
+                    f.ChangeState != PTFreezeChangeState.EarlyResumePending) == processed
             : f.PTPurchase.MemberUserId == memberId && f.PTPurchaseId == contractId);
         var rows = await PageAsync(query.OrderByDescending(f => f.Id).Select(f => new
         {

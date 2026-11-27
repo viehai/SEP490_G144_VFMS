@@ -32,9 +32,7 @@ internal static class TrainerModelConfiguration
         b.Entity<TrainerProfile>(e =>
         {
             e.Property(x => x.Specialty).HasMaxLength(200);
-            e.Property(x => x.Gender).HasMaxLength(20);
             e.Property(x => x.Bio).HasMaxLength(4000);
-            e.Property(x => x.CommissionTier).HasMaxLength(100);
             e.HasOne(x => x.TrainerRole).WithMany(r => r.TrainerProfiles).HasForeignKey(x => x.TrainerRoleId).OnDelete(DeleteBehavior.Restrict);
         });
         b.Entity<TrainerRole>(e =>

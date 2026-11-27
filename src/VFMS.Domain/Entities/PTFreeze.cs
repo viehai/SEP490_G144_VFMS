@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations.Schema;
 using VFMS.Domain.Common;
 using VFMS.Domain.Enums;
 
@@ -14,27 +15,18 @@ public static class PTFreezeChangeTypes
     public const string EarlyResume = "EarlyResume";
 }
 
-public static class PTFreezeChangeStatuses
-{
-    public const string Pending = "Pending";
-    public const string Approved = "Approved";
-    public const string Rejected = "Rejected";
-}
-
 public class PTFreeze : BaseEntity
 {
     public int PTPurchaseId { get; set; }
-    public string RequestedByUserId { get; set; } = string.Empty;
     public DateOnly RequestedStartDate { get; set; }
     public DateOnly RequestedEndDate { get; set; }
-    public DateOnly? ActualStartDate { get; set; }
+    [NotMapped]
+    public DateOnly? ActualStartDate => RequestStatus is PTFreezeRequestStatus.Approved or
+        PTFreezeRequestStatus.Active or PTFreezeRequestStatus.Completed ? RequestedStartDate : null;
     public DateOnly? ActualEndDate { get; set; }
     public PTFreezeRequestStatus RequestStatus { get; set; } = PTFreezeRequestStatus.Pending;
     public string? ReviewNote { get; set; }
     public string? Reason { get; set; }
-    public string? SupportingDocumentUrl { get; set; }
-    public int? MinimumDaysSnapshot { get; set; }
-    public int? MaxDaysSnapshot { get; set; }
     public string? ReviewedByUserId { get; set; }
     public DateTime? ReviewedAt { get; set; }
     /// <summary>Trainer who takes over the remaining sessions when the freeze is approved (GBR-105).</summary>
@@ -43,13 +35,8 @@ public class PTFreeze : BaseEntity
     public DateTime? ManagerRemindedAt { get; set; }
 
     // ── Withdraw / early-resume requests (the Manager decides; see NewScope.txt, UC 4.8 steps 8.2 and 8.3) ──
-    /// <summary><see cref="PTFreezeChangeTypes"/>: what the Member asked for while the freeze stays in force.</summary>
-    public string? ChangeRequestType { get; set; }
-    /// <summary><see cref="PTFreezeChangeStatuses"/>: Pending until the Manager decides.</summary>
-    public string? ChangeRequestStatus { get; set; }
+    public PTFreezeChangeState ChangeState { get; set; }
     public DateTime? ChangeRequestedAt { get; set; }
-    /// <summary>The new Resume Date of an early-resume request.</summary>
-    public DateOnly? ChangeResumeDate { get; set; }
     /// <summary>JSON of the confirmed early-resume request (resume dates and the chosen moves).</summary>
     public string? ChangePayloadJson { get; set; }
     public string? ChangeReviewedByUserId { get; set; }
@@ -60,7 +47,6 @@ public class PTFreeze : BaseEntity
 
     // ── Navigation Properties ──────────────────────────────────
     public PTPurchase PTPurchase { get; set; } = null!;
-    public ApplicationUser RequestedByUser { get; set; } = null!;
     public ApplicationUser? ReviewedByUser { get; set; }
 }
 

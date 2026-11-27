@@ -58,12 +58,7 @@ public sealed partial class LockerService
             ContractNumber = $"LKR-{Guid.NewGuid():N}",
             StartDate = LocalDate(now),
             EndDate = LocalDate(now),
-            ContractStatus = LockerContractStatus.PendingPayment,
-            RentalTypeSnapshot = policy.RentalType,
-            TermMonthsSnapshot = Months(policy),
-            RentalPrice = policy.RentalType == RentalType.Daily ? 0 : policy.RentalPrice,
-            DepositAmount = policy.DepositAmount,
-            OverdueDailyFeeSnapshot = policy.OverdueDailyFee
+            ContractStatus = LockerContractStatus.PendingPayment
         };
         var charge = BuildCharge(rental, LockerPaymentPurpose.Rental, method, channel,
             rental.RentalPrice + rental.DepositAmount, now);
@@ -312,7 +307,6 @@ public sealed partial class LockerService
         var order = MembershipPurchaseService.NewOrder(rental.CustomerUserId, LocalDate(now), channel);
         var charge = new PaymentTransaction
         {
-            UserId = order.PurchaserUserId,
             PaymentMethod = method,
             AmountDue = amount,
             Order = order,

@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations.Schema;
 using VFMS.Domain.Common;
 using VFMS.Domain.Enums;
 
@@ -10,11 +11,11 @@ namespace VFMS.Domain.Entities;
 public class PTAvailability : BaseEntity
 {
     public string PTUserId { get; set; } = string.Empty;
-    // Existing dated slots remain one-off. Only explicitly published rows repeat.
-    public DateOnly? AvailableDate { get; set; }
+    // Only explicitly published rows repeat. Legacy dated slots have no day of week.
     public DayOfWeek? DayOfWeek { get; set; }
     public TimeOnly StartTime { get; set; }
-    public TimeOnly EndTime { get; set; }
+    [NotMapped]
+    public TimeOnly EndTime => StartTime.AddHours(1);
     public SlotStatus SlotStatus { get; set; } = SlotStatus.Available;
 
     // ── Navigation Properties ──────────────────────────────────

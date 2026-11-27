@@ -12,10 +12,8 @@ namespace VFMS.Application.Services;
 /// </summary>
 public sealed partial class PersonalTrainingService
 {
-    private static bool ChangePending(PTFreeze f) => f.ChangeRequestStatus == PTFreezeChangeStatuses.Pending;
-
-    private static string ChangeName(string? type) =>
-        type == PTFreezeChangeTypes.Withdraw ? "rút yêu cầu bảo lưu" : "tập lại sớm";
+    private static bool ChangePending(PTFreeze f) =>
+        f.ChangeState is PTFreezeChangeState.WithdrawPending or PTFreezeChangeState.EarlyResumePending;
 
     /// <summary>Null when the freeze can be withdrawn: Pending or Approved, before it starts, and without a trainer change.</summary>
     private string? WithdrawBlockMessage(PTFreeze f)
@@ -78,7 +76,6 @@ public sealed partial class PersonalTrainingService
             if (f.RequestStatus == PTFreezeRequestStatus.Approved)
             {
                 p.EndDate = LastSessionDate(p);
-                f.ActualStartDate = null;
                 f.ActualEndDate = null;
             }
             return (items, schedule);
@@ -225,7 +222,7 @@ public sealed partial class PersonalTrainingService
             return Conflict<PTFreezeResponse>(blocked);
         if (ChangePending(f))
             return Result<PTFreezeResponse>.Failure("Yêu cầu của bạn đang chờ Quản lý duyệt.", "PT_FREEZE_CHANGE_PENDING", 409);
-        StartChangeRequest(f, PTFreezeChangeTypes.Withdraw, null, null);
+        StartChangeRequest(f, PTFreezeChangeState.WithdrawPending, null);
         Audit(actor, nameof(PTFreeze), id, "WithdrawRequested");
         Notify(actor, "Đã gửi yêu cầu rút bảo lưu", "Bảo lưu vẫn giữ nguyên cho đến khi Quản lý duyệt yêu cầu rút.", nameof(PTFreeze), id);
         foreach (var manager in await ManagerIds(p.PTUserId, ct))
@@ -235,12 +232,10 @@ public sealed partial class PersonalTrainingService
         return Result<PTFreezeResponse>.Success(FreezeResponse(f, p));
     }, ct);
 
-    private void StartChangeRequest(PTFreeze f, string type, DateOnly? resumeDate, string? payload)
+    private void StartChangeRequest(PTFreeze f, PTFreezeChangeState state, string? payload)
     {
-        f.ChangeRequestType = type;
-        f.ChangeRequestStatus = PTFreezeChangeStatuses.Pending;
+        f.ChangeState = state;
         f.ChangeRequestedAt = Now;
-        f.ChangeResumeDate = resumeDate;
         f.ChangePayloadJson = payload;
         f.ChangeReviewedByUserId = null;
         f.ChangeReviewedAt = null;
@@ -257,7 +252,7 @@ public sealed partial class PersonalTrainingService
         var f = p.PTFreezes.Single(x => x.Id == id);
         if (!ChangePending(f))
             return Conflict<PTFreezeChangePreview>("Không có yêu cầu nào đang chờ duyệt.");
-        if (f.ChangeRequestType == PTFreezeChangeTypes.Withdraw)
+        if (f.ChangeState == PTFreezeChangeState.WithdrawPending)
         {
             if (WithdrawBlockMessage(f) is { } blocked)
                 return Conflict<PTFreezeChangePreview>(blocked + " Hãy từ chối yêu cầu này.");
@@ -301,18 +296,18 @@ public sealed partial class PersonalTrainingService
             var f = p.PTFreezes.Single(x => x.Id == id);
             if (!ChangePending(f))
                 return Conflict<PTFreezeResponse>("Không có yêu cầu nào đang chờ duyệt.");
-            var name = ChangeName(f.ChangeRequestType);
+            var isWithdraw = f.ChangeState == PTFreezeChangeState.WithdrawPending;
+            var name = isWithdraw ? "rút yêu cầu bảo lưu" : "tập lại sớm";
             var now = Now;
             if (!input.Approve)
             {
                 if (string.IsNullOrWhiteSpace(input.Reason))
                     return Invalid<PTFreezeResponse>("Nhập lý do từ chối.");
-                f.ChangeRequestStatus = PTFreezeChangeStatuses.Rejected;
                 f.ChangeOutcome = "Bảo lưu giữ nguyên như đã duyệt.";
                 Notify(p.MemberUserId, $"Yêu cầu {name} bị từ chối",
                     $"Quản lý từ chối: {input.Reason.Trim()}. Lịch bảo lưu hiện tại giữ nguyên.", nameof(PTFreeze), id);
             }
-            else if (f.ChangeRequestType == PTFreezeChangeTypes.Withdraw)
+            else if (isWithdraw)
             {
                 if (WithdrawBlockMessage(f) is { } blocked)
                     return Conflict<PTFreezeResponse>(blocked + " Hãy từ chối yêu cầu này.");
@@ -335,12 +330,18 @@ public sealed partial class PersonalTrainingService
                 f.ChangeOutcome = $"Ngày tập lại mới {payload.ResumeDate:dd/MM/yyyy}, hạn gói {result.Data.Preview.ExpiresOn:dd/MM/yyyy}, " +
                     $"{result.Data.Replacements.Count} buổi được xếp lại.";
             }
-            if (input.Approve)
-                f.ChangeRequestStatus = PTFreezeChangeStatuses.Approved;
+            f.ChangeState = (isWithdraw, input.Approve) switch
+            {
+                (true, true) => PTFreezeChangeState.WithdrawApproved,
+                (true, false) => PTFreezeChangeState.WithdrawRejected,
+                (false, true) => PTFreezeChangeState.EarlyResumeApproved,
+                _ => PTFreezeChangeState.EarlyResumeRejected
+            };
             f.ChangeReviewedByUserId = actor;
             f.ChangeReviewedAt = now;
             f.ChangeReviewNote = input.Approve ? null : input.Reason!.Trim();
-            Audit(actor, nameof(PTFreeze), id, (input.Approve ? "ChangeApproved:" : "ChangeRejected:") + f.ChangeRequestType);
+            Audit(actor, nameof(PTFreeze), id, (input.Approve ? "ChangeApproved:" : "ChangeRejected:") +
+                (isWithdraw ? PTFreezeChangeTypes.Withdraw : PTFreezeChangeTypes.EarlyResume));
             await repo.SaveChangesAsync(ct);
             return Result<PTFreezeResponse>.Success(FreezeResponse(f, p));
         }, ct);

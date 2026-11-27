@@ -418,8 +418,8 @@ public class TrainerWorkflowTests
         await fixture.Db.Database.ExecuteSqlRawAsync("ALTER TABLE PTPurchases NOCHECK CONSTRAINT ALL");
         var contract = new PTPurchase
         {
-            MemberUserId = "manager", PTUserId = stored.PTUserId, TotalSessions = 4, RemainingSessions = 4,
-            StartDate = today, EndDate = today.AddDays(30), PurchaseDate = today
+            MemberUserId = "manager", PTUserId = stored.PTUserId,
+            StartDate = today, EndDate = today.AddDays(30)
         };
         fixture.Db.Add(contract);
         await fixture.Db.SaveChangesAsync();
@@ -633,7 +633,6 @@ public class TrainerWorkflowTests
         TrainerTestDatabase.Success(await service.Review(application.Id,
             new("Hire", "Verified", "Senior", match.UserId), "manager", default));
         var profile = await db.TrainerProfiles.SingleAsync();
-        Assert.Null(profile.CommissionTier);
         var published = TrainerTestDatabase.Success(await service.Public(profile.Id, default));
         Assert.False(published.IsOwnProfile);
         Assert.True(TrainerTestDatabase.Success(await service.Public(profile.Id, default, match.UserId)).IsOwnProfile);
@@ -805,10 +804,10 @@ public class TrainerWorkflowTests
         await db.SaveChangesAsync();
         TrainerTestDatabase.Success(await service.Submit(update with { Specialty = "Strength training" }, userId, default));
         var rejected = await db.TrainerApplications.SingleAsync(x => x.ApplicationType == "ProfileUpdate" && x.ApplicationStatus == TrainerApplicationStatus.Pending);
-        var profileBeforeReject = await db.TrainerProfiles.AsNoTracking().Select(x => new { x.Specialty, x.CertificatesJson, x.Bio, x.AvatarJson, x.Level, x.CommissionTier }).SingleAsync();
+        var profileBeforeReject = await db.TrainerProfiles.AsNoTracking().Select(x => new { x.Specialty, x.CertificatesJson, x.Bio, x.AvatarJson, x.Level }).SingleAsync();
         TrainerTestDatabase.Success(await service.Review(rejected.Id, new("Reject", "Certificate not verified"), "manager", default));
         db.ChangeTracker.Clear();
-        Assert.Equal(profileBeforeReject, await db.TrainerProfiles.AsNoTracking().Select(x => new { x.Specialty, x.CertificatesJson, x.Bio, x.AvatarJson, x.Level, x.CommissionTier }).SingleAsync());
+        Assert.Equal(profileBeforeReject, await db.TrainerProfiles.AsNoTracking().Select(x => new { x.Specialty, x.CertificatesJson, x.Bio, x.AvatarJson, x.Level }).SingleAsync());
         Assert.Equal(2, await db.TrainerApplications.CountAsync(x => x.ApplicantUserId == userId));
         Assert.Equal(TrainerApplicationStatus.Rejected, (await db.TrainerApplications.SingleAsync(x => x.Id == rejected.Id)).ApplicationStatus);
 
@@ -973,13 +972,14 @@ public class TrainerWorkflowTests
         var hired = await fixture.Hire();
         TrainerTestDatabase.Success(await service.Setup(new(await fixture.SetupToken(hired.Id), "TestPassword1!"), default));
         var coachA = await db.TrainerProfiles.SingleAsync();
-        coachA.Gender = "Male";
+        (await db.PhysicalProfiles.SingleAsync(p => p.MemberUserId == coachA.PTUserId)).Gender = "Male";
         coachA.Level = TrainerLevel.Senior;
         coachA.AcceptingNewMembers = false;
         var userB = await AddUser(db, "coach-b", "coach-b@example.test", "0900000070", "PT");
+        db.PhysicalProfiles.Add(new PhysicalProfile { MemberUserId = userB.UserId, Gender = "Female" });
         var coachB = new TrainerProfile
         {
-            PTUserId = userB.UserId, Gender = "Female", Specialty = "Mobility", TrainerRoleId = coachA.TrainerRoleId,
+            PTUserId = userB.UserId, Specialty = "Mobility", TrainerRoleId = coachA.TrainerRoleId,
             Level = TrainerLevel.Junior, IsActive = true, AcceptingNewMembers = true
         };
         db.Add(coachB);

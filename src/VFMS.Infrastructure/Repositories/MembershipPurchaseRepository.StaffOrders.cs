@@ -49,8 +49,7 @@ public sealed partial class MembershipPurchaseRepository
             var key = search.ToUpperInvariant();
             query = query.Where(row => row.Order.OrderNumber.ToUpper().Contains(key) ||
                 row.Order.Purchaser.FullName.ToUpper().Contains(key) || row.Order.Purchaser.PhoneNumber.Contains(search) ||
-                row.Order.Items.Any(item => item.PackageNameSnapshot.ToUpper().Contains(key)) ||
-                row.Pt != null && row.Pt.PackageNameSnapshot != null && row.Pt.PackageNameSnapshot.ToUpper().Contains(key));
+                row.Order.Items.Any(item => item.PackageNameSnapshot.ToUpper().Contains(key)));
         }
         if (filter.Status is { } statusFilter) query = query.Where(row => row.Status == statusFilter);
         query = filter.ServiceType switch
@@ -77,14 +76,14 @@ public sealed partial class MembershipPurchaseRepository
                 row.Order.Id, row.Order.OrderNumber, row.Order.Purchaser.FullName, row.Order.CreatedAt,
                 row.IsPt, row.Gym, row.Yoga, row.HasPt, row.Status, row.Method, row.PaymentStatus,
                 HasPayment = row.Payment != null,
-                AmountDue = row.Payment != null ? (decimal?)row.Payment.AmountDue : row.Pt != null ? row.Pt.PurchasePrice : null,
+                AmountDue = row.Payment != null ? (decimal?)row.Payment.AmountDue : null,
+                DiscountAmount = row.Order.VoucherRedemption != null ? row.Order.VoucherRedemption.DiscountAmount : 0m,
                 AmountReceived = row.Payment != null ? (decimal?)row.Payment.AmountReceived : null,
                 PaidAt = row.Payment != null ? row.Payment.PaidAt : null,
                 InvoiceNumber = row.Payment != null && row.Payment.Invoice != null ? row.Payment.Invoice.InvoiceNumber : null,
                 RefundStatus = row.Payment != null ? row.Payment.RefundStatus : null,
                 PtStatus = row.Pt != null ? (PTPurchaseStatus?)row.Pt.Status : null,
-                HoldUntil = row.Pt != null ? row.Pt.HoldExpiresAt : null,
-                PtPackageName = row.Pt != null ? row.Pt.PackageNameSnapshot : null
+                HoldUntil = row.Pt != null ? row.Pt.HoldExpiresAt : null
             }).ToListAsync(ct);
 
         if (page.Count == 0)
@@ -99,8 +98,9 @@ public sealed partial class MembershipPurchaseRepository
         var rows = page.Select(row =>
         {
             var items = orderItems[row.Id].ToArray();
-            if (items.Length == 0 && row.IsPt && row.AmountDue is { } ptAmount)
-                items = [new(row.PtPackageName ?? "Gói PT", ptAmount)];
+            var amountDue = row.AmountDue;
+            if (row.IsPt && amountDue is null)
+                amountDue = items.Single().Amount - row.DiscountAmount;
             var services = new List<string>(3);
             if (row.Gym) services.Add(nameof(ComponentType.GYM));
             if (row.Yoga) services.Add(nameof(ComponentType.YOGA));
@@ -110,12 +110,12 @@ public sealed partial class MembershipPurchaseRepository
                 ? row.HoldUntil ?? row.CreatedAt.AddHours(PackageOrderTiming.CounterPaymentHours)
                 : row.CreatedAt.AddMinutes(PackageOrderTiming.OnlinePaymentMinutes);
             var canConfirm = row.Status == OrderStatus.Pending && row.Method == PaymentMethod.Cash &&
-                row.PaymentStatus == PaymentStatus.Pending && row.AmountDue > 0 &&
+                row.PaymentStatus == PaymentStatus.Pending && amountDue > 0 &&
                 (row.IsPt ? !row.HasPayment && row.PtStatus == PTPurchaseStatus.PendingPayment && row.HoldUntil > nowUtc : row.HasPayment);
 
             return new StaffPackageOrderResponse(row.Id, row.OrderNumber, row.FullName, StaffOrderUtc(row.CreatedAt),
                 StaffOrderUtc(deadline), row.Status.ToString(), row.PaymentStatus?.ToString(), row.Method?.ToString(),
-                row.AmountDue, row.AmountReceived, row.PaidAt is { } paidAt ? StaffOrderUtc(paidAt) : null,
+                amountDue, row.AmountReceived, row.PaidAt is { } paidAt ? StaffOrderUtc(paidAt) : null,
                 row.InvoiceNumber, row.RefundStatus, row.IsPt, canConfirm, services, items);
         }).ToArray();
 

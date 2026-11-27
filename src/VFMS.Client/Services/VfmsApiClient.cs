@@ -15,6 +15,8 @@ namespace VFMS.Client.Services;
 /// </summary>
 public sealed class VfmsApiClient(HttpClient http, AuthSession session, ILogger<VfmsApiClient>? logger = null)
 {
+    public string? AvatarSrc(string? path) => AssetUrls.Resolve(http.BaseAddress!, path);
+
     public Task<WalkInCustomerResponse> CreateWalkInCustomerAsync(
         WalkInCustomerRequest request, CancellationToken cancellationToken = default) =>
         PostAsync<WalkInCustomerResponse>("api/users/walk-in-customer", request, cancellationToken);

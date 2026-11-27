@@ -104,6 +104,8 @@ public sealed class TrainerApiClient(HttpClient http, AuthSession session) : IDi
     public Task<PTContractResponse[]> ContractsAsync() =>
         Send<PTContractResponse[]>(HttpMethod.Get, "api/pt/contracts", auth: true);
 
+    public string? AvatarSrc(string? path) => AssetUrls.Resolve(http.BaseAddress!, path);
+
     public string? PublicAsset(string? path)
     {
         if (string.IsNullOrWhiteSpace(path))

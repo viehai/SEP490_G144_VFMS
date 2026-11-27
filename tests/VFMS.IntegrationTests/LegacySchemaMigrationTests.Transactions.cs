@@ -49,7 +49,7 @@ public sealed partial class LegacySchemaMigrationTests
             }],
             PaymentTransaction = new PaymentTransaction
             {
-                User = owner, GatewayName = "SePay", PaymentMethod = PaymentMethod.VietQR,
+                GatewayName = "SePay", PaymentMethod = PaymentMethod.VietQR,
                 PaymentStatus = PaymentStatus.Paid, AmountDue = 400_000m, AmountReceived = 400_000m, PaidAt = paidAt,
                 Invoice = new Invoice { InvoiceNumber = "SQL-OWNED-INVOICE", IssuedAt = paidAt }
             },
@@ -68,7 +68,7 @@ public sealed partial class LegacySchemaMigrationTests
             }],
             PaymentTransaction = new PaymentTransaction
             {
-                User = other, GatewayName = "Cash", PaymentMethod = PaymentMethod.Cash,
+                GatewayName = "Cash", PaymentMethod = PaymentMethod.Cash,
                 PaymentStatus = PaymentStatus.Pending, AmountDue = 700_000m
             }
         };

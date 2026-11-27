@@ -41,7 +41,7 @@
                 <section class="rounded-xl border border-[#D8D1CD] bg-[#F8F5F2] p-6 shadow-sm">
                     @if (HasValidAvatarUrl)
                     {
-                        <img src="@_profile!.AvatarUrl" alt="@_profile.FullName" class="h-24 w-24 rounded-2xl object-cover shadow-sm" />
+                        <img src="@Api.AvatarSrc(_profile!.AvatarUrl)" alt="@_profile.FullName" class="h-24 w-24 rounded-2xl object-cover shadow-sm" />
                     }
                     else
                     {
@@ -201,9 +201,7 @@
 
     private static DateOnly Today => DateOnly.FromDateTime(DateTime.UtcNow.AddHours(7));
 
-    private bool HasValidAvatarUrl =>
-        Uri.TryCreate(_profile?.AvatarUrl, UriKind.Absolute, out var uri) &&
-        (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
+    private bool HasValidAvatarUrl => Api.AvatarSrc(_profile?.AvatarUrl) != null;
 
     private string Initials
     {

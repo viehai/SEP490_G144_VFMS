@@ -199,7 +199,7 @@ public sealed class LockerRepository(VfmsDbContext db) : AuditedRepositoryBase(d
         rentals.Where(r => r.ReturnedAt == null && r.ExpiresAt != null &&
             (r.ContractStatus == LockerContractStatus.Active || r.ContractStatus == LockerContractStatus.Overdue ||
              r.ContractStatus == LockerContractStatus.Expired) &&
-            (r.RentalTypeSnapshot ?? r.LockerPricingPolicy.RentalType) != RentalType.Daily);
+            r.LockerPricingPolicy.DurationMonths != 0);
 
     public async Task<IReadOnlyList<LockerRentalContract>> GetDueRemindersAsync(DateTime now, int take,
         CancellationToken cancellationToken = default) =>

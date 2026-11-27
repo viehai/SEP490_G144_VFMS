@@ -43,12 +43,12 @@ public sealed partial class FeedbackRepository
             ComponentType.YOGA => HasAttendedYogaAsync(packageId, memberId, ct),
             // A PT purchase normally points at the qualifying Gym membership. The PT package is on its order.
             ComponentType.PT => _context.PTSessions.AnyAsync(s => s.SessionStatus == PTSessionStatus.Completed &&
-                s.MemberUserId == memberId && s.PTPurchase.MemberUserId == memberId &&
+                s.PTPurchase.MemberUserId == memberId &&
                 (s.PTPurchase.Order != null
-                    ? s.PTPurchase.Order.Items.Any(i => i.PackageId == packageId && i.BeneficiaryUserId == memberId) &&
-                      !s.PTPurchase.Order.Items.Any(i => i.BeneficiaryUserId == memberId && i.PackageId != packageId &&
-                          i.Package.Components.Any(c => c.ComponentType == ComponentType.PT))
-                    : s.PTPurchase.MemberMembership.PackageComponent.ComponentType == ComponentType.PT &&
+                    ? s.PTPurchase.Order.Items.Count == 1 &&
+                      s.PTPurchase.Order.Items.Any(i => i.PackageId == packageId && i.BeneficiaryUserId == memberId)
+                    : s.PTPurchase.MemberMembership != null &&
+                      s.PTPurchase.MemberMembership.PackageComponent.ComponentType == ComponentType.PT &&
                       s.PTPurchase.MemberMembership.MemberUserId == memberId &&
                       s.PTPurchase.MemberMembership.OrderItem.PackageId == packageId &&
                       s.PTPurchase.MemberMembership.OrderItem.BeneficiaryUserId == memberId), ct),

@@ -40,9 +40,8 @@ public sealed partial class MembershipPurchaseApiTests
             LockerRentalContract HistoryRental(string number, string owner, LockerContractStatus status) => new()
             {
                 ContractNumber = number, CustomerUserId = owner, LockerId = lockerId,
-                LockerPricingPolicyId = policyId, ContractStatus = status, RentalTypeSnapshot = RentalType.Monthly,
+                LockerPricingPolicyId = policyId, ContractStatus = status,
                 StartDate = Today.AddMonths(-2), EndDate = Today.AddMonths(-1),
-                DepositAmount = 100_000,
                 HandedOverAt = _clock.Now.UtcDateTime.AddMonths(-2), CreatedAt = _clock.Now.UtcDateTime.AddMonths(-2)
             };
         }

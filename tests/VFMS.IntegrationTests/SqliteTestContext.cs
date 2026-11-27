@@ -7,6 +7,33 @@ namespace VFMS.IntegrationTests;
 
 internal static class TestSeed
 {
+    public static Order PaidPTOrder(string memberUserId, int credits)
+    {
+        var package = new Package
+        {
+            Name = "PT plan",
+            Price = 100,
+            Components = [new PackageComponent { ComponentType = ComponentType.PT, SessionCount = credits }]
+        };
+        return new Order
+        {
+            OrderNumber = $"ORD-{Guid.NewGuid():N}",
+            PurchaserUserId = memberUserId,
+            OrderStatus = OrderStatus.Paid,
+            Items = [new OrderItem
+            {
+                Package = package,
+                BeneficiaryUserId = memberUserId,
+                UnitPriceSnapshot = package.Price,
+                PackageNameSnapshot = package.Name,
+                ComponentTermsSnapshot = System.Text.Json.JsonSerializer.Serialize(new[]
+                {
+                    new { Type = ComponentType.PT, SessionCount = credits }
+                })
+            }]
+        };
+    }
+
     /// <summary>A paid one-component package and a membership for the member: Active from 5 days ago for 25 more days.</summary>
     public static MemberMembership Membership(string memberUserId, ComponentType type = ComponentType.GYM, string? yogaLevel = null)
     {

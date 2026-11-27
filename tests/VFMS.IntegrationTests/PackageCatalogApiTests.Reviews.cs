@@ -194,15 +194,20 @@ public sealed partial class PackageCatalogApiTests
     public async Task PtUsesTheCompletedSessionAndPtOrderWhileTrainerRatingRemainsSeparate()
     {
         var gym = await CreatePackage("Gym", ComponentType.GYM);
-        var pt = await CreatePackage("PT 12", ComponentType.PT);
+        var pt = await CreatePackage("PT 12", ComponentType.PT, sessionCount: 12);
         var otherPt = await CreatePackage("PT 24", ComponentType.PT);
         await using var scope = _app.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<VfmsDbContext>();
         await AddReviewUsers(db);
         var ptLine = ReviewLine(pt);
+        ptLine.UnitPriceSnapshot = pt.Price;
+        ptLine.ComponentTermsSnapshot = System.Text.Json.JsonSerializer.Serialize(new[]
+        {
+            new { Type = ComponentType.PT, SessionCount = 12 }
+        });
         var contract = new PTPurchase { MemberMembership = ReviewMembership(gym), MemberUserId = "test-user",
-            PTUserId = "staff", Order = ptLine.Order, TotalSessions = 12 };
-        var session = new PTSession { PTPurchase = contract, PTUserId = "staff", MemberUserId = "test-user", SessionStatus = PTSessionStatus.AutoCompleted };
+            PTUserId = "staff", Order = ptLine.Order };
+        var session = new PTSession { PTPurchase = contract, PTUserId = "staff", SessionStatus = PTSessionStatus.AutoCompleted };
         db.AddRange(ptLine, session, new TrainerReview { MemberUserId = "test-user", TrainerUserId = "staff", PTPurchase = contract,
             Rating = 2, ReviewStatus = TrainerReviewStatus.Approved, IsVisible = true });
         await db.SaveChangesAsync();

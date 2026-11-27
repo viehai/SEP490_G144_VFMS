@@ -1181,33 +1181,18 @@ namespace VFMS.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<string>("AssignedPinCode")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
-                    b.Property<string>("KeyOrPinType")
-                        .HasMaxLength(10)
-                        .HasColumnType("nvarchar(10)");
-
                     b.Property<string>("LockerNumber")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
-                    b.Property<int?>("LockerPricingPolicyId")
-                        .HasColumnType("int");
-
                     b.Property<string>("LockerStatus")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<string>("LockerType")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
@@ -1219,8 +1204,6 @@ namespace VFMS.Infrastructure.Migrations
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("LockerPricingPolicyId");
 
                     b.HasIndex("LockerZoneId");
 
@@ -1314,9 +1297,6 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
-                    b.Property<decimal>("KeyReplacementFee")
-                        .HasColumnType("decimal(18,2)");
-
                     b.Property<decimal>("OverdueDailyFee")
                         .HasColumnType("decimal(18,2)");
 
@@ -1331,11 +1311,6 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.Property<decimal>("RentalPrice")
                         .HasColumnType("decimal(18,2)");
-
-                    b.Property<string>("RentalType")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
@@ -1376,9 +1351,6 @@ namespace VFMS.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(128)");
 
-                    b.Property<decimal>("DepositAmount")
-                        .HasColumnType("decimal(18,2)");
-
                     b.Property<DateOnly>("EndDate")
                         .HasColumnType("date");
 
@@ -1386,12 +1358,6 @@ namespace VFMS.Infrastructure.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<DateTime?>("FinalNoticeAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("FinalNoticeEmailSentAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("FinalNoticeRetryAt")
                         .HasColumnType("datetime2");
 
                     b.Property<decimal?>("FineAmount")
@@ -1410,17 +1376,11 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<DateTime?>("KeyLossConfirmedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<decimal?>("KeyReplacementFeeSnapshot")
-                        .HasColumnType("decimal(18,2)");
-
                     b.Property<int>("LockerId")
                         .HasColumnType("int");
 
                     b.Property<int>("LockerPricingPolicyId")
                         .HasColumnType("int");
-
-                    b.Property<string>("Note")
-                        .HasColumnType("nvarchar(max)");
 
                     b.Property<decimal?>("OutstandingAmount")
                         .HasColumnType("decimal(18,2)");
@@ -1428,26 +1388,13 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<DateTime?>("OutstandingPaidAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<decimal?>("OverdueDailyFeeSnapshot")
-                        .HasColumnType("decimal(18,2)");
-
                     b.Property<DateTime?>("ReminderSentAt")
                         .HasColumnType("datetime2");
-
-                    b.Property<decimal>("RentalPrice")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<string>("RentalTypeSnapshot")
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
 
                     b.Property<int?>("ReplacementLockerId")
                         .HasColumnType("int");
 
                     b.Property<DateTime?>("ReturnedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("SettledAt")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("SettledByUserId")
@@ -1456,9 +1403,6 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.Property<DateOnly>("StartDate")
                         .HasColumnType("date");
-
-                    b.Property<int?>("TermMonthsSnapshot")
-                        .HasColumnType("int");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
@@ -1887,17 +1831,11 @@ namespace VFMS.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<DateOnly?>("AvailableDate")
-                        .HasColumnType("date");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
                     b.Property<int?>("DayOfWeek")
                         .HasColumnType("int");
-
-                    b.Property<TimeOnly>("EndTime")
-                        .HasColumnType("time");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
@@ -1914,15 +1852,10 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<TimeOnly>("StartTime")
                         .HasColumnType("time");
 
-                    b.Property<int?>("TrainerProfileId")
-                        .HasColumnType("int");
-
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("TrainerProfileId");
 
                     b.HasIndex("PTUserId", "DayOfWeek", "StartTime")
                         .IsUnique()
@@ -1942,26 +1875,14 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<DateOnly?>("ActualEndDate")
                         .HasColumnType("date");
 
-                    b.Property<DateOnly?>("ActualStartDate")
-                        .HasColumnType("date");
-
                     b.Property<string>("ChangeOutcome")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("ChangePayloadJson")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<string>("ChangeRequestStatus")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("ChangeRequestType")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<DateTime?>("ChangeRequestedAt")
                         .HasColumnType("datetime2");
-
-                    b.Property<DateOnly?>("ChangeResumeDate")
-                        .HasColumnType("date");
 
                     b.Property<string>("ChangeReviewNote")
                         .HasColumnType("nvarchar(max)");
@@ -1972,6 +1893,11 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<string>("ChangeReviewedByUserId")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("ChangeState")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -1980,12 +1906,6 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.Property<DateTime?>("ManagerRemindedAt")
                         .HasColumnType("datetime2");
-
-                    b.Property<int?>("MaxDaysSnapshot")
-                        .HasColumnType("int");
-
-                    b.Property<int?>("MinimumDaysSnapshot")
-                        .HasColumnType("int");
 
                     b.Property<int>("PTPurchaseId")
                         .HasColumnType("int");
@@ -2000,10 +1920,6 @@ namespace VFMS.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("RequestedByUserId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(128)");
 
                     b.Property<DateOnly>("RequestedEndDate")
                         .HasColumnType("date");
@@ -2020,17 +1936,12 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<string>("ReviewedByUserId")
                         .HasColumnType("nvarchar(128)");
 
-                    b.Property<string>("SupportingDocumentUrl")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
 
                     b.HasIndex("PTPurchaseId");
-
-                    b.HasIndex("RequestedByUserId");
 
                     b.HasIndex("ReviewedByUserId");
 
@@ -2060,9 +1971,6 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<DateTime?>("HoldExpiresAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<bool>("IsCompleted")
-                        .HasColumnType("bit");
-
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
@@ -2080,25 +1988,6 @@ namespace VFMS.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(128)");
 
-                    b.Property<string>("PackageNameSnapshot")
-                        .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)");
-
-                    b.Property<DateOnly>("PurchaseDate")
-                        .HasColumnType("date");
-
-                    b.Property<decimal>("PurchasePrice")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<DateTime?>("ReceiptEmailRetryAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("ReceiptEmailSentAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int>("RemainingSessions")
-                        .HasColumnType("int");
-
                     b.Property<DateOnly>("StartDate")
                         .HasColumnType("date");
 
@@ -2109,16 +1998,7 @@ namespace VFMS.Infrastructure.Migrations
                         .HasColumnType("nvarchar(20)")
                         .HasDefaultValue("Active");
 
-                    b.Property<int>("TotalSessions")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime?>("TrainerChangeDeadline")
-                        .HasColumnType("datetime2");
-
                     b.Property<int?>("TrainerLevelSnapshot")
-                        .HasColumnType("int");
-
-                    b.Property<int?>("TrainerProfileId")
                         .HasColumnType("int");
 
                     b.Property<DateTime>("UpdatedAt")
@@ -2139,8 +2019,6 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.HasIndex("PTUserId");
 
-                    b.HasIndex("TrainerProfileId");
-
                     b.ToTable("PTPurchases");
                 });
 
@@ -2158,13 +2036,7 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<bool?>("AttendanceRecordedPresent")
                         .HasColumnType("bit");
 
-                    b.Property<DateTime?>("AttendanceReminderSentAt")
-                        .HasColumnType("datetime2");
-
                     b.Property<DateTime?>("CancelledAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("CheckInCompletedAt")
                         .HasColumnType("datetime2");
 
                     b.Property<DateTime>("CreatedAt")
@@ -2183,10 +2055,6 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
-
-                    b.Property<string>("MemberUserId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(128)");
 
                     b.Property<string>("Note")
                         .HasColumnType("nvarchar(max)");
@@ -2211,24 +2079,11 @@ namespace VFMS.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(128)");
 
-                    b.Property<DateTime?>("ProposalEmailRetryAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("ProposalEmailSentAt")
-                        .HasColumnType("datetime2");
-
                     b.Property<DateTime?>("ProposalExpiresAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("ProposedAdjustmentType")
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
                     b.Property<DateOnly?>("ProposedDate")
                         .HasColumnType("date");
-
-                    b.Property<TimeOnly?>("ProposedEndTime")
-                        .HasColumnType("time");
 
                     b.Property<TimeOnly?>("ProposedStartTime")
                         .HasColumnType("time");
@@ -2279,9 +2134,7 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.HasIndex("PTAvailabilityId");
 
-                    b.HasIndex("PTPurchaseId");
-
-                    b.HasIndex("MemberUserId", "SessionDate", "StartTime");
+                    b.HasIndex("PTPurchaseId", "SessionDate", "StartTime");
 
                     b.HasIndex("PTUserId", "SessionDate", "StartTime");
 
@@ -2385,12 +2238,6 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<int?>("MinFreezeDaysPerRequest")
                         .HasColumnType("int");
 
-                    b.Property<int?>("PTFreezeMaxTotalDays")
-                        .HasColumnType("int");
-
-                    b.Property<int?>("PTFreezeMinimumDays")
-                        .HasColumnType("int");
-
                     b.Property<int>("PackageId")
                         .HasColumnType("int");
 
@@ -2442,9 +2289,6 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
-
-                    b.Property<decimal?>("KeyReplacementFee")
-                        .HasColumnType("decimal(18,2)");
 
                     b.Property<string>("LockerPurpose")
                         .HasMaxLength(20)
@@ -2519,10 +2363,6 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(128)");
-
                     b.HasKey("Id");
 
                     b.HasIndex("GatewayTransactionReference")
@@ -2533,8 +2373,6 @@ namespace VFMS.Infrastructure.Migrations
                         .IsUnique();
 
                     b.HasIndex("SourcePaymentTransactionId");
-
-                    b.HasIndex("UserId");
 
                     b.HasIndex("LockerRentalContractId", "LockerPurpose");
 
@@ -3165,10 +3003,6 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<string>("ApplicantUserId")
                         .HasColumnType("nvarchar(128)");
 
-                    b.Property<string>("ApplicationFileUrl")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<string>("ApplicationStatus")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -3305,40 +3139,22 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<bool>("AcceptingNewMembers")
                         .HasColumnType("bit");
 
-                    b.Property<DateOnly?>("AcceptingSince")
-                        .HasColumnType("date");
-
                     b.Property<string>("AvatarJson")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("AvatarUrl")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Bio")
                         .HasMaxLength(4000)
                         .HasColumnType("nvarchar(4000)");
 
-                    b.Property<string>("CertificateUrl")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<string>("CertificatesJson")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("CommissionTier")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
                     b.Property<int>("ExperienceYears")
                         .HasColumnType("int");
-
-                    b.Property<string>("Gender")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
@@ -3357,12 +3173,12 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<DateOnly?>("NotAcceptingCountFrom")
                         .HasColumnType("date");
 
-                    b.Property<DateOnly?>("NotAcceptingSince")
-                        .HasColumnType("date");
-
                     b.Property<string>("PTUserId")
                         .IsRequired()
                         .HasColumnType("nvarchar(128)");
+
+                    b.Property<DateOnly?>("ReadinessSince")
+                        .HasColumnType("date");
 
                     b.Property<string>("Specialty")
                         .IsRequired()
@@ -3432,9 +3248,6 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<string>("ReviewedByUserId")
                         .HasColumnType("nvarchar(128)");
 
-                    b.Property<int?>("TrainerProfileId")
-                        .HasColumnType("int");
-
                     b.Property<string>("TrainerUserId")
                         .HasColumnType("nvarchar(128)");
 
@@ -3450,8 +3263,6 @@ namespace VFMS.Infrastructure.Migrations
                         .HasFilter("[PTPurchaseId] IS NOT NULL");
 
                     b.HasIndex("ReviewedByUserId");
-
-                    b.HasIndex("TrainerProfileId");
 
                     b.HasIndex("TrainerUserId");
 
@@ -4553,18 +4364,11 @@ namespace VFMS.Infrastructure.Migrations
 
             modelBuilder.Entity("VFMS.Domain.Entities.Locker", b =>
                 {
-                    b.HasOne("VFMS.Domain.Entities.LockerPricingPolicy", "LockerPricingPolicy")
-                        .WithMany("Lockers")
-                        .HasForeignKey("LockerPricingPolicyId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("VFMS.Domain.Entities.LockerZone", "LockerZone")
                         .WithMany("Lockers")
                         .HasForeignKey("LockerZoneId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.Navigation("LockerPricingPolicy");
 
                     b.Navigation("LockerZone");
                 });
@@ -4784,10 +4588,6 @@ namespace VFMS.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("VFMS.Domain.Entities.TrainerProfile", null)
-                        .WithMany("Availabilities")
-                        .HasForeignKey("TrainerProfileId");
-
                     b.Navigation("PTUser");
                 });
 
@@ -4799,20 +4599,12 @@ namespace VFMS.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("VFMS.Domain.Entities.ApplicationUser", "RequestedByUser")
-                        .WithMany("PTFreezeRequestsAsMember")
-                        .HasForeignKey("RequestedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.HasOne("VFMS.Domain.Entities.ApplicationUser", "ReviewedByUser")
                         .WithMany("PTFreezeRequestsAsPT")
                         .HasForeignKey("ReviewedByUserId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("PTPurchase");
-
-                    b.Navigation("RequestedByUser");
 
                     b.Navigation("ReviewedByUser");
                 });
@@ -4841,10 +4633,6 @@ namespace VFMS.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("VFMS.Domain.Entities.TrainerProfile", null)
-                        .WithMany("PTPurchases")
-                        .HasForeignKey("TrainerProfileId");
-
                     b.Navigation("Member");
 
                     b.Navigation("MemberMembership");
@@ -4856,12 +4644,6 @@ namespace VFMS.Infrastructure.Migrations
 
             modelBuilder.Entity("VFMS.Domain.Entities.PTSession", b =>
                 {
-                    b.HasOne("VFMS.Domain.Entities.ApplicationUser", "Member")
-                        .WithMany("PTSessionsAsTrainee")
-                        .HasForeignKey("MemberUserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.HasOne("VFMS.Domain.Entities.PTAvailability", "PTAvailability")
                         .WithMany("PTSessions")
                         .HasForeignKey("PTAvailabilityId")
@@ -4878,8 +4660,6 @@ namespace VFMS.Infrastructure.Migrations
                         .HasForeignKey("PTUserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.Navigation("Member");
 
                     b.Navigation("PTAvailability");
 
@@ -4917,19 +4697,11 @@ namespace VFMS.Infrastructure.Migrations
                         .HasForeignKey("SourcePaymentTransactionId")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.HasOne("VFMS.Domain.Entities.ApplicationUser", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.Navigation("LockerRentalContract");
 
                     b.Navigation("Order");
 
                     b.Navigation("SourcePaymentTransaction");
-
-                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.PhysicalProfile", b =>
@@ -5160,10 +4932,6 @@ namespace VFMS.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("ReviewedByUserId")
                         .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("VFMS.Domain.Entities.TrainerProfile", null)
-                        .WithMany("Reviews")
-                        .HasForeignKey("TrainerProfileId");
 
                     b.HasOne("VFMS.Domain.Entities.ApplicationUser", "TrainerUser")
                         .WithMany()
@@ -5459,15 +5227,11 @@ namespace VFMS.Infrastructure.Migrations
 
                     b.Navigation("PTAvailabilities");
 
-                    b.Navigation("PTFreezeRequestsAsMember");
-
                     b.Navigation("PTFreezeRequestsAsPT");
 
                     b.Navigation("PTPurchasesAsMember");
 
                     b.Navigation("PTPurchasesAsPT");
-
-                    b.Navigation("PTSessionsAsTrainee");
 
                     b.Navigation("PTSessionsAsTrainer");
 
@@ -5564,8 +5328,6 @@ namespace VFMS.Infrastructure.Migrations
             modelBuilder.Entity("VFMS.Domain.Entities.LockerPricingPolicy", b =>
                 {
                     b.Navigation("Contracts");
-
-                    b.Navigation("Lockers");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.LockerRentalContract", b =>
@@ -5653,15 +5415,6 @@ namespace VFMS.Infrastructure.Migrations
             modelBuilder.Entity("VFMS.Domain.Entities.SupplementProduct", b =>
                 {
                     b.Navigation("OrderItems");
-                });
-
-            modelBuilder.Entity("VFMS.Domain.Entities.TrainerProfile", b =>
-                {
-                    b.Navigation("Availabilities");
-
-                    b.Navigation("PTPurchases");
-
-                    b.Navigation("Reviews");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.TrainerRole", b =>

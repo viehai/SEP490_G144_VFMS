@@ -291,7 +291,15 @@ public sealed class CheckInTests
         var (repo, service, qr) = Kiosk();
         repo.Memberships.Add(Membership("m1"));
         var start = TimeOnly.FromDateTime(Now.AddHours(7).AddMinutes(startsInMinutes));
-        var pt = new PTSession { Id = 9, MemberUserId = "m1", SessionDate = Today, StartTime = start, PTPurchase = new PTPurchase { TotalSessions = 3, RemainingSessions = 3 } };
+        var pt = new PTSession
+        {
+            Id = 9, SessionDate = Today, StartTime = start,
+            PTPurchase = new PTPurchase
+            {
+                MemberUserId = "m1",
+                Order = new Order { Items = [new OrderItem { ComponentTermsSnapshot = """[{"Type":2,"SessionCount":3}]""" }] }
+            }
+        };
         pt.PTPurchase.Sessions.Add(pt);
         repo.PtSessions.Add(pt);
 
@@ -299,7 +307,7 @@ public sealed class CheckInTests
 
         Assert.Equal(201, result.StatusCode);
         Assert.Equal(PTSessionStatus.Scheduled, pt.SessionStatus);   // a visit only: the PT records attendance
-        Assert.Equal(3, pt.PTPurchase.RemainingSessions);
+        Assert.Equal(3, pt.PTPurchase.TotalSessions - PersonalTrainingRules.Credits(pt.PTPurchase.Sessions).Used);
     }
 
     [Fact]
@@ -309,7 +317,11 @@ public sealed class CheckInTests
         repo.Memberships.Add(Membership("m-active"));
         repo.Memberships.Add(Membership("m-expired", MembershipStatus.Active, -40, -1));
         repo.Memberships.Add(Membership("m-frozen", MembershipStatus.Frozen));
-        repo.PtSessions.Add(new PTSession { MemberUserId = "m-active", SessionDate = Today, StartTime = new TimeOnly(10, 10), PTPurchase = new PTPurchase() });
+        repo.PtSessions.Add(new PTSession
+        {
+            SessionDate = Today, StartTime = new TimeOnly(10, 10),
+            PTPurchase = new PTPurchase { MemberUserId = "m-active" }
+        });
 
         var found = (await service.SearchMembersAsync("m-")).Data!.ToDictionary(r => r.MemberUserId);
         Assert.Equal(("Active", "Expired", "Frozen"), (found["m-active"].MembershipStatus, found["m-expired"].MembershipStatus, found["m-frozen"].MembershipStatus));
