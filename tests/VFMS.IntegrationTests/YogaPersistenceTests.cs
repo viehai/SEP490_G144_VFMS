@@ -137,7 +137,7 @@ public sealed class YogaPersistenceTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// TC-YEXP, option B (SRS GBR-125): when the yoga plan ends before the class does,
+    /// TC-YEXP, option B (SRS GBR-143): when the yoga plan ends before the class does,
     /// the booking is held. The mat stays the member's, but they can't attend, aren't counted absent and aren't offered
     /// waitlist seats until they buy a new plan that covers the class.
     /// </summary>
