@@ -252,6 +252,15 @@ public enum YogaClassStatus
     Full
 }
 
+/// <summary>Yoga Instructor's request to open a class (GBR-128..GBR-130).</summary>
+public enum YogaClassRequestStatus
+{
+    Pending,
+    Approved,
+    Rejected,
+    Withdrawn
+}
+
 public enum YogaScheduleStatus
 {
     Scheduled,
@@ -528,7 +537,9 @@ public enum NotificationType
     WorkoutPlanGenerated,
     SystemAlert,
     GymAnnouncement,
-    VoucherExpiry
+    VoucherExpiry,
+    /// <summary>Yoga class opening request submitted or decided (GBR-128..GBR-130).</summary>
+    YogaClassRequest
 }
 
 // ─────────────────────────────────────────────────────────────

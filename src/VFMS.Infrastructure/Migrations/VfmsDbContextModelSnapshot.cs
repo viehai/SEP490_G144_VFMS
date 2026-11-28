@@ -868,6 +868,9 @@ namespace VFMS.Infrastructure.Migrations
                     b.Property<string>("DifficultyLevel")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<int?>("EquipmentId")
+                        .HasColumnType("int");
+
                     b.Property<string>("ImageUrl")
                         .HasColumnType("nvarchar(max)");
 
@@ -892,6 +895,8 @@ namespace VFMS.Infrastructure.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("EquipmentId");
 
                     b.ToTable("Exercises");
                 });
@@ -3846,6 +3851,110 @@ namespace VFMS.Infrastructure.Migrations
                     b.ToTable("YogaClasses");
                 });
 
+            modelBuilder.Entity("VFMS.Domain.Entities.YogaClassOpeningRequest", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ClassName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("DifficultyLevel")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int>("DurationMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<DateOnly>("EndDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("InstructorUserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("MaxParticipants")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MinParticipants")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("PreferredDays")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<TimeOnly>("PreferredStartTime")
+                        .HasColumnType("time");
+
+                    b.Property<int?>("PreferredStudioId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RejectReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("RequestStatus")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ReviewedByUserId")
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<int>("SessionsPerWeek")
+                        .HasColumnType("int");
+
+                    b.Property<DateOnly>("StartDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("YogaClassId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("YogaClassTypeId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PreferredStudioId");
+
+                    b.HasIndex("ReviewedByUserId");
+
+                    b.HasIndex("YogaClassId");
+
+                    b.HasIndex("YogaClassTypeId");
+
+                    b.HasIndex("InstructorUserId", "RequestStatus");
+
+                    b.ToTable("YogaClassOpeningRequests");
+                });
+
             modelBuilder.Entity("VFMS.Domain.Entities.YogaClassSchedule", b =>
                 {
                     b.Property<int>("Id")
@@ -4283,6 +4392,16 @@ namespace VFMS.Infrastructure.Migrations
                     b.Navigation("Equipment");
 
                     b.Navigation("EquipmentIssueReport");
+                });
+
+            modelBuilder.Entity("VFMS.Domain.Entities.Exercise", b =>
+                {
+                    b.HasOne("VFMS.Domain.Entities.Equipment", "Equipment")
+                        .WithMany()
+                        .HasForeignKey("EquipmentId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Equipment");
                 });
 
             modelBuilder.Entity("VFMS.Domain.Entities.FaceData", b =>
@@ -5129,6 +5248,44 @@ namespace VFMS.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Instructor");
+
+                    b.Navigation("YogaClassType");
+                });
+
+            modelBuilder.Entity("VFMS.Domain.Entities.YogaClassOpeningRequest", b =>
+                {
+                    b.HasOne("VFMS.Domain.Entities.ApplicationUser", "Instructor")
+                        .WithMany()
+                        .HasForeignKey("InstructorUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("VFMS.Domain.Entities.YogaStudio", "PreferredStudio")
+                        .WithMany()
+                        .HasForeignKey("PreferredStudioId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("VFMS.Domain.Entities.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("ReviewedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("VFMS.Domain.Entities.YogaClass", "YogaClass")
+                        .WithMany()
+                        .HasForeignKey("YogaClassId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("VFMS.Domain.Entities.YogaClassType", "YogaClassType")
+                        .WithMany()
+                        .HasForeignKey("YogaClassTypeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Instructor");
+
+                    b.Navigation("PreferredStudio");
+
+                    b.Navigation("YogaClass");
 
                     b.Navigation("YogaClassType");
                 });

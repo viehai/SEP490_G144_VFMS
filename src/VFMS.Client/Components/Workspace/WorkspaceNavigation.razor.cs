@@ -88,7 +88,8 @@ public partial class WorkspaceNavigation
         new("Lịch huấn luyện",
             new("Lịch tuần PT", "/pt/availability", "PT"),
             new("Lịch dạy PT", "/pt/teaching-schedule", "PT"),
-            new("Lớp Yoga của tôi", "/pt/yoga", "YogaInstructor")),
+            new("Lớp Yoga của tôi", "/pt/yoga", "YogaInstructor"),
+            new("Yêu cầu mở lớp Yoga", "/pt/yoga/class-requests", "YogaInstructor")),
         new("Hội viên", new Link("Hội viên được phân công", "/pt/assigned-members", "PT")),
         new("Hồ sơ", new Link("Hồ sơ huấn luyện viên", "/pt/trainer-profile", "PT"))
     ];
@@ -101,6 +102,7 @@ public partial class WorkspaceNavigation
             new("Trang chủ", "/")),
         new("Huấn luyện viên",
             new("Hồ sơ huấn luyện viên", "/pt/trainer-profile", "YogaInstructor"),
-            new("Lớp Yoga của tôi", "/pt/yoga", "YogaInstructor"))
+            new("Lớp Yoga của tôi", "/pt/yoga", "YogaInstructor"),
+            new("Yêu cầu mở lớp Yoga", "/pt/yoga/class-requests", "YogaInstructor"))
     ];
 }

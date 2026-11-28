@@ -47,6 +47,25 @@
                         @foreach (var l in ExerciseCatalog.Levels) { <option value="@l">@ExerciseCatalog.LevelLabel(l)</option> }
                     </select>
                 </label>
+                <label class="@Ui.Label" for="ex-machine">Máy tập mặc định
+                    <select id="ex-machine" class="@Ui.Field min-h-[44px]" aria-describedby="ex-machine-help" disabled="@(_machines.Count == 0)" @bind="_form.EquipmentId">
+                        <option value="">Không dùng máy</option>
+                        @foreach (var m in _machines)
+                        {
+                            <option value="@m.Id">@m.Name</option>
+                        }
+                    </select>
+                    <span id="ex-machine-help" class="mt-1 block font-normal text-vfms-text-secondary">
+                        @if (_machines.Count == 0)
+                        {
+                            <text>Chưa có máy nào. Thêm máy ở <a href="/manager/equipment" class="font-semibold text-vfms-primary underline">Thiết bị</a>.</text>
+                        }
+                        else
+                        {
+                            <text>Dùng khi AI hoặc giáo án chuẩn không chọn máy cho bài này. Máy nào cùng tên còn hoạt động đều dùng được.</text>
+                        }
+                    </span>
+                </label>
                 <label class="@Ui.Label" for="ex-image">Link ảnh minh họa
                     <input id="ex-image" type="url" class="@Ui.Field min-h-[44px]" placeholder="https://…" @bind="_form.ImageUrl" />
                 </label>
@@ -107,7 +126,7 @@
                                 <StatusBadge Status="@(e.IsActive ? "Active" : "Inactive")" Label="@(e.IsActive ? "Đang dùng" : "Ngừng dùng")" />
                             </p>
                             <p class="text-xs text-vfms-text-secondary">
-                                @ExerciseCatalog.MuscleGroupLabel(e.MuscleGroup) · @ExerciseCatalog.LevelLabel(e.DifficultyLevel) · Có trong @e.PlanUses mục giáo án
+                                @ExerciseCatalog.MuscleGroupLabel(e.MuscleGroup) · @ExerciseCatalog.LevelLabel(e.DifficultyLevel)@(e.EquipmentName is null ? "" : $" · Máy: {e.EquipmentName}") · Có trong @e.PlanUses mục giáo án
                             </p>
                             @if (e.Description is not null) { <p class="text-xs text-vfms-text-secondary">@e.Description</p> }
                         </div>
@@ -127,6 +146,7 @@
 
 @code {
     private List<ManagerExerciseResponse> _items = [];
+    private List<ExerciseMachineOption> _machines = [];
     private ExerciseForm _form = new();
     private int? _editingId;
     private bool _loading = true, _saving;
@@ -138,7 +158,12 @@
         .Where(e => _filterStatus == "" || (_filterStatus == "active") == e.IsActive)
         .ToList();
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        try { _machines = await Api.GetAsync<List<ExerciseMachineOption>>("api/manager/exercises/machines"); }
+        catch (ApiException ex) { _error = ex.Message; }
+    }
 
     private async Task LoadAsync()
     {
@@ -151,7 +176,8 @@
     private void Edit(ManagerExerciseResponse e)
     {
         _editingId = e.Id;
-        _form = new() { Name = e.Name, MuscleGroup = e.MuscleGroup ?? "", DifficultyLevel = e.DifficultyLevel ?? "", Description = e.Description, ImageUrl = e.ImageUrl, VideoUrl = e.VideoUrl };
+        _form = new() { Name = e.Name, MuscleGroup = e.MuscleGroup ?? "", DifficultyLevel = e.DifficultyLevel ?? "", Description = e.Description, ImageUrl = e.ImageUrl, VideoUrl = e.VideoUrl,
+            EquipmentId = MachineOptionFor(_machines, e.EquipmentId, e.EquipmentName) };
         _error = _notice = null;
     }
 
@@ -165,7 +191,7 @@
     private async Task SaveAsync()
     {
         if (_saving) return;
-        var request = new ExerciseRequest(_form.Name, _form.MuscleGroup, _form.DifficultyLevel, _form.Description, _form.ImageUrl, _form.VideoUrl);
+        var request = new ExerciseRequest(_form.Name, _form.MuscleGroup, _form.DifficultyLevel, _form.Description, _form.ImageUrl, _form.VideoUrl, _form.EquipmentId);
         _saving = true;
         _error = _notice = null;
         try
@@ -195,8 +221,15 @@
         finally { _saving = false; }
     }
 
+    /// <summary>The picker shows one option per machine name, so a stored unit maps to the option with its name.</summary>
+    public static int? MachineOptionFor(IReadOnlyList<ExerciseMachineOption> options, int? equipmentId, string? equipmentName) =>
+        equipmentId is null ? null
+            : options.FirstOrDefault(o => o.Id == equipmentId)?.Id
+              ?? options.FirstOrDefault(o => string.Equals(o.Name, equipmentName?.Trim(), StringComparison.OrdinalIgnoreCase))?.Id;
+
     private sealed class ExerciseForm
     {
+        public int? EquipmentId { get; set; }
         public string Name { get; set; } = "";
         public string MuscleGroup { get; set; } = "";
         public string DifficultyLevel { get; set; } = "";
